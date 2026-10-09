@@ -294,8 +294,10 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 
 ### 4.10 Decisions
 
-1. A delete on the device (`DELETE v1/library/:uuid`) **marks the book read** and stops re-sending it to that
-   device while it stays listed. It never edits list membership.
+1. A delete on the device (`DELETE v1/library/:uuid`) stops re-sending the book to that device while it stays
+   listed. It never edits list membership, the list's read flag or reading progress. (Phase 1 also marked the
+   book read; that was reverted after the review in [`kobo-sync-review.md`](./kobo-sync-review.md), item 3,
+   because deleting a book to free space says nothing about having read it.)
 2. **No queue mode:** finished books stay on the device.
 3. A device can be bound to **several lists**; each one becomes a Kobo collection.
 4. Kobo Store proxying is a **per-device toggle, off by default** (moved from Phase 3 into Phase 1).
@@ -325,8 +327,8 @@ and the matching §6 update.
    * **Collections created on the device** (not bound lists) stay local: `POST v1/library/tags` answers `201`
      with a fresh id and nothing is stored, and edits to unknown tag ids answer `200`/`204` without storing
      anything. With the store proxy on, requests for unknown tags are relayed to the Kobo Store as today.
-   * **Deleting a book on the device** keeps Phase 1 behaviour (decision 1 in §4.10): it's marked read and never
-     re-sent or re-downloaded while it stays listed.
+   * **Deleting a book on the device** follows decision 1 in §4.10: it's never re-sent or re-downloaded while it
+     stays listed.
    * Removing a book from a collection never affects reading state: *Finished* and percent keep syncing for it.
 2. **Kobo percent → web reader progress: the newer side wins.** On `PUT …/state`, when the Kobo's
    `LastModified` for the book is newer than `readerProgress[bookUid].updatedAt` (or there's no web entry), write

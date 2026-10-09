@@ -115,6 +115,13 @@ function sendJson(res, data, status = 200) {
     res.status(status).type('application/json; charset=utf-8').send(JSON.stringify(data));
 }
 
+// Worker errors carry their HTTP meaning in a code (a busy converter) or a leading "404 ".
+function errorStatus(error) {
+    if (busyConversionCodes.has(error && error.code))
+        return 503;
+    return (/^404\b/.test(String((error && error.message) || '')) ? 404 : 500);
+}
+
 function sleep(ms) {
     return new Promise(resolve => {
         const timer = setTimeout(resolve, ms);
@@ -134,6 +141,7 @@ class KoboService {
         this.prepareBudgetMs = prepareBudgetMs;
         this.prewarmQueue = new Set();
         this.prewarmRunning = null;
+        this.prewarmListTasks = new Set();
         this.prewarmBusyRetryMs = prewarmBusyRetryMs;
         this.rekeyChecked = new Map();
         this.coverQueue = Promise.resolve();
@@ -206,7 +214,8 @@ class KoboService {
 
         const overrides = await this.metadataOverrides();
         const wanted = new Map();
-        const seenUids = new Set();
+        // bookUid → its wanted item (or null for an orphan), for books listed more than once.
+        const seenUids = new Map();
         // Listed books missing from the DB, with the lists they are in.
         const orphanUids = new Map();
         const readUids = new Set();
@@ -215,14 +224,14 @@ class KoboService {
                 if (entry.read)
                     readUids.add(entry.bookUid);
                 if (seenUids.has(entry.bookUid)) {
-                    const known = [...wanted.values()].find(item => item.bookUid === entry.bookUid);
+                    const known = seenUids.get(entry.bookUid);
                     if (known && !known.listIds.includes(list.id))
                         known.listIds.push(list.id);
                     if (orphanUids.has(entry.bookUid))
                         orphanUids.get(entry.bookUid).push(list.id);
                     continue;
                 }
-                seenUids.add(entry.bookUid);
+                seenUids.set(entry.bookUid, null);
                 const book = this.withOverrides(await this.worker.getBookRecordByUid(entry.bookUid), overrides);
                 if (!book) {
                     // Missing from the DB while still listed (re-index in progress,
@@ -234,7 +243,10 @@ class KoboService {
                 const uuid = uuidv5(key);
                 if (!wanted.has(uuid))
                     wanted.set(uuid, {uuid, stableKey: key, bookUid: entry.bookUid, book, listIds: []});
-                wanted.get(uuid).listIds.push(list.id);
+                const item = wanted.get(uuid);
+                if (!item.listIds.includes(list.id))
+                    item.listIds.push(list.id);
+                seenUids.set(entry.bookUid, item);
             }
         }
 
@@ -422,10 +434,14 @@ class KoboService {
                 return null;
             });
             this.prepared.set(key, entry);
+            // Drop the oldest finished entry; running ones (at most prepareConcurrency) stay.
             if (this.prepared.size > preparedEntryLimit) {
-                const [oldestKey, oldest] = this.prepared.entries().next().value;
-                if (oldest.result || oldest.error)
-                    this.prepared.delete(oldestKey);
+                for (const [oldKey, old] of this.prepared) {
+                    if (old.result || old.error) {
+                        this.prepared.delete(oldKey);
+                        break;
+                    }
+                }
             }
         }
 
@@ -450,7 +466,7 @@ class KoboService {
 
     // Every book of the given lists (a list was just bound, or lists were imported).
     prewarmLists(userId, listIds = null) {
-        (async() => {
+        const task = (async() => {
             await this.store.load();
             const bound = new Set(this.store.data.devices.filter(device => device.userId === userId)
                 .flatMap(device => device.listIds));
@@ -462,7 +478,18 @@ class KoboService {
                 if (list)
                     this.enqueuePrewarm(userId, store.normalizeEntries(list.books).map(entry => entry.bookUid));
             }
-        })().catch(e => log(LM_WARN, `Kobo: cannot queue books for preparation: ${e.message}`));
+        })().catch(e => log(LM_WARN, `Kobo: cannot queue books for preparation: ${e.message}`))
+            .finally(() => this.prewarmListTasks.delete(task));
+        this.prewarmListTasks.add(task);
+    }
+
+    // Resolves once no background preparation is queued or running.
+    async idle() {
+        while (this.prewarmListTasks.size || this.prewarmRunning) {
+            await Promise.all([...this.prewarmListTasks]);
+            if (this.prewarmRunning)
+                await this.prewarmRunning;
+        }
     }
 
     enqueuePrewarm(userId, bookUids = []) {
@@ -843,7 +870,9 @@ class KoboService {
             row.listRead = item.read;
             const state = stateFor(item.uuid) || this.emptyState(now);
             const status = (item.read ? 'Finished' : 'ReadyToRead');
-            if (state.status === status)
+            // The state is shared by the profile's devices (another one may have set it already):
+            // what matters is the status this device was told.
+            if (row.status === status)
                 continue;
             this.setStatus(state, status, now);
             states[item.uuid] = state;
@@ -933,7 +962,13 @@ class KoboService {
 
         const now = new Date().toISOString();
         const result = {EntitlementId: uuid};
-        let finished = false;
+        // The reading list is updated before the device state, so a sync running meanwhile never sees
+        // this device's list flag flipped while the list still says unread (it would send ReadyToRead).
+        const statusInfo = incoming.StatusInfo;
+        const status = (statusInfo && ['ReadyToRead', 'Reading', 'Finished'].includes(statusInfo.Status) ? statusInfo.Status : '');
+        const current = this.store.getState(device.userId, uuid);
+        const finished = (status === 'Finished' && (!current || current.status !== 'Finished'));
+        const markedRead = (finished && await this.markRead(device.userId, row.bookUid));
         let progress = null;
         const saved = await this.store.saveSync(device.id, (target, data) => {
             const rows = data.states[target.userId] = data.states[target.userId] || {};
@@ -963,32 +998,25 @@ class KoboService {
                 state.statistics.lastModified = now;
                 result.StatisticsResult = {Result: 'Success'};
             }
-            const statusInfo = incoming.StatusInfo;
-            if (statusInfo && ['ReadyToRead', 'Reading', 'Finished'].includes(statusInfo.Status)) {
-                finished = (statusInfo.Status === 'Finished' && state.status !== 'Finished');
-                this.setStatus(state, statusInfo.Status, now);
+            if (status) {
+                this.setStatus(state, status, now);
                 result.StatusInfoResult = {Result: 'Success'};
             }
             state.lastModified = now;
             state.priorityTimestamp = now;
-            if (target.books[uuid])
+            if (target.books[uuid]) {
                 target.books[uuid].status = state.status;
-            if (finished) {
-                // Every device of this profile already knows the list flag is about to flip.
-                for (const other of data.devices.filter(item => item.userId === target.userId)) {
-                    for (const otherRow of Object.values(other.books)) {
-                        if (otherRow.bookUid === row.bookUid)
-                            otherRow.listRead = true;
-                    }
-                }
+                // This device already knows the list flag flipped. Other devices of the profile
+                // don't: they get Finished from the list flag on their next sync.
+                if (markedRead)
+                    target.books[uuid].listRead = true;
             }
             return state;
         });
 
-        if (progress)
+        // Marking the book read already set the web progress to finished.
+        if (progress && !markedRead)
             await this.syncWebProgress(device.userId, row.bookUid, progress.percent, progress.modified);
-        if (finished)
-            await this.markRead(device.userId, row.bookUid);
 
         result.LastModified = koboTime(saved ? saved.lastModified : now);
         result.PriorityTimestamp = koboTime(saved ? saved.priorityTimestamp : now);
@@ -1020,16 +1048,20 @@ class KoboService {
         }
     }
 
+    // True when the reading list now says read.
     async markRead(userId, bookUid) {
         try {
             await this.worker.readingListStore.setBooksRead(userId, [bookUid], true);
+            return true;
         } catch (e) {
             log(LM_WARN, `Kobo: cannot mark ${bookUid} read: ${e.message}`);
+            return false;
         }
     }
 
-    // Deleting on the device marks the book read and stops re-sending it while it
-    // stays listed; taking it off the list (or a resync) clears that.
+    // Deleting on the device stops re-sending the book to it while it stays listed; taking it off
+    // the list (or a forced resync) clears that. The list's read flag and web progress stay as they
+    // are: deleting a book to free space says nothing about having read it.
     async deleteBook(req, res, device, token) {
         const uuid = req.params.uuid;
         const row = device.books[uuid];
@@ -1037,13 +1069,9 @@ class KoboService {
             return await this.storeOr(req, res, device, token, () => res.sendStatus(204));
 
         await this.store.saveSync(device.id, (target) => {
-            const current = target.books[uuid];
-            if (current) {
-                current.deletedOnDevice = true;
-                current.listRead = true;
-            }
+            if (target.books[uuid])
+                target.books[uuid].deletedOnDevice = true;
         });
-        await this.markRead(device.userId, row.bookUid);
         res.sendStatus(204);
     }
 
@@ -1346,10 +1374,23 @@ class KoboService {
             next();
         });
 
+        // Express 4 does not catch rejections of async middleware: errors are answered here.
         router.use(async(req, res, next) => {
             res.set('Cache-Control', 'no-store');
-            await this.store.load();
-            const device = this.store.findDeviceByToken(req.params.token);
+            try {
+                await this.store.load();
+            } catch (e) {
+                log(LM_ERR, `Kobo: cannot load ${this.store.file}: ${e.message}`);
+                return res.sendStatus(503);
+            }
+            let device = this.store.findDeviceByToken(req.params.token);
+            // A device outlives its profile when the profile was deleted while Kobo sync was off, or an
+            // older profile store was restored. Profile lookups fall back to the first profile (usually
+            // the admin), so such a device must not reach them.
+            if (device && !await this.worker.readingListStore.hasUser(device.userId).catch(() => false)) {
+                log(LM_WARN, `Kobo: device ${device.id} belongs to a profile that no longer exists; request refused`);
+                device = null;
+            }
             if (!device) {
                 try {
                     this.security.checkLoginRate(req, 'kobo');
@@ -1370,9 +1411,14 @@ class KoboService {
             try {
                 await fn(req, res, req.koboDevice, req.params.token);
             } catch (e) {
-                log(LM_ERR, `Kobo: ${req.method} ${req.path}: ${e.message}`);
-                if (!res.headersSent)
-                    res.status(String(e.message).includes('404') ? 404 : 500).send('Kobo sync error');
+                const status = errorStatus(e);
+                log((status === 500 ? LM_ERR : LM_WARN), `Kobo: ${req.method} ${maskTokens(req.originalUrl)}: ${e.message}`);
+                if (res.headersSent)
+                    return;
+                // The device retries a failed download later; a busy converter is not a broken book.
+                if (status === 503)
+                    res.set('Retry-After', '60');
+                res.status(status).send('Kobo sync error');
             }
         };
 
@@ -1409,7 +1455,9 @@ function init(app, config, worker, security) {
     const service = new KoboService(config, worker, security);
     activeService = service;
     worker.koboService = service;
-    service.store.load().catch(e => log(LM_ERR, `Kobo: cannot load ${service.store.file}: ${e.message}`));
+    // The server awaits this before it listens: Security.verifyRequiredAuth checks device tokens
+    // synchronously, and before the load every device would be refused.
+    service.ready = service.store.load().catch(e => log(LM_ERR, `Kobo: cannot load ${service.store.file}: ${e.message}`));
     app.use(`${rootPath(config)}/:token`, service.router());
     log(`Kobo sync enabled at ${rootPath(config)}/<device token>`);
     return service;

@@ -259,7 +259,9 @@ async function main() {
         .catch(e => log(LM_WARN, `Cannot check the admin password: ${e.message}`));
 
     require('./core/AudiobookshelfProvider').init(app, config, webSocketController.webWorker, security);
-    kobo.init(app, config, webSocketController.webWorker, security);
+    const koboService = kobo.init(app, config, webSocketController.webWorker, security);
+    if (koboService)
+        await koboService.ready;
 
     const initHealthRoutes = require('./core/HealthRoutes');
     initHealthRoutes(app, config, webSocketController.webWorker, security, webSocketController);

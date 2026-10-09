@@ -996,6 +996,13 @@ class ReadingListStore {
         return user;
     }
 
+    // Exact lookup: unlike resolveUser, an unknown id does not fall back to the first profile.
+    async hasUser(userId = '') {
+        const normalizedUserId = String(userId || '').trim();
+        const data = await this.load();
+        return !!normalizedUserId && data.users.some((item) => item.id === normalizedUserId);
+    }
+
     async findUserByLogin(login = '') {
         const normalizedLogin = this.validateLogin(login);
         if (!normalizedLogin)

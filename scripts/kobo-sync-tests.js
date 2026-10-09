@@ -18,6 +18,7 @@ const png = makePng(1, 1);
 async function fixture(options, test) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kobo-'));
     let server;
+    let service;
     try {
         const config = Object.assign({dataDir: dir, rootPathStatic: '', publicFilesDir: path.join(dir, 'public-files'),
             coverDir: path.join(dir, 'public-files', 'cover'), tempDir: path.join(dir, 'tmp'),
@@ -54,7 +55,7 @@ async function fixture(options, test) {
         const app = express();
         app.use(security.middleware());
         app.use(security.requiredAuthMiddleware());
-        const service = kobo.init(app, config, worker, security);
+        service = kobo.init(app, config, worker, security);
         service.metadata.read = async() => ({description: 'Аннотация', publisher: 'Издатель', publishedYear: '2020'});
         app.get('/protected', (req, res) => res.send('protected'));
         server = http.createServer(app);
@@ -84,6 +85,9 @@ async function fixture(options, test) {
             server.closeAllConnections();
             await new Promise(resolve => server.close(resolve));
         }
+        // Background preparation still reading the profile store would recreate files in `dir`.
+        if (service)
+            await service.idle();
         await fs.remove(dir);
     }
 }
@@ -202,6 +206,53 @@ async function testKoboReadStateBothWays() {
     });
 }
 
+async function testKoboFinishedReachesOtherDevices() {
+    await fixture({}, async({service, store, listA, endpoint, call, sync}) => {
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        const {endpoint: secondEndpoint} = await service.createDevice('default', {name: 'Libra', listIds: [listA.id]},
+            {headers: {host: new URL(endpoint).host}, socket: {}, protocol: 'http'});
+        let secondToken = '';
+        const syncSecond = async() => {
+            const response = await fetch(`${secondEndpoint}/v1/library/sync`, {headers: secondToken ? {'x-kobo-synctoken': secondToken} : {}});
+            secondToken = response.headers.get('x-kobo-synctoken');
+            return await response.json();
+        };
+        await syncSecond();
+
+        const epubUuid = kobo.uuidv5('main:102');
+        const put = await call(`/v1/library/${epubUuid}/state`, {method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Finished'}}]})});
+        assert.strictEqual(put.status, 200);
+
+        assert.ok(!(await sync()).items.some(item => item.ChangedReadingState), 'not echoed to the device that finished it');
+        const items = await syncSecond();
+        const changed = items.find(item => item.ChangedReadingState);
+        assert.ok(changed, 'the other device learns the book is finished');
+        assert.strictEqual(changed.ChangedReadingState.ReadingState.EntitlementId, epubUuid);
+        assert.strictEqual(changed.ChangedReadingState.ReadingState.StatusInfo.Status, 'Finished');
+        assert.deepStrictEqual(await syncSecond(), []);
+    });
+}
+
+async function testKoboFinishedIsNotUndoneWhenTheListUpdateFails() {
+    await fixture({}, async({store, listA, call, sync}) => {
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        const setBooksRead = store.setBooksRead;
+        store.setBooksRead = async() => {
+            throw new Error('store unavailable');
+        };
+        const epubUuid = kobo.uuidv5('main:102');
+        const put = await call(`/v1/library/${epubUuid}/state`, {method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Finished'}}]})});
+        store.setBooksRead = setBooksRead;
+        assert.strictEqual(put.status, 200);
+        assert.strictEqual((await store.getList('default', listA.id)).books[0].read, false);
+        assert.ok(!(await sync()).items.some(item => item.ChangedReadingState), 'the device keeps its Finished status');
+    });
+}
+
 async function testKoboDeleteOnDeviceAndKeepRemovedBooks() {
     await fixture({}, async({service, store, listA, call, sync}) => {
         await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
@@ -209,9 +260,11 @@ async function testKoboDeleteOnDeviceAndKeepRemovedBooks() {
         const fb2Uuid = kobo.uuidv5('main:101');
         const epubUuid = kobo.uuidv5('main:102');
 
-        // Deleting on the device marks the book read and stops re-sending it.
+        // Deleting on the device stops re-sending the book, and leaves its read flag and progress alone.
+        await store.updateReaderProgress('default', 'fb2-uid', {percent: 0.4, sectionId: 's1', updatedAt: new Date().toISOString()});
         assert.strictEqual((await call(`/v1/library/${fb2Uuid}`, {method: 'DELETE'})).status, 204);
-        assert.strictEqual((await store.getList('default', listA.id)).books.find(entry => entry.bookUid === 'fb2-uid').read, true);
+        assert.strictEqual((await store.getList('default', listA.id)).books.find(entry => entry.bookUid === 'fb2-uid').read, false);
+        assert.strictEqual((await store.getReaderState('default', 'fb2-uid')).progress.percent, 0.4);
         assert.deepStrictEqual(entitlementIds((await sync()).items, 'NewEntitlement'), []);
         assert.deepStrictEqual(entitlementIds((await sync({fresh: true})).items, 'NewEntitlement'), [epubUuid],
             'a device without a sync token gets the list again, minus books deleted on it');
@@ -281,6 +334,27 @@ async function testKoboDevicesAreScopedAndRevocable() {
         await service.store.deleteDevice('default', deviceId);
         assert.strictEqual((await fetch(`${base}/kobo/${fresh}/v1/initialization`)).status, 401);
         assert.ok(listA.id);
+    });
+}
+
+async function testKoboRefusesDevicesOfDeletedProfiles() {
+    await fixture({}, async({service, store, listA, endpoint}) => {
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        const other = await store.createUser({name: 'Other', login: 'other'});
+        const otherList = await store.createList(other.id, 'Чужой');
+        await store.addBooks(other.id, otherList.id, ['epub-uid']);
+        const {endpoint: otherEndpoint} = await service.createDevice(other.id, {listIds: [otherList.id]},
+            {headers: {host: new URL(endpoint).host}, socket: {}, protocol: 'http'});
+        assert.strictEqual((await fetch(`${otherEndpoint}/v1/library/sync`)).status, 200);
+
+        // Deleted while Kobo sync was off: the device record stays behind.
+        await store.deleteUser(other.id);
+        assert.ok(service.store.data.devices.some(device => device.userId === other.id));
+        assert.strictEqual((await fetch(`${otherEndpoint}/v1/library/sync`)).status, 401);
+        const put = await fetch(`${otherEndpoint}/v1/library/${kobo.uuidv5('main:102')}/state`, {method: 'PUT',
+            headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Finished'}}]})});
+        assert.strictEqual(put.status, 401);
+        assert.strictEqual((await store.getList('default', listA.id)).books[0].read, false, 'the first profile is never touched');
     });
 }
 
@@ -469,11 +543,33 @@ async function testKoboPrewarmsBooksAddedToBoundLists() {
 }
 
 async function testKoboRetriesBusyConversionOnNextSync() {
-    await fixture({}, async({store, listA, sync, output}) => {
+    await fixture({}, async({store, listA, sync, call, output}) => {
         await store.addBooks('default', listA.id, ['fb2-uid']);
         output.busy = new Set(['fb2-uid']);
         assert.deepStrictEqual(entitlementIds((await sync({fresh: true})).items, 'NewEntitlement'), []);
         assert.deepStrictEqual(entitlementIds((await sync()).items, 'NewEntitlement'), [kobo.uuidv5('main:101')]);
+
+        // A download that meets a busy converter asks the device to come back later.
+        output.busy = new Set(['fb2-uid']);
+        const busy = await call(`/download/${kobo.uuidv5('main:101')}/kepub`);
+        assert.strictEqual(busy.status, 503);
+        assert.ok(Number(busy.headers.get('retry-after')) > 0);
+        assert.strictEqual((await call(`/download/${kobo.uuidv5('main:101')}/kepub`)).status, 200);
+    });
+}
+
+async function testKoboPreparedCacheStaysBounded() {
+    await fixture({}, async({service}) => {
+        const limit = 2000;
+        const running = {at: Date.now(), promise: new Promise(() => {})};
+        service.prepared.set('running', running);
+        for (let i = 0; i < limit; i++)
+            service.prepared.set(`done-${i}`, {at: Date.now(), result: {size: 1}});
+        // The next new entry evicts the oldest finished one, not the running entry in front of it.
+        await service.prepare({bookUid: 'epub-uid', book: {ext: 'epub'}}, Date.now() + 1000, 'raw');
+        assert.strictEqual(service.prepared.size, limit + 1);
+        assert.ok(service.prepared.has('running'));
+        assert.ok(!service.prepared.has('done-0'));
     });
 }
 
@@ -887,15 +983,19 @@ async function withFb2cngConfig(fn) {
 module.exports = [
     testKoboSyncListsAndDownloads,
     testKoboReadStateBothWays,
+    testKoboFinishedReachesOtherDevices,
+    testKoboFinishedIsNotUndoneWhenTheListUpdateFails,
     testKoboDeleteOnDeviceAndKeepRemovedBooks,
     testKoboSlowConversionAndProxyAuth,
     testKoboDevicesAreScopedAndRevocable,
+    testKoboRefusesDevicesOfDeletedProfiles,
     testKoboStoreProxyToggle,
     testKoboSyncKeepsChangesMadeDuringConversion,
     testKoboReannouncesRegeneratedFiles,
     testKoboTokensAreMaskedInLogs,
     testKoboPrewarmsBooksAddedToBoundLists,
     testKoboRetriesBusyConversionOnNextSync,
+    testKoboPreparedCacheStaysBounded,
     testKoboRekeysOrphansByLibid,
     testKoboFindsRecordsByStableKeyInDb,
     testKoboReannouncesMetadataEdits,

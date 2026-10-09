@@ -115,8 +115,10 @@ class KoboStore {
 
             let raw = null;
             if (await fs.pathExists(this.file)) {
+                // Only unparsable JSON is a broken file; a read error fails this request and the next one retries.
+                const text = await fs.readFile(this.file, 'utf8');
                 try {
-                    raw = JSON.parse(await fs.readFile(this.file, 'utf8'));
+                    raw = JSON.parse(text);
                 } catch (e) {
                     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
                     await fs.copy(this.file, `${this.file}.broken-${stamp}`).catch(() => {});
