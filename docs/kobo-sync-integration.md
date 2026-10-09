@@ -419,7 +419,7 @@ Afterwards, update §6 ("Not yet") and the README section «Синхрониза
 | `v1/initialization` defaults (Kobo's own resource list) | `server/core/kobo/resources.js` |
 | Token routes bypass proxy SSO; `kobo` login-rate bucket and metrics | `server/core/Security.js` |
 | `INPX_KOBO_ENABLED`, `INPX_KOBO_PUBLIC_URL`; `koboEnabled` in the web config | `server/config/base.js` |
-| WebSocket actions `get/create/update/delete-kobo-device`, `regenerate-kobo-device-token`, `reset-kobo-device` | `server/controllers/WebSocketController.js` |
+| WebSocket actions `get/create/update/delete-kobo-device`, `regenerate-kobo-device-token`, `reset-kobo-device`, `refresh-kobo-device` | `server/controllers/WebSocketController.js` |
 | Devices removed with their profile | `WebWorker.deleteUserProfile` |
 | Profile dialog → "Kobo" tab | `client/components/Search/UserProfilesDialog/UserProfilesDialog.vue`, `client/components/Api/Api.vue` |
 | Release tests (fake Kobo and fake Kobo Store) | `scripts/kobo-sync-tests.js` |
@@ -439,6 +439,15 @@ How Phase 1 differs from the plan above:
   the Kobo never clears the web flag.
 * **Fresh sync** (no or foreign `x-kobo-synctoken`, or "Sync again" in the UI): everything is re-sent, except
   books deleted on the device, which stay suppressed.
+* **Send back books deleted on the device** (per-device `resendDeletedBooks`, off by default): a listed book
+  deleted on the device is announced again as a `NewEntitlement` on the next sync, with the same ids and the saved
+  `ReadingState`. Off, it stays suppressed until it leaves the device's lists.
+* **Refresh books on device** (UI, `refresh-kobo-device`): every book the device has (not deleted on it, not
+  kept after leaving the lists) is flagged `refresh`, and the following syncs send each one as a `ChangedEntitlement`
+  with the same ids: current title, authors and series, the file's size read again from the conversion cache, a
+  new `LastModified`, a download URL with `?rev=<n>` bumped per refresh, and the saved `ReadingState`. A book whose
+  file is still converting waits for a later sync. Collections are sent again too. Unlike "Sync again", nothing is
+  re-added, so progress and notes on the device stay attached to the book.
 * **Orphans:** a listed book whose record is missing (for example during a re-index) is skipped and never
   removed, and it keeps its place in the device's collections. Since Phase 2, entries are re-keyed by `libid` (see below).
 * **Store proxy (per device):** store `Resources` are used for `v1/initialization`; `auth/device|refresh` are

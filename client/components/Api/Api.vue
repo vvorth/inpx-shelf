@@ -625,6 +625,10 @@ class Api {
         return await this.request({action: 'reset-kobo-device', deviceId}, 60);
     }
 
+    async refreshKoboDevice(deviceId) {
+        return await this.request({action: 'refresh-kobo-device', deviceId}, 60);
+    }
+
     async deleteKoboDevice(deviceId) {
         return await this.request({action: 'delete-kobo-device', deviceId}, 60);
     }

@@ -396,6 +396,7 @@
                                     <div class="kobo-device-meta">
                                         {{ uiText.koboBooksOnDevice }}: {{ device.bookCount }} ·
                                         {{ uiText.koboLastSync }}: {{ device.lastSyncAt ? formatDateTime(device.lastSyncAt) : uiText.koboNever }}
+                                        <template v-if="device.refreshPending"> · {{ uiText.koboRefreshPending }}: {{ device.refreshPending }}</template>
                                     </div>
                                 </div>
                                 <div class="profile-backup-title kobo-subtitle">{{ uiText.koboListsTitle }}</div>
@@ -412,11 +413,14 @@
                                 </div>
                                 <q-checkbox v-model="device.draft.keepRemovedBooks" class="kobo-option" dense :label="uiText.koboKeepRemovedBooks" />
                                 <div class="profile-backup-hint">{{ uiText.koboKeepRemovedBooksHint }}</div>
+                                <q-checkbox v-model="device.draft.resendDeletedBooks" class="kobo-option" dense :label="uiText.koboResendDeletedBooks" />
+                                <div class="profile-backup-hint">{{ uiText.koboResendDeletedBooksHint }}</div>
                                 <q-checkbox v-model="device.draft.storeProxy" class="kobo-option" dense :label="uiText.koboStoreProxy" />
                                 <div class="profile-backup-hint">{{ uiText.koboStoreProxyHint }}</div>
                                 <div class="profile-backup-actions kobo-device-actions">
                                     <q-btn outline dense no-caps color="primary" icon="la la-save" @click="saveKoboDevice(device)">{{ uiText.koboSave }}</q-btn>
                                     <q-btn flat dense no-caps color="primary" icon="la la-sync" @click="resetKoboDevice(device)">{{ uiText.koboResync }}</q-btn>
+                                    <q-btn flat dense no-caps color="primary" icon="la la-redo-alt" @click="refreshKoboDevice(device)">{{ uiText.koboRefresh }}</q-btn>
                                     <q-btn flat dense no-caps color="warning" icon="la la-key" @click="regenerateKoboDevice(device)">{{ uiText.koboNewLink }}</q-btn>
                                     <q-btn flat dense no-caps color="negative" icon="la la-trash" @click="deleteKoboDevice(device)">{{ uiText.delete }}</q-btn>
                                 </div>
@@ -657,6 +661,11 @@ class UserProfilesDialog {
             koboAddDevice: 'Добавить устройство',
             koboSaved: 'Устройство сохранено',
             koboCopied: 'Адрес скопирован',
+            koboRefresh: 'Обновить книги на устройстве',
+            koboRefreshConfirm: 'Отправить на «{name}» заново все книги, которые уже на нём, с текущими авторами, сериями и файлами? Книги не удаляются с устройства, поэтому прогресс чтения и заметки сохраняются.',
+            koboRefreshPending: 'ожидают обновления',
+            koboResendDeletedBooks: 'Возвращать книги, удалённые на устройстве',
+            koboResendDeletedBooksHint: 'Если включено, книга из выбранных списков, удалённая на Kobo, загружается снова при следующей синхронизации. Чтобы убрать книгу с устройства, уберите её из списка.',
         };
     }
 
@@ -931,6 +940,7 @@ class UserProfilesDialog {
                 name: device.name,
                 listIds: (device.listIds || []).slice(),
                 keepRemovedBooks: device.keepRemovedBooks === true,
+                resendDeletedBooks: device.resendDeletedBooks === true,
                 storeProxy: device.storeProxy === true,
             },
         }));
@@ -955,7 +965,7 @@ class UserProfilesDialog {
 
     async createKoboDevice() {
         try {
-            const result = await this.api.createKoboDevice({name: this.newKoboDeviceName, listIds: [], keepRemovedBooks: false, storeProxy: false});
+            const result = await this.api.createKoboDevice({name: this.newKoboDeviceName, listIds: [], keepRemovedBooks: false, resendDeletedBooks: false, storeProxy: false});
             this.koboEndpoint = result.endpoint;
             this.newKoboDeviceName = 'Kobo';
             await this.loadKoboDevices();
@@ -979,6 +989,17 @@ class UserProfilesDialog {
             return;
         try {
             await this.api.resetKoboDevice(device.id);
+            await this.loadKoboDevices();
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        }
+    }
+
+    async refreshKoboDevice(device) {
+        if (!await this.$root.stdDialog.confirm(this.uiText.koboRefreshConfirm.replace('{name}', device.name), 'Kobo'))
+            return;
+        try {
+            await this.api.refreshKoboDevice(device.id);
             await this.loadKoboDevices();
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);

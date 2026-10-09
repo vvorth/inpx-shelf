@@ -59,6 +59,10 @@ class KoboStore {
                 collectionRemoved: (Array.isArray(row.collectionRemoved) ? row.collectionRemoved.map(String).filter(Boolean) : []),
                 fileChanged: row.fileChanged === true,
                 changedAt: String(row.changedAt || ''),
+                // Asked from the UI: announce the book again with its current metadata and file.
+                ...(row.refresh === true ? {refresh: true} : {}),
+                // Bumped with each such refresh; part of the download URL.
+                ...(parseInt(row.revision, 10) > 0 ? {revision: parseInt(row.revision, 10)} : {}),
             };
         }
 
@@ -70,6 +74,7 @@ class KoboStore {
             listIds: Array.from(new Set((Array.isArray(item.listIds) ? item.listIds : [])
                 .map(id => String(id || '').trim()).filter(Boolean))).slice(0, maxListsPerDevice),
             keepRemovedBooks: item.keepRemovedBooks === true,
+            resendDeletedBooks: item.resendDeletedBooks === true,
             storeProxy: item.storeProxy === true,
             generation: Math.max(0, parseInt(item.generation, 10) || 0),
             createdAt: String(item.createdAt || now),
@@ -157,11 +162,13 @@ class KoboStore {
             name: device.name,
             listIds: device.listIds.slice(),
             keepRemovedBooks: device.keepRemovedBooks,
+            resendDeletedBooks: device.resendDeletedBooks,
             storeProxy: device.storeProxy,
             createdAt: device.createdAt,
             updatedAt: device.updatedAt,
             lastSyncAt: device.lastSyncAt,
             bookCount: books.filter(row => !row.detached && !row.deletedOnDevice).length,
+            refreshPending: books.filter(row => row.refresh && !row.detached && !row.deletedOnDevice).length,
         };
     }
 
@@ -187,6 +194,8 @@ class KoboStore {
         }
         if (Object.prototype.hasOwnProperty.call(patch, 'keepRemovedBooks'))
             result.keepRemovedBooks = patch.keepRemovedBooks === true;
+        if (Object.prototype.hasOwnProperty.call(patch, 'resendDeletedBooks'))
+            result.resendDeletedBooks = patch.resendDeletedBooks === true;
         if (Object.prototype.hasOwnProperty.call(patch, 'storeProxy'))
             result.storeProxy = patch.storeProxy === true;
         return result;
@@ -241,6 +250,23 @@ class KoboStore {
             item.books = {};
             item.tags = {};
             item.generation++;
+            item.updatedAt = nowIso();
+            return item;
+        });
+        return {device: this.publicDevice(device)};
+    }
+
+    // Unlike a reset, the device keeps its books: each one is announced again as changed, with the same
+    // ids, so reading progress and notes stay attached to it. Collections are sent again too.
+    async refreshDevice(userId = '', deviceId = '') {
+        const device = await this.mutate(async(data) => {
+            const item = this.findOwnDevice(data, userId, deviceId);
+            for (const row of Object.values(item.books)) {
+                if (!row.deletedOnDevice && !row.detached)
+                    row.refresh = true;
+            }
+            for (const [listId, tag] of Object.entries(item.tags || {}))
+                item.tags[listId] = Object.assign({}, tag, {signature: ''});
             item.updatedAt = nowIso();
             return item;
         });

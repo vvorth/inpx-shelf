@@ -202,6 +202,19 @@ class KoboService {
         return {device, endpoint: this.deviceBase(req, token)};
     }
 
+    // The device's books go out again with their current metadata and file. Finished preparations are
+    // forgotten, so the file's size and authors are read again from what the conversion cache holds now.
+    async refreshDevice(userId, deviceId) {
+        const result = await this.store.refreshDevice(userId, deviceId);
+        const device = this.store.data.devices.find(item => item.id === deviceId);
+        const uids = new Set(Object.values(device.books).filter(row => row.refresh).map(row => row.bookUid));
+        for (const [key, entry] of this.prepared) {
+            if ((entry.result || entry.error) && uids.has(key.slice(0, key.indexOf(':'))))
+                this.prepared.delete(key);
+        }
+        return result;
+    }
+
     // ------------------------------------------------------------------ list → device
     async collectWanted(device, rekey = true) {
         const store = this.worker.readingListStore;
@@ -545,7 +558,7 @@ class KoboService {
         const {authors} = this.bookAuthors(book, row);
         const lang = String(extra.language || book.lang || '').trim().toLowerCase().slice(0, 2);
         const year = String(extra.publishedYear || book.year || '').match(/\b\d{4}\b/);
-        const downloadUrl = `${this.deviceBase(req, token)}/download/${uuid}/${row.convertTo || 'raw'}`;
+        const downloadUrl = `${this.deviceBase(req, token)}/download/${uuid}/${row.convertTo || 'raw'}${row.revision ? `?rev=${row.revision}` : ''}`;
         const metadata = {
             Categories: [zeroUuid],
             CoverImageId: uuid,
@@ -728,6 +741,14 @@ class KoboService {
                     delete books[uuid];
             }
         }
+        if (device.resendDeletedBooks) {
+            // The lists define what the device holds: a listed book deleted on it is announced again,
+            // with the same ids and its saved reading state.
+            for (const [uuid, row] of Object.entries(books)) {
+                if (row.deletedOnDevice && wanted.has(uuid))
+                    delete books[uuid];
+            }
+        }
         const tagsBefore = (fresh ? {} : device.tags);
         const savedStates = this.store.data.states[device.userId] || {};
         const states = {};
@@ -803,6 +824,7 @@ class KoboService {
         // 3) books that changed after they were announced. The file: edited fb2cng config or version,
         //    another target format, or a flushed cache regenerated with a different size (noticed on
         //    download). The metadata: admin title/author/series edits, or a re-index that changed them.
+        //    A refresh asked from the UI re-announces the book with both, changed or not.
         let refreshed = 0;
         for (const item of wanted.values()) {
             const row = books[item.uuid];
@@ -831,31 +853,44 @@ class KoboService {
             }
             let metaHash = this.metadataHash(item.book, row);
             const metaChanged = (row.metaHash !== metaHash);
-            if (!fileChanged && !metaChanged)
+            const forced = (row.refresh === true);
+            if (!fileChanged && !metaChanged && !forced)
                 continue;
             if (results.length >= syncItemLimit) {
                 more = true;
                 break;
             }
-            if (fileChanged) {
-                const prepared = await this.prepare(item, deadline, fingerprint);
+            if (fileChanged || (forced && target)) {
+                const prepared = await this.prepare(item, deadline, fingerprint || '');
                 if (prepared.ready) {
                     Object.assign(row, {
                         convertTo: prepared.ready.convertTo, koboFormats: prepared.ready.koboFormats, size: prepared.ready.size,
-                        fileAuthors: prepared.ready.authors || [], fingerprint, fileChanged: false,
+                        fileAuthors: prepared.ready.authors || [], fingerprint: fingerprint || row.fingerprint, fileChanged: false,
                     });
+                    // A new download URL, so the device takes the file again even when it is the same.
+                    if (forced)
+                        row.revision = (row.revision || 0) + 1;
                     metaHash = this.metadataHash(item.book, row);
                     refreshed++;
-                } else if (!metaChanged) {
+                } else if (forced && !prepared.failed) {
+                    // Still converting (or the converter is busy): the refresh goes out on a later sync.
+                    continue;
+                } else if (!metaChanged && !forced) {
                     continue;
                 }
                 // Otherwise the new metadata goes now, the new file on a later sync.
             }
             Object.assign(row, {metaHash, title: item.book.title || row.title, changedAt: now});
-            results.push({ChangedEntitlement: {
+            delete row.refresh;
+            const entitlement = {
                 BookEntitlement: this.bookEntitlement(item.uuid, row),
                 BookMetadata: await this.bookMetadata(req, token, item.uuid, item.book, row),
-            }});
+            };
+            // Re-sent with the refresh, so a device replacing the file keeps its place in the book.
+            const state = forced && stateFor(item.uuid);
+            if (state)
+                entitlement.ReadingState = this.readingStateResponse(item.uuid, row, state);
+            results.push({ChangedEntitlement: entitlement});
         }
 
         // 4) "read" ticked or unticked in the web UI since the last sync
@@ -890,7 +925,7 @@ class KoboService {
                 const start = startBooks[uuid];
                 if (!live || !start)
                     continue;
-                for (const field of ['deletedOnDevice', 'status', 'listRead', 'fileChanged', 'collectionRemoved']) {
+                for (const field of ['deletedOnDevice', 'status', 'listRead', 'fileChanged', 'collectionRemoved', 'refresh']) {
                     if (JSON.stringify(live[field]) !== JSON.stringify(start[field]))
                         row[field] = live[field];
                 }
@@ -1059,8 +1094,8 @@ class KoboService {
         }
     }
 
-    // Deleting on the device stops re-sending the book to it while it stays listed; taking it off
-    // the list (or a forced resync) clears that. The list's read flag and web progress stay as they
+    // Deleting on the device stops re-sending the book to it while it stays listed (unless the device
+    // has resendDeletedBooks); taking it off the list clears that. The list's read flag and web progress stay as they
     // are: deleting a book to free space says nothing about having read it.
     async deleteBook(req, res, device, token) {
         const uuid = req.params.uuid;

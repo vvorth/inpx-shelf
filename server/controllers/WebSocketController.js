@@ -264,6 +264,8 @@ class WebSocketController {
                     await this.regenerateKoboDeviceToken(req, ws); break;
                 case 'reset-kobo-device':
                     await this.resetKoboDevice(req, ws); break;
+                case 'refresh-kobo-device':
+                    await this.refreshKoboDevice(req, ws); break;
                 case 'delete-kobo-device':
                     await this.deleteKoboDevice(req, ws); break;
                 case 'send-book-telegram':
@@ -355,6 +357,7 @@ class WebSocketController {
             'update-kobo-device',
             'regenerate-kobo-device-token',
             'reset-kobo-device',
+            'refresh-kobo-device',
             'delete-kobo-device',
         ]).has(action);
     }
@@ -1020,7 +1023,7 @@ class WebSocketController {
 
     koboDeviceSettings(req) {
         const settings = (req.device && typeof(req.device) === 'object' ? req.device : {});
-        return Object.fromEntries(['name', 'listIds', 'keepRemovedBooks', 'storeProxy']
+        return Object.fromEntries(['name', 'listIds', 'keepRemovedBooks', 'resendDeletedBooks', 'storeProxy']
             .filter(key => utils.hasProp(settings, key)).map(key => [key, settings[key]]));
     }
 
@@ -1047,6 +1050,11 @@ class WebSocketController {
     async resetKoboDevice(req, ws) {
         const {kobo, user} = await this.koboUser(req);
         this.send(await kobo.store.resetDevice(user.id, String(req.deviceId || '')), req, ws);
+    }
+
+    async refreshKoboDevice(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.refreshDevice(user.id, String(req.deviceId || '')), req, ws);
     }
 
     async deleteKoboDevice(req, ws) {
