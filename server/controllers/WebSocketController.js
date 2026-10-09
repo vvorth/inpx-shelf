@@ -254,6 +254,18 @@ class WebSocketController {
                     await this.markSeriesRead(req, ws); break;
                 case 'add-series-to-reading-list':
                     await this.addSeriesToReadingList(req, ws); break;
+                case 'get-kobo-devices':
+                    await this.getKoboDevices(req, ws); break;
+                case 'create-kobo-device':
+                    await this.createKoboDevice(req, ws); break;
+                case 'update-kobo-device':
+                    await this.updateKoboDevice(req, ws); break;
+                case 'regenerate-kobo-device-token':
+                    await this.regenerateKoboDeviceToken(req, ws); break;
+                case 'reset-kobo-device':
+                    await this.resetKoboDevice(req, ws); break;
+                case 'delete-kobo-device':
+                    await this.deleteKoboDevice(req, ws); break;
                 case 'send-book-telegram':
                     await this.sendBookTelegram(req, ws); break;
                 case 'send-book-email':
@@ -339,6 +351,11 @@ class WebSocketController {
             'add-series-to-reading-list',
             'send-book-telegram',
             'send-book-email',
+            'create-kobo-device',
+            'update-kobo-device',
+            'regenerate-kobo-device-token',
+            'reset-kobo-device',
+            'delete-kobo-device',
         ]).has(action);
     }
 
@@ -988,6 +1005,53 @@ class WebSocketController {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.addSeriesToReadingList(user.id, req.listId, req.series);
         this.send(result, req, ws);
+    }
+
+    async koboUser(req) {
+        const kobo = this.webWorker.koboService;
+        if (!kobo)
+            throw new Error('Синхронизация с Kobo выключена');
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        // A device token reads the profile's lists: the shared "no profile" mode has no owner to bind it to.
+        if (user.id === 'default' && !user.login && !user.passwordHash)
+            throw new Error('Для синхронизации с Kobo выберите профиль пользователя');
+        return {kobo, user};
+    }
+
+    koboDeviceSettings(req) {
+        const settings = (req.device && typeof(req.device) === 'object' ? req.device : {});
+        return Object.fromEntries(['name', 'listIds', 'keepRemovedBooks', 'storeProxy']
+            .filter(key => utils.hasProp(settings, key)).map(key => [key, settings[key]]));
+    }
+
+    async getKoboDevices(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.getDevices(user.id), req, ws);
+    }
+
+    async createKoboDevice(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.createDevice(user.id, this.koboDeviceSettings(req), ws.req), req, ws);
+    }
+
+    async updateKoboDevice(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.updateDevice(user.id, String(req.deviceId || ''), this.koboDeviceSettings(req)), req, ws);
+    }
+
+    async regenerateKoboDeviceToken(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.regenerateToken(user.id, String(req.deviceId || ''), ws.req), req, ws);
+    }
+
+    async resetKoboDevice(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.store.resetDevice(user.id, String(req.deviceId || '')), req, ws);
+    }
+
+    async deleteKoboDevice(req, ws) {
+        const {kobo, user} = await this.koboUser(req);
+        this.send(await kobo.store.deleteDevice(user.id, String(req.deviceId || '')), req, ws);
     }
 
     async sendBookTelegram(req, ws) {

@@ -3641,6 +3641,8 @@ class WebWorker {
         return withFileTransaction(this.readingListStore.file, async() => {
             const result = await this.readingListStore.deleteUser(userId);
             this.revokeUserSessions(userId);
+            if (this.koboService)
+                await this.koboService.store.deleteUserDevices(userId);
             return result;
         });
     }

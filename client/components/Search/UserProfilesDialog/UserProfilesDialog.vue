@@ -156,6 +156,15 @@
                             >
                                 {{ uiText.backup }}
                             </button>
+                            <button
+                                v-if="config.koboEnabled"
+                                type="button"
+                                class="profile-tab-btn"
+                                :class="{'is-active': currentProfileTab === 'kobo'}"
+                                @click="openKoboTab"
+                            >
+                                Kobo
+                            </button>
                         </div>
 
                         <div v-if="!config.profileAuthorized && item.requiresLogin" class="profile-locked">
@@ -365,6 +374,62 @@
                             </div>
                         </div>
 
+                        <div v-else-if="currentProfileTab === 'kobo'" class="kobo-panel">
+                            <div class="profile-backup-hint">{{ uiText.koboHint }}</div>
+
+                            <div v-if="koboEndpoint" class="kobo-endpoint">
+                                <div class="profile-backup-title">{{ uiText.koboEndpointTitle }}</div>
+                                <div class="profile-backup-hint">{{ uiText.koboEndpointHint }}</div>
+                                <code class="kobo-endpoint-line">api_endpoint={{ koboEndpoint }}</code>
+                                <div class="profile-backup-actions">
+                                    <q-btn flat dense no-caps color="primary" icon="la la-copy" @click="copyKoboEndpoint">{{ uiText.koboCopy }}</q-btn>
+                                    <q-btn flat dense no-caps @click="koboEndpoint = ''">{{ uiText.koboHideEndpoint }}</q-btn>
+                                </div>
+                            </div>
+
+                            <div v-if="koboLoading" class="reading-empty">…</div>
+                            <div v-else-if="!koboDevices.length" class="reading-empty">{{ uiText.koboNoDevices }}</div>
+
+                            <div v-for="device in koboDevices" :key="device.id" class="kobo-device">
+                                <div class="kobo-device-head">
+                                    <q-input v-model="device.draft.name" outlined dense class="kobo-device-name" :label="uiText.koboDeviceName" />
+                                    <div class="kobo-device-meta">
+                                        {{ uiText.koboBooksOnDevice }}: {{ device.bookCount }} ·
+                                        {{ uiText.koboLastSync }}: {{ device.lastSyncAt ? formatDateTime(device.lastSyncAt) : uiText.koboNever }}
+                                    </div>
+                                </div>
+                                <div class="profile-backup-title kobo-subtitle">{{ uiText.koboListsTitle }}</div>
+                                <div v-if="!currentReadingLists.length" class="profile-backup-hint">{{ uiText.noReadingLists }}</div>
+                                <div class="kobo-lists">
+                                    <q-checkbox
+                                        v-for="list in currentReadingLists"
+                                        :key="list.id"
+                                        v-model="device.draft.listIds"
+                                        :val="list.id"
+                                        dense
+                                        :label="list.name"
+                                    />
+                                </div>
+                                <q-checkbox v-model="device.draft.keepRemovedBooks" class="kobo-option" dense :label="uiText.koboKeepRemovedBooks" />
+                                <div class="profile-backup-hint">{{ uiText.koboKeepRemovedBooksHint }}</div>
+                                <q-checkbox v-model="device.draft.storeProxy" class="kobo-option" dense :label="uiText.koboStoreProxy" />
+                                <div class="profile-backup-hint">{{ uiText.koboStoreProxyHint }}</div>
+                                <div class="profile-backup-actions kobo-device-actions">
+                                    <q-btn outline dense no-caps color="primary" icon="la la-save" @click="saveKoboDevice(device)">{{ uiText.koboSave }}</q-btn>
+                                    <q-btn flat dense no-caps color="primary" icon="la la-sync" @click="resetKoboDevice(device)">{{ uiText.koboResync }}</q-btn>
+                                    <q-btn flat dense no-caps color="warning" icon="la la-key" @click="regenerateKoboDevice(device)">{{ uiText.koboNewLink }}</q-btn>
+                                    <q-btn flat dense no-caps color="negative" icon="la la-trash" @click="deleteKoboDevice(device)">{{ uiText.delete }}</q-btn>
+                                </div>
+                            </div>
+
+                            <div class="kobo-add">
+                                <q-input v-model="newKoboDeviceName" outlined dense class="kobo-device-name" :label="uiText.koboDeviceName" />
+                                <q-btn color="primary" dense no-caps icon="la la-plus" :disable="!String(newKoboDeviceName || '').trim()" @click="createKoboDevice">
+                                    {{ uiText.koboAddDevice }}
+                                </q-btn>
+                            </div>
+                        </div>
+
                         <div v-else-if="currentProfileTab === 'backup'" class="profile-backup-panel">
                             <div class="profile-backup-copy">
                                 <div class="profile-backup-title">{{ uiText.profileBackupTitle }}</div>
@@ -415,6 +480,7 @@
 import vueComponent from '../../vueComponent.js';
 import Dialog from '../../share/Dialog.vue';
 import ReadingListsDialog from '../ReadingListsDialog/ReadingListsDialog.vue';
+import {copyTextToClipboard} from '../../../share/utils';
 
 const componentOptions = {
     components: {
@@ -446,6 +512,10 @@ class UserProfilesDialog {
     expandedReadingSection = false;
     expandedReadingLists = {};
     profileBackupLoading = false;
+    koboDevices = [];
+    koboLoading = false;
+    koboEndpoint = '';
+    newKoboDeviceName = 'Kobo';
     readingListsDialogVisible = false;
     showCreateProfileForm = false;
     newProfilePasswordVisible = false;
@@ -563,6 +633,30 @@ class UserProfilesDialog {
             resetPasswordSuccess: '\u041f\u0430\u0440\u043e\u043b\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u00ab{name}\u00bb \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d',
             cancel: '\u041e\u0442\u043c\u0435\u043d\u0430',
             close: '\u0417\u0430\u043a\u0440\u044b\u0442\u044c',
+            koboHint: 'Kobo синхронизирует книги из выбранных списков чтения: книга в списке — книга на устройстве. FB2 конвертируется в KEPUB. Каждый список появляется на Kobo как коллекция, а книга, дочитанная на Kobo, отмечается прочитанной.',
+            koboEndpointTitle: 'Адрес для Kobo',
+            koboEndpointHint: 'Подключите Kobo к компьютеру, откройте .kobo/Kobo/Kobo eReader.conf и замените строку api_endpoint в разделе [OneStoreServices]. Адрес показывается только сейчас; если потеряете его, создайте новую ссылку.',
+            koboCopy: 'Скопировать',
+            koboHideEndpoint: 'Скрыть',
+            koboNoDevices: 'Устройств пока нет.',
+            koboDeviceName: 'Название устройства',
+            koboBooksOnDevice: 'Книг на устройстве',
+            koboLastSync: 'Последняя синхронизация',
+            koboNever: 'ещё не было',
+            koboListsTitle: 'Синхронизируемые списки',
+            koboKeepRemovedBooks: 'Оставлять книги на устройстве после удаления из списка',
+            koboKeepRemovedBooksHint: 'Если выключено, книга, убранная из всех выбранных списков, удаляется с Kobo при следующей синхронизации.',
+            koboStoreProxy: 'Подключать магазин Kobo',
+            koboStoreProxyHint: 'Для купленных в магазине Kobo книг: вход, покупки и их прогресс передаются на серверы Kobo. Если выключено, устройство общается только с inpx-web.',
+            koboSave: 'Сохранить',
+            koboResync: 'Синхронизировать заново',
+            koboResyncConfirm: 'Отправить на «{name}» все книги из списков заново при следующей синхронизации?',
+            koboNewLink: 'Новая ссылка',
+            koboNewLinkConfirm: 'Создать новую ссылку для «{name}»? Старая перестанет работать, и её нужно будет заменить в Kobo eReader.conf.',
+            koboDeleteConfirm: 'Удалить устройство «{name}»? Kobo перестанет синхронизироваться, книги на нём останутся.',
+            koboAddDevice: 'Добавить устройство',
+            koboSaved: 'Устройство сохранено',
+            koboCopied: 'Адрес скопирован',
         };
     }
 
@@ -824,6 +918,98 @@ class UserProfilesDialog {
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
         }
+    }
+
+    async openKoboTab() {
+        this.currentProfileTab = 'kobo';
+        await this.loadKoboDevices();
+    }
+
+    setKoboDevices(devices = []) {
+        this.koboDevices = devices.map(device => Object.assign({}, device, {
+            draft: {
+                name: device.name,
+                listIds: (device.listIds || []).slice(),
+                keepRemovedBooks: device.keepRemovedBooks === true,
+                storeProxy: device.storeProxy === true,
+            },
+        }));
+    }
+
+    async loadKoboDevices() {
+        this.koboLoading = true;
+        try {
+            const result = await this.api.getKoboDevices();
+            this.setKoboDevices(result && Array.isArray(result.devices) ? result.devices : []);
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        } finally {
+            this.koboLoading = false;
+        }
+    }
+
+    formatDateTime(value) {
+        const date = new Date(value);
+        return (Number.isNaN(date.getTime()) ? '' : date.toLocaleString());
+    }
+
+    async createKoboDevice() {
+        try {
+            const result = await this.api.createKoboDevice({name: this.newKoboDeviceName, listIds: [], keepRemovedBooks: false, storeProxy: false});
+            this.koboEndpoint = result.endpoint;
+            this.newKoboDeviceName = 'Kobo';
+            await this.loadKoboDevices();
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        }
+    }
+
+    async saveKoboDevice(device) {
+        try {
+            await this.api.updateKoboDevice(device.id, device.draft);
+            await this.loadKoboDevices();
+            this.$root.notify.success(this.uiText.koboSaved);
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        }
+    }
+
+    async resetKoboDevice(device) {
+        if (!await this.$root.stdDialog.confirm(this.uiText.koboResyncConfirm.replace('{name}', device.name), 'Kobo'))
+            return;
+        try {
+            await this.api.resetKoboDevice(device.id);
+            await this.loadKoboDevices();
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        }
+    }
+
+    async regenerateKoboDevice(device) {
+        if (!await this.$root.stdDialog.confirm(this.uiText.koboNewLinkConfirm.replace('{name}', device.name), 'Kobo'))
+            return;
+        try {
+            const result = await this.api.regenerateKoboDeviceToken(device.id);
+            this.koboEndpoint = result.endpoint;
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        }
+    }
+
+    async deleteKoboDevice(device) {
+        if (!await this.$root.stdDialog.confirm(this.uiText.koboDeleteConfirm.replace('{name}', device.name), 'Kobo'))
+            return;
+        try {
+            await this.api.deleteKoboDevice(device.id);
+            await this.loadKoboDevices();
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, this.uiText.errorTitle);
+        }
+    }
+
+    async copyKoboEndpoint() {
+        if (await copyTextToClipboard(`api_endpoint=${this.koboEndpoint}`))
+            this.$root.notify.success(this.uiText.koboCopied);
     }
 
     async renameList(item) {
@@ -1218,6 +1404,65 @@ export default vueComponent(UserProfilesDialog);
 
 .profile-opds-admin-note {
     grid-column: 1 / -1;
+}
+
+.kobo-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.kobo-endpoint,
+.kobo-device {
+    padding: 10px 12px;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-surface) 86%, var(--app-surface-2) 14%);
+}
+
+.kobo-endpoint-line {
+    display: block;
+    margin: 8px 0;
+    word-break: break-all;
+    user-select: all;
+}
+
+.kobo-device-head,
+.kobo-add {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.kobo-device-name {
+    flex: 1 1 220px;
+}
+
+.kobo-device-meta {
+    color: var(--app-muted);
+    font-size: 12px;
+}
+
+.kobo-subtitle {
+    margin-top: 8px;
+}
+
+.kobo-lists {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 6px 0;
+}
+
+.kobo-option {
+    margin-top: 8px;
+}
+
+.kobo-device-actions {
+    margin-top: 8px;
+    justify-content: flex-start;
 }
 
 .profile-backup-actions {

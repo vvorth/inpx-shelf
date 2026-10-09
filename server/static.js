@@ -803,3 +803,6 @@ module.exports = (app, config, webWorker = null, security = null) => {
 
     app.use(config.rootPathStatic, express.static(config.publicDir, webAppStaticOptions));
 };
+
+module.exports.sendCachedCover = sendCachedCover;
+module.exports.writeCachedCover = writeCachedCover;

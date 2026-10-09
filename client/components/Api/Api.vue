@@ -605,6 +605,30 @@ class Api {
         return await this.request({action: 'delete-reading-list', listId}, 120);
     }
 
+    async getKoboDevices() {
+        return await this.request({action: 'get-kobo-devices'}, 60);
+    }
+
+    async createKoboDevice(device) {
+        return await this.request({action: 'create-kobo-device', device}, 60);
+    }
+
+    async updateKoboDevice(deviceId, device) {
+        return await this.request({action: 'update-kobo-device', deviceId, device}, 60);
+    }
+
+    async regenerateKoboDeviceToken(deviceId) {
+        return await this.request({action: 'regenerate-kobo-device-token', deviceId}, 60);
+    }
+
+    async resetKoboDevice(deviceId) {
+        return await this.request({action: 'reset-kobo-device', deviceId}, 60);
+    }
+
+    async deleteKoboDevice(deviceId) {
+        return await this.request({action: 'delete-kobo-device', deviceId}, 60);
+    }
+
     async exportReadingLists() {
         return await this.request({action: 'export-reading-lists'}, 120);
     }

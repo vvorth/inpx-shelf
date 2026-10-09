@@ -359,6 +359,9 @@ class Security {
         // to ABS routes, never the web catalog, OPDS or book downloads.
         if (require('./AudiobookshelfProvider').isAuthorizedRequest(req, this.config))
             return {ok: true};
+        // A Kobo device token grants access only to that device's /kobo/<token>/ routes.
+        if (require('./kobo').isAuthorizedRequest(req, this.config))
+            return {ok: true};
         const mode = String(this.config.authMode || 'local').trim().toLowerCase();
         if (!this.config.requireAuth && !(mode === 'proxy' && this.config.proxyBindProfile))
             return {ok: true};
@@ -474,7 +477,7 @@ class Security {
 
     normalizeLoginKind(kind = 'access') {
         const normalized = String(kind || 'access').trim().toLowerCase();
-        return ['profile', 'opds'].includes(normalized) ? normalized : 'access';
+        return ['profile', 'opds', 'kobo'].includes(normalized) ? normalized : 'access';
     }
 
     loginAttemptKey(req, kind) {
@@ -567,7 +570,7 @@ class Security {
         }
 
         const attempts = [];
-        for (const kind of ['access', 'profile', 'opds']) {
+        for (const kind of ['access', 'profile', 'opds', 'kobo']) {
             for (const result of ['success', 'failure', 'blocked']) {
                 attempts.push({
                     labels: {kind, result},

@@ -67,6 +67,8 @@ module.exports = {
     absToken: String(process.env.INPX_ABS_TOKEN || '').trim(),
     absPublicUrl: String(process.env.INPX_ABS_PUBLIC_URL || '').trim(),
     absMaxResults: numberFromEnv('INPX_ABS_MAX_RESULTS', 10),
+    koboEnabled: process.env.INPX_KOBO_ENABLED === 'true',
+    koboPublicUrl: String(process.env.INPX_KOBO_PUBLIC_URL || '').trim(),
 
     // Поправить в случае, если были критические изменения в DbCreator или InpxParser,
     // иначе будет рассинхронизация по кэшу между сервером и клиентом на уровне БД.
@@ -93,7 +95,7 @@ module.exports = {
     lowMemoryMode: false,
     fullOptimization: false,
 
-    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'extendedSearch', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources'],
+    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'extendedSearch', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled'],
 
     allowRemoteLib: false,
     remoteLib: false,
