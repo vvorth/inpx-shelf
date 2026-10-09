@@ -12,7 +12,9 @@ the Kobo's built-in sync (no USB, no sideloading), modelled on Calibre-Web's Kob
 * [`server/core/kobo/`](../server/core/kobo/) and [`scripts/kobo-sync-tests.js`](../scripts/kobo-sync-tests.js):
   the code and the tests, which show the expected behaviour.
 
-> **Status:** Option C was chosen and **Phase 1 is implemented** (see [§6](#6-phase-1-implementation)).
+> **Status:** Option C was chosen. **Phase 1 and Phase 2 are implemented** (see [§6](#6-implementation); Phase 2
+> decisions in [§4.11](#411-phase-2-decisions-and-work-order)). Phase 3 hasn't started, and nothing has been tried
+> on a physical Kobo yet.
 
 ---
 
@@ -284,8 +286,9 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 * **Phase 1 (done, see §6):** several lists → Kobo, collections (server → device), add/remove with the
   "keep on device" option, covers, downloads, read status both ways, per-device store proxy, UI tab, release tests.
 * **Done after Phase 1:** changed files are announced again (see §6, "File changes").
-* **Phase 2:** collection edits from the device, percent → web progress, pre-warm hooks on list edits,
-  re-keying orphaned list entries by `libid`, `kobo-sync.json` in admin backups.
+* **Phase 2 (done, decided in §4.11):** collection edits from the device (read-only collections, but a book removed
+  from a collection stays out of it), percent → web progress, pre-warm hooks on list edits, re-keying orphaned
+  list entries by `libid`, `kobo-sync.json` in admin backups, token masking in logs, re-announcing metadata edits.
 * **Phase 3:** KEPUB for EPUB sources (bundle `kepubify`), cover resizing, per-device format preferences.
 
 ### 4.10 Decisions
@@ -298,6 +301,73 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 5. Added: per-device **"keep books on the device after they leave the list"**. When it's on, leaving every
    bound list sends no `IsRemoved`, and the book stays downloadable and keeps its reading state.
 
+### 4.11 Phase 2 decisions and work order
+
+Agreed with the owner on 2026-10-09 so that Phase 2 can be built without further questions. Phase 3 is **out of
+scope** for this round. Commits go straight to the `kobo-sync` branch, each one validated with `npm run test:release`
+and the matching §6 update.
+
+**Decisions**
+
+1. **Collections stay read-only from the device.** inpx-web lists remain the only source of truth for list
+   membership and names. No change made on the Kobo ever adds, removes, renames, deletes or creates a reading list.
+   * **A book removed from a bound collection on the Kobo stays out of that collection.** The device keeps the book,
+     and the list is not edited. The device row remembers the suppression per list (for example
+     `collectionRemoved: [listId, …]`), `tagFor` leaves the book out of that list's `Items`, and later syncs never
+     put it back. The suppression for a list is cleared when the book leaves that list in inpx-web, so adding it
+     again later puts it back in the collection.
+   * **Adding a book to a bound collection on the device:** accept it (`201`/`200`) and change nothing. The next
+     `ChangedTag` that the list's own changes produce brings the device back in line with the list.
+   * **Renaming or deleting a bound collection on the device:** accept it and change nothing on the server. The
+     tag's stored signature is invalidated, so the next sync sends the collection again as the list defines it
+     (`ChangedTag`, or `NewTag` after a delete).
+   * **Collections created on the device** (not bound lists) stay local: `POST v1/library/tags` answers `201`
+     with a fresh id and nothing is stored, and edits to unknown tag ids answer `200`/`204` without storing
+     anything. With the store proxy on, requests for unknown tags are relayed to the Kobo Store as today.
+   * **Deleting a book on the device** keeps Phase 1 behaviour (decision 1 in §4.10): it's marked read and never
+     re-sent or re-downloaded while it stays listed.
+   * Removing a book from a collection never affects reading state: *Finished* and percent keep syncing for it.
+2. **Kobo percent → web reader progress: the newer side wins.** On `PUT …/state`, when the Kobo's
+   `LastModified` for the book is newer than `readerProgress[bookUid].updatedAt` (or there's no web entry), write
+   `percent = ProgressPercent / 100` and that timestamp. The section, page and text offset are reset, so the web
+   reader opens at the percent; the exact page position is lost by design. A newer web position is never
+   overwritten. Respect `readerProgressGeneration` and `hidden` the way the web reader does, and don't raise
+   `percent` to 1 for *Finished* beyond what `setBooksRead` already does. Web → Kobo percent is not part of Phase 2.
+3. **Pre-warm conversion on list edits.** When books are added to a list bound to any device
+   (`setBookMembership(…, true)` and `addBooks` going through `WebWorker`), queue the KEPUB/EPUB preparation in the
+   background through the same `getPreparedBookFile` path. Don't wait for it, respect the existing converter
+   queue limits (a full queue is fine: sync time still converts), and log failures without surfacing them to
+   the web request. Binding a list to a device (create or update device) pre-warms that list's books too.
+4. **Re-key orphaned list entries by `libid`.** When a listed `bookUid` doesn't resolve but the device row (or
+   the stored Kobo uuid) gives a `stableKey` of the form `sourceId:libid`, look the record up by
+   `sourceId` + `libid`. If exactly one record matches, rewrite the list entry's `bookUid` in place (keeping `read`
+   and order), move `readerProgress`/bookmarks keyed by the old uid, and update the device row. Kobo ids don't
+   change, so the device sees nothing. If zero or several records match, keep treating it as an orphan (skip,
+   never remove). Entries without a `libid` aren't re-keyed.
+5. **`kobo-sync.json` is part of admin backups, token hashes included.** After a restore, devices keep syncing
+   without being set up again. The backup already holds `secret.key` and password hashes, so this adds no new kind
+   of secret. Restoring a backup without the file leaves the current `kobo-sync.json` alone. Restore validates the
+   format the same way `reading-lists.json` is validated.
+6. **Mask the device token in logs.** Every place that logs a request URL (`logQueries` in `server/index.js` and
+   `server/dev.js`, error logs in the Kobo router, store-proxy logs) writes `/kobo/***/…` instead of the token.
+7. **Re-announce metadata edits.** Book metadata is built with the admin's metadata overrides applied
+   (`applyMetadataOverridesToSearchResult`). Each device row stores a hash of the announced metadata, and a change
+   (title, authors, series, language, description and so on) sends a `ChangedEntitlement` with the same ids,
+   the same way file changes are re-announced.
+
+**Work order** (one commit each, tests added to `scripts/kobo-sync-tests.js`):
+
+1. Token masking in logs (6).
+2. `kobo-sync.json` in backups (5).
+3. Pre-warm on list edits and on binding (3).
+4. Re-keying orphans by `libid` (4).
+5. Metadata edits re-announced (7).
+6. Percent → web progress (2).
+7. Collection endpoints: read-only with per-list removal suppression (1).
+
+Afterwards, update §6 (move the items out of "Not yet") and the README section «Синхронизация с Kobo» wherever
+the user-visible behaviour changed.
+
 ---
 
 ## 5. Prior art checked
@@ -309,7 +379,7 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 
 ---
 
-## 6. Phase 1 implementation
+## 6. Implementation
 
 | Piece | Where |
 |---|---|
@@ -322,12 +392,15 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 | Devices removed with their profile | `WebWorker.deleteUserProfile` |
 | Profile dialog → "Kobo" tab | `client/components/Search/UserProfilesDialog/UserProfilesDialog.vue`, `client/components/Api/Api.vue` |
 | Release tests (fake Kobo and fake Kobo Store) | `scripts/kobo-sync-tests.js` |
+| Phase 2: pre-warm hooks on list edits, lookup by `sourceId:libid`, `kobo-sync.json` in admin backups | `server/core/WebWorker.js`, `server/core/BackupArchive.js`, `server/core/BackupTransaction.js` |
+| Phase 2: re-keying list entries, progress, bookmarks and metadata edits to a new uid (`rekeyBooks`) | `server/core/ReadingListStore.js` |
+| Phase 2: device tokens masked in request logs (`kobo.maskTokens`) | `server/index.js`, `server/dev.js` |
 
 How Phase 1 differs from the plan above:
 
-* **Pre-warm:** there are no hooks on list edits. Conversion starts at sync time instead: at most 2 at once,
-  with a 20 s wait budget per sync. Books that aren't ready yet are announced on a later sync, and
-  `x-kobo-sync: continue` is never sent just because a conversion is pending.
+* **Pre-warm:** conversion also starts at sync time: at most 2 at once, with a 20 s wait budget per sync. Books
+  that aren't ready yet are announced on a later sync, and `x-kobo-sync: continue` is never sent just because a
+  conversion is pending. Since Phase 2, list edits pre-warm too (see below).
 * **Read flag:** the per-device book row remembers the list's `read` value it last saw (`listRead`). Only a
   change on the web side produces `ChangedReadingState`, so a status reported by the Kobo is never echoed back.
   *Finished* on the Kobo calls `setBooksRead` (all of the profile's lists plus global progress). *Reading* on
@@ -335,7 +408,7 @@ How Phase 1 differs from the plan above:
 * **Fresh sync** (no or foreign `x-kobo-synctoken`, or "Sync again" in the UI): everything is re-sent, except
   books deleted on the device, which stay suppressed.
 * **Orphans:** a listed book whose record is missing (for example during a re-index) is skipped and never
-  removed. Re-keying list entries by `libid` isn't done yet.
+  removed, and it keeps its place in the device's collections. Since Phase 2, entries are re-keyed by `libid` (see below).
 * **Store proxy (per device):** store `Resources` are used for `v1/initialization`; `auth/device|refresh` are
   relayed; store sync results are merged into our final page, with the store's own token carried inside ours;
   unknown books' metadata, state, delete and other store calls are forwarded (GET → `307`, other methods are
@@ -348,9 +421,70 @@ How Phase 1 differs from the plan above:
   the target format changed (e.g. KEPUB disabled), or a download found the file regenerated with another size
   (flushed cache). The ids stay the same, so collections and reading state are kept. Whether a Kobo re-downloads
   a book it already has after such an update is untested on hardware.
-* **Not yet:** collection edits made on the device (they get `{}`), percent → web reader progress, cover
-  resizing (covers are served at original size and type), `kobo-sync.json` in admin backups, re-announcing
-  metadata edits (title/author overrides), and KEPUB for EPUB sources. With `logQueries`/development logging on, request URLs
-  (including the device token) are written to the log.
-* **Untested on hardware:** everything is covered by protocol-level tests and a run against a live server
-  (initialization, sync, collection, download, state PUT); it hasn't been tried on a physical Kobo yet.
+* **Not yet (Phase 3):** cover resizing (covers are served at original size and type), KEPUB for EPUB sources,
+  per-device format preferences. Web → Kobo reading percent isn't planned.
+
+**Phase 2** (decisions and order in §4.11):
+
+* **Token masking in logs (done):** `kobo.maskTokens()` turns `/kobo/<token>` into `/kobo/***` in the request logs
+  of `logQueries` (`server/index.js`) and development mode (`server/dev.js`). The Kobo router's own error and
+  store-proxy logs only use the path below the token.
+* **Backups (done):** the admin backup ZIP includes `kobo-sync.json` with token hashes (`WebWorker.createAdminBackupSnapshot`,
+  `BackupTransaction.targets`). Restore checks that `devices` is an array and `states` an object
+  (`BackupArchive.read`), normalizes the file through `KoboStore.normalizeData`, writes it in the same journalled
+  transaction as the other files, and swaps the running service's copy so restored tokens work without a restart.
+  A backup without the file leaves the current one alone. The device rows are restored as they were at backup time:
+  books sent after the backup are announced again (harmless), and a book sent after the backup that's no longer
+  in the restored list stays on the device until it's deleted there.
+* **Pre-warm on list edits (done):** `WebWorker.updateReadingListBook` (adding), `addSeriesToReadingList` and
+  `importReadingLists` call `KoboService.prewarmBooks` / `prewarmLists`; creating a device or changing its lists
+  pre-warms every book of its lists. Only lists bound to a device of the list's owner count, and books a device of
+  that profile already has are skipped. A background queue (deduplicated, at most 5000 books) prepares one book at
+  a time through the same `prepare()` cache the sync uses, so the next sync finds the file ready. A busy shared
+  converter (`INPX_CONVERSION_QUEUE_FULL`/`_TIMEOUT`) is no longer treated as a failed book: the entry is dropped
+  and retried (by the queue after a short wait, up to 3 times, and by every sync) instead of being blocked for the
+  10-minute error back-off. Real conversion errors keep the back-off and are logged once.
+* **Re-keying orphans by `libid` (done):** `collectWanted` passes listed uids that don't resolve to
+  `KoboService.rekeyOrphans`. For each one that a device row of the profile knows by a `sourceId:libid` stable key,
+  `WebWorker.findBookRecordsByStableKeys` looks the keys up in one scan of the book table (there's no `libid`
+  index). When exactly one record matches, `ReadingListStore.rekeyBooks` rewrites the profile's list entries (order
+  and `read` kept; if both uids were listed they're merged), moves `readerProgress` and `readerBookmarks`, and the
+  device rows of the profile's devices get the new `bookUid`. The Kobo id doesn't change, so the device sees
+  nothing. Zero or several matches leave the entry an orphan; each key is looked up at most once an hour. Entries
+  without a `libid`, entries never sent to a device, and other profiles' lists aren't re-keyed. Collection items
+  are now sorted by id and include orphans, so a book dropping out of the DB for a while doesn't change its collection.
+  The book's admin metadata edit moves to the new uid as well.
+* **Metadata edits re-announced (done):** records are read with the admin's metadata overrides applied
+  (`WebWorker.applyMetadataOverrideToBook`: title, authors, series, number), for new books, the metadata endpoint
+  and change detection. Each device row stores `metaHash`, a hash of the record-derived fields (title, authors,
+  series, number, language). When it differs, the sync sends a `ChangedEntitlement` with the same ids and file
+  (combined with a file update when both changed; if the new file isn't ready yet, the metadata goes first).
+  Rows from before this change adopt the current hash silently. Description, publisher and year come from the file
+  and change only with it, which is already re-announced through the fingerprint and size.
+* **Percent → web reader (done):** a state `PUT` with `CurrentBookmark.ProgressPercent` calls
+  `KoboService.syncWebProgress`, which writes `readerProgress[bookUid]` through `ReadingListStore.updateReaderProgress`
+  as `{percent, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: ''}` with the profile's current progress
+  generation. The timestamp is the bookmark's `LastModified` from the device (a page turn read offline keeps its
+  time; a clock more than 5 minutes ahead counts as now), and the store keeps a newer web position. `hidden` is left
+  as it was. Nothing is written when the percent didn't change or when the Kobo reports 0% for a book with no web
+  position. The web reader already restores percent-only positions. Web → Kobo percent isn't sent.
+* **Collection edits on the device (done):** `v1/library/tags*` are answered by `KoboService.createTag`,
+  `updateTag` and `editTagItems`; no reading list is ever changed from the device. A bound list's tag id is
+  `uuidv5('list:<listId>')`.
+  * Removing books from a bound collection (`…/items/delete`) records the list in the book row's
+    `collectionRemoved`; `tagFor` leaves those books out of that list's collection (orphans too), so they stay on
+    the device but outside the collection. At the start of each sync, a row drops the lists the book is no longer in,
+    so taking it off the list in inpx-web and adding it again puts it back. Adding books to a bound collection
+    (`…/items`, `201`) only lifts that suppression; anything else it added isn't stored and disappears from the
+    collection with the next `ChangedTag` the list's own changes produce.
+  * Renaming (`PUT`) a bound collection clears its stored signature and deleting (`DELETE`) drops its tag row, so
+    the next sync sends it again as the list defines it (`ChangedTag` / `NewTag`). The list stays bound.
+  * Collections made on the device and unknown tag ids: `POST v1/library/tags` answers `201` with a fresh id, other
+    calls `200`/`201`, and nothing is stored. With the store proxy on, they're relayed to the Kobo Store instead.
+  * The sync merges concurrent edits: `collectionRemoved` changed during a sync is kept, and a tag renamed or
+    deleted during a sync is sent again on the next one.
+
+* **Untested on hardware:** everything is covered by protocol-level tests. Phase 1 was also run against a live
+  server (initialization, sync, collection, download, state PUT); Phase 2 only by the tests. Nothing has been tried
+  on a physical Kobo yet, in particular collection edits and whether a Kobo re-downloads a book after a
+  `ChangedEntitlement`.

@@ -3342,6 +3342,32 @@ class WebWorker {
         return (rows.length ? rows[0] : null);
     }
 
+    // Records by `sourceId:libid` (the key Kobo ids are derived from), for list entries whose _uid
+    // changed in a re-index. There is no libid index, so this is one scan for all keys.
+    async findBookRecordsByStableKeys(keys = []) {
+        if (!keys.length)
+            return {};
+        const rows = await this.db.select({
+            table: 'book',
+            rawResult: true,
+            where: `
+                const keys = new Set(${this.db.esc(keys)});
+                const found = {};
+                for (const id of @all()) {
+                    const row = @unsafeRow(id);
+                    const libid = String((row && row.libid) || '').trim();
+                    if (!libid)
+                        continue;
+                    const key = (row.sourceId || '') + ':' + libid;
+                    if (keys.has(key))
+                        (found[key] = found[key] || []).push(row);
+                }
+                return found;
+            `,
+        });
+        return ((rows[0] && rows[0].rawResult) ? rows[0].rawResult : {});
+    }
+
     sortReadingListBooks(books = [], order = []) {
         const orderMap = new Map(order.map((uid, index) => [uid, index]));
         return books.sort((a, b) => {
@@ -4719,13 +4745,15 @@ class WebWorker {
             app: this.config.name,
             version: this.config.version,
             createdAt: createdAt.toISOString(),
-            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks. It does not include source book archives, generated search DB or caches.',
+            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, and Kobo devices. It does not include source book archives, generated search DB or caches.',
         }, null, 4)), 'backup-info.json');
 
         await this.addBackupPath(zipFile, this.config.configFile, 'config.json');
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'secret.key'), 'secret.key');
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'reading-lists.json'), 'reading-lists.json');
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'discovery-cache.json'), 'discovery-cache.json');
+        // Token hashes included: restored devices keep syncing without being set up again.
+        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'kobo-sync.json'), 'kobo-sync.json');
 
         zipFile.end();
         await done;
@@ -4784,7 +4812,18 @@ class WebWorker {
                 }
                 if (archive['discovery-cache.json'])
                     content['discovery-cache.json'] = JSON.stringify(archive['discovery-cache.json'], null, 2);
+                let koboData = null;
+                if (archive['kobo-sync.json']) {
+                    const KoboStore = require('./kobo/KoboStore');
+                    koboData = new KoboStore(this.config).normalizeData(archive['kobo-sync.json']);
+                    content['kobo-sync.json'] = JSON.stringify(koboData, null, 2);
+                }
                 await transaction.commit(this.config, content);
+                if (koboData && this.koboService) {
+                    // Restored devices and tokens take effect without a restart.
+                    this.koboService.store.data = koboData;
+                    this.koboService.store.rebuildIndex();
+                }
                 if (runtimePatch)
                     Object.assign(this.config, runtimePatch);
                 this.profileSessions.clear();
@@ -4911,7 +4950,10 @@ class WebWorker {
 
     async importReadingLists(userId = '', data) {
         this.checkMyState();
-        return await this.readingListStore.importData(userId, data);
+        const result = await this.readingListStore.importData(userId, data);
+        if (this.koboService)
+            this.koboService.prewarmLists(userId);
+        return result;
     }
 
     async updateReadingListBook(userId = '', listId, bookUid, enabled) {
@@ -4922,6 +4964,8 @@ class WebWorker {
             throw new Error('404 Файл не найден');
 
         const item = await this.readingListStore.setBookMembership(userId, listId, bookUid, enabled);
+        if (enabled && this.koboService)
+            this.koboService.prewarmBooks(item.userId, item.id, [bookUid]);
         return {
             list: this.readingListStore.listStats(item),
             bookUid,
@@ -4989,6 +5033,8 @@ class WebWorker {
         const result = await this.dbSearcher.getSeriesBookList(seriesName);
         const bookUids = (result.books || []).map((book) => book._uid).filter(Boolean);
         const added = await this.readingListStore.addBooks(userId, listId, bookUids);
+        if (this.koboService)
+            this.koboService.prewarmBooks(added.item.userId, added.item.id, bookUids);
 
         return {
             list: this.readingListStore.listStats(added.item),

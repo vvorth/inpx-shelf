@@ -1,4 +1,5 @@
 const log = new (require('./core/AppLogger'))().log;//singleton
+const {maskTokens} = require('./core/kobo');
 
 function webpackDevMiddleware(app) {
     const webpack  = require('webpack');
@@ -20,7 +21,7 @@ function webpackDevMiddleware(app) {
 function logQueries(app) {
     app.use(function(req, res, next) {
         const start = Date.now();
-        log(`${req.method} ${req.originalUrl} ${JSON.stringify(req.body ? req.body : '').substr(0, 4000)}`);
+        log(`${req.method} ${maskTokens(req.originalUrl)} ${JSON.stringify(req.body ? req.body : '').substr(0, 4000)}`);
         //log(`${JSON.stringify(req.headers, null, 2)}`)
         res.once('finish', () => {
             log(`${Date.now() - start}ms`);

@@ -7,6 +7,7 @@ const http = require('http');
 const WebSocket = require ('ws');
 
 const utils = require('./core/utils');
+const kobo = require('./core/kobo');
 const {resolveLibrarySources} = require('./core/LibrarySources');
 
 const ayncExit = new (require('./core/AsyncExit'))();
@@ -202,7 +203,7 @@ async function init() {
 function logQueries(app) {
     app.use(function(req, res, next) {
         const start = Date.now();
-        log(`${req.method} ${req.originalUrl} ${utils.cutString(req.body)}`);
+        log(`${req.method} ${kobo.maskTokens(req.originalUrl)} ${utils.cutString(req.body)}`);
         //log(`${JSON.stringify(req.headers, null, 2)}`)
         res.once('finish', () => {
             log(`${Date.now() - start}ms`);
@@ -258,7 +259,7 @@ async function main() {
         .catch(e => log(LM_WARN, `Cannot check the admin password: ${e.message}`));
 
     require('./core/AudiobookshelfProvider').init(app, config, webSocketController.webWorker, security);
-    require('./core/kobo').init(app, config, webSocketController.webWorker, security);
+    kobo.init(app, config, webSocketController.webWorker, security);
 
     const initHealthRoutes = require('./core/HealthRoutes');
     initHealthRoutes(app, config, webSocketController.webWorker, security, webSocketController);

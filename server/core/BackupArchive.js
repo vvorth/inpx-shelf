@@ -3,7 +3,7 @@ const path = require('path');
 const StreamZip = require('node-stream-zip');
 const {limits} = require('./RequestLimits');
 
-const names = new Set(['backup-info.json', 'config.json', 'secret.key', 'reading-lists.json', 'discovery-cache.json']);
+const names = new Set(['backup-info.json', 'config.json', 'secret.key', 'reading-lists.json', 'discovery-cache.json', 'kobo-sync.json']);
 
 async function read(payload, config, folder) {
     const maximum = limits(config);
@@ -59,6 +59,9 @@ async function read(payload, config, folder) {
         const lists = result['reading-lists.json'];
         if (lists && (!Array.isArray(lists.users) || !Array.isArray(lists.lists)))
             throw new Error('Неверный формат reading-lists.json');
+        const kobo = result['kobo-sync.json'];
+        if (kobo && (!Array.isArray(kobo.devices) || (kobo.states && (typeof kobo.states !== 'object' || Array.isArray(kobo.states)))))
+            throw new Error('Неверный формат kobo-sync.json');
         const key = result['secret.key'];
         if (key && (!result['config.json'] || !/^[A-Za-z0-9+/]{43}=\s*$/.test(key.toString('utf8'))))
             throw new Error('Ключ бэкапа повреждён или отсутствует config.json');

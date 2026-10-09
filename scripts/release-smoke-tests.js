@@ -810,6 +810,14 @@ async function testAdminBackupArchiveAndDownload() {
             lists: [{id: 'list-1', userId: 'reader', name: 'Reading', books: [{bookUid: 'book:1', read: false}]}],
         });
         await fs.writeJson(path.join(dataDir, 'discovery-cache.json'), {items: []});
+        const KoboStore = require('../server/core/kobo/KoboStore');
+        const koboToken = 'abcdef0123456789abcdef0123456789';
+        await fs.writeJson(path.join(dataDir, 'kobo-sync.json'), {
+            version: 1,
+            devices: [{id: 'kobo-1', userId: 'reader', name: 'Clara', tokenHash: KoboStore.hashToken(koboToken), listIds: ['list-1'],
+                books: {'kobo-book': {bookUid: 'book:1', size: 10}}}],
+            states: {reader: {'kobo-book': {status: 'Reading'}}},
+        });
         const backupSecretKey = require('crypto').randomBytes(32).toString('base64');
         await fs.writeFile(path.join(dataDir, 'secret.key'), backupSecretKey);
         await fs.ensureDir(path.join(dataDir, 'db'));
@@ -839,6 +847,7 @@ async function testAdminBackupArchiveAndDownload() {
             assert.ok(entries['reading-lists.json']);
             assert.ok(entries['secret.key']);
             assert.ok(entries['discovery-cache.json']);
+            assert.ok(entries['kobo-sync.json']);
             assert.strictEqual(entries['db/index.json'], undefined);
 
             const readingLists = JSON.parse((await zip.entryData('reading-lists.json')).toString('utf8'));
@@ -942,6 +951,10 @@ async function testAdminBackupArchiveAndDownload() {
         const preRestoreReset = await restoreWorker.readingListStore.clearReaderProgress('reader');
         assert.strictEqual(preRestoreReset.generation, 1);
         const preRestoreSession = restoreWorker.createProfileSession('reader');
+        const restoreKoboStore = new KoboStore({dataDir: restoreDataDir});
+        await restoreKoboStore.load();
+        restoreWorker.koboService = {store: restoreKoboStore};
+        assert.strictEqual(restoreKoboStore.findDeviceByToken(koboToken), null);
 
         const restored = await restoreWorker.importAdminBackup('admin', 'token', {
             fileName: result.fileName,
@@ -953,6 +966,11 @@ async function testAdminBackupArchiveAndDownload() {
         assert.ok(restored.restored.includes('config.json'));
         assert.ok(restored.restored.includes('secret.key'));
         assert.ok(restored.restored.includes('reading-lists.json'));
+        assert.ok(restored.restored.includes('kobo-sync.json'));
+        const restoredKobo = await fs.readJson(path.join(restoreDataDir, 'kobo-sync.json'));
+        assert.strictEqual(restoredKobo.devices[0].tokenHash, KoboStore.hashToken(koboToken), 'devices keep their token');
+        assert.strictEqual(restoredKobo.states.reader['kobo-book'].status, 'Reading');
+        assert.strictEqual(restoreKoboStore.findDeviceByToken(koboToken).id, 'kobo-1', 'the running service sees restored devices');
         const restoredSecrets = await new (require('../server/core/SecretStore'))({dataDir: restoreDataDir})
             .unprotectConfig(await fs.readJson(restoreConfigFile));
         assert.strictEqual(restoredSecrets.config.opds.password, 'full-backup-secret');

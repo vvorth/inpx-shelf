@@ -52,6 +52,9 @@ class KoboStore {
                 detached: row.detached === true,
                 deletedOnDevice: row.deletedOnDevice === true,
                 fingerprint: String(row.fingerprint || ''),
+                metaHash: String(row.metaHash || ''),
+                // Lists whose collection the reader took this book out of on the device.
+                collectionRemoved: (Array.isArray(row.collectionRemoved) ? row.collectionRemoved.map(String).filter(Boolean) : []),
                 fileChanged: row.fileChanged === true,
                 changedAt: String(row.changedAt || ''),
             };

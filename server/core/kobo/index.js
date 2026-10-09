@@ -22,6 +22,14 @@ const prepareRetryMs = 10*60*1000;
 // Stay well below the shared conversion queue so web downloads keep working.
 const prepareConcurrency = 2;
 const preparedEntryLimit = 2000;
+// Background preparation of books added to bound lists (one at a time, so sync keeps a slot).
+const prewarmQueueLimit = 5000;
+const prewarmAttempts = 3;
+const prewarmBusyRetryMs = 5000;
+const busyConversionCodes = new Set(['INPX_CONVERSION_QUEUE_FULL', 'INPX_CONVERSION_QUEUE_TIMEOUT']);
+// Looking an orphan up by libid scans the whole book table: at most once an hour per book.
+const rekeyRetryMs = 60*60*1000;
+const rekeyCheckedLimit = 10000;
 const uuidNamespace = 'b0f7c0a4-5a43-4b8e-9d0e-6f1a8c2e4d17';
 const zeroUuid = '00000000-0000-0000-0000-000000000001';
 const syncTokenHeader = 'x-kobo-synctoken';
@@ -51,6 +59,11 @@ function uuidv5(name, namespace = uuidNamespace) {
 function stableKey(book) {
     const libid = String(book.libid || '').trim();
     return (libid ? `${book.sourceId || ''}:${libid}` : book._uid);
+}
+
+// Device tokens travel in the URL path: never write them to a log.
+function maskTokens(url = '') {
+    return String(url).replace(/\/kobo\/[0-9a-f]{32}(?=[/?#]|$)/gi, '/kobo/***');
 }
 
 function koboTime(value = null) {
@@ -115,6 +128,10 @@ class KoboService {
         this.metadata = new BookMetadata(worker);
         this.prepared = new Map();
         this.prepareBudgetMs = prepareBudgetMs;
+        this.prewarmQueue = new Set();
+        this.prewarmRunning = null;
+        this.prewarmBusyRetryMs = prewarmBusyRetryMs;
+        this.rekeyChecked = new Map();
         this.storeUrl = String(config.koboStoreApiUrl || koboStoreUrl).replace(/\/$/, '');
     }
 
@@ -155,12 +172,16 @@ class KoboService {
     async createDevice(userId, settings, req) {
         await this.checkListIds(userId, settings);
         const {device, token} = await this.store.createDevice(userId, settings);
+        this.prewarmLists(userId, device.listIds);
         return {device, endpoint: this.deviceBase(req, token)};
     }
 
     async updateDevice(userId, deviceId, settings) {
         await this.checkListIds(userId, settings);
-        return await this.store.updateDevice(userId, deviceId, settings);
+        const result = await this.store.updateDevice(userId, deviceId, settings);
+        if (Array.isArray(settings.listIds))
+            this.prewarmLists(userId, result.device.listIds);
+        return result;
     }
 
     async regenerateToken(userId, deviceId, req) {
@@ -169,7 +190,7 @@ class KoboService {
     }
 
     // ------------------------------------------------------------------ list → device
-    async collectWanted(device) {
+    async collectWanted(device, rekey = true) {
         const store = this.worker.readingListStore;
         const lists = [];
         for (const listId of device.listIds) {
@@ -178,9 +199,11 @@ class KoboService {
                 lists.push(list);
         }
 
+        const overrides = await this.metadataOverrides();
         const wanted = new Map();
         const seenUids = new Set();
-        const orphanUids = new Set();
+        // Listed books missing from the DB, with the lists they are in.
+        const orphanUids = new Map();
         const readUids = new Set();
         for (const list of lists) {
             for (const entry of store.normalizeEntries(list.books)) {
@@ -190,14 +213,16 @@ class KoboService {
                     const known = [...wanted.values()].find(item => item.bookUid === entry.bookUid);
                     if (known && !known.listIds.includes(list.id))
                         known.listIds.push(list.id);
+                    if (orphanUids.has(entry.bookUid))
+                        orphanUids.get(entry.bookUid).push(list.id);
                     continue;
                 }
                 seenUids.add(entry.bookUid);
-                const book = await this.worker.getBookRecordByUid(entry.bookUid);
+                const book = this.withOverrides(await this.worker.getBookRecordByUid(entry.bookUid), overrides);
                 if (!book) {
                     // Missing from the DB while still listed (re-index in progress,
                     // INPX line rewritten): never treat that as a removal.
-                    orphanUids.add(entry.bookUid);
+                    orphanUids.set(entry.bookUid, [list.id]);
                     continue;
                 }
                 const key = stableKey(book);
@@ -208,10 +233,89 @@ class KoboService {
             }
         }
 
+        if (rekey && orphanUids.size && await this.rekeyOrphans(device, orphanUids))
+            return await this.collectWanted(device, false);
+
         for (const item of wanted.values())
             item.read = readUids.has(item.bookUid);
 
         return {lists, wanted, orphanUids};
+    }
+
+    async metadataOverrides() {
+        const store = this.worker.readingListStore;
+        return (typeof(store.getMetadataOverrides) === 'function' ? await store.getMetadataOverrides() : {});
+    }
+
+    // Admin edits of title, authors and series apply to the Kobo too.
+    withOverrides(book, overrides) {
+        if (!book || typeof(this.worker.applyMetadataOverrideToBook) !== 'function')
+            return book;
+        return this.worker.applyMetadataOverrideToBook(Object.assign({}, book), overrides);
+    }
+
+    async bookRecord(bookUid) {
+        return this.withOverrides(await this.worker.getBookRecordByUid(bookUid), await this.metadataOverrides());
+    }
+
+    // The record-derived metadata a device was told. Description, publisher and year come from the
+    // file itself and change only with it, which is re-announced through the file fingerprint and size.
+    metadataHash(book) {
+        return crypto.createHash('sha1')
+            .update(JSON.stringify([book.title || '', book.author || '', book.series || '', String(book.serno || ''), book.lang || '']))
+            .digest('hex').slice(0, 16);
+    }
+
+    // An INPX update can rewrite a book's line, and with it its _uid. When a listed uid no longer
+    // resolves but a device row remembers the book's `sourceId:libid`, find the new record and move
+    // the profile's list entries, reader progress, bookmarks and device rows over to the new uid.
+    // The Kobo id comes from the libid, so the device notices nothing.
+    async rekeyOrphans(device, orphanUids) {
+        if (typeof(this.worker.findBookRecordsByStableKeys) !== 'function')
+            return false;
+        const now = Date.now();
+        const keys = new Map();
+        for (const other of this.store.data.devices.filter(item => item.userId === device.userId)) {
+            for (const row of Object.values(other.books)) {
+                // Without a libid the stable key is the old _uid itself: nothing to look up.
+                if (!orphanUids.has(row.bookUid) || row.stableKey === row.bookUid || !row.stableKey.includes(':'))
+                    continue;
+                const checked = this.rekeyChecked.get(row.stableKey);
+                if (!checked || now - checked >= rekeyRetryMs)
+                    keys.set(row.stableKey, row.bookUid);
+            }
+        }
+        if (!keys.size)
+            return false;
+        if (this.rekeyChecked.size > rekeyCheckedLimit)
+            this.rekeyChecked.clear();
+        for (const key of keys.keys())
+            this.rekeyChecked.set(key, now);
+
+        const found = await this.worker.findBookRecordsByStableKeys([...keys.keys()]);
+        const mapping = {};
+        for (const [key, oldUid] of keys) {
+            const rows = found[key] || [];
+            // Several records with one libid (copies in other formats): ambiguous, stay an orphan.
+            if (rows.length === 1 && rows[0]._uid && rows[0]._uid !== oldUid) {
+                mapping[oldUid] = rows[0]._uid;
+                this.rekeyChecked.delete(key);
+            }
+        }
+        if (!Object.keys(mapping).length)
+            return false;
+
+        await this.worker.readingListStore.rekeyBooks(device.userId, mapping);
+        await this.store.mutate((data) => {
+            for (const other of data.devices.filter(item => item.userId === device.userId)) {
+                for (const row of Object.values(other.books)) {
+                    if (mapping[row.bookUid])
+                        row.bookUid = mapping[row.bookUid];
+                }
+            }
+        });
+        log(`Kobo: ${Object.keys(mapping).length} listed book(s) of profile ${device.userId} moved to their re-indexed records`);
+        return true;
     }
 
     targetFormat(book) {
@@ -279,7 +383,14 @@ class KoboService {
             }, error => {
                 entry.error = error;
                 entry.at = Date.now();
-                log(LM_WARN, `Kobo: cannot prepare ${item.bookUid}: ${error.message}`);
+                if (busyConversionCodes.has(error.code)) {
+                    // The shared converter was busy: nothing wrong with the book, try again next time.
+                    entry.busy = true;
+                    if (this.prepared.get(key) === entry)
+                        this.prepared.delete(key);
+                } else {
+                    log(LM_WARN, `Kobo: cannot prepare ${item.bookUid}: ${error.message}`);
+                }
                 return null;
             });
             this.prepared.set(key, entry);
@@ -291,12 +402,79 @@ class KoboService {
         }
 
         if (entry.result || entry.error)
-            return {ready: entry.result || null, failed: !!entry.error};
+            return {ready: entry.result || null, failed: !!entry.error, busy: !!entry.busy};
 
         const remaining = deadline - Date.now();
         if (remaining > 0)
             await Promise.race([entry.promise, sleep(remaining)]);
-        return {ready: entry.result || null, failed: !!entry.error, pending: !entry.result && !entry.error};
+        return {ready: entry.result || null, failed: !!entry.error, busy: !!entry.busy, pending: !entry.result && !entry.error};
+    }
+
+    // ------------------------------------------------------------------ pre-warm
+    // Books added to a list bound to a device start preparing right away, so the next sync can
+    // announce them instead of waiting for the conversion. Fire and forget: errors are only logged.
+    prewarmBooks(userId, listId, bookUids = []) {
+        const data = this.store.data;
+        if (!data || !data.devices.some(device => device.userId === userId && device.listIds.includes(listId)))
+            return;
+        this.enqueuePrewarm(userId, bookUids);
+    }
+
+    // Every book of the given lists (a list was just bound, or lists were imported).
+    prewarmLists(userId, listIds = null) {
+        (async() => {
+            await this.store.load();
+            const bound = new Set(this.store.data.devices.filter(device => device.userId === userId)
+                .flatMap(device => device.listIds));
+            const store = this.worker.readingListStore;
+            for (const listId of (listIds || [...bound])) {
+                if (!bound.has(listId))
+                    continue;
+                const list = await store.getList(userId, listId);
+                if (list)
+                    this.enqueuePrewarm(userId, store.normalizeEntries(list.books).map(entry => entry.bookUid));
+            }
+        })().catch(e => log(LM_WARN, `Kobo: cannot queue books for preparation: ${e.message}`));
+    }
+
+    enqueuePrewarm(userId, bookUids = []) {
+        // Books a device of this profile already has are prepared already.
+        const sent = new Set(this.store.data.devices.filter(device => device.userId === userId)
+            .flatMap(device => Object.values(device.books).map(row => row.bookUid)));
+        for (const bookUid of bookUids) {
+            if (bookUid && !sent.has(bookUid) && this.prewarmQueue.size < prewarmQueueLimit)
+                this.prewarmQueue.add(bookUid);
+        }
+        if (this.prewarmQueue.size && !this.prewarmRunning) {
+            this.prewarmRunning = this.runPrewarm()
+                .catch(e => log(LM_WARN, `Kobo: book preparation stopped: ${e.message}`))
+                .finally(() => {
+                    this.prewarmRunning = null;
+                });
+        }
+    }
+
+    async runPrewarm() {
+        const fingerprints = new Map();
+        while (this.prewarmQueue.size) {
+            const bookUid = this.prewarmQueue.values().next().value;
+            this.prewarmQueue.delete(bookUid);
+            const book = await this.worker.getBookRecordByUid(bookUid);
+            const target = book && this.targetFormat(book);
+            if (!target)
+                continue;
+            const fingerprint = await this.conversionFingerprint(book, target, fingerprints);
+            const item = {bookUid, book};
+            for (let attempt = 1; attempt <= prewarmAttempts; attempt++) {
+                // Waits for this book's conversion; a slot taken by a running sync is retried.
+                let prepared = await this.prepare(item, Date.now() + this.prewarmBusyRetryMs, fingerprint);
+                while (prepared.pending && !prepared.ready && this.prepared.has(this.preparedKey(bookUid, target.convertTo, fingerprint)))
+                    prepared = await this.prepare(item, Date.now() + this.prewarmBusyRetryMs, fingerprint);
+                if (prepared.ready || (prepared.failed && !prepared.busy))
+                    break;
+                await sleep(this.prewarmBusyRetryMs);
+            }
+        }
     }
 
     async readExtraMetadata(book) {
@@ -422,16 +600,24 @@ class KoboService {
     }
 
     // ------------------------------------------------------------------ collections
-    tagFor(list, wanted, device) {
+    tagFor(list, wanted, device, orphanUids = new Map()) {
         const items = [];
         for (const item of wanted.values()) {
             const row = device.books[item.uuid];
-            if (item.listIds.includes(list.id) && row && !row.deletedOnDevice)
+            if (item.listIds.includes(list.id) && row && !row.deletedOnDevice && !row.collectionRemoved.includes(list.id))
                 items.push({RevisionId: item.uuid, Type: 'ProductRevisionTagItem'});
         }
+        // Books missing from the DB for a while (re-index) keep their place in the collection.
+        for (const [uuid, row] of Object.entries(device.books)) {
+            const listIds = orphanUids.get(row.bookUid);
+            if (listIds && listIds.includes(list.id) && !row.deletedOnDevice && !wanted.has(uuid) && !row.collectionRemoved.includes(list.id))
+                items.push({RevisionId: uuid, Type: 'ProductRevisionTagItem'});
+        }
+        // Stable order, so a book dropping in and out of the DB doesn't count as a collection change.
+        items.sort((a, b) => a.RevisionId.localeCompare(b.RevisionId));
         return {
             Created: koboTime(list.createdAt),
-            Id: uuidv5(`list:${list.id}`),
+            Id: this.tagId(list.id),
             Items: items,
             LastModified: koboTime(),
             Name: list.name,
@@ -439,12 +625,16 @@ class KoboService {
         };
     }
 
-    syncTags(device, lists, wanted, results) {
+    tagId(listId) {
+        return uuidv5(`list:${listId}`);
+    }
+
+    syncTags(device, lists, wanted, results, orphanUids) {
         const tags = Object.assign({}, device.tags || {});
         const current = new Set();
         for (const list of lists) {
             current.add(list.id);
-            const tag = this.tagFor(list, wanted, device);
+            const tag = this.tagFor(list, wanted, device, orphanUids);
             const signature = crypto.createHash('sha1').update(JSON.stringify([tag.Name, tag.Items])).digest('hex');
             const known = tags[list.id];
             if (known && known.signature === signature)
@@ -467,7 +657,14 @@ class KoboService {
         const fresh = !incoming || incoming.d !== device.id || incoming.g !== device.generation;
         const {lists, wanted, orphanUids} = await this.collectWanted(device);
         const startBooks = JSON.parse(JSON.stringify(device.books));
+        const startTags = JSON.parse(JSON.stringify(device.tags || {}));
         const books = JSON.parse(JSON.stringify(device.books));
+        // A book removed from a collection on the device stays out of it until it leaves that list here.
+        for (const [uuid, row] of Object.entries(books)) {
+            const item = wanted.get(uuid);
+            const listIds = (item ? item.listIds : orphanUids.get(row.bookUid) || []);
+            row.collectionRemoved = (row.collectionRemoved || []).filter(listId => listIds.includes(listId));
+        }
         if (fresh) {
             // The device lost its library (new setup, sign-out, forced resync): send everything
             // again, but keep books the reader deleted on the device suppressed.
@@ -525,7 +722,8 @@ class KoboService {
             const row = {
                 bookUid: item.bookUid, stableKey: item.stableKey, title: item.book.title || '',
                 convertTo: prepared.ready.convertTo, koboFormats: prepared.ready.koboFormats, size: prepared.ready.size,
-                fingerprint: fingerprint || '', sentAt: now, status: '', listRead: item.read, detached: false, deletedOnDevice: false,
+                fingerprint: fingerprint || '', metaHash: this.metadataHash(item.book),
+                sentAt: now, status: '', listRead: item.read, detached: false, deletedOnDevice: false, collectionRemoved: [],
             };
             const entitlement = {
                 BookEntitlement: this.bookEntitlement(item.uuid, row),
@@ -546,41 +744,52 @@ class KoboService {
             newItems++;
         }
 
-        // 3) files that changed after they were announced: edited fb2cng config or version, another
-        //    target format, or a flushed cache regenerated with a different size (noticed on download)
+        // 3) books that changed after they were announced. The file: edited fb2cng config or version,
+        //    another target format, or a flushed cache regenerated with a different size (noticed on
+        //    download). The metadata: admin title/author/series edits, or a re-index that changed them.
         let refreshed = 0;
         for (const item of wanted.values()) {
             const row = books[item.uuid];
             if (more || !row || row.sentAt === now || row.deletedOnDevice)
                 continue;
+            const metaHash = this.metadataHash(item.book);
+            // Announced before metadata hashes were recorded: adopt the current one.
+            row.metaHash = row.metaHash || metaHash;
+            const metaChanged = (row.metaHash !== metaHash);
             const target = this.targetFormat(item.book);
             const fingerprint = target && await this.conversionFingerprint(item.book, target, fingerprints);
-            if (!target || !fingerprint)
-                continue;
-            const sameFormat = (target.convertTo === row.convertTo);
-            if (!row.fingerprint && sameFormat && !row.fileChanged) {
-                // Announced before fingerprints were recorded: adopt the current one.
-                row.fingerprint = fingerprint;
-                continue;
+            let fileChanged = false;
+            if (target && fingerprint) {
+                const sameFormat = (target.convertTo === row.convertTo);
+                if (!row.fingerprint && sameFormat && !row.fileChanged)
+                    row.fingerprint = fingerprint;
+                else
+                    fileChanged = (row.fingerprint !== fingerprint || !sameFormat || row.fileChanged);
             }
-            if (row.fingerprint === fingerprint && sameFormat && !row.fileChanged)
+            if (!fileChanged && !metaChanged)
                 continue;
             if (results.length >= syncItemLimit) {
                 more = true;
                 break;
             }
-            const prepared = await this.prepare(item, deadline, fingerprint);
-            if (!prepared.ready)
-                continue;
-            Object.assign(row, {
-                convertTo: prepared.ready.convertTo, koboFormats: prepared.ready.koboFormats, size: prepared.ready.size,
-                fingerprint, fileChanged: false, changedAt: now,
-            });
+            if (fileChanged) {
+                const prepared = await this.prepare(item, deadline, fingerprint);
+                if (prepared.ready) {
+                    Object.assign(row, {
+                        convertTo: prepared.ready.convertTo, koboFormats: prepared.ready.koboFormats, size: prepared.ready.size,
+                        fingerprint, fileChanged: false,
+                    });
+                    refreshed++;
+                } else if (!metaChanged) {
+                    continue;
+                }
+                // Otherwise the new metadata goes now, the new file on a later sync.
+            }
+            Object.assign(row, {metaHash, title: item.book.title || row.title, changedAt: now});
             results.push({ChangedEntitlement: {
                 BookEntitlement: this.bookEntitlement(item.uuid, row),
                 BookMetadata: await this.bookMetadata(req, token, item.uuid, item.book, row),
             }});
-            refreshed++;
         }
 
         // 4) "read" ticked or unticked in the web UI since the last sync
@@ -604,7 +813,7 @@ class KoboService {
         }
 
         // 5) one collection per bound list (computed against the updated book set)
-        const tags = this.syncTags(Object.assign({}, device, {books, tags: tagsBefore}), lists, wanted, results);
+        const tags = this.syncTags(Object.assign({}, device, {books, tags: tagsBefore}), lists, wanted, results, orphanUids);
 
         await this.store.saveSync(device.id, (target, data) => {
             // A state PUT or delete may have landed while conversions were awaited: keep what it changed.
@@ -613,10 +822,15 @@ class KoboService {
                 const start = startBooks[uuid];
                 if (!live || !start)
                     continue;
-                for (const field of ['deletedOnDevice', 'status', 'listRead', 'fileChanged']) {
-                    if (live[field] !== start[field])
+                for (const field of ['deletedOnDevice', 'status', 'listRead', 'fileChanged', 'collectionRemoved']) {
+                    if (JSON.stringify(live[field]) !== JSON.stringify(start[field]))
                         row[field] = live[field];
                 }
+            }
+            // A collection renamed or deleted on the device meanwhile is sent again on the next sync.
+            for (const listId of Object.keys(Object.assign({}, startTags, target.tags || {}))) {
+                if (JSON.stringify((target.tags || {})[listId]) !== JSON.stringify(startTags[listId]))
+                    delete tags[listId];
             }
             target.books = books;
             target.tags = tags;
@@ -653,7 +867,7 @@ class KoboService {
     async metadataRequest(req, res, device, token) {
         const uuid = req.params.uuid;
         const row = device.books[uuid];
-        const book = row && await this.worker.getBookRecordByUid(row.bookUid);
+        const book = row && await this.bookRecord(row.bookUid);
         if (!book)
             return await this.storeOr(req, res, device, token, () => sendJson(res, [], 404));
         sendJson(res, [await this.bookMetadata(req, token, uuid, book, row)]);
@@ -681,6 +895,7 @@ class KoboService {
         const now = new Date().toISOString();
         const result = {EntitlementId: uuid};
         let finished = false;
+        let progress = null;
         const saved = await this.store.saveSync(device.id, (target, data) => {
             const rows = data.states[target.userId] = data.states[target.userId] || {};
             const state = rows[uuid] = rows[uuid] || this.emptyState(now);
@@ -696,6 +911,8 @@ class KoboService {
                     state.bookmark.Location = {Value: String(location.Value || '').slice(0, 512), Type: String(location.Type || '').slice(0, 64), Source: String(location.Source || '').slice(0, 512)};
                 state.bookmark.lastModified = now;
                 result.CurrentBookmarkResult = {Result: 'Success'};
+                if (Number.isFinite(Number(bookmark.ProgressPercent)))
+                    progress = {percent: state.bookmark.ProgressPercent, modified: this.deviceTime(bookmark.LastModified, now)};
             }
             const statistics = incoming.Statistics;
             if (statistics && typeof(statistics) === 'object') {
@@ -729,12 +946,39 @@ class KoboService {
             return state;
         });
 
+        if (progress)
+            await this.syncWebProgress(device.userId, row.bookUid, progress.percent, progress.modified);
         if (finished)
             await this.markRead(device.userId, row.bookUid);
 
         result.LastModified = koboTime(saved ? saved.lastModified : now);
         result.PriorityTimestamp = koboTime(saved ? saved.priorityTimestamp : now);
         sendJson(res, {RequestResult: 'Success', UpdateResults: [result]});
+    }
+
+    // When the reader turned the page on the device (it may sync later); a clock far ahead counts as now.
+    deviceTime(value, now) {
+        const time = Date.parse(String(value || ''));
+        return (Number.isFinite(time) && time <= Date.now() + 5*60*1000 ? new Date(time).toISOString() : now);
+    }
+
+    // Kobo progress shows up in the web reader's "continue reading". The newer side wins (the store
+    // keeps a newer web position). Kobo locations can't be mapped onto the FB2 reader's pages, so only
+    // the percent carries over and the web reader opens at that percent.
+    async syncWebProgress(userId, bookUid, percent, modified) {
+        const store = this.worker.readingListStore;
+        try {
+            const value = Math.max(0, Math.min(1, percent / 100));
+            const {progress: current, progressGeneration} = await store.getReaderState(userId, bookUid);
+            if (Math.abs((current.percent || 0) - value) < 0.0001 || (!current.updatedAt && value <= 0))
+                return;
+            await store.updateReaderProgress(userId, bookUid, {
+                percent: value, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '',
+                updatedAt: modified, generation: progressGeneration,
+            });
+        } catch (e) {
+            log(LM_WARN, `Kobo: cannot update reader progress of ${bookUid}: ${e.message}`);
+        }
     }
 
     async markRead(userId, bookUid) {
@@ -762,6 +1006,55 @@ class KoboService {
         });
         await this.markRead(device.userId, row.bookUid);
         res.sendStatus(204);
+    }
+
+    // ------------------------------------------------------------------ collection edits on the device
+    // Collections are read-only from the device: inpx-web lists are never changed from here. A bound
+    // list's collection that was renamed or deleted on the device is sent again as the list defines
+    // it; a book removed from it stays out of it. Collections made on the device stay there.
+    boundListId(device, tagId) {
+        return device.listIds.find(listId => this.tagId(listId) === tagId) || null;
+    }
+
+    tagItemUuids(req) {
+        const items = (req.body && Array.isArray(req.body.Items) ? req.body.Items : []);
+        return items.map(item => String((item && item.RevisionId) || '')).filter(Boolean);
+    }
+
+    async createTag(req, res, device, token) {
+        await this.storeOr(req, res, device, token, () => sendJson(res, crypto.randomUUID(), 201));
+    }
+
+    async updateTag(req, res, device, token) {
+        const listId = this.boundListId(device, req.params.tagId);
+        if (!listId)
+            return await this.storeOr(req, res, device, token, () => res.status(200).send(' '));
+        await this.store.saveSync(device.id, (target) => {
+            // No stored signature: the next sync sends the collection again (ChangedTag, or NewTag after a delete).
+            if (req.method === 'DELETE')
+                delete target.tags[listId];
+            else if (target.tags[listId])
+                target.tags[listId] = Object.assign({}, target.tags[listId], {signature: ''});
+        });
+        res.status(200).send(' ');
+    }
+
+    async editTagItems(req, res, device, token, removed) {
+        const listId = this.boundListId(device, req.params.tagId);
+        if (!listId)
+            return await this.storeOr(req, res, device, token, () => res.status(removed ? 200 : 201).send(''));
+        const uuids = new Set(this.tagItemUuids(req));
+        await this.store.saveSync(device.id, (target) => {
+            for (const uuid of uuids) {
+                const row = target.books[uuid];
+                if (!row)
+                    continue;
+                const others = row.collectionRemoved.filter(id => id !== listId);
+                // Putting a book back into the collection on the device lifts its suppression.
+                row.collectionRemoved = (removed ? others.concat(listId) : others);
+            }
+        });
+        res.status(removed ? 200 : 201).send('');
     }
 
     async cover(req, res, device) {
@@ -991,6 +1284,11 @@ class KoboService {
         router.get('/v1/initialization', handle((req, res, device, token) => this.initialization(req, res, device, token)));
         router.post(['/v1/auth/device', '/v1/auth/refresh'], handle((req, res, device, token) => this.auth(req, res, device, token)));
         router.get('/v1/library/sync', handle((req, res, device, token) => this.sync(req, res, device, token)));
+        router.post('/v1/library/tags', handle((req, res, device, token) => this.createTag(req, res, device, token)));
+        router.put('/v1/library/tags/:tagId', handle((req, res, device, token) => this.updateTag(req, res, device, token)));
+        router.delete('/v1/library/tags/:tagId', handle((req, res, device, token) => this.updateTag(req, res, device, token)));
+        router.post('/v1/library/tags/:tagId/items', handle((req, res, device, token) => this.editTagItems(req, res, device, token, false)));
+        router.post('/v1/library/tags/:tagId/items/delete', handle((req, res, device, token) => this.editTagItems(req, res, device, token, true)));
         router.get('/v1/library/:uuid/metadata', handle((req, res, device, token) => this.metadataRequest(req, res, device, token)));
         router.get('/v1/library/:uuid/state', handle((req, res, device, token) => this.getState(req, res, device, token)));
         router.put('/v1/library/:uuid/state', handle((req, res, device, token) => this.putState(req, res, device, token)));
@@ -1002,7 +1300,7 @@ class KoboService {
             this.storeOr(req, res, device, token, () => sendJson(res, {Benefits: {}}))));
         router.all('/v1/analytics/gettests', handle((req, res, device, token) => this.storeOr(req, res, device, token,
             () => sendJson(res, {Result: 'Success', TestKey: String(req.headers['x-kobo-userkey'] || ''), Tests: {}}))));
-        // Store, wishlist, recommendations, collection edits made on the device, …
+        // Store, wishlist, recommendations, …
         router.all('*', handle((req, res, device, token) => this.storeOr(req, res, device, token, () => sendJson(res, {}))));
 
         return router;
@@ -1022,4 +1320,4 @@ function init(app, config, worker, security) {
     return service;
 }
 
-module.exports = {init, isAuthorizedRequest, rootPath, uuidv5, stableKey, KoboService};
+module.exports = {init, isAuthorizedRequest, rootPath, uuidv5, stableKey, maskTokens, KoboService};

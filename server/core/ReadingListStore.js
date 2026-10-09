@@ -1821,6 +1821,62 @@ class ReadingListStore {
         };
     }
 
+    // A book's _uid changes when an INPX update rewrites its line. Move the profile's list entries
+    // (keeping order and the read flag), reader progress, bookmarks and the book's metadata edits
+    // from old to new uids.
+    async rekeyBooks(userId = '', mapping = {}) {
+        return await this.withProgressMutation(async() => {
+            const {data, user} = await this.resolveUser(userId);
+            const target = data.users.find((item) => item.id === user.id);
+            const pairs = new Map(Object.entries(mapping || {})
+                .map(([from, to]) => [this.normalizeBookUid(from), this.normalizeBookUid(to)])
+                .filter(([from, to]) => from && to && from !== to));
+            if (!target || !pairs.size)
+                return {lists: 0};
+
+            let lists = 0;
+            for (const list of data.lists.filter((item) => item.userId === target.id)) {
+                const entries = this.normalizeEntries(list.books);
+                if (!entries.some((entry) => pairs.has(entry.bookUid)))
+                    continue;
+                const byUid = new Map();
+                list.books = [];
+                for (const entry of entries) {
+                    const bookUid = pairs.get(entry.bookUid) || entry.bookUid;
+                    const known = byUid.get(bookUid);
+                    if (known) {
+                        known.read = known.read || entry.read;
+                        continue;
+                    }
+                    const row = {bookUid, read: entry.read};
+                    byUid.set(bookUid, row);
+                    list.books.push(row);
+                }
+                list.updatedAt = this.nowIso();
+                lists++;
+            }
+            // Admin metadata edits are keyed by uid too; the old uid no longer exists.
+            data.metadataOverrides = this.normalizeMetadataOverrides(data.metadataOverrides);
+            for (const [from, to] of pairs) {
+                if (utilsHasProp(data.metadataOverrides, from)) {
+                    if (!utilsHasProp(data.metadataOverrides, to))
+                        data.metadataOverrides[to] = data.metadataOverrides[from];
+                    delete data.metadataOverrides[from];
+                }
+                for (const field of ['readerProgress', 'readerBookmarks']) {
+                    const rows = target[field];
+                    if (!rows || typeof(rows) !== 'object' || !utilsHasProp(rows, from))
+                        continue;
+                    if (!utilsHasProp(rows, to))
+                        rows[to] = rows[from];
+                    delete rows[from];
+                }
+            }
+            await this.save(data);
+            return {lists};
+        });
+    }
+
     async addBooks(userId = '', listId, bookUids = []) {
         const {data, user} = await this.resolveUser(userId);
         const item = data.lists.find((row) => row.id === listId && row.userId === user.id);

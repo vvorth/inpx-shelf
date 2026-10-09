@@ -8,6 +8,7 @@ function targets(config) {
         'secret.key': path.join(config.dataDir, 'secret.key'),
         'reading-lists.json': path.join(config.dataDir, 'reading-lists.json'),
         'discovery-cache.json': path.join(config.dataDir, 'discovery-cache.json'),
+        'kobo-sync.json': path.join(config.dataDir, 'kobo-sync.json'),
     };
 }
 

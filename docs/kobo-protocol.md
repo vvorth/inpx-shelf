@@ -217,12 +217,12 @@ How changes propagate:
 | # | Calibre-Web quirk | inpx-web |
 |---|---|---|
 | 1 | Removing a book from a sync shelf doesn't remove it from the device; only collection membership changes | The bound lists are the source of truth: a book leaving every list is removed, unless the device's "keep books on the device" option is on |
-| 2 | Change detection relies on edit hooks; changes made outside Calibre-Web (desktop Calibre) aren't noticed | The sync diffs the bound lists against what the device was told on every request; file changes are detected by conversion fingerprint and size |
+| 2 | Change detection relies on edit hooks; changes made outside Calibre-Web (desktop Calibre) aren't noticed | The sync diffs the bound lists against what the device was told on every request; file changes are detected by conversion fingerprint and size, metadata changes (including admin edits) by a hash of the record's fields |
 | 3 | `archive_last_modified` is stored in the cursor but never used | The cursor only carries device id, generation and the store token |
 | 4 | `not ub.Shelf.kobo_sync` in `sync_shelves` is a Python `not`, not SQL `NOT`, so that query likely never returns rows | Collections are diffed per list by a signature of name and items |
 | 5 | `SyncToken.from_headers` validates the wrong object against the data schema | n/a |
 | 6 | Sync state is per user: two devices on one account fight over `kobo_synced_books` | Sync state is per device |
-| 7 | KEPUB conversion runs synchronously inside the sync request and can time out large first syncs | Books are announced only once their file is ready; conversions run in the background (2 at a time, 20 s wait per sync) and pending ones don't set `x-kobo-sync: continue` |
+| 7 | KEPUB conversion runs synchronously inside the sync request and can time out large first syncs | Books are announced only once their file is ready; conversions run in the background (2 at a time, 20 s wait per sync) and pending ones don't set `x-kobo-sync: continue`. Adding a book to a bound list starts its conversion right away |
 
 ## 12. Minimal recipe
 
