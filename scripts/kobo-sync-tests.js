@@ -4,11 +4,14 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const express = require('express');
+const jpeg = require('jpeg-js');
+const {PNG} = require('pngjs');
+const yazl = require('yazl');
 const Security = require('../server/core/Security');
 const ReadingListStore = require('../server/core/ReadingListStore');
 const kobo = require('../server/core/kobo');
 
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZcQAAAAASUVORK5CYII=', 'base64');
+const png = makePng(1, 1);
 
 // A Kobo talks to /kobo/<token>/…; this fixture plays the device against a real
 // reading-list store, with the library and the converter stubbed.
@@ -41,7 +44,8 @@ async function fixture(options, test) {
                     await new Promise(resolve => setTimeout(resolve, 300));
                 const name = `${uid}.${format || books.get(uid).ext}`;
                 const file = path.join(dir, 'prepared', name);
-                await fs.outputFile(file, `content of ${name}${output.suffix}`);
+                await fs.outputFile(file, (output.authors && output.authors[uid])
+                    ? await makeEpub(output.authors[uid]) : `content of ${name}${output.suffix}`);
                 return {book: books.get(uid), rawFile: file, downFileName: format === 'kepub' ? `${uid}.kepub.epub` : `${uid}.epub`};
             },
         };
@@ -126,7 +130,9 @@ async function testKoboSyncListsAndDownloads() {
         assert.ok(download.headers.get('content-disposition').includes('.kepub.epub'));
         const cover = await call(`/${fb2Uuid}/150/200/false/image.jpg`);
         assert.strictEqual(cover.status, 200);
-        assert.ok(Buffer.from(await cover.arrayBuffer()).equals(png));
+        assert.strictEqual(cover.headers.get('content-type'), 'image/jpeg');
+        const decodedCover = jpeg.decode(Buffer.from(await cover.arrayBuffer()));
+        assert.deepStrictEqual([decodedCover.width, decodedCover.height], [1, 1], 'a small PNG cover becomes a JPEG');
         assert.strictEqual((await call(`/${kobo.uuidv5('main:999')}/150/200/false/image.jpg`)).status, 404);
         const metadata = await call(`/v1/library/${epubUuid}/metadata`);
         assert.strictEqual((await metadata.json())[0].Title, 'EPUB book');
@@ -601,6 +607,69 @@ async function testKoboReannouncesMetadataEdits() {
     });
 }
 
+// A minimal EPUB whose OPF lists the given creators: a string, or [name, opf:role].
+async function makeEpub(creators) {
+    const zip = new yazl.ZipFile();
+    zip.addBuffer(Buffer.from('application/epub+zip'), 'mimetype', {compress: false});
+    zip.addBuffer(Buffer.from('<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+        + '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'),
+    'META-INF/container.xml');
+    const items = creators.map(item => (Array.isArray(item)
+        ? `<dc:creator opf:role="${item[1]}">${item[0]}</dc:creator>` : `<dc:creator>${item}</dc:creator>`)).join('');
+    zip.addBuffer(Buffer.from('<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0">'
+        + `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><dc:title>T</dc:title>${items}</metadata>`
+        + '</package>'), 'OEBPS/content.opf');
+    zip.end();
+    const chunks = [];
+    for await (const chunk of zip.outputStream)
+        chunks.push(chunk);
+    return Buffer.concat(chunks);
+}
+
+async function testKoboAuthorsComeFromTheConvertedFile() {
+    await fixture({}, async({service, store, worker, listA, output, sync, call}) => {
+        const WebWorker = require('../server/core/WebWorker');
+        worker.metadataBookUid = WebWorker.prototype.metadataBookUid;
+        worker.applyMetadataOverrideToBook = WebWorker.prototype.applyMetadataOverrideToBook;
+        output.authors = {'fb2-uid': ['Автор Тестов', ['Второй Автор', 'aut'], ['Переводчик Иванов', 'trl']]};
+        await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
+        const fb2Uuid = kobo.uuidv5('main:101');
+        const epubUuid = kobo.uuidv5('main:102');
+        const metadataOf = (items, kind, uuid) => items.find(item => item[kind] && item[kind].BookEntitlement.Id === uuid)[kind].BookMetadata;
+
+        const first = await sync({fresh: true});
+        const fb2 = metadataOf(first.items, 'NewEntitlement', fb2Uuid);
+        assert.deepStrictEqual(fb2.Contributors, ['Автор Тестов', 'Второй Автор'], 'the file\'s authors, translators left out');
+        assert.deepStrictEqual(fb2.ContributorRoles, [{Name: 'Автор Тестов'}, {Name: 'Второй Автор'}]);
+        assert.deepStrictEqual(metadataOf(first.items, 'NewEntitlement', epubUuid).Contributors, ['Author'], 'no creators in the file: the record');
+        assert.deepStrictEqual((await (await call(`/v1/library/${fb2Uuid}/metadata`)).json())[0].Contributors, ['Автор Тестов', 'Второй Автор']);
+        assert.deepStrictEqual((await sync()).items, []);
+
+        // An admin author edit wins over the file.
+        await store.updateMetadataOverride('fb2-uid', {author: 'Редактор Админов'});
+        let next = await sync();
+        assert.deepStrictEqual(entitlementIds(next.items, 'ChangedEntitlement'), [fb2Uuid]);
+        assert.deepStrictEqual(next.items[0].ChangedEntitlement.BookMetadata.Contributors, ['Редактор Админов']);
+        assert.deepStrictEqual((await sync()).items, []);
+
+        // A book announced before file authors were read (record's "Last First" sent) gets them
+        // once, as a metadata change with the same file.
+        const row = service.store.data.devices[0].books[epubUuid];
+        const size = row.size;
+        output.authors['epub-uid'] = ['Имя Фамилия'];
+        service.prepared.clear();
+        delete row.fileAuthors;
+        row.metaHash = service.metadataHash(await service.bookRecord('epub-uid'));
+        next = await sync();
+        assert.deepStrictEqual(entitlementIds(next.items, 'ChangedEntitlement'), [epubUuid]);
+        assert.deepStrictEqual(next.items[0].ChangedEntitlement.BookMetadata.Contributors, ['Имя Фамилия']);
+        assert.strictEqual(next.items[0].ChangedEntitlement.BookMetadata.DownloadUrls[0].Size, size);
+        assert.deepStrictEqual((await sync()).items, []);
+        const saved = service.store.normalizeData(JSON.parse(JSON.stringify(service.store.data)));
+        assert.deepStrictEqual(saved.devices[0].books[epubUuid].fileAuthors, ['Имя Фамилия']);
+    });
+}
+
 async function testKoboProgressReachesWebReader() {
     await fixture({}, async({store, listA, call, sync}) => {
         await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
@@ -711,6 +780,63 @@ async function testKoboCollectionsAreReadOnlyFromDevice() {
     });
 }
 
+function makePng(width, height) {
+    const image = new PNG({width, height});
+    image.data.fill(200);
+    return PNG.sync.write(image);
+}
+
+async function testKoboResizesCovers() {
+    await fixture({}, async({config, worker, store, listA, call, sync}) => {
+        await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
+        await sync();
+        const fb2Uuid = kobo.uuidv5('main:101');
+        const epubUuid = kobo.uuidv5('main:102');
+        const small = jpeg.encode({width: 100, height: 150, data: Buffer.alloc(100*150*4, 90)}, 90).data;
+        const covers = {'fb2-uid': {contentType: 'image/png', data: makePng(600, 900)}, 'epub-uid': {contentType: 'image/jpeg', data: small}};
+        let coverCalls = 0;
+        worker.getBookCover = async book => (coverCalls++, covers[book._uid]);
+        const fetchCover = async suffix => {
+            const response = await call(suffix);
+            assert.strictEqual(response.status, 200);
+            return {type: response.headers.get('content-type'), data: Buffer.from(await response.arrayBuffer())};
+        };
+        const size = data => {
+            const decoded = jpeg.decode(data);
+            return [decoded.width, decoded.height];
+        };
+
+        const first = await fetchCover(`/${fb2Uuid}/150/200/false/image.jpg`);
+        assert.strictEqual(first.type, 'image/jpeg');
+        assert.deepStrictEqual(size(first.data), [133, 200], 'fits inside the requested box, aspect kept');
+        const again = await fetchCover(`/${fb2Uuid}/150/200/false/image.jpg`);
+        assert.ok(again.data.equals(first.data));
+        assert.deepStrictEqual(size((await fetchCover(`/${fb2Uuid}/355/530/60/false/image.jpg`)).data), [353, 530]);
+        assert.deepStrictEqual(size((await fetchCover(`/${fb2Uuid}/1200/1800/false/image.jpg`)).data), [600, 900], 'never enlarged');
+        assert.strictEqual(coverCalls, 1, 'the shared cover is made once and reused for every size');
+        const cached = (await fs.readdir(config.coverDir)).filter(name => name.includes('-kobo-')).sort();
+        assert.strictEqual(cached.length, 3);
+        assert.ok(cached.some(name => name.endsWith('-kobo-150x200-q85.jpg')));
+        assert.ok(cached.some(name => name.endsWith('-kobo-355x530-q60.jpg')));
+
+        const fitting = await fetchCover(`/${epubUuid}/150/200/false/image.jpg`);
+        assert.ok(fitting.data.equals(small), 'a JPEG that already fits is sent as is');
+        assert.ok((await fetchCover(`/${epubUuid}/0/0/false/image.jpg`)).data.equals(small), 'unusable size: the original');
+    });
+
+    // A cover that can't be decoded (GIF here) is served at its original size and type.
+    await fixture({}, async({worker, store, listA, call, sync}) => {
+        await store.addBooks('default', listA.id, ['fb2-uid']);
+        await sync();
+        const gif = Buffer.from('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64');
+        worker.getBookCover = async() => ({contentType: 'image/gif', data: gif});
+        const response = await call(`/${kobo.uuidv5('main:101')}/150/200/false/image.jpg`);
+        assert.strictEqual(response.status, 200);
+        assert.strictEqual(response.headers.get('content-type'), 'image/gif');
+        assert.ok(Buffer.from(await response.arrayBuffer()).equals(gif));
+    });
+}
+
 async function testKoboTokensAreMaskedInLogs() {
     const token = '0123456789abcdef0123456789abcdef';
     assert.strictEqual(kobo.maskTokens(`/kobo/${token}/v1/library/sync?x=1`), '/kobo/***/v1/library/sync?x=1');
@@ -776,6 +902,8 @@ module.exports = [
     testKoboProgressReachesWebReader,
     testKoboCollectionsAreReadOnlyFromDevice,
     testKoboBackupEntryIsValidated,
+    testKoboResizesCovers,
+    testKoboAuthorsComeFromTheConvertedFile,
 ];
 
 if (require.main === module) {

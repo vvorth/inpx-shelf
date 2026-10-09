@@ -13,8 +13,8 @@ the Kobo's built-in sync (no USB, no sideloading), modelled on Calibre-Web's Kob
   the code and the tests, which show the expected behaviour.
 
 > **Status:** Option C was chosen. **Phase 1 and Phase 2 are implemented** (see [§6](#6-implementation); Phase 2
-> decisions in [§4.11](#411-phase-2-decisions-and-work-order)). Phase 3 hasn't started, and nothing has been tried
-> on a physical Kobo yet.
+> decisions in [§4.11](#411-phase-2-decisions-and-work-order)). **Phase 3 is implemented** (cover resizing only,
+> [§4.12](#412-phase-3-decisions-and-work-order)), and nothing has been tried on a physical Kobo yet.
 
 ---
 
@@ -289,7 +289,8 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 * **Phase 2 (done, decided in §4.11):** collection edits from the device (read-only collections, but a book removed
   from a collection stays out of it), percent → web progress, pre-warm hooks on list edits, re-keying orphaned
   list entries by `libid`, `kobo-sync.json` in admin backups, token masking in logs, re-announcing metadata edits.
-* **Phase 3:** KEPUB for EPUB sources (bundle `kepubify`), cover resizing, per-device format preferences.
+* **Phase 3 (done, decided in §4.12):** cover resizing. KEPUB for EPUB sources and per-device format preferences were
+  dropped.
 
 ### 4.10 Decisions
 
@@ -368,6 +369,34 @@ and the matching §6 update.
 Afterwards, update §6 (move the items out of "Not yet") and the README section «Синхронизация с Kobo» wherever
 the user-visible behaviour changed.
 
+### 4.12 Phase 3 decisions and work order
+
+Agreed with the owner on 2026-10-09. The same rules as Phase 2 apply: commits go straight to `kobo-sync`, each one
+validated with `npm run test:release` and the matching §6 update, with tests in `scripts/kobo-sync-tests.js`.
+
+**Decisions**
+
+1. **Covers are resized with a pure-JS library.** No native modules (they break the `pkg` standalone builds and
+   complicate arm64/Windows) and no new external binary. The library is picked when the work starts, as the
+   smallest one that decodes JPEG and PNG, resizes and encodes JPEG, and it has to survive a `build:linux` `pkg` build.
+   * The cover route (`/:uuid/:w/:h[/:q]/:grey/image.jpg`) answers with a JPEG that fits inside the requested
+     width and height, keeping the aspect ratio. Covers are never enlarged; a cover already small enough is only
+     re-encoded when it isn't JPEG, so the reply always matches the `image.jpg` URL.
+   * The source image is the shared cover (`getBookCover` and the `/cover/by-uid` cache, which already turns JXL and
+     WebP into PNG). Resized covers are cached on disk per cover cache key and output size, next to the shared cover
+     cache, and are served with the existing long `Cache-Control`.
+   * `Quality` from the URL is used as the JPEG quality when it's a sane number (clamped), otherwise a fixed default.
+     `IsGreyscale` is ignored, because the device converts covers itself.
+   * Resizing runs one at a time per process, and a cover that fails to decode or resize is served at its original
+     size and type, as it is today. A missing or broken cover never fails the request beyond today's `404`.
+2. **No KEPUB for EPUB sources.** The libraries inpx-web hosts are FB2, so `kepubify` would go unused. EPUB
+   sources keep being sent as they are (`EPUB3`/`EPUB`).
+3. **No per-device format preferences.** The server-wide settings decide the format, as today.
+
+**Work order:** one commit, cover resizing (1).
+
+Afterwards, update §6 ("Not yet") and the README section «Синхронизация с Kobo».
+
 ---
 
 ## 5. Prior art checked
@@ -392,6 +421,7 @@ the user-visible behaviour changed.
 | Devices removed with their profile | `WebWorker.deleteUserProfile` |
 | Profile dialog → "Kobo" tab | `client/components/Search/UserProfilesDialog/UserProfilesDialog.vue`, `client/components/Api/Api.vue` |
 | Release tests (fake Kobo and fake Kobo Store) | `scripts/kobo-sync-tests.js` |
+| Phase 3: Kobo cover resizing to JPEG (`fitToJpeg`) | `server/core/ImageUtils.js` |
 | Phase 2: pre-warm hooks on list edits, lookup by `sourceId:libid`, `kobo-sync.json` in admin backups | `server/core/WebWorker.js`, `server/core/BackupArchive.js`, `server/core/BackupTransaction.js` |
 | Phase 2: re-keying list entries, progress, bookmarks and metadata edits to a new uid (`rekeyBooks`) | `server/core/ReadingListStore.js` |
 | Phase 2: device tokens masked in request logs (`kobo.maskTokens`) | `server/index.js`, `server/dev.js` |
@@ -421,8 +451,8 @@ How Phase 1 differs from the plan above:
   the target format changed (e.g. KEPUB disabled), or a download found the file regenerated with another size
   (flushed cache). The ids stay the same, so collections and reading state are kept. Whether a Kobo re-downloads
   a book it already has after such an update is untested on hardware.
-* **Not yet (Phase 3):** cover resizing (covers are served at original size and type), KEPUB for EPUB sources,
-  per-device format preferences. Web → Kobo reading percent isn't planned.
+* **Not planned:** KEPUB for EPUB sources, per-device format preferences (both dropped in §4.12), Web → Kobo
+  reading percent.
 
 **Phase 2** (decisions and order in §4.11):
 
@@ -484,7 +514,34 @@ How Phase 1 differs from the plan above:
   * The sync merges concurrent edits: `collectionRemoved` changed during a sync is kept, and a tag renamed or
     deleted during a sync is sent again on the next one.
 
+**After Phase 3:**
+
+* **Authors from the converted file (done):** the Kobo shows the authors from the sync's `BookMetadata`
+  (`Contributors`), not the ones inside the downloaded file, so the record's INPX order ("Фамилия Имя Отчество")
+  used to win over a `creator_name_template` in the fb2cng config. Now `prepare()` reads the prepared file's OPF
+  `dc:creator` entries without a role or with `opf:role="aut"` (`epubMetadata().authors`), and the device row keeps
+  them as `fileAuthors`. `bookAuthors()` sends them unless the admin edited the book's author, which wins; with no
+  creators in the file it falls back to the record. They're part of `metaHash`, so a changed name template
+  (re-announced through the file fingerprint) or an admin author edit sends a `ChangedEntitlement` with the same
+  file. Rows sent before this change read their file once (from the conversion cache) on the next sync and, when the
+  names differ, are re-announced the same way, without a download. Rows still using the record's authors keep their
+  old hash. Checked against fb2cng 1.2.3 output with the default and a "first name first" template. The title still
+  comes from the record.
+
+**Phase 3** (decisions in §4.12):
+
+* **Cover resizing (done):** `KoboService.cover` answers `/:uuid/:w/:h[/:q]/:grey/image.jpg` with a JPEG that fits
+  inside the requested box, aspect ratio kept and never enlarged (`ImageUtils.fitToJpeg`, built on the pure-JS
+  `jpeg-js` and `pngjs`; transparency is flattened onto white). The source is the shared cover cache that
+  `/cover/by-uid` fills, made through `getBookCover` when missing. Results are stored flat in the cover cache as
+  `<cover key>-kobo-<w>x<h>-q<quality>.jpg`, so the admin's cover cache limit and cleaning cover them too. Width and
+  height are capped at 3000, `Quality` is used when it's 1–100 (raised to at least 30), otherwise 85, and
+  `IsGreyscale` is ignored. A JPEG that already fits is stored and sent unchanged. Resizing runs one cover at a time
+  on the main thread: a typical FB2 cover takes about 0.1 s and a 1600×2400 JPEG about 0.7 s, once per size. A cover
+  that can't be resized (GIF, a damaged file, more than 25 megapixels) is sent at its original size and type, as
+  before. Checked with a `build:linux` `pkg` build and `scripts/binary-smoke-test.js`.
+
 * **Untested on hardware:** everything is covered by protocol-level tests. Phase 1 was also run against a live
-  server (initialization, sync, collection, download, state PUT); Phase 2 only by the tests. Nothing has been tried
-  on a physical Kobo yet, in particular collection edits and whether a Kobo re-downloads a book after a
-  `ChangedEntitlement`.
+  server (initialization, sync, collection, download, state PUT); Phases 2 and 3 only by the tests. Nothing has been
+  tried on a physical Kobo yet, in particular collection edits, cover sizes and whether a Kobo re-downloads a book
+  after a `ChangedEntitlement`.

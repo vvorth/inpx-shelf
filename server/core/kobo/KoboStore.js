@@ -53,6 +53,8 @@ class KoboStore {
                 deletedOnDevice: row.deletedOnDevice === true,
                 fingerprint: String(row.fingerprint || ''),
                 metaHash: String(row.metaHash || ''),
+                // Authors read from the announced file; absent until read (rows from older versions).
+                ...(Array.isArray(row.fileAuthors) ? {fileAuthors: row.fileAuthors.map(String).filter(Boolean).slice(0, 50)} : {}),
                 // Lists whose collection the reader took this book out of on the device.
                 collectionRemoved: (Array.isArray(row.collectionRemoved) ? row.collectionRemoved.map(String).filter(Boolean) : []),
                 fileChanged: row.fileChanged === true,

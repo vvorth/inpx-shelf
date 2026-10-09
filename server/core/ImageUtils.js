@@ -1,6 +1,8 @@
 const fs = require('fs-extra');
 const path = require('path');
 const {spawn} = require('child_process');
+const jpeg = require('jpeg-js');
+const {PNG} = require('pngjs');
 
 const utils = require('./utils');
 const externalTools = require('./ExternalTools');
@@ -167,8 +169,73 @@ async function normalizeForFb2(buf, tempDir, toolDirs = [], converterPaths = nul
     return {data: buf, contentType: type};
 }
 
+// Pure JS on purpose: native image modules don't survive the pkg standalone builds.
+const maxDecodePixels = 25*1000*1000;
+
+function decodeRgba(buf) {
+    const type = contentType(buf);
+    if (type === 'image/jpeg') {
+        const {width, height, data} = jpeg.decode(buf, {useTArray: true, formatAsRGBA: true,
+            maxResolutionInMP: maxDecodePixels/1000/1000, maxMemoryUsageInMB: 256});
+        return {width, height, data};
+    }
+    if (type === 'image/png') {
+        const {width, height, data} = PNG.sync.read(buf);
+        return {width, height, data};
+    }
+    throw new Error(`Неподдерживаемый формат обложки: ${type}`);
+}
+
+// Area-average downscale, alpha composited over white (JPEG has no transparency).
+function downscaleRgba(image, width, height) {
+    const {width: sw, height: sh, data: src} = image;
+    const out = Buffer.alloc(width*height*4);
+    for (let oy = 0; oy < height; oy++) {
+        const y0 = Math.floor(oy*sh/height);
+        const y1 = Math.max(y0 + 1, Math.floor((oy + 1)*sh/height));
+        for (let ox = 0; ox < width; ox++) {
+            const x0 = Math.floor(ox*sw/width);
+            const x1 = Math.max(x0 + 1, Math.floor((ox + 1)*sw/width));
+            let r = 0, g = 0, b = 0;
+            for (let y = y0; y < y1; y++) {
+                let i = (y*sw + x0)*4;
+                for (let x = x0; x < x1; x++, i += 4) {
+                    const a = src[i + 3]/255;
+                    r += src[i]*a + 255*(1 - a);
+                    g += src[i + 1]*a + 255*(1 - a);
+                    b += src[i + 2]*a + 255*(1 - a);
+                }
+            }
+            const n = (y1 - y0)*(x1 - x0);
+            const o = (oy*width + ox)*4;
+            out[o] = Math.round(r/n);
+            out[o + 1] = Math.round(g/n);
+            out[o + 2] = Math.round(b/n);
+            out[o + 3] = 255;
+        }
+    }
+    return {width, height, data: out};
+}
+
+// Fits a JPEG or PNG image inside maxWidth x maxHeight (never enlarging it) and returns a JPEG.
+// Returns null when the source is already a JPEG that fits, so the caller can send it as is.
+function fitToJpeg(buf, maxWidth, maxHeight, quality = 85) {
+    const image = decodeRgba(buf);
+    if (!image.width || !image.height || image.width*image.height > maxDecodePixels)
+        throw new Error(`Некорректный размер обложки: ${image.width}x${image.height}`);
+
+    const scale = Math.min(1, maxWidth/image.width, maxHeight/image.height);
+    if (scale === 1 && contentType(buf) === 'image/jpeg')
+        return null;
+
+    const width = Math.max(1, Math.round(image.width*scale));
+    const height = Math.max(1, Math.round(image.height*scale));
+    return jpeg.encode(downscaleRgba(image, width, height), quality).data;
+}
+
 module.exports = {
     contentType,
+    fitToJpeg,
     jxlToPng,
     webpToPng,
     normalizeForFb2,

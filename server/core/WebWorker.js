@@ -4745,7 +4745,8 @@ class WebWorker {
             app: this.config.name,
             version: this.config.version,
             createdAt: createdAt.toISOString(),
-            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, and Kobo devices. It does not include source book archives, generated search DB or caches.',
+            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, and Kobo devices. '
+                + 'It does not include source book archives, generated search DB or caches.',
         }, null, 4)), 'backup-info.json');
 
         await this.addBackupPath(zipFile, this.config.configFile, 'config.json');

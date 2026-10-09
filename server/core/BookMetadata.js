@@ -71,6 +71,10 @@ async function epubMetadata(file, config) {
             isbn: isbn ? plainText(isbn.text()).replace(/^urn:isbn:/i, '') : '',
             language: plainText(values('language')[0]),
             tags: values('subject').map(value => plainText(value)),
+            // Creators without a role or marked as authors (EPUB 2 `opf:role`), in file order.
+            authors: children.filter(node => localName(node) === 'creator')
+                .filter(node => ['', 'aut'].includes(String((node.attrs() || {})['opf:role'] || '').toLowerCase()))
+                .map(node => plainText(node.text())).filter(Boolean),
         };
     } finally {
         await reader.close();

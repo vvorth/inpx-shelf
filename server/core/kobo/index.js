@@ -5,9 +5,10 @@ const express = require('express');
 
 const KoboStore = require('./KoboStore');
 const defaultResources = require('./resources');
-const {BookMetadata} = require('../BookMetadata');
+const {BookMetadata, epubMetadata} = require('../BookMetadata');
 const {coverCacheKey} = require('../BookAssets');
 const bookConverter = require('../BookConverter');
+const imageUtils = require('../ImageUtils');
 
 // Resolved lazily: Security requires this module before the logger may be initialized.
 function log(...args) {
@@ -36,6 +37,9 @@ const syncTokenHeader = 'x-kobo-synctoken';
 const koboStoreUrl = 'https://storeapi.kobo.com';
 const koboImageUrl = 'https://cdn.kobo.com/book-images';
 const storeTimeoutMs = 10000;
+const coverMaxSide = 3000;
+const coverDefaultQuality = 85;
+const coverCacheTypes = [['.jpg', 'image/jpeg'], ['.png', 'image/png'], ['.gif', 'image/gif']];
 // Hop-by-hop headers and ones fetch() already decoded must not be relayed.
 const skippedStoreHeaders = new Set(['host', 'connection', 'content-length', 'content-encoding', 'transfer-encoding',
     'keep-alive', 'accept-encoding', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded', 'cookie']);
@@ -132,6 +136,7 @@ class KoboService {
         this.prewarmRunning = null;
         this.prewarmBusyRetryMs = prewarmBusyRetryMs;
         this.rekeyChecked = new Map();
+        this.coverQueue = Promise.resolve();
         this.storeUrl = String(config.koboStoreApiUrl || koboStoreUrl).replace(/\/$/, '');
     }
 
@@ -251,7 +256,27 @@ class KoboService {
     withOverrides(book, overrides) {
         if (!book || typeof(this.worker.applyMetadataOverrideToBook) !== 'function')
             return book;
-        return this.worker.applyMetadataOverrideToBook(Object.assign({}, book), overrides);
+        const result = this.worker.applyMetadataOverrideToBook(Object.assign({}, book), overrides);
+        if (result.author !== book.author)
+            result.authorOverridden = true;
+        return result;
+    }
+
+    // The authors a device is told. The Kobo shows these, not the ones inside the file, so they come
+    // from the announced file (written by fb2cng with its own name format) unless the admin edited
+    // the author; the INPX record ("Last First") is the fallback.
+    bookAuthors(book, row) {
+        if (!book.authorOverridden && row && Array.isArray(row.fileAuthors) && row.fileAuthors.length)
+            return {authors: row.fileAuthors, fromFile: true};
+        return {authors: String(book.author || '').split(',').map(name => name.trim()).filter(Boolean), fromFile: false};
+    }
+
+    async fileAuthors(file) {
+        try {
+            return (await epubMetadata(file, this.config)).authors || [];
+        } catch (e) {
+            return [];
+        }
     }
 
     async bookRecord(bookUid) {
@@ -260,9 +285,12 @@ class KoboService {
 
     // The record-derived metadata a device was told. Description, publisher and year come from the
     // file itself and change only with it, which is re-announced through the file fingerprint and size.
-    metadataHash(book) {
+    // Authors from the record keep the hash they had before file authors existed.
+    metadataHash(book, row = null) {
+        const {authors, fromFile} = this.bookAuthors(book, row);
+        const author = (fromFile ? `file:${authors.join('\n')}` : book.author || '');
         return crypto.createHash('sha1')
-            .update(JSON.stringify([book.title || '', book.author || '', book.series || '', String(book.serno || ''), book.lang || '']))
+            .update(JSON.stringify([book.title || '', author, book.series || '', String(book.serno || ''), book.lang || '']))
             .digest('hex').slice(0, 16);
     }
 
@@ -376,7 +404,7 @@ class KoboService {
             entry.promise = (async() => {
                 const prepared = await this.worker.getPreparedBookFile(item.bookUid, target.convertTo);
                 const stat = await fs.stat(prepared.rawFile);
-                return Object.assign({}, target, {size: stat.size});
+                return Object.assign({}, target, {size: stat.size, authors: await this.fileAuthors(prepared.rawFile)});
             })().then(result => {
                 entry.result = result;
                 return result;
@@ -487,7 +515,7 @@ class KoboService {
 
     async bookMetadata(req, token, uuid, book, row) {
         const extra = await this.readExtraMetadata(book);
-        const authors = String(book.author || '').split(',').map(name => name.trim()).filter(Boolean);
+        const {authors} = this.bookAuthors(book, row);
         const lang = String(extra.language || book.lang || '').trim().toLowerCase().slice(0, 2);
         const year = String(extra.publishedYear || book.year || '').match(/\b\d{4}\b/);
         const downloadUrl = `${this.deviceBase(req, token)}/download/${uuid}/${row.convertTo || 'raw'}`;
@@ -722,9 +750,10 @@ class KoboService {
             const row = {
                 bookUid: item.bookUid, stableKey: item.stableKey, title: item.book.title || '',
                 convertTo: prepared.ready.convertTo, koboFormats: prepared.ready.koboFormats, size: prepared.ready.size,
-                fingerprint: fingerprint || '', metaHash: this.metadataHash(item.book),
+                fileAuthors: prepared.ready.authors || [], fingerprint: fingerprint || '',
                 sentAt: now, status: '', listRead: item.read, detached: false, deletedOnDevice: false, collectionRemoved: [],
             };
+            row.metaHash = this.metadataHash(item.book, row);
             const entitlement = {
                 BookEntitlement: this.bookEntitlement(item.uuid, row),
                 BookMetadata: await this.bookMetadata(req, token, item.uuid, item.book, row),
@@ -752,10 +781,8 @@ class KoboService {
             const row = books[item.uuid];
             if (more || !row || row.sentAt === now || row.deletedOnDevice)
                 continue;
-            const metaHash = this.metadataHash(item.book);
-            // Announced before metadata hashes were recorded: adopt the current one.
-            row.metaHash = row.metaHash || metaHash;
-            const metaChanged = (row.metaHash !== metaHash);
+            // Announced before metadata hashes were recorded: adopt the one of what was sent then.
+            row.metaHash = row.metaHash || this.metadataHash(item.book);
             const target = this.targetFormat(item.book);
             const fingerprint = target && await this.conversionFingerprint(item.book, target, fingerprints);
             let fileChanged = false;
@@ -766,6 +793,17 @@ class KoboService {
                 else
                     fileChanged = (row.fingerprint !== fingerprint || !sameFormat || row.fileChanged);
             }
+            // Announced before file authors were read: read them once from the (cached) file. Until it's
+            // ready the record's authors stand, and the change goes out with a later sync.
+            if (!fileChanged && target && !Array.isArray(row.fileAuthors)) {
+                const prepared = await this.prepare(item, deadline, fingerprint || '');
+                if (prepared.ready)
+                    row.fileAuthors = prepared.ready.authors || [];
+                else if (prepared.failed)
+                    row.fileAuthors = [];
+            }
+            let metaHash = this.metadataHash(item.book, row);
+            const metaChanged = (row.metaHash !== metaHash);
             if (!fileChanged && !metaChanged)
                 continue;
             if (results.length >= syncItemLimit) {
@@ -777,8 +815,9 @@ class KoboService {
                 if (prepared.ready) {
                     Object.assign(row, {
                         convertTo: prepared.ready.convertTo, koboFormats: prepared.ready.koboFormats, size: prepared.ready.size,
-                        fingerprint, fileChanged: false,
+                        fileAuthors: prepared.ready.authors || [], fingerprint, fileChanged: false,
                     });
+                    metaHash = this.metadataHash(item.book, row);
                     refreshed++;
                 } else if (!metaChanged) {
                     continue;
@@ -1070,15 +1109,71 @@ class KoboService {
 
         const cacheDir = this.config.coverDir || `${this.config.publicFilesDir}/cover`;
         const key = coverCacheKey(book);
-        const staticModule = require('../../static');
-        if (await staticModule.sendCachedCover(res, cacheDir, key))
+        const size = this.coverSize(req.params);
+        const resizedFile = size && `${cacheDir}/${key}-kobo-${size.width}x${size.height}-q${size.quality}.jpg`;
+        if (resizedFile && await this.sendCoverFile(res, resizedFile, 'image/jpeg'))
             return;
-        const cover = await this.worker.getBookCover(book);
+
+        const cover = await this.sourceCover(book, cacheDir, key);
         if (!cover)
             return res.sendStatus(404);
-        await staticModule.writeCachedCover(cacheDir, key, cover);
+        let reply = cover;
+        if (size) {
+            // One at a time: pure-JS decoding holds the event loop, and repeated requests find the file made.
+            const run = this.coverQueue.then(async() => {
+                if (await fs.pathExists(resizedFile))
+                    return {contentType: 'image/jpeg', data: await fs.readFile(resizedFile)};
+                // null: already a JPEG that fits, cached under the sized name as well.
+                const data = imageUtils.fitToJpeg(cover.data, size.width, size.height, size.quality) || cover.data;
+                await fs.ensureDir(cacheDir);
+                await fs.writeFile(resizedFile, data);
+                return {contentType: 'image/jpeg', data};
+            });
+            this.coverQueue = run.catch(() => {});
+            try {
+                reply = await run;
+            } catch (error) {
+                log(LM_WARN, `Kobo: cover of ${row.bookUid} served at its original size: ${error.message}`);
+            }
+        }
         res.set('Cache-Control', 'public, max-age=2592000, immutable');
-        res.type(cover.contentType).send(cover.data);
+        res.type(reply.contentType).send(reply.data);
+    }
+
+    // The size a cover URL asks for; null (send the original) when it isn't a usable one.
+    coverSize(params) {
+        const width = parseInt(params.width, 10);
+        const height = parseInt(params.height, 10);
+        if (!(width > 0 && height > 0))
+            return null;
+        const quality = parseInt(params.quality, 10);
+        return {
+            width: Math.min(width, coverMaxSide),
+            height: Math.min(height, coverMaxSide),
+            quality: (quality > 0 && quality <= 100 ? Math.max(quality, 30) : coverDefaultQuality),
+        };
+    }
+
+    async sendCoverFile(res, file, type) {
+        if (!await fs.pathExists(file))
+            return false;
+        await fs.utimes(file, new Date(), new Date());
+        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+        res.type(type).sendFile(file);
+        return true;
+    }
+
+    // The book's cover from the shared cover cache (the one /cover/by-uid fills), made and cached if missing.
+    async sourceCover(book, cacheDir, key) {
+        for (const [ext, contentType] of coverCacheTypes) {
+            const file = `${cacheDir}/${key}${ext}`;
+            if (await fs.pathExists(file))
+                return {contentType, data: await fs.readFile(file)};
+        }
+        const cover = await this.worker.getBookCover(book);
+        if (cover)
+            await require('../../static').writeCachedCover(cacheDir, key, cover);
+        return cover;
     }
 
     async download(req, res, device) {
