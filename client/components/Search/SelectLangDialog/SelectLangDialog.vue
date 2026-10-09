@@ -3,7 +3,7 @@
         <template #header>
             <div class="row items-center">
                 <div style="font-size: 110%">
-                    Выбрать языки
+                    {{ $t('Выбрать языки') }}
                 </div>
             </div>
         </template>
@@ -20,11 +20,11 @@
 
                     <div class="col" />
                     <div v-show="lang != langDefault" class="clickable" @click="setAsDefaults">
-                        Установить по умолчанию
+                        {{ $t('Установить по умолчанию') }}
                     </div>
                 </div>
 
-                <q-checkbox v-model="tickAll" label="Выбрать/снять все" toggle-order="ft" @update:model-value="makeTickAll" />
+                <q-checkbox v-model="tickAll" :label="$t('Выбрать/снять все')" toggle-order="ft" @update:model-value="makeTickAll" />
             </div>
 
             <q-option-group

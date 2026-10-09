@@ -456,7 +456,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.strictEqual((readerSource.match(/data-testid="reader-notes-link"/g) || []).length, 2);
     assert.strictEqual((readerSource.match(/'reader-note-return'/g) || []).length, 1);
     assert.match(readerSource, /v-if="\(hasAnnotation \|\| hasBookNotes\) && displayContents\.length"/);
-    assert.match(readerSource, /bookNotes: '\\u041f\\u0440\\u0438\\u043c\\u0435\\u0447\\u0430\\u043d\\u0438\\u044f'/);
+    assert.match(readerSource, /bookNotes: t\('Примечания'\)/);
 
     const firstAnnotationLink = readerSource.indexOf('@click="showReaderAnnotation"');
     const firstNotesLink = readerSource.indexOf('@click="showReaderNotes"', firstAnnotationLink);
@@ -482,7 +482,8 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     const builderMethodEnd = readerSource.indexOf('    createFb2Parser(source = \'\') {', builderMethodStart);
     assert.ok(builderMethodStart >= 0 && builderMethodEnd > builderMethodStart);
     const builderMethod = readerSource.slice(builderMethodStart, builderMethodEnd).trim();
-    const NotesBuilder = new Function(`return class NotesBuilder {${builderMethod}}`)();
+    //t() из client/share/i18n недоступен вне модуля; в русском режиме он возвращает строку без изменений
+    const NotesBuilder = new Function('t', `return class NotesBuilder {${builderMethod}}`)(text => text);
     const makeBody = (name, marker) => ({
         attrs: () => ({name}),
         rawNodes: [[1, 'body', [], [marker]]],

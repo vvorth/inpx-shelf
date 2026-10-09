@@ -4,6 +4,7 @@ const dayjs = require('dayjs');
 
 const BasePage = require('./BasePage');
 const Fb2Parser = require('../fb2/Fb2Parser');
+const {t, tGenre} = require('./i18n');
 
 class BookPage extends BasePage {
     constructor(config) {
@@ -30,7 +31,7 @@ class BookPage extends BasePage {
             for (const genre of genreArr) {
                 const g = genre.trim();
                 const name = this.genreMap.get(g);
-                result.push(name ? name : g);
+                result.push(name ? tGenre(g, name) : g);
             }
         }
 
@@ -39,24 +40,24 @@ class BookPage extends BasePage {
 
     inpxInfo(bookRec) {
         const mapping = [
-            {name: 'fileInfo', label: 'Информация о файле', value: [
-                {name: 'folder', label: 'Папка'},
-                {name: 'file', label: 'Файл'},
-                {name: 'size', label: 'Размер'},
-                {name: 'date', label: 'Добавлен'},
-                {name: 'del', label: 'Удален'},
+            {name: 'fileInfo', label: t('Информация о файле'), value: [
+                {name: 'folder', label: t('Папка')},
+                {name: 'file', label: t('Файл')},
+                {name: 'size', label: t('Размер')},
+                {name: 'date', label: t('Добавлен')},
+                {name: 'del', label: t('Удален')},
                 {name: 'libid', label: 'LibId'},
                 {name: 'insno', label: 'InsideNo'},
             ]},
 
-            {name: 'titleInfo', label: 'Общая информация', value: [
-                {name: 'author', label: 'Автор(ы)'},
-                {name: 'title', label: 'Название'},
-                {name: 'series', label: 'Серия'},
-                {name: 'genre', label: 'Жанр'},
-                {name: 'librate', label: 'Оценка'},
-                {name: 'lang', label: 'Язык книги'},
-                {name: 'keywords', label: 'Ключевые слова'},
+            {name: 'titleInfo', label: t('Общая информация'), value: [
+                {name: 'author', label: t('Автор(ы)')},
+                {name: 'title', label: t('Название')},
+                {name: 'series', label: t('Серия')},
+                {name: 'genre', label: t('Жанр')},
+                {name: 'librate', label: t('Оценка')},
+                {name: 'lang', label: t('Язык книги')},
+                {name: 'keywords', label: t('Ключевые слова')},
             ]},
         ];
 
@@ -71,7 +72,7 @@ class BookPage extends BasePage {
                 return dayjs(value, 'YYYY-MM-DD').format('DD.MM.YYYY');
 
             if (nodePath == 'fileInfo/del')
-                return (value ? 'Да' : null);
+                return (value ? t('Да') : null);
 
             if (nodePath == 'fileInfo/insno')
                 return (value ? value : null);
@@ -120,9 +121,9 @@ class BookPage extends BasePage {
         let info = '';
         for (const part of infoList) {
             if (part.value.length)
-                info += `<h3>${part.label}</h3>`;
+                info += `<h3>${t(part.label)}</h3>`;
             for (const rec of part.value)
-                info += `<p>${rec.label}: ${rec.value}</p>`;
+                info += `<p>${t(rec.label)}: ${rec.value}</p>`;
         }
 
         if (info)
@@ -180,7 +181,7 @@ class BookPage extends BasePage {
                 //entry
                 const e = this.makeEntry({
                     id: bookUid,
-                    title: bookInfo.book.title || 'Без названия',
+                    title: bookInfo.book.title || t('Без названия'),
                 });
 
                 //author bookInfo
@@ -206,7 +207,7 @@ class BookPage extends BasePage {
                         if (!e.category)
                             e.category = [];
                         e.category.push({
-                            '*ATTRS': {term: genreName, label: genreName},
+                            '*ATTRS': {term: genreName, label: tGenre(g, genreName)},
                         });
                     }
                 }
@@ -237,12 +238,12 @@ class BookPage extends BasePage {
                             },
                         });
 
-                        info += this.htmlInfo('Fb2 инфо', infoList);
+                        info += this.htmlInfo(t('Fb2 инфо'), infoList);
                     }
                 }
 
                 //content
-                info += this.htmlInfo('Inpx инфо', this.inpxInfo(bookInfo.book));
+                info += this.htmlInfo(t('Inpx инфо'), this.inpxInfo(bookInfo.book));
 
                 content = `${ann}${info}`;
                 if (content) {

@@ -4,6 +4,7 @@ const utils = require('../utils');
 
 const WebWorker = require('../WebWorker');//singleton
 const XmlParser = require('../xml/XmlParser');
+const {t} = require('./i18n');
 
 const spaceChar = String.fromCodePoint(0x00B7);
 const emptyFieldValue = '?';
@@ -48,7 +49,7 @@ class BasePage {
     myEntry(req = null) {
         return this.makeEntry({
             id: this.id,
-            title: this.title, 
+            title: t(this.title),
             link: this.navLink({href: `/${this.id}`, req}),
         });
     }
@@ -151,7 +152,7 @@ class BasePage {
     }
 
     makeBody(content, req) {
-        const base = this.makeEntry({id: this.id, title: this.title});
+        const base = this.makeEntry({id: this.id, title: t(this.title)});
         base['*ATTRS'] = {
             'xmlns': 'http://www.w3.org/2005/Atom',
             'xmlns:dc': 'http://purl.org/dc/terms/',
@@ -182,7 +183,7 @@ class BasePage {
         for (const row of queryRes.found) {
             const rec = {
                 id: row.id,
-                title: (row[from] || 'Без автора'),
+                title: (row[from] || t('Без автора')),
                 q: `=${encodeURIComponent(row[from])}`,
                 bookCount: row.bookCount,
             };
@@ -193,7 +194,7 @@ class BasePage {
         return result;
     }
 
-    async opdsQuery(from, query, otherTitle = '[Другие]', prevLen = 0) {
+    async opdsQuery(from, query, otherTitle = t('[Другие]'), prevLen = 0) {
         const queryRes = await this.webWorker.opdsQuery(from, query);
         let count = 0;
         for (const row of queryRes.found)
@@ -379,7 +380,7 @@ class BasePage {
     bookAuthor(author) {
         if (author) {
             let a = author.split(',');
-            return a.slice(0, 3).join(', ') + (a.length > 3 ? ' и др.' : '');
+            return a.slice(0, 3).join(', ') + (a.length > 3 ? t(' и др.') : '');
         }
 
         return '';

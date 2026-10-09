@@ -3,7 +3,7 @@
         <template #header>
             <div class="row items-center">
                 <div style="font-size: 110%">
-                    Выбрать оценки
+                    {{ $t('Выбрать оценки') }}
                 </div>
             </div>
         </template>
@@ -30,6 +30,7 @@
 import vueComponent from '../../vueComponent.js';
 
 import Dialog from '../../share/Dialog.vue';
+import {t} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -72,7 +73,7 @@ class SelectLibRateDialog {
 
     get options() {
         return [
-            {label: 'Без оценки', value: '0'},
+            {label: t('Без оценки'), value: '0'},
             {label: '1', value: '1'},
             {label: '2', value: '2'},
             {label: '3', value: '3'},

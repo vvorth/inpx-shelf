@@ -1110,7 +1110,10 @@ Options:
         "enabled": true,
         "user": "",
         "password": "",
-        "root": "/opds"
+        "root": "/opds",
+        // язык каталога: "ru", "en" или "" - автоматически
+        // (переменная окружения INPX_OPDS_LANG, затем uiDefaults.uiLang, затем заголовок Accept-Language читалки)
+        "lang": ""
     },
 
     // страница для скачивания свежего релиза
@@ -1185,7 +1188,8 @@ Options:
         "abCacheEnabled": true, // кешировать запросы
         "langDefault": "", // язык по умолчанию (например "ru,en")
         "showJson": false, // показывать JSON (в расширенном поиске)
-        "showNewReleaseAvailable": true // уведомлять о выходе новой версии
+        "showNewReleaseAvailable": true, // уведомлять о выходе новой версии
+        "uiLang": "" // язык интерфейса: "" - по языку браузера, "ru" - русский, "en" - английский
     }
 }
 ```

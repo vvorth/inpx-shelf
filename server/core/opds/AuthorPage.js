@@ -1,5 +1,6 @@
 const BasePage = require('./BasePage');
 const utils = require('../utils');
+const {t} = require('./i18n');
 
 class AuthorPage extends BasePage {
     constructor(config) {
@@ -94,7 +95,7 @@ class AuthorPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'all_series_books',
-                            title: '[Все книги серии]',
+                            title: t('[Все книги серии]'),
                             link: this.navLink({
                                 href: `/${this.id}?author=${encodeURIComponent(query.author)}` +
                                     `&series=${encodeURIComponent(query.series)}&all=1`}),
@@ -103,7 +104,7 @@ class AuthorPage extends BasePage {
                 }
 
                 for (const book of sorted) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || 'Без названия'} (${book.ext})`;
+                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('Без названия')} (${book.ext})`;
 
                     entry.push(
                         this.makeEntry({
@@ -131,18 +132,18 @@ class AuthorPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: b.book._uid,
-                                title: `Серия: ${b.book.series}`,
+                                title: t('Серия: {name}', {name: b.book.series}),
                                 link: this.navLink({
                                     href: `/${this.id}?author=${encodeURIComponent(query.author)}` +
                                         `&series=${encodeURIComponent(b.book.series)}&genre=${encodeURIComponent(query.genre)}`}),
                                 content: {
                                     '*ATTRS': {type: 'text'},
-                                    '*TEXT': `${b.bookCount} книг${utils.wordEnding(b.bookCount, 8)} по автору${(query.genre ? ' (в выбранном жанре)' : '')}`,
+                                    '*TEXT': `${t('{n} книг{e} по автору', {n: b.bookCount, e: utils.wordEnding(b.bookCount, 8)})}${(query.genre ? t(' (в выбранном жанре)') : '')}`,
                                 },
                             })
                         );
                     } else {
-                        const title = `${b.book.title || 'Без названия'} (${b.book.ext})`;
+                        const title = `${b.book.title || t('Без названия')} (${b.book.ext})`;
                         entry.push(
                             this.makeEntry({
                                 id: b.book._uid,
@@ -162,14 +163,14 @@ class AuthorPage extends BasePage {
                 entry.push(
                     this.makeEntry({
                         id: 'select_genre',
-                        title: '[Выбрать жанр]',
+                        title: t('[Выбрать жанр]'),
                         link: this.navLink({href: `/genre?from=${this.id}`}),
                     })
                 );
             }
 
             //навигация по каталогу
-            const queryRes = await this.opdsQuery('author', query, '[Остальные авторы]');
+            const queryRes = await this.opdsQuery('author', query, t('[Остальные авторы]'));
 
             for (const rec of queryRes) {
                 const e = {
@@ -180,9 +181,9 @@ class AuthorPage extends BasePage {
 
                 let countStr = '';
                 if (rec.count)
-                    countStr = `${rec.count} автор${utils.wordEnding(rec.count, 0)}${(query.genre ? ' (в выбранном жанре)' : '')}`;
+                    countStr = `${t('{n} автор{e}', {n: rec.count, e: utils.wordEnding(rec.count, 0)})}${(query.genre ? t(' (в выбранном жанре)') : '')}`;
                 if (!countStr && rec.bookCount && !query.genre)
-                    countStr = `${rec.bookCount} книг${utils.wordEnding(rec.bookCount, 8)}`;
+                    countStr = t('{n} книг{e}', {n: rec.bookCount, e: utils.wordEnding(rec.bookCount, 8)});
 
                 if (countStr) {
                     e.content = {

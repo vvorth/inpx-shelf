@@ -1,4 +1,5 @@
 const BasePage = require('./BasePage');
+const {t} = require('./i18n');
 
 class ReadingProgressPage extends BasePage {
     constructor(config) {
@@ -11,28 +12,28 @@ class ReadingProgressPage extends BasePage {
     stateTitle(state = 'reading') {
         switch (state) {
             case 'read':
-                return 'Прочитано';
+                return t('Прочитано');
             case 'hidden':
-                return 'Скрыто';
+                return t('Скрыто');
             case 'all':
-                return 'Все книги профиля';
+                return t('Все книги профиля');
             case 'reading':
             default:
-                return 'Продолжить чтение';
+                return t('Продолжить чтение');
         }
     }
 
     stateDescription(state = 'reading') {
         switch (state) {
             case 'read':
-                return 'Книги, отмеченные прочитанными';
+                return t('Книги, отмеченные прочитанными');
             case 'hidden':
-                return 'Книги, скрытые из текущего чтения';
+                return t('Книги, скрытые из текущего чтения');
             case 'all':
-                return 'Все книги с личным прогрессом профиля';
+                return t('Все книги с личным прогрессом профиля');
             case 'reading':
             default:
-                return 'Книги, которые сейчас читаются';
+                return t('Книги, которые сейчас читаются');
         }
     }
 
@@ -44,7 +45,7 @@ class ReadingProgressPage extends BasePage {
             link: this.navLink({href: `/${this.id}`, req, query: {state}}),
             content: {
                 '*ATTRS': {type: 'text'},
-                '*TEXT': count ? `${count} книг` : this.stateDescription(state),
+                '*TEXT': count ? t('{n} книг', {n: count}) : this.stateDescription(state),
             },
         });
     }
@@ -67,13 +68,13 @@ class ReadingProgressPage extends BasePage {
 
         for (const book of response.items || []) {
             const percent = Math.max(0, Math.min(100, Math.round((Number(book.percent || 0) || 0) * 100)));
-            const title = `${book.state === 'read' ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || 'Без названия'}${book.ext ? ` (${book.ext})` : ''}`;
+            const title = `${book.state === 'read' ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('Без названия')}${book.ext ? ` (${book.ext})` : ''}`;
             const subtitle = [
                 this.bookAuthor(book.author),
-                book.series ? `Серия: ${book.series}` : '',
+                book.series ? t('Серия: {name}', {name: book.series}) : '',
                 `${percent}%`,
-                book.hidden ? 'Скрыто' : '',
-                book.unavailable ? 'Прогресс сохранён, но книга не найдена в текущей библиотеке' : '',
+                book.hidden ? t('Скрыто') : '',
+                book.unavailable ? t('Прогресс сохранён, но книга не найдена в текущей библиотеке') : '',
             ].filter(Boolean).join(' · ');
 
             entry.push(
@@ -95,7 +96,7 @@ class ReadingProgressPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: '[Книг пока нет]',
+                    title: t('[Книг пока нет]'),
                     link: this.navLink({href: `/${this.id}`, req, query: {state: response.state}}),
                     content: {
                         '*ATTRS': {type: 'text'},

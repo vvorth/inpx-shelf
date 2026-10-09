@@ -3,7 +3,7 @@
         <template #header>
             <div class="row items-center">
                 <div style="font-size: 110%">
-                    Выбрать типы файлов
+                    {{ $t('Выбрать типы файлов') }}
                 </div>
             </div>
         </template>
@@ -25,7 +25,7 @@
                     </q-option-group>
                 </div>
 
-                <q-checkbox v-model="tickAll" label="Выбрать/снять все" toggle-order="ft" @update:model-value="makeTickAll" />
+                <q-checkbox v-model="tickAll" :label="$t('Выбрать/снять все')" toggle-order="ft" @update:model-value="makeTickAll" />
             </div>
 
             <q-option-group

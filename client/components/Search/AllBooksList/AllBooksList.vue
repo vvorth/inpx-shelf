@@ -7,7 +7,7 @@
 
         <div class="rating-toolbar q-mx-md q-mb-sm">
             <div class="rating-toolbar-label">
-                Топы по оценкам
+                {{ $t('Топы по оценкам') }}
             </div>
             <q-chip
                 v-for="item in ratingFilterOptions"
@@ -30,7 +30,7 @@
                 text-color="grey-9"
                 @click="clearRatingFilter"
             >
-                Сброс
+                {{ $t('Сброс') }}
             </q-chip>
         </div>
 
@@ -42,20 +42,20 @@
                 :icon="selectionMode ? 'la la-times' : 'la la-check-square'"
                 @click="toggleSelectionMode"
             >
-                {{ selectionMode ? 'Закрыть выбор' : 'Выбрать книги' }}
+                {{ selectionMode ? $t('Закрыть выбор') : $t('Выбрать книги') }}
             </q-btn>
             <template v-if="selectionMode">
                 <q-btn flat dense no-caps icon="la la-check-double" @click="selectVisibleBooks">
-                    Выбрать видимые
+                    {{ $t('Выбрать видимые') }}
                 </q-btn>
                 <q-btn flat dense no-caps icon="la la-eraser" @click="clearSelection">
-                    Снять выбор
+                    {{ $t('Снять выбор') }}
                 </q-btn>
                 <q-btn color="primary" dense no-caps icon="la la-check-circle" :disable="!selectedBookCount" @click="markSelectedRead(true)">
-                    Прочитаны ({{ selectedBookCount }})
+                    {{ $t('Прочитаны ({n})', {n: selectedBookCount}) }}
                 </q-btn>
                 <q-btn outline color="primary" dense no-caps icon="la la-undo" :disable="!selectedBookCount" @click="markSelectedRead(false)">
-                    Снять отметку
+                    {{ $t('Снять отметку') }}
                 </q-btn>
             </template>
         </div>
@@ -76,7 +76,7 @@
 
         <div v-if="!refreshing && (!tableData.length || error)" class="row items-center q-ml-md" style="font-size: 120%">
             <q-icon class="la la-meh q-mr-xs" size="28px" />
-            {{ (error ? error : 'Список книг пуст') }}
+            {{ (error ? error : $t('Список книг пуст')) }}
         </div>
     </div>
 </template>
@@ -90,6 +90,7 @@ import BaseList from '../BaseList';
 
 import * as utils from '../../../share/utils';
 import _ from 'lodash';
+import {t, tk, tMessage} from '../../../share/i18n';
 
 class AllBooksList extends BaseList {
     selectionMode = false;
@@ -100,13 +101,13 @@ class AllBooksList extends BaseList {
         const mod10 = count % 10;
         const mod100 = count % 100;
 
-        let noun = 'книг';
+        let key = tk('{n} книг');
         if (mod10 === 1 && mod100 !== 11)
-            noun = 'книга';
+            key = tk('{n} книга');
         else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
-            noun = 'книги';
+            key = tk('{n} книги');
 
-        return `${count} ${noun}`;
+        return t(key, {n: count});
     }
 
     get selectedBookCount() {
@@ -206,7 +207,7 @@ class AllBooksList extends BaseList {
         (async() => {
             await utils.sleep(500);
             if (this.refreshing)
-                this.loadingMessage = 'Загрузка всех книг...';
+                this.loadingMessage = t('Загрузка всех книг...');
         })();
 
         try {
@@ -234,7 +235,7 @@ class AllBooksList extends BaseList {
                     this.list.totalFound = 0;
                     this.searchResult = {found: []};
                     await this.updateTableData();
-                    this.error = `Ошибка: ${e.message}`;
+                    this.error = t('Ошибка: {message}', {message: tMessage(e.message)});
                 }
             }
         } finally {

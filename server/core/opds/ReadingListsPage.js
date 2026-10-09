@@ -1,5 +1,6 @@
 const utils = require('../utils');
 const BasePage = require('./BasePage');
+const {t} = require('./i18n');
 
 class ReadingListsPage extends BasePage {
     constructor(config) {
@@ -18,11 +19,11 @@ class ReadingListsPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'no-user',
-                    title: '[Выберите профиль пользователя]',
+                    title: t('[Выберите профиль пользователя]'),
                     link: this.navLink({href: '/reading-profiles', req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Для OPDS-подборок откройте профиль пользователя',
+                        '*TEXT': t('Для OPDS-подборок откройте профиль пользователя'),
                     },
                 }),
             );
@@ -40,7 +41,7 @@ class ReadingListsPage extends BasePage {
                     link: this.navLink({href: `/${this.id}/list?id=${encodeURIComponent(item.id)}`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': `${item.readCount || 0}/${item.bookCount} книг${utils.wordEnding(item.bookCount, 8)} прочитано`,
+                        '*TEXT': t('{read}/{n} книг{e} прочитано', {read: item.readCount || 0, n: item.bookCount, e: utils.wordEnding(item.bookCount, 8)}),
                     },
                 }),
             );
@@ -50,11 +51,11 @@ class ReadingListsPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: '[Списков пока нет]',
+                    title: t('[Списков пока нет]'),
                     link: this.navLink({href: `/${this.id}`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Создайте список в веб-интерфейсе и переведите его в режим OPDS',
+                        '*TEXT': t('Создайте список в веб-интерфейсе и переведите его в режим OPDS'),
                     },
                 }),
             );

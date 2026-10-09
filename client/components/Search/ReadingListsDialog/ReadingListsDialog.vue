@@ -7,10 +7,10 @@
                 </div>
                 <div class="header-actions">
                     <q-btn flat dense no-caps icon="la la-file-export" @click="exportLists">
-                        Экспорт
+                        {{ $t('Экспорт') }}
                     </q-btn>
                     <q-btn flat dense no-caps icon="la la-file-import" @click="openImport">
-                        Импорт
+                        {{ $t('Импорт') }}
                     </q-btn>
                 </div>
             </div>
@@ -26,7 +26,7 @@
             >
 
             <div v-if="currentUserName" class="current-user-caption">
-                Профиль: <b>{{ currentUserName }}</b>
+                {{ $t('Профиль:') }} <b>{{ currentUserName }}</b>
             </div>
 
             <div class="create-row">
@@ -36,7 +36,7 @@
                     outlined
                     dense
                     clearable
-                    label="Новый список"
+                    :label="$t('Новый список')"
                     @keydown.enter.prevent="createList"
                 />
                 <q-select
@@ -46,11 +46,11 @@
                     emit-value
                     map-options
                     :options="visibilityOptions"
-                    label="Видимость"
+                    :label="$t('Видимость')"
                     style="min-width: 140px"
                 />
                 <q-btn color="primary" dense no-caps @click="createList">
-                    Создать
+                    {{ $t('Создать') }}
                 </q-btn>
             </div>
 
@@ -60,16 +60,16 @@
 
             <div v-if="book && book.series" class="series-actions">
                 <q-btn outline color="primary" dense no-caps icon="la la-layer-group" @click="addSeriesToList">
-                    Добавить всю серию
+                    {{ $t('Добавить всю серию') }}
                 </q-btn>
             </div>
 
             <div v-if="loading" class="state-box text-grey-7">
-                Загрузка списков...
+                {{ $t('Загрузка списков...') }}
             </div>
 
             <div v-else-if="!lists.length" class="state-box text-grey-7">
-                Списков пока нет
+                {{ $t('Списков пока нет') }}
             </div>
 
             <div v-else class="lists-box">
@@ -90,7 +90,7 @@
                                 </span>
                             </div>
                             <div class="list-subtitle">
-                                {{ item.readCount || 0 }} / {{ item.bookCount }} книг прочитано
+                                {{ $t('{read} / {total} книг прочитано', {read: item.readCount || 0, total: item.bookCount}) }}
                             </div>
                         </div>
                     </div>
@@ -119,7 +119,7 @@
                             v-if="book && item.containsBook"
                             :model-value="item.readBook"
                             dense
-                            label="Прочитано"
+                            :label="$t('Прочитано')"
                             @update:model-value="toggleRead(item, $event)"
                         />
                         <q-btn flat dense round icon="la la-pen" @click="renameList(item)" />
@@ -166,7 +166,7 @@
 
         <template #footer>
             <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="dialogVisible = false">
-                Закрыть
+                {{ $t('Закрыть') }}
             </q-btn>
         </template>
     </Dialog>
@@ -176,6 +176,7 @@
 import vueComponent from '../../vueComponent.js';
 
 import Dialog from '../../share/Dialog.vue';
+import {t, tMessage} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -216,7 +217,7 @@ class ReadingListsDialog {
     }
 
     get dialogTitle() {
-        return (this.book ? 'Добавить в список чтения' : 'Списки чтения');
+        return (this.book ? t('Добавить в список чтения') : t('Списки чтения'));
     }
 
     get config() {
@@ -227,7 +228,7 @@ class ReadingListsDialog {
         const users = this.config.userProfiles || [];
         const currentUserId = this.$store.state.settings.currentUserId || this.config.currentUserId || '';
         const user = users.find((item) => item.id === currentUserId) || users[0];
-        return (user ? user.name : '');
+        return (user ? tMessage(user.name) : '');
     }
 
     get bookCaption() {
@@ -239,41 +240,41 @@ class ReadingListsDialog {
 
     get visibilityOptions() {
         return [
-            {label: 'Личный', value: 'private'},
+            {label: t('Личный'), value: 'private'},
             {label: 'OPDS', value: 'opds'},
         ];
     }
 
     get errorTitle() {
-        return '\u041e\u0448\u0438\u0431\u043a\u0430';
+        return t('Ошибка');
     }
 
     get booksLabel() {
-        return '\u041a\u043d\u0438\u0433\u0438';
+        return t('Книги');
     }
 
     get collapseListLabel() {
-        return '\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c';
+        return t('Свернуть');
     }
 
     get loadingBooksLabel() {
-        return '\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e \u043a\u043d\u0438\u0433\u0438...';
+        return t('Загружаю книги...');
     }
 
     get listEmptyLabel() {
-        return '\u0421\u043f\u0438\u0441\u043e\u043a \u043f\u0443\u0441\u0442';
+        return t('Список пуст');
     }
 
     get untitledBookLabel() {
-        return '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f';
+        return t('Без названия');
     }
 
     get readBookLabel() {
-        return '\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e';
+        return t('Прочитано');
     }
 
     visibilityLabel(value) {
-        return (value === 'opds' ? 'OPDS' : 'Личный');
+        return (value === 'opds' ? 'OPDS' : t('Личный'));
     }
 
     async init() {
@@ -303,7 +304,7 @@ class ReadingListsDialog {
                 return acc;
             }, {});
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         } finally {
             this.loading = false;
         }
@@ -325,7 +326,7 @@ class ReadingListsDialog {
             this.newListVisibility = 'private';
             await this.loadLists();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -333,7 +334,7 @@ class ReadingListsDialog {
         try {
             await this.api.setReadingListVisibility(item.id, visibility);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
             await this.loadLists();
         }
     }
@@ -355,7 +356,7 @@ class ReadingListsDialog {
             if (item.bookCount < 0)
                 item.bookCount = 0;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
             await this.loadLists();
         }
     }
@@ -374,15 +375,15 @@ class ReadingListsDialog {
             if (bookItem)
                 bookItem.read = !!read;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
             await this.loadLists();
         }
     }
 
     async renameList(item) {
-        const response = await this.$root.stdDialog.prompt('Введите новое название списка:', 'Переименовать список', {
+        const response = await this.$root.stdDialog.prompt(t('Введите новое название списка:'), t('Переименовать список'), {
             inputValue: item.name,
-            inputValidator: (value) => (String(value || '').trim() ? true : 'Название не должно быть пустым'),
+            inputValidator: (value) => (String(value || '').trim() ? true : t('Название не должно быть пустым')),
         });
 
         if (!response || response === false)
@@ -392,14 +393,14 @@ class ReadingListsDialog {
             await this.api.renameReadingList(item.id, response.value);
             await this.loadLists();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
     async deleteList(item) {
         const confirmed = await this.$root.stdDialog.confirm(
-            `Удалить список «${item.name}»?`,
-            'Удаление списка',
+            t('Удалить список «{name}»?', {name: item.name}),
+            t('Удаление списка'),
         );
         if (!confirmed)
             return;
@@ -408,7 +409,7 @@ class ReadingListsDialog {
             await this.api.deleteReadingList(item.id);
             await this.loadLists();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -460,8 +461,8 @@ class ReadingListsDialog {
             return;
 
         const confirmed = await this.$root.stdDialog.confirm(
-            `Убрать книгу «${bookItem.title || this.untitledBookLabel}» из списка «${list.name || ''}»?`,
-            'Удаление книги из списка',
+            t('Убрать книгу «{title}» из списка «{list}»?', {title: bookItem.title || this.untitledBookLabel, list: list.name || ''}),
+            t('Удаление книги из списка'),
         );
         if (!confirmed)
             return;
@@ -523,7 +524,7 @@ class ReadingListsDialog {
             const stamp = new Date().toISOString().substring(0, 10);
             this.downloadJson(data, `reading-lists-${stamp}.json`);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -546,9 +547,9 @@ class ReadingListsDialog {
             const data = JSON.parse(text);
             const result = await this.api.importReadingLists(data);
             await this.loadLists();
-            this.$root.notify.success(`Импортировано списков: ${result.importedLists}, книг: ${result.importedBooks}`);
+            this.$root.notify.success(t('Импортировано списков: {lists}, книг: {books}', {lists: result.importedLists, books: result.importedBooks}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -557,15 +558,15 @@ class ReadingListsDialog {
             return;
 
         if (!this.lists.length) {
-            this.$root.stdDialog.alert('Сначала создайте хотя бы один список.', 'Информация');
+            this.$root.stdDialog.alert(t('Сначала создайте хотя бы один список.'), t('Информация'));
             return;
         }
 
         const response = await this.$root.stdDialog.prompt(
-            'Введите название списка, куда добавить всю серию:',
-            'Добавить серию в список',
+            t('Введите название списка, куда добавить всю серию:'),
+            t('Добавить серию в список'),
             {
-                inputValidator: (value) => (String(value || '').trim() ? true : 'Название списка не должно быть пустым'),
+                inputValidator: (value) => (String(value || '').trim() ? true : t('Название списка не должно быть пустым')),
             },
         );
 
@@ -575,16 +576,16 @@ class ReadingListsDialog {
         const targetName = String(response.value || '').trim().toLowerCase();
         const item = this.lists.find((row) => row.name.toLowerCase() === targetName);
         if (!item) {
-            this.$root.stdDialog.alert('Список с таким названием не найден.', 'Ошибка');
+            this.$root.stdDialog.alert(t('Список с таким названием не найден.'), t('Ошибка'));
             return;
         }
 
         try {
             const result = await this.api.addSeriesToReadingList(item.id, this.book.series);
             await this.loadLists();
-            this.$root.notify.success(`В список добавлено книг серии: ${result.addedBooks}`);
+            this.$root.notify.success(t('В список добавлено книг серии: {n}', {n: result.addedBooks}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 }

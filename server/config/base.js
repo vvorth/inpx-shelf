@@ -118,6 +118,8 @@ module.exports = {
         user: '',
         password: '',
         root: '/opds',
+        //язык каталога: '' - автоматически, 'ru', 'en' (также переменная окружения INPX_OPDS_LANG)
+        lang: '',
     },
 
     latestReleaseLink: 'https://github.com/AceAsket/inpx-web/releases/latest',
@@ -180,6 +182,7 @@ module.exports = {
         showJson: false,
         showNewReleaseAvailable: true,
         darkTheme: false,
+        uiLang: '',
     },
 };
 

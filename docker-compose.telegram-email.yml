@@ -13,6 +13,8 @@ services:
       LIBDIR: /library
       CACHE_DIR: /usr/local/bin/.inpx-web/cache
       INPX_COVER_CACHE_SIZE_MB: "512"
+      # OPDS catalog language: ru or en (default: automatic)
+      # INPX_OPDS_LANG: en
 
       # Telegram can also be configured later in the admin UI.
       TELEGRAM_BOT_TOKEN: "PUT_YOUR_BOT_TOKEN_HERE"

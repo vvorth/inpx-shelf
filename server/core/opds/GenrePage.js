@@ -1,4 +1,5 @@
 const BasePage = require('./BasePage');
+const {t, tGenre, tGenreSection} = require('./i18n');
 
 class GenrePage extends BasePage {
     constructor(config) {
@@ -37,7 +38,7 @@ class GenrePage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: ++id,
-                                title: g.name,
+                                title: tGenre(g.value, g.name),
                                 link: this.navLink({href: `/${encodeURIComponent(query.from)}?genre=${encodeURIComponent(g.value)}${searchQuery}`}),
                             })
                         );
@@ -46,7 +47,7 @@ class GenrePage extends BasePage {
                     entry.unshift(
                         this.makeEntry({
                             id: 'whole_section',
-                            title: '[Весь раздел]',
+                            title: t('[Весь раздел]'),
                             link: this.navLink({href: `/${encodeURIComponent(query.from)}?genre=${encodeURIComponent(all.join(','))}${searchQuery}`}),
                         })
                     );
@@ -59,7 +60,7 @@ class GenrePage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: ++id,
-                            title: section.name,
+                            title: tGenreSection(section.name),
                             link: this.navLink({href: `/genre?from=${encodeURIComponent(query.from)}&section=${encodeURIComponent(section.name)}${searchQuery}`}),
                         })
                     );

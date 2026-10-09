@@ -6,6 +6,7 @@ import {
     QChip, QSpace, QSpinner, Ripple, ClosePopup, Dark, Notify,
 } from 'quasar';
 import lang from 'quasar/lang/ru';
+import langEn from 'quasar/lang/en-US';
 import '@quasar/extras/line-awesome/line-awesome.css';
 import lineAwesome from 'quasar/icon-set/line-awesome.js';
 
@@ -18,6 +19,7 @@ const components = {
 
 export default {
     quasar: Quasar,
+    langs: {ru: lang, en: langEn},
     options: {
         config: {},
         components,

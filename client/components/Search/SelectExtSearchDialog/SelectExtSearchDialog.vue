@@ -3,13 +3,13 @@
         <template #header>
             <div class="row items-center">
                 <div style="font-size: 110%">
-                    Расширенный поиск
+                    {{ $t('Расширенный поиск') }}
                 </div>
 
                 <DivBtn class="q-ml-sm text-grey-5 bg-yellow-1" :size="28" :icon-size="24" icon="la la-question" round @click.stop.prevent="showSearchHelp">
                     <template #tooltip>
                         <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                            Памятка
+                            {{ $t('Памятка') }}
                         </q-tooltip>
                     </template>
                 </DivBtn>
@@ -38,7 +38,7 @@
 
         <template #footer>
             <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps :disabled="error !== ''" @click="apply">
-                Применить
+                {{ $t('Применить') }}
             </q-btn>
         </template>
     </Dialog>
@@ -52,6 +52,7 @@ import Dialog from '../../share/Dialog.vue';
 import DivBtn from '../../share/DivBtn.vue';
 
 import _ from 'lodash';
+import {t, tHtml} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -127,7 +128,7 @@ class SelectExtSearchDialog {
         const s = this.search;
         for (const f of this.recStruct) {
             if (f.type == 'N' && s[f.field] && !validNumValue(s[f.field])) {
-                error.push(`Недопустимое значение поля ${f.field}`);
+                error.push(t('Недопустимое значение поля {field}', {field: f.field}));
                 this.bgColor[f.field] = 'red-2';
             } else {
                 this.bgColor[f.field] = '';//default
@@ -139,7 +140,7 @@ class SelectExtSearchDialog {
 
     showSearchHelp() {
         let info = `<div style="min-width: 250px" />`;
-        info += `
+        info += tHtml('extSearchHelp', `
 <p>
     Расширенный поиск ведется непосредственно по значениям атрибутов записей описания книг.
     Атрибуты можно увидеть, если включить опцию "Показывать JSON".
@@ -178,9 +179,9 @@ class SelectExtSearchDialog {
         </li>
     </ul>
 </p>
-`;
+`);
 
-        this.$root.stdDialog.alert(info, 'Памятка', {iconName: 'la la-info-circle'});
+        this.$root.stdDialog.alert(info, t('Памятка'), {iconName: 'la la-info-circle'});
     }
 
     onKeyDown(event) {

@@ -3,10 +3,10 @@
         <div class="discovery-page-head">
             <div class="discovery-page-copy">
                 <div class="discovery-page-title">
-                    {{ sectionTitle || 'Витрина' }}
+                    {{ sectionTitle || $t('Витрина') }}
                 </div>
                 <div class="discovery-page-subtitle">
-                    Подборки по вашей библиотеке и профилю чтения
+                    {{ $t('Подборки по вашей библиотеке и профилю чтения') }}
                 </div>
             </div>
 
@@ -19,7 +19,7 @@
                 :loading="loading"
                 @click.stop.prevent="$emit('refresh-shelves')"
             >
-                Обновить витрину
+                {{ $t('Обновить витрину') }}
             </q-btn>
         </div>
 
@@ -32,7 +32,7 @@
                 :icon="compactMode ? 'la la-compress-arrows-alt' : 'la la-expand-arrows-alt'"
                 @click.stop.prevent="$emit('toggle-compact')"
             >
-                {{ compactMode ? 'Обычные карточки' : 'Компактные карточки' }}
+                {{ compactMode ? $t('Обычные карточки') : $t('Компактные карточки') }}
             </q-btn>
 
             <q-btn
@@ -44,7 +44,7 @@
                 :icon="unreadOnly ? 'la la-filter' : 'la la-book-open'"
                 @click.stop.prevent="$emit('toggle-unread-only')"
             >
-                {{ unreadOnly ? 'Показывать все' : 'Только непрочитанное' }}
+                {{ unreadOnly ? $t('Показывать все') : $t('Только непрочитанное') }}
             </q-btn>
 
             <q-btn
@@ -56,7 +56,7 @@
                 icon="la la-sliders-h"
                 @click.stop.prevent="toggleTasteSetup"
             >
-                Настроить вкусы
+                {{ $t('Настроить вкусы') }}
             </q-btn>
 
             <q-select
@@ -71,7 +71,7 @@
                 no-error-icon
                 :loading="loading"
                 :disable="loading"
-                label="Жанр внешней витрины"
+                :label="$t('Жанр внешней витрины')"
                 :options="externalGenreOptions"
                 @update:model-value="$emit('set-external-genre', $event || '')"
             />
@@ -94,9 +94,9 @@
 
         <section v-if="showTasteSetup" class="discovery-taste-panel">
             <div class="discovery-taste-copy">
-                <div class="discovery-taste-title">Что вам нравится читать?</div>
+                <div class="discovery-taste-title">{{ $t('Что вам нравится читать?') }}</div>
                 <div class="discovery-taste-subtitle">
-                    Выберите жанры, авторов и языки — это уточнит рекомендации даже для давно используемого профиля. Настройки можно изменить в любой момент.
+                    {{ $t('Выберите жанры, авторов и языки — это уточнит рекомендации даже для давно используемого профиля. Настройки можно изменить в любой момент.') }}
                 </div>
             </div>
             <div class="discovery-taste-grid">
@@ -117,15 +117,15 @@
                     input-debounce="0"
                     popup-content-style="height: min(420px, 58vh); min-height: min(420px, 58vh); max-height: min(420px, 58vh); overflow-y: auto"
                     :options="visibleTasteGenreOptions"
-                    label="Любимые жанры"
-                    hint="Введите часть названия жанра"
+                    :label="$t('Любимые жанры')"
+                    :hint="$t('Введите часть названия жанра')"
                     @clear="tasteGenres = []"
                     @filter="filterTasteGenres"
                 >
                     <template #no-option>
                         <q-item>
                             <q-item-section class="text-grey-7">
-                                Жанры не найдены
+                                {{ $t('Жанры не найдены') }}
                             </q-item-section>
                         </q-item>
                     </template>
@@ -146,8 +146,8 @@
                     popup-content-style="height: min(320px, 46vh); min-height: min(320px, 46vh); max-height: min(320px, 46vh); overflow-y: auto"
                     :options="tasteAuthorOptions"
                     :loading="tasteAuthorsLoading"
-                    label="Любимые авторы"
-                    hint="Начните вводить фамилию или имя"
+                    :label="$t('Любимые авторы')"
+                    :hint="$t('Начните вводить фамилию или имя')"
                     @clear="tasteAuthors = []"
                     @filter="filterTasteAuthors"
                     @filter-abort="abortTasteAuthorFilter"
@@ -169,7 +169,7 @@
                     emit-value
                     map-options
                     :options="tasteLanguageOptions"
-                    label="Языки книг"
+                    :label="$t('Языки книг')"
                 />
                 <q-select
                     v-model="tasteExplorationRatio"
@@ -178,25 +178,25 @@
                     emit-value
                     map-options
                     :options="tasteExplorationOptions"
-                    label="Сколько нового пробовать"
+                    :label="$t('Сколько нового пробовать')"
                 />
             </div>
             <div class="discovery-taste-actions">
                 <q-btn color="primary" unelevated no-caps icon="la la-check" @click.stop.prevent="saveTaste">
-                    Сохранить вкусы
+                    {{ $t('Сохранить вкусы') }}
                 </q-btn>
                 <q-btn v-if="personalTasteNeedsSetup" flat no-caps @click.stop.prevent="dismissTasteSetup">
-                    Не сейчас
+                    {{ $t('Не сейчас') }}
                 </q-btn>
                 <q-btn v-else flat no-caps @click.stop.prevent="tasteSetupOpen = false">
-                    Закрыть
+                    {{ $t('Закрыть') }}
                 </q-btn>
             </div>
         </section>
 
         <div v-if="loading" class="discovery-loading-line">
             <q-icon class="la la-spinner icon-rotate" size="20px" />
-            <span>Собираю витрину...</span>
+            <span>{{ $t('Собираю витрину...') }}</span>
         </div>
 
         <div v-if="errorMessage" class="discovery-error">
@@ -214,14 +214,14 @@
                         {{ shelfSourceLabel(shelf) }}
                     </div>
                     <div class="discovery-title">
-                        {{ shelf.title }}
+                        {{ $tm(shelf.title) }}
                     </div>
                     <div v-if="shelf.subtitle" class="discovery-subtitle">
-                        {{ shelf.subtitle }}
+                        {{ $tm(shelf.subtitle) }}
                     </div>
                     <div class="discovery-meta">
-                        <span v-if="shelf.updatedAt">Обновлено {{ formatUpdatedAt(shelf.updatedAt) }}</span>
-                        <span v-if="shelf.discoveryStale" class="discovery-meta-warning">Показан кеш</span>
+                        <span v-if="shelf.updatedAt">{{ $t('Обновлено {time}', {time: formatUpdatedAt(shelf.updatedAt)}) }}</span>
+                        <span v-if="shelf.discoveryStale" class="discovery-meta-warning">{{ $t('Показан кеш') }}</span>
                     </div>
                     <div v-if="shelf.discoveryRefreshError" class="discovery-meta-warning discovery-meta-warning--inline">
                         {{ shelf.discoveryRefreshError }}
@@ -237,7 +237,7 @@
                         icon="la la-eye-slash"
                         @click.stop.prevent="$emit('hide-shelf', shelf.id)"
                     >
-                        Скрыть полку
+                        {{ $t('Скрыть полку') }}
                     </q-btn>
 
                     <q-btn
@@ -248,7 +248,7 @@
                         icon="la la-external-link-alt"
                         @click.stop.prevent="openSource(shelf)"
                     >
-                        Источник
+                        {{ $t('Источник') }}
                     </q-btn>
                 </div>
             </div>
@@ -262,9 +262,9 @@
                     :genre-map="genreMap"
                     :show-read-link="showReadLink"
                     :show-discovery-dismiss="!!book.discoveryDismissible"
-                    :discovery-dismiss-label="book.discoveryDismissLabel || 'Неинтересно'"
+                    :discovery-dismiss-label="book.discoveryDismissLabel || $t('Неинтересно')"
                     :show-discovery-restore="!!book.discoveryRestoreable"
-                    :discovery-restore-label="book.discoveryRestoreLabel || 'Вернуть'"
+                    :discovery-restore-label="book.discoveryRestoreLabel || $t('Вернуть')"
                     :compact-discovery="compactMode"
                     @book-event="bookEvent"
                 />
@@ -285,7 +285,7 @@
             </div>
 
             <div v-if="!shelf.items || !shelf.items.length" class="discovery-empty">
-                {{ shelf.emptyMessage || 'Пока пусто.' }}
+                {{ shelf.emptyMessage ? $tm(shelf.emptyMessage) : $t('Пока пусто.') }}
             </div>
         </section>
     </div>
@@ -296,6 +296,7 @@
 import vueComponent from '../../vueComponent.js';
 
 import BaseList from '../BaseList';
+import {t, tMessage, getLocale} from '../../../share/i18n';
 
 class DiscoveryShelves extends BaseList {
     _props = {
@@ -372,31 +373,31 @@ class DiscoveryShelves extends BaseList {
 
     get tasteLanguageOptions() {
         return [
-            {label: 'Русский', value: 'ru'},
-            {label: 'Английский', value: 'en'},
-            {label: 'Украинский', value: 'uk'},
-            {label: 'Немецкий', value: 'de'},
-            {label: 'Французский', value: 'fr'},
-            {label: 'Испанский', value: 'es'},
-            {label: 'Итальянский', value: 'it'},
+            {label: t('Русский'), value: 'ru'},
+            {label: t('Английский'), value: 'en'},
+            {label: t('Украинский'), value: 'uk'},
+            {label: t('Немецкий'), value: 'de'},
+            {label: t('Французский'), value: 'fr'},
+            {label: t('Испанский'), value: 'es'},
+            {label: t('Итальянский'), value: 'it'},
         ];
     }
 
     get tasteAuthorNoOptionsLabel() {
         if (this.tasteAuthorsLoading)
-            return 'Ищу авторов...';
+            return t('Ищу авторов...');
         if (this.tasteAuthorSearchFailed)
-            return 'Не удалось выполнить поиск';
+            return t('Не удалось выполнить поиск');
         if (this.tasteAuthorQuery.length < 2)
-            return 'Введите не менее двух букв';
-        return 'Авторы не найдены';
+            return t('Введите не менее двух букв');
+        return t('Авторы не найдены');
     }
 
     get tasteExplorationOptions() {
         return [
-            {label: 'Осторожно · 10%', value: 0.1},
-            {label: 'Сбалансированно · 15%', value: 0.15},
-            {label: 'Больше нового · 25%', value: 0.25},
+            {label: t('Осторожно · 10%'), value: 0.1},
+            {label: t('Сбалансированно · 15%'), value: 0.15},
+            {label: t('Больше нового · 25%'), value: 0.25},
         ];
     }
 
@@ -598,16 +599,16 @@ class DiscoveryShelves extends BaseList {
 
     loadMoreLabel(shelf = {}) {
         if (String(shelf.id || '') === 'similar-books')
-            return 'Ещё рекомендации';
-        return 'Загрузить ещё';
+            return t('Ещё рекомендации');
+        return t('Загрузить ещё');
     }
 
     shelfSourceLabel(shelf = {}) {
         if (shelf.sourceName)
-            return shelf.sourceName;
+            return tMessage(shelf.sourceName);
         if (shelf.source === 'external')
-            return 'Внешний источник';
-        return 'Локальная библиотека';
+            return t('Внешний источник');
+        return t('Локальная библиотека');
     }
 
     formatUpdatedAt(value) {
@@ -615,7 +616,7 @@ class DiscoveryShelves extends BaseList {
         if (Number.isNaN(date.getTime()))
             return '';
 
-        return date.toLocaleString('ru-RU', {
+        return date.toLocaleString(getLocale(), {
             day: '2-digit',
             month: '2-digit',
             hour: '2-digit',

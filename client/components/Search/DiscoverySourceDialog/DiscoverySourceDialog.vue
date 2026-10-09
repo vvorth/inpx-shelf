@@ -3,13 +3,13 @@
         <template #header>
             <div class="row items-center" style="font-size: 110%">
                 <q-icon class="q-mr-sm text-primary" name="la la-satellite-dish" size="28px" />
-                Внешний источник
+                {{ $t('Внешний источник') }}
             </div>
         </template>
 
         <div class="q-mx-md column" style="min-width: 320px; max-width: 720px; font-size: 110%;">
             <div class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">Тип источника</div>
+                <div class="q-mr-sm dialog-label">{{ $t('Тип источника') }}</div>
                 <q-select
                     v-model="discoveryExternalSource"
                     :options="externalSourceOptions"
@@ -23,19 +23,19 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">Название</div>
+                <div class="q-mr-sm dialog-label">{{ $t('Название') }}</div>
                 <q-input
                     v-model="discoveryExternalName"
                     class="bg-white col"
                     outlined
                     dense
                     clearable
-                    placeholder="Например: Партнёрская витрина"
+                    :placeholder="$t('Например: Партнёрская витрина')"
                 />
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">URL витрины</div>
+                <div class="q-mr-sm dialog-label">{{ $t('URL витрины') }}</div>
                 <q-input
                     v-model="discoveryExternalUrl"
                     class="bg-white col"
@@ -47,7 +47,7 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">Лимит</div>
+                <div class="q-mr-sm dialog-label">{{ $t('Лимит') }}</div>
                 <q-select
                     v-model="discoveryExternalLimit"
                     :options="discoveryLimitOptions"
@@ -61,7 +61,7 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">Обновление</div>
+                <div class="q-mr-sm dialog-label">{{ $t('Обновление') }}</div>
                 <q-select
                     v-model="discoveryExternalTtlMinutes"
                     :options="discoveryTtlOptions"
@@ -75,7 +75,7 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="q-mt-md text-grey-7" style="font-size: 85%;">
-                Если удалить источник, вкладка и витрина исчезнут, пока администратор не настроит новый источник.
+                {{ $t('Если удалить источник, вкладка и витрина исчезнут, пока администратор не настроит новый источник.') }}
             </div>
         </div>
 
@@ -89,7 +89,7 @@
                 no-caps
                 @click="removeSource"
             >
-                Удалить источник
+                {{ $t('Удалить источник') }}
             </q-btn>
             <q-space />
             <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
@@ -104,6 +104,7 @@
 import vueComponent from '../../vueComponent.js';
 
 import Dialog from '../../share/Dialog.vue';
+import {t} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -183,11 +184,13 @@ class DiscoverySourceDialog {
         {label: '24', value: 24},
     ];
 
-    discoveryTtlOptions = [
-        {label: '24 часа', value: 1440},
-        {label: '3 дня', value: 4320},
-        {label: '7 дней', value: 10080},
-    ];
+    get discoveryTtlOptions() {
+        return [
+            {label: t('24 часа'), value: 1440},
+            {label: t('3 дня'), value: 4320},
+            {label: t('7 дней'), value: 10080},
+        ];
+    }
 
     created() {
         this.commit = this.$store.commit;
@@ -209,8 +212,8 @@ class DiscoverySourceDialog {
 
     get externalSourceOptions() {
         return [
-            {label: 'Нет', value: 'none'},
-            {label: 'Веб-витрина', value: 'web-page'},
+            {label: t('Нет'), value: 'none'},
+            {label: t('Веб-витрина'), value: 'web-page'},
         ];
     }
 
@@ -249,7 +252,7 @@ class DiscoverySourceDialog {
             this.loadSettings();
             this.dialogVisible = false;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 }

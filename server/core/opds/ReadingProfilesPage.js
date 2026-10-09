@@ -1,4 +1,5 @@
 const BasePage = require('./BasePage');
+const {t} = require('./i18n');
 
 class ReadingProfilesPage extends BasePage {
     constructor(config) {
@@ -23,7 +24,7 @@ class ReadingProfilesPage extends BasePage {
                     link: this.navLink({href: '/root', req, query: {user: item.publicId || item.id}}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': `Списков: ${item.opdsListCount}, в чтении: ${item.opdsProgressCount || 0}`,
+                        '*TEXT': t('Списков: {lists}, в чтении: {reading}', {lists: item.opdsListCount, reading: item.opdsProgressCount || 0}),
                     },
                 }),
             );
@@ -33,11 +34,11 @@ class ReadingProfilesPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: '[Публичных подборок пока нет]',
+                    title: t('[Публичных подборок пока нет]'),
                     link: this.navLink({href: `/${this.id}`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Включите публикацию списков в профиле и переведите нужные списки в режим OPDS',
+                        '*TEXT': t('Включите публикацию списков в профиле и переведите нужные списки в режим OPDS'),
                     },
                 }),
             );

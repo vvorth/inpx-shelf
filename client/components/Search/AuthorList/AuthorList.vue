@@ -31,7 +31,7 @@
             <div v-if="item.bookLoading" class="book-row row items-center">
                 <q-icon class="la la-spinner icon-rotate text-blue-8" size="28px" />
                 <div class="q-ml-xs">
-                    Обработка...
+                    {{ $t('Обработка...') }}
                 </div>
             </div>
 
@@ -39,7 +39,7 @@
                 <div v-if="item.authorInfoLoading" class="book-row row items-center q-mb-md author-info-loading">
                     <q-icon class="la la-spinner icon-rotate text-green-8" size="24px" />
                     <div class="q-ml-xs">
-                        Загрузка информации об авторе...
+                        {{ $t('Загрузка информации об авторе...') }}
                     </div>
                 </div>
 
@@ -51,7 +51,7 @@
 
                         <div class="col author-info-text">
                             <div class="author-info-title">
-                                Об авторе
+                                {{ $t('Об авторе') }}
                             </div>
                             <div
                                 class="author-info-html"
@@ -67,7 +67,7 @@
                                     :icon="item.authorInfoExpanded ? 'la la-angle-up' : 'la la-angle-down'"
                                     @click.stop.prevent="toggleAuthorInfo(item)"
                                 >
-                                    {{ item.authorInfoExpanded ? 'Свернуть описание' : 'Показать полностью' }}
+                                    {{ item.authorInfoExpanded ? $t('Свернуть описание') : $t('Показать полностью') }}
                                 </q-btn>
                             </div>
                         </div>
@@ -90,7 +90,7 @@
                             </div>
 
                             <div class="clickable2 q-ml-xs q-py-sm text-bold" @click="selectSeries(book.series)">
-                                Серия: {{ book.series }}
+                                {{ $t('Серия: {name}', {name: book.series}) }}
                             </div>
 
                             <div class="q-ml-sm text-bold" style="color: #555">
@@ -124,20 +124,20 @@
                                 <div v-if="book.showAllBooks && book.showMoreAll" class="row items-center q-mr-md">
                                     <i class="las la-ellipsis-h text-red" style="font-size: 40px"></i>
                                     <q-btn class="q-ml-md" color="red" style="width: 200px" dense rounded no-caps @click="showMoreAll(book)">
-                                        Показать еще (~{{ showMoreCount }})
+                                        {{ $t('Показать еще (~{n})', {n: showMoreCount}) }}
                                     </q-btn>
                                     <q-btn class="q-ml-sm" color="red" style="width: 200px" dense rounded no-caps @click="showMoreAll(book, true)">
-                                        Показать все ({{ (book.allBooksLoaded && book.allBooksLoaded.length) || '?' }})
+                                        {{ $t('Показать все ({n})', {n: (book.allBooksLoaded && book.allBooksLoaded.length) || '?'}) }}
                                     </q-btn>
                                 </div>
 
                                 <div v-if="book.showAllBooks" class="row items-center clickable2 text-blue-10" @click="book.showAllBooks = false">
                                     <q-icon class="la la-long-arrow-alt-up" size="28px" />
-                                    Только найденные книги
+                                    {{ $t('Только найденные книги') }}
                                 </div>
                                 <div v-else class="row items-center clickable2 text-red" @click="book.showAllBooks = true">
                                     <q-icon class="la la-long-arrow-alt-down" size="28px" />
-                                    Все книги серии
+                                    {{ $t('Все книги серии') }}
                                 </div>
                             </div>
                         </div>
@@ -148,17 +148,17 @@
 
                 <!--div v-if="isExpandedAuthor(item) && item.books && !item.books.length" class="book-row row items-center">
                     <q-icon class="la la-meh q-mr-xs" size="24px" />
-                    По каждому из заданных критериев у этого автора были найдены разные книги, но нет полного совпадения
+                    {{ $t('По каждому из заданных критериев у этого автора были найдены разные книги, но нет полного совпадения') }}
                 </div-->
             </div>
 
             <div v-if="isExpandedAuthor(item) && item.showMore" class="row items-center book-row q-mb-sm">
                 <i class="las la-ellipsis-h text-blue-10" style="font-size: 40px"></i>
                 <q-btn class="q-ml-md" color="primary" style="width: 200px" dense rounded no-caps @click="showMore(item)">
-                    Показать еще (~{{ showMoreCount }})
+                    {{ $t('Показать еще (~{n})', {n: showMoreCount}) }}
                 </q-btn>
                 <q-btn class="q-ml-sm" color="primary" style="width: 200px" dense rounded no-caps @click="showMore(item, true)">
-                    Показать все ({{ (item.booksLoaded && item.booksLoaded.length) || '?' }})
+                    {{ $t('Показать все ({n})', {n: (item.booksLoaded && item.booksLoaded.length) || '?'}) }}
                 </q-btn>
             </div>
         </div>
@@ -166,7 +166,7 @@
 
         <div v-if="!refreshing && (!tableData.length || error)" class="row items-center q-ml-md" style="font-size: 120%">
             <q-icon class="la la-meh q-mr-xs" size="28px" />
-            {{ (error ? error : 'Поиск не дал результатов') }}
+            {{ (error ? error : $t('Поиск не дал результатов')) }}
         </div>
     </div>
 </template>
@@ -183,6 +183,7 @@ import authorBooksStorage from '../authorBooksStorage';
 import * as utils from '../../../share/utils';
 
 import _ from 'lodash';
+import {t, tMessage} from '../../../share/i18n';
 const {safeHtml} = require('../../../../shared/safeHtml');
 
 class AuthorList extends BaseList {
@@ -190,13 +191,13 @@ class AuthorList extends BaseList {
     cachedAuthorInfo = {};
 
     showHiddenHelp() {
-        this.$root.stdDialog.alert(`
-            Книги скрытых авторов помечены как удаленные. Для того, чтобы их увидеть, необходимо установить опцию "Показывать удаленные" в настройках.
-        `, 'Пояснение', {iconName: 'la la-info-circle'});
+        this.$root.stdDialog.alert(
+            t('Книги скрытых авторов помечены как удаленные. Для того, чтобы их увидеть, необходимо установить опцию "Показывать удаленные" в настройках.'),
+            t('Пояснение'), {iconName: 'la la-info-circle'});
     }
 
     get foundCountMessage() {
-        return `${this.list.totalFound} автор${utils.wordEnding(this.list.totalFound)}`;
+        return t('{n} автор{e}', {n: this.list.totalFound, e: utils.wordEnding(this.list.totalFound)});
     }    
 
     isFoundSeriesBook(seriesItem, seriesBook) {
@@ -363,7 +364,7 @@ class AuthorList extends BaseList {
                 (async() => {
                     await utils.sleep(500);
                     if (this.getBooksFlag > 0)
-                        this.loadingMessage2 = 'Загрузка списка книг...';
+                        this.loadingMessage2 = t('Загрузка списка книг...');
                 })();
             }
 
@@ -544,7 +545,7 @@ class AuthorList extends BaseList {
         (async() => {
             await utils.sleep(500);
             if (this.refreshing)
-                this.loadingMessage = 'Поиск авторов...';
+                this.loadingMessage = t('Поиск авторов...');
         })();
 
         try {
@@ -573,7 +574,7 @@ class AuthorList extends BaseList {
                     this.searchResult = {found: []};
                     await this.updateTableData();
                     //this.$root.stdDialog.alert(e.message, 'Ошибка');
-                    this.error = `Ошибка: ${e.message}`;
+                    this.error = t('Ошибка: {message}', {message: tMessage(e.message)});
                 }
             }
         } finally {

@@ -4,8 +4,11 @@ import { createApp } from 'vue';
 import router from './router';
 import store from './store';
 import q from './quasar';
+import i18n, {setLang, t} from './share/i18n';
 
 import App from './components/App.vue';
+
+setLang(store.state.settings.uiLang);
 
 const currentBuildId = (typeof __INPX_WEB_BUILD_ID__ !== 'undefined'
     ? String(__INPX_WEB_BUILD_ID__ || '').trim()
@@ -215,19 +218,19 @@ function showUpdateRecovery(deployedBuildId) {
 
     const title = document.createElement('h1');
     title.style.cssText = 'font-size:24px;margin:0 0 12px';
-    title.textContent = 'Не удалось обновить приложение';
+    title.textContent = t('Не удалось обновить приложение');
 
     const message = document.createElement('p');
-    message.textContent = 'Автоматическое обновление остановлено после нескольких попыток. Настройки читалки, прогресс и закладки при восстановлении сохранятся.';
+    message.textContent = t('Автоматическое обновление остановлено после нескольких попыток. Настройки читалки, прогресс и закладки при восстановлении сохранятся.');
 
     const versions = document.createElement('p');
     versions.style.cssText = 'font-size:13px;opacity:.7;word-break:break-all';
-    versions.textContent = `Текущая сборка: ${currentBuildId || 'неизвестна'}; сервер: ${deployedBuildId}`;
+    versions.textContent = t('Текущая сборка: {current}; сервер: {deployed}', {current: currentBuildId || t('неизвестна'), deployed: deployedBuildId});
 
     const resetLink = document.createElement('a');
     resetLink.href = appResetUrl();
     resetLink.style.cssText = 'display:inline-block;margin-top:8px;padding:12px 16px;border-radius:10px;background:#8f5725;color:#fff;text-decoration:none;font-weight:600';
-    resetLink.textContent = 'Очистить кэш приложения и повторить';
+    resetLink.textContent = t('Очистить кэш приложения и повторить');
 
     panel.append(title, message, versions, resetLink);
     host.replaceChildren(panel);
@@ -270,6 +273,7 @@ function mountApplication() {
 
     appMounted = true;
     const app = createApp(App);
+    app.use(i18n);
     app.use(router);
     app.use(store);
     app.use(q.quasar, q.options);

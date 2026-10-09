@@ -1,4 +1,5 @@
 const BasePage = require('./BasePage');
+const {t, tText} = require('./i18n');
 
 class SearchHelpPage extends BasePage {
     constructor(config) {
@@ -14,7 +15,7 @@ class SearchHelpPage extends BasePage {
 
         result.link = this.baseLinks(req, true);
 
-        const content = `
+        const content = tText('searchHelp', `
 Формат поискового значения:
 <ul>
     <li>
@@ -36,11 +37,11 @@ class SearchHelpPage extends BasePage {
         префикс "?": поиск пустых значений или тех, что начинаются с этого символа
     </li>
 </ul>
-`;
+`);
         const entry = [
             this.makeEntry({
                 id: 'help',
-                title: this.title,
+                title: t(this.title),
                 content: {
                     '*ATTRS': {type: 'text/html'},
                     '*TEXT': this.escape(content),

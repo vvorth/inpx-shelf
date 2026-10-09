@@ -3751,6 +3751,7 @@ class WebWorker {
             user: String(opds.user || ''),
             password: hasPassword ? '__KEEP__' : '',
             passwordSet: hasPassword,
+            lang: String(opds.lang || ''),
         };
     }
 
@@ -4480,6 +4481,10 @@ class WebWorker {
         }
         if (utils.hasProp(patch, 'user'))
             normalized.user = String(patch.user || '').trim();
+        if (utils.hasProp(patch, 'lang')) {
+            const lang = String(patch.lang || '').trim().toLowerCase();
+            normalized.lang = (['ru', 'en'].includes(lang) ? lang : '');
+        }
         if (utils.hasProp(patch, 'password')) {
             const password = String(patch.password || '');
             if (password !== '__KEEP__')

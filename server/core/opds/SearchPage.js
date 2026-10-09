@@ -1,6 +1,7 @@
 const BasePage = require('./BasePage');
 const utils = require('../utils');
 const iconv = require('iconv-lite');
+const {t} = require('./i18n');
 
 class SearchPage extends BasePage {
     constructor(config) {
@@ -65,8 +66,8 @@ class SearchPage extends BasePage {
                     const pageItems = found.slice(offset, offset + limit);
 
                     for (const book of pageItems) {
-                        const title = `${book.serno ? `${book.serno}. ` : ''}${book.title || 'Без названия'} (${book.ext})`;
-                        const subtitle = [this.bookAuthor(book.author), book.series ? `Серия: ${book.series}` : ''].filter(Boolean).join(' · ');
+                        const title = `${book.serno ? `${book.serno}. ` : ''}${book.title || t('Без названия')} (${book.ext})`;
+                        const subtitle = [this.bookAuthor(book.author), book.series ? t('Серия: {name}', {name: book.series}) : ''].filter(Boolean).join(' · ');
 
                         entry.push(
                             this.makeEntry({
@@ -85,7 +86,7 @@ class SearchPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: 'next_page',
-                                title: '[Следующая страница]',
+                                title: t('[Следующая страница]'),
                                 link: this.navLink({href: `/${this.id}?type=title&term=${encodeURIComponent(query.term)}&genre=${encodeURIComponent(query.genre)}&page=${page + 1}`}),
                             })
                         );
@@ -94,7 +95,7 @@ class SearchPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'error',
-                            title: `Ошибка: ${e.message}`,
+                            title: t('Ошибка: {message}', {message: e.message}),
                             link: this.navLink({href: `/fake-error-link`}),
                         })
                     );
@@ -125,11 +126,11 @@ class SearchPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: row.id,
-                                title: `${(from === 'series' ? 'Серия: ' : '')}${from === 'author' ? this.bookAuthor(row[from]) : row[from]}`,
+                                title: `${(from === 'series' ? t('Серия: ') : '')}${from === 'author' ? this.bookAuthor(row[from]) : row[from]}`,
                                 link: this.navLink({href: `/${from}?${from}==${encodeURIComponent(row[from])}`}),
                                 content: {
                                     '*ATTRS': {type: 'text'},
-                                    '*TEXT': `${row.bookCount} книг${utils.wordEnding(row.bookCount, 8)}`,
+                                    '*TEXT': t('{n} книг{e}', {n: row.bookCount, e: utils.wordEnding(row.bookCount, 8)}),
                                 },
                             }),
                         );
@@ -139,7 +140,7 @@ class SearchPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: 'next_page',
-                                title: '[Следующая страница]',
+                                title: t('[Следующая страница]'),
                                 link: this.navLink({href: `/${this.id}?type=${from}&term=${encodeURIComponent(query.term)}&genre=${encodeURIComponent(query.genre)}&page=${page + 1}`}),
                             })
                         );
@@ -148,7 +149,7 @@ class SearchPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'error',
-                            title: `Ошибка: ${e.message}`,
+                            title: t('Ошибка: {message}', {message: e.message}),
                             link: this.navLink({href: `/fake-error-link`}),
                         })
                     );
@@ -158,47 +159,47 @@ class SearchPage extends BasePage {
             entry = [
                 this.makeEntry({
                     id: 'search_author',
-                    title: 'Поиск авторов',
+                    title: t('Поиск авторов'),
                     link: this.navLink({href: `/${this.id}?type=author&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Искать по именам авторов',
+                        '*TEXT': t('Искать по именам авторов'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_series',
-                    title: 'Поиск серий',
+                    title: t('Поиск серий'),
                     link: this.navLink({href: `/${this.id}?type=series&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Искать по названиям серий',
+                        '*TEXT': t('Искать по названиям серий'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_title',
-                    title: 'Поиск книг',
+                    title: t('Поиск книг'),
                     link: this.navLink({href: `/${this.id}?type=title&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Искать книги по слову в названии, серии и авторе',
+                        '*TEXT': t('Искать книги по слову в названии, серии и авторе'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_genre',
-                    title: 'Поиск книг в жанре',
+                    title: t('Поиск книг в жанре'),
                     link: this.navLink({href: `/genre?from=search&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Искать по названиям книг в выбранном жанре',
+                        '*TEXT': t('Искать по названиям книг в выбранном жанре'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_help',
-                    title: '[Памятка по поиску]',
+                    title: t('[Памятка по поиску]'),
                     link: this.acqLink({href: `/search-help`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Описание формата поискового значения',
+                        '*TEXT': t('Описание формата поискового значения'),
                     },
                 }),
             ];

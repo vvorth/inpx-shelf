@@ -6,16 +6,16 @@
                 <!-- Обновление -->
                 <div v-show="showNewReleaseAvailable && newReleaseAvailable" class="row q-py-sm bg-green-4 items-center">
                     <div class="q-ml-sm" style="font-size: 120%">
-                        Доступна новая {{ releaseChannelTitle }}версия <b>{{ config.name }} v{{ config.latestVersion }}</b>
+                        {{ $t('Доступна новая {channel}версия', {channel: releaseChannelTitle}) }} <b>{{ config.name }} v{{ config.latestVersion }}</b>
                     </div>
                     <div v-if="isDockerInstall" class="q-ml-sm text-grey-9" style="font-size: 95%">
-                        В Docker обновление ставится через новый образ и перезапуск контейнера.
+                        {{ $t('В Docker обновление ставится через новый образ и перезапуск контейнера.') }}
                     </div>
                     <DivBtn class="q-ml-sm q-px-sm bg-white" :size="20" @click.stop.prevent="openReleasePage">
                         {{ releaseActionLabel }}
                     </DivBtn>
                     <DivBtn class="q-ml-sm q-px-sm bg-white" :size="20" @click.stop.prevent="settingsDialogVisible = true">
-                        Отключить уведомление
+                        {{ $t('Отключить уведомление') }}
                     </DivBtn>
                 </div>
 
@@ -28,7 +28,7 @@
                                 <a class="logo-link" :href="newSearchLink" style="height: 33px; width: 34px">
                                     <img src="./assets/logo.png" />
                                     <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                        Новый поиск
+                                        {{ $t('Новый поиск') }}
                                     </q-tooltip>
                                 </a>
 
@@ -53,7 +53,7 @@
                                         map-options
                                         :options="userProfileOptions"
                                         :disable="!!config.profileBoundId"
-                                        label="Профиль"
+                                        :label="$t('Профиль')"
                                         style="min-width: 180px"
                                         @update:model-value="selectUserProfile"
                                     >
@@ -64,7 +64,7 @@
                                                 @click.stop.prevent="promptCurrentProfileLogin"
                                             >
                                                 <q-tooltip :delay="600" anchor="bottom middle" content-style="font-size: 80%">
-                                                    Войти в выбранный профиль
+                                                    {{ $t('Войти в выбранный профиль') }}
                                                 </q-tooltip>
                                             </q-icon>
                                         </template>
@@ -79,7 +79,7 @@
                                         <q-icon :name="profileStatusIcon" />
                                         <span v-if="!currentAnonymousProfile">{{ profileStatusLabel }}</span>
                                         <q-tooltip v-if="currentAnonymousProfile" :delay="800" anchor="bottom middle" content-style="font-size: 80%">
-                                            Войти в профиль
+                                            {{ $t('Войти в профиль') }}
                                         </q-tooltip>
                                     </div>
 
@@ -94,7 +94,7 @@
                                     >
                                         <template #tooltip>
                                             <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                                {{ currentProfileNeedsLogin ? 'Профиль защищён: требуется вход' : 'Профили пользователей' }}
+                                                {{ currentProfileNeedsLogin ? $t('Профиль защищён: требуется вход') : $t('Профили пользователей') }}
                                             </q-tooltip>
                                         </template>
                                     </DivBtn>
@@ -110,7 +110,7 @@
                                     >
                                         <template #tooltip>
                                             <q-tooltip :delay="800" anchor="bottom middle" content-style="font-size: 80%" max-width="320px">
-                                                {{ mobileFiltersCollapsed ? 'Развернуть фильтры' : 'Свернуть фильтры' }}
+                                                {{ mobileFiltersCollapsed ? $t('Развернуть фильтры') : $t('Свернуть фильтры') }}
                                             </q-tooltip>
                                         </template>
                                     </DivBtn>
@@ -119,7 +119,7 @@
 
                             <div v-show="showMobileFiltersBody" class="collection-title row items-center q-ml-sm" style="font-size: 150%;">
                                 <div class="collection-label q-mr-xs">
-                                    Коллекция
+                                    {{ $t('Коллекция') }}
                                 </div>
                                 <div class="clickable" @click.stop.prevent="showCollectionInfo">
                                     {{ collection }}
@@ -128,7 +128,7 @@
                                 <DivBtn class="q-ml-sm text-grey-5 bg-yellow-1" :size="28" :icon-size="24" icon="la la-question" round @click.stop.prevent="showSearchHelp">
                                     <template #tooltip>
                                         <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                            Памятка
+                                            {{ $t('Памятка') }}
                                         </q-tooltip>
                                     </template>
                                 </DivBtn>
@@ -137,7 +137,7 @@
                         <div v-show="showMobileFiltersBody && !isExtendedSearch && !isDiscoveryList" class="search-fields row q-mx-sm q-mb-xs items-center" style="max-width: 1024px">
                             <q-input
                                 ref="authorInput" v-model="search.author" :maxlength="5000" :debounce="inputDebounce"
-                                class="q-mt-xs col-3" :bg-color="inputBgColor('author')" style="min-width: 140px" label="Автор" stack-label outlined dense clearable
+                                class="q-mt-xs col-3" :bg-color="inputBgColor('author')" style="min-width: 140px" :label="$t('Автор')" stack-label outlined dense clearable
                             >
                                 <q-tooltip v-if="search.author" :delay="500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
                                     {{ search.author }}
@@ -146,7 +146,7 @@
                             <div class="q-mx-xs" />
                             <q-input
                                 v-model="search.series" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-3" :bg-color="inputBgColor('series')" style="min-width: 140px" label="Серия" stack-label outlined dense clearable
+                                class="q-mt-xs col-3" :bg-color="inputBgColor('series')" style="min-width: 140px" :label="$t('Серия')" stack-label outlined dense clearable
                             >
                                 <q-tooltip v-if="search.series" :delay="500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
                                     {{ search.series }}
@@ -155,7 +155,7 @@
                             <div class="q-mx-xs" />
                             <q-input
                                 v-model="search.title" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-3" :bg-color="inputBgColor('title')" style="min-width: 140px;" label="Название" stack-label outlined dense clearable
+                                class="q-mt-xs col-3" :bg-color="inputBgColor('title')" style="min-width: 140px;" :label="$t('Название')" stack-label outlined dense clearable
                             >
                                 <q-tooltip v-if="search.title" :delay="500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
                                     {{ search.title }}
@@ -164,7 +164,7 @@
                             <div class="q-mx-xs" />
                             <q-input
                                 v-model="search.lang" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-1" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 90px;" label="Язык" stack-label outlined dense clearable readonly
+                                class="q-mt-xs col-1" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 90px;" :label="$t('Язык')" stack-label outlined dense clearable readonly
                                 @click.stop.prevent="selectLang"
                             >
                                 <template v-if="search.lang" #append>
@@ -179,7 +179,7 @@
                         <div v-show="showMobileFiltersBody && !isExtendedSearch && !isDiscoveryList && extendedParams" class="search-fields row q-mx-sm q-mb-xs items-center" style="max-width: 1024px">
                             <q-input
                                 v-model="search.keywords" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-3" :bg-color="inputBgColor()" style="min-width: 140px;" label="Ключевые слова" stack-label outlined dense clearable readonly
+                                class="q-mt-xs col-3" :bg-color="inputBgColor()" style="min-width: 140px;" :label="$t('Ключевые слова')" stack-label outlined dense clearable readonly
                             >
                                 <template v-if="search.keywords" #append>
                                     <q-icon name="la la-times-circle" class="q-field__focusable-action" @click.stop.prevent="search.keywords = ''" />
@@ -193,7 +193,7 @@
                             <div class="q-mx-xs" />
                             <q-input
                                 v-model="genreNames" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-3" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 140px;" label="Жанр" stack-label outlined dense clearable readonly
+                                class="q-mt-xs col-3" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 140px;" :label="$t('Жанр')" stack-label outlined dense clearable readonly
                                 @click.stop.prevent="selectGenre"
                             >
                                 <template v-if="genreNames" #append>
@@ -213,7 +213,7 @@
                                 dropdown-icon="la la-angle-down la-sm"
                                 :bg-color="inputBgColor()"
                                 style="min-width: 140px;"
-                                label="Дата поступления" stack-label
+                                :label="$t('Дата поступления')" stack-label
                                 outlined dense emit-value map-options clearable
                             >
                                 <template #selected-item="scope">
@@ -239,7 +239,7 @@
                             <div class="q-mx-xs" />
                             <q-input
                                 v-model="librateNames" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-2" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 120px;" label="Оценка" stack-label outlined dense clearable readonly
+                                class="q-mt-xs col-2" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 120px;" :label="$t('Оценка')" stack-label outlined dense clearable readonly
                                 @click.stop.prevent="selectLibRate"
                             >
                                 <template v-if="librateNames" #append>
@@ -254,7 +254,7 @@
                             <div class="q-mx-xs" />
                             <q-input
                                 v-model="search.ext" :maxlength="inputMaxLength" :debounce="inputDebounce"
-                                class="q-mt-xs col-2" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 120px;" label="Тип файла" stack-label outlined dense clearable readonly
+                                class="q-mt-xs col-2" :bg-color="inputBgColor()" input-style="cursor: pointer" style="min-width: 120px;" :label="$t('Тип файла')" stack-label outlined dense clearable readonly
                                 @click.stop.prevent="selectExt"
                             >
                                 <template v-if="search.ext" #append>
@@ -278,14 +278,14 @@
                                 :bg-color="inputBgColor('sourceId')"
                                 dropdown-icon="la la-angle-down la-sm"
                                 style="min-width: 220px; max-width: 360px;"
-                                label="Источник" stack-label
+                                :label="$t('Источник')" stack-label
                                 outlined dense emit-value map-options
                             />
                             <q-checkbox
                                 v-model="search.hideCopies"
                                 class="q-mt-xs source-copy-toggle"
                                 color="primary"
-                                label="Скрыть копии"
+                                :label="$t('Скрыть копии')"
                                 dense
                             />
                         </div>
@@ -294,7 +294,7 @@
                             <q-input
                                 v-model="extSearchNames"
                                 class="col q-mt-xs" :bg-color="inputBgColor('extended')" input-style="cursor: pointer"
-                                style="min-width: 140px; max-width: 638px;" label="Расширенный поиск" stack-label outlined dense clearable readonly
+                                style="min-width: 140px; max-width: 638px;" :label="$t('Расширенный поиск')" stack-label outlined dense clearable readonly
                                 @click.stop.prevent="selectExtSearch"
                             >
                                 <template v-if="extSearchNames" #append>
@@ -313,11 +313,11 @@
                                 @me-click="extToList('author')"
                             >
                                 <div style="font-size: 130%">
-                                    <b>А</b>
+                                    <b>{{ $t('А') }}</b>
                                 </div>
                                 <template #tooltip>
                                     <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                        В раздел "Авторы" с переносом значения author={{ extSearch.author }}
+                                        {{ $t('В раздел "Авторы" с переносом значения author={value}', {value: extSearch.author}) }}
                                     </q-tooltip>
                                 </template>
                             </DivBtn>
@@ -329,11 +329,11 @@
                                 @me-click="extToList('series')"
                             >
                                 <div style="font-size: 130%">
-                                    <b>С</b>
+                                    <b>{{ $t('С') }}</b>
                                 </div>
                                 <template #tooltip>
                                     <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                        В раздел "Серии" с переносом значения series={{ extSearch.series }}
+                                        {{ $t('В раздел "Серии" с переносом значения series={value}', {value: extSearch.series}) }}
                                     </q-tooltip>
                                 </template>
                             </DivBtn>
@@ -345,11 +345,11 @@
                                 @me-click="extToList('title')"
                             >
                                 <div style="font-size: 130%">
-                                    <b>К</b>
+                                    <b>{{ $t('К') }}</b>
                                 </div>
                                 <template #tooltip>
                                     <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                        В раздел "Названия" с переносом значения title={{ extSearch.title }}
+                                        {{ $t('В раздел "Названия" с переносом значения title={value}', {value: extSearch.title}) }}
                                     </q-tooltip>
                                 </template>
                             </DivBtn>
@@ -361,7 +361,7 @@
                         <DivBtn class="q-mt-sm text-white bg-secondary" :size="28" :icon-size="24" :imt="1" icon="la la-cog" round @click.stop.prevent="settingsDialogVisible = true">
                             <template #tooltip>
                                 <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                    Настройки
+                                    {{ $t('Настройки') }}
                                 </q-tooltip>
                             </template>
                         </DivBtn>
@@ -369,7 +369,7 @@
                         <DivBtn class="q-mt-sm text-white bg-secondary" :size="28" :icon-size="24" :imt="1" icon="la la-bookmark" round @click.stop.prevent="openReadingLists()">
                             <template #tooltip>
                                 <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                    Списки чтения
+                                    {{ $t('Списки чтения') }}
                                 </q-tooltip>
                             </template>
                         </DivBtn>
@@ -377,7 +377,7 @@
                         <DivBtn v-if="!config.freeAccess" class="q-mt-sm text-white bg-secondary" :size="28" :icon-size="24" :imt="1" icon="la la-sign-out-alt" round @click.stop.prevent="logout">
                             <template #tooltip>
                                 <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                    Выход
+                                    {{ $t('Выход') }}
                                 </q-tooltip>
                             </template>
                         </DivBtn>
@@ -394,7 +394,7 @@
                     >
                         <template #tooltip>
                             <q-tooltip :delay="1500" anchor="bottom middle" content-style="font-size: 80%" max-width="400px">
-                                {{ `${(extendedParams ? 'Скрыть' : 'Показать')} дополнительные критерии поиска` }}
+                                {{ extendedParams ? $t('Скрыть дополнительные критерии поиска') : $t('Показать дополнительные критерии поиска') }}
                             </q-tooltip>
                         </template>
                     </DivBtn>
@@ -412,7 +412,7 @@
                 </div>
 
                 <div v-show="list.totalFound > 0 && isExtendedSearch" class="q-ml-md">
-                    <q-checkbox v-model="showJson" size="36px" label="Показывать JSON" />
+                    <q-checkbox v-model="showJson" size="36px" :label="$t('Показывать JSON')" />
                 </div>
             </div>
 
@@ -533,20 +533,21 @@ import * as utils from '../../share/utils';
 import diffUtils from '../../share/diffUtils';
 
 import _ from 'lodash';
+import {t, tk, tHtml, tMessage, translateGenreTree} from '../../share/i18n';
 
 const maxLimit = 1000;
 const searchRoutePaths = new Set(['/', '/author', '/series', '/title', '/books', '/for-you', '/newest', '/popular', '/bestsellers', '/extended']);
 
 const route2component = {
-    'for-you': {component: 'DiscoveryShelves', label: 'Для вас'},
-    'newest': {component: 'DiscoveryShelves', label: 'Новинки'},
-    'popular': {component: 'DiscoveryShelves', label: 'Популярное'},
-    'bestsellers': {component: 'DiscoveryShelves', label: 'Внешний источник'},
-    'author': {component: 'AuthorList', label: 'Авторы'},
-    'series': {component: 'SeriesList', label: 'Серии'},
-    'title': {component: 'TitleList', label: 'Названия'},
-    'books': {component: 'AllBooksList', label: 'Книги'},
-    'extended': {component: 'ExtendedList', label: 'Расширенный поиск'},
+    'for-you': {component: 'DiscoveryShelves', label: tk('Для вас')},
+    'newest': {component: 'DiscoveryShelves', label: tk('Новинки')},
+    'popular': {component: 'DiscoveryShelves', label: tk('Популярное')},
+    'bestsellers': {component: 'DiscoveryShelves', label: tk('Внешний источник')},
+    'author': {component: 'AuthorList', label: tk('Авторы')},
+    'series': {component: 'SeriesList', label: tk('Серии')},
+    'title': {component: 'TitleList', label: tk('Названия')},
+    'books': {component: 'AllBooksList', label: tk('Книги')},
+    'extended': {component: 'ExtendedList', label: tk('Расширенный поиск')},
 };
 
 const componentOptions = {
@@ -572,6 +573,12 @@ const componentOptions = {
         DivBtn
     },
     watch: {
+        '$store.state.settings.uiLang'() {
+            if (this.config.dbConfig)
+                this.makeProjectName();
+            if (this.$refs.list && this.foundCountMessage)
+                this.foundCountMessage = this.$refs.list.foundCountMessage;
+        },
         config(newValue) {
             this.makeProjectName();
             if (newValue.dbConfig)
@@ -751,8 +758,7 @@ class Search {
         liberamaReady: false,
     };
 
-    genreTree = [];
-    genreMap = new Map();
+    genreTreeRaw = [];
     langList = [];
     extList = [];
     genreTreeInpxHash = '';
@@ -767,16 +773,18 @@ class Search {
     discoveryShelvesRequestSeq = 0;
     discoverySimilarExhausted = false;
 
-    searchDateOptions = [
-        {label: 'сегодня', value: 'today'},
-        {label: 'за 3 дня', value: '3days'},
-        {label: 'за неделю', value: 'week'},
-        {label: 'за 2 недели', value: '2weeks'},
-        {label: 'за месяц', value: 'month'},
-        {label: 'за 2 месяца', value: '2months'},
-        {label: 'за 3 месяца', value: '3months'},
-        {label: 'выбрать даты', value: 'manual'},
-    ];
+    get searchDateOptions() {
+        return [
+            {label: t('сегодня'), value: 'today'},
+            {label: t('за 3 дня'), value: '3days'},
+            {label: t('за неделю'), value: 'week'},
+            {label: t('за 2 недели'), value: '2weeks'},
+            {label: t('за месяц'), value: 'month'},
+            {label: t('за 2 месяца'), value: '2months'},
+            {label: t('за 3 месяца'), value: '3months'},
+            {label: t('выбрать даты'), value: 'manual'},
+        ];
+    }
 
     generateDefaults(obj, fields) {
         obj.setDefaults = (self, value = {}) => {
@@ -918,7 +926,7 @@ class Search {
     }
 
     get releaseActionLabel() {
-        return (this.isDockerInstall ? 'Открыть релиз' : 'Скачать');
+        return (this.isDockerInstall ? t('Открыть релиз') : t('Скачать'));
     }
 
     get recStruct() {
@@ -950,7 +958,7 @@ class Search {
         const rates = this.search.librate.split(',');
 
         for (const r of rates) {
-            result.push(r == '0' ? 'Без оценки' : r);
+            result.push(r == '0' ? t('Без оценки') : r);
         }
 
         return result.join(', ');
@@ -1018,16 +1026,16 @@ class Search {
     get profileStatusLabel() {
         const current = this.currentSelectedProfile;
         if (!current)
-            return 'Профиль не выбран';
+            return t('Профиль не выбран');
 
-        const name = current.name || 'Профиль';
+        const name = tMessage(current.name) || t('Профиль');
         if (this.currentAnonymousProfile)
             return name;
         if (this.currentProfileNeedsLogin)
-            return `${name}: нужен вход`;
+            return t('{name}: нужен вход', {name});
         if (this.config.profileAuthorized)
-            return `${name}: вход выполнен`;
-        return `${name}: без пароля`;
+            return t('{name}: вход выполнен', {name});
+        return t('{name}: без пароля', {name});
     }
 
     get profileStatusClass() {
@@ -1069,7 +1077,7 @@ class Search {
             ? (this.config.userProfiles || [])
             : [this.currentSelectedProfile].filter(Boolean));
         return users.map((item) => ({
-            label: item.name,
+            label: tMessage(item.name),
             value: item.id,
             disable: !!(this.config.profileLoginRequired && item.anonymousProfile),
         }));
@@ -1085,7 +1093,7 @@ class Search {
     }
 
     get librarySourceOptions() {
-        const result = [{label: 'Все источники', value: ''}];
+        const result = [{label: t('Все источники'), value: ''}];
         for (const source of this.enabledLibrarySources) {
             result.push({
                 label: source.name || source.id,
@@ -1102,7 +1110,7 @@ class Search {
     getRouteLabel(route) {
         if (route === 'bestsellers')
             return this.activeDiscoveryExternalLabel;
-        return (route2component[route] ? route2component[route].label : route);
+        return (route2component[route] ? t(route2component[route].label) : route);
     }
 
     isSearchRoute(route = this.$route) {
@@ -1113,17 +1121,17 @@ class Search {
     get extendedParamsMessage() {
         const s = this.search;
         const result = [];
-        result.push(s.keywords ? 'Ключевые слова' : '');
-        result.push(s.genre ? 'Жанр' : '');
-        result.push(s.date ? 'Дата поступления' : '');
-        result.push(s.librate ? 'Оценка' : '');
-        result.push(s.ext ? 'Тип файла' : '');
+        result.push(s.keywords ? t('Ключевые слова') : '');
+        result.push(s.genre ? t('Жанр') : '');
+        result.push(s.date ? t('Дата поступления') : '');
+        result.push(s.librate ? t('Оценка') : '');
+        result.push(s.ext ? t('Тип файла') : '');
 
         return result.filter(s => s).join(', ');
     }
 
     get collapsedExtendedParamsLabel() {
-        return (this.extendedParamsMessage ? `Доп. фильтры: ${this.extendedParamsMessage}` : 'Доп. фильтры');
+        return (this.extendedParamsMessage ? t('Доп. фильтры: {value}', {value: this.extendedParamsMessage}) : t('Доп. фильтры'));
     }
 
     get isExtendedSearch() {
@@ -1152,7 +1160,7 @@ class Search {
     }
 
     get activeDiscoveryExternalLabel() {
-        return (this.activeDiscoveryExternalName || 'Внешний источник');
+        return (this.activeDiscoveryExternalName || t('Внешний источник'));
     }
 
     get activeDiscoveryExternalUrl() {
@@ -1244,9 +1252,9 @@ class Search {
                             ...book,
                             discoveryShelfId: String(shelf.id || ''),
                             discoveryDismissible: (String(shelf.id || '') !== 'hidden-books'),
-                            discoveryDismissLabel: 'Неинтересно',
+                            discoveryDismissLabel: t('Неинтересно'),
                             discoveryRestoreable: (String(shelf.id || '') === 'hidden-books'),
-                            discoveryRestoreLabel: 'Вернуть',
+                            discoveryRestoreLabel: t('Вернуть'),
                         })),
                 }));
         }
@@ -1290,7 +1298,7 @@ class Search {
         const options = (shelf && Array.isArray(shelf.genreOptions) ? shelf.genreOptions : []);
         const selectedUrl = String(this.discoveryExternalGenreUrl || '').trim();
         const selectedName = String(this.discoveryExternalGenreName || '').trim();
-        const result = [{label: 'Все жанры', value: ''}];
+        const result = [{label: t('Все жанры'), value: ''}];
         const seen = new Set(['']);
 
         for (const option of options) {
@@ -1303,7 +1311,7 @@ class Search {
         }
 
         if (selectedUrl && !seen.has(selectedUrl))
-            result.push({label: (selectedName || 'Выбранный жанр'), value: selectedUrl});
+            result.push({label: (selectedName || t('Выбранный жанр')), value: selectedUrl});
 
         return result;
     }
@@ -1497,7 +1505,7 @@ class Search {
 
         let projectName = `${this.config.name} v${this.config.webAppVersion}`;
         if (this.newReleaseAvailable)
-            projectName += `, доступно обновление: v${this.config.latestVersion}`;
+            projectName += t(', доступно обновление: v{version}', {version: this.config.latestVersion});
 
         this.projectName = projectName;
         this.makeTitle();
@@ -1507,7 +1515,7 @@ class Search {
         if (!this.collection)
             return;
 
-        let result = `Коллекция ${this.collection}`;
+        let result = t('Коллекция {name}', {name: this.collection});
 
         if (!this.isExtendedSearch) {
             const search = this.search;
@@ -1521,26 +1529,26 @@ class Search {
 
             if (search.author || search.series || search.title) {
                 const as = (search.author ? search.author.split(',') : []);
-                const author = (as.length ? as[0] : '') + (as.length > 1 ? ' и др.' : '');
+                const author = (as.length ? as[0] : '') + (as.length > 1 ? t(' и др.') : '');
 
                 const a = correctValue(author);
                 let s = correctValue(search.series);
-                s = (s ? `(Серия: ${s})` : '');
-                let t = correctValue(search.title);
-                t = (t ? `"${t}"` : '');
+                s = (s ? t('(Серия: {name})', {name: s}) : '');
+                let title = correctValue(search.title);
+                title = (title ? `"${title}"` : '');
 
-                result = [s, t].filter(v => v).join(' ');
+                result = [s, title].filter(v => v).join(' ');
                 result = [a, result].filter(v => v).join(' ');
             } else if (this.selectedList === 'for-you') {
-                result = `Для вас: ${this.collection}`;
+                result = t('Для вас: {name}', {name: this.collection});
             } else if (this.selectedList === 'newest') {
-                result = `Новинки: ${this.collection}`;
+                result = t('Новинки: {name}', {name: this.collection});
             } else if (this.selectedList === 'popular') {
-                result = `Популярное: ${this.collection}`;
+                result = t('Популярное: {name}', {name: this.collection});
             } else if (this.selectedList === 'bestsellers') {
                 result = `${this.activeDiscoveryExternalLabel}: ${this.collection}`;
             } else if (this.isBooksBrowse) {
-                result = `Все книги: ${this.collection}`;
+                result = t('Все книги: {name}', {name: this.collection});
             }
         } else {
             if (this.extSearchNames)
@@ -1554,7 +1562,7 @@ class Search {
 
     showSearchHelp() {
         let info = `<div style="min-width: 250px" />`;
-        info += `
+        info += tHtml('searchHelp', `
 <p>
     Для раздела <b>Авторы</b>, работу поискового движка можно описать простой фразой: найти авторов по указанным критериям.
     По тем же критериям среди найденных авторов фильтруются книги, сортируются и группируются по сериям.
@@ -1599,9 +1607,9 @@ class Search {
     <br><br>
     Раздел <b>Все книги</b> показывает библиотеку единым карточным списком с постраничным просмотром. В нем можно просто листать всю коллекцию или сужать ее обычными полями поиска и дополнительными фильтрами.
 </p>
-`;
+`);
 
-        this.$root.stdDialog.alert(info, 'Памятка', {iconName: 'la la-info-circle'});
+        this.$root.stdDialog.alert(info, t('Памятка'), {iconName: 'la la-info-circle'});
     }
 
     showCollectionInfo() {
@@ -1632,25 +1640,25 @@ class Search {
         info += `<div style="min-width: 250px" />`;
 
         info += `
-<div><div ${keyStyle}>Всего файлов книг:</div><span>${stat.filesCountAll}</span></div>
-<div><div ${keyStyle}>Из них актуальных:</div><span>${stat.filesCount}</span></div>
-<div><div ${keyStyle}>Помеченных как удаленные:</div><span>${stat.filesDelCount}</span></div>
+<div><div ${keyStyle}>${t('Всего файлов книг:')}</div><span>${stat.filesCountAll}</span></div>
+<div><div ${keyStyle}>${t('Из них актуальных:')}</div><span>${stat.filesCount}</span></div>
+<div><div ${keyStyle}>${t('Помеченных как удаленные:')}</div><span>${stat.filesDelCount}</span></div>
 <br>
-<div><div ${keyStyle}>Обработано ссылок на файлы:</div><span>${stat.bookCountAll}</span></div>
-<div><div ${keyStyle}>Из них актуальных:</div><span>${stat.bookCount}</span></div>
-<div><div ${keyStyle}>Помеченных как удаленные:</div><span>${stat.bookDelCount}</span></div>
-<div><div ${keyStyle}>Актуальных без автора:</div><span>${stat.noAuthorBookCount}</span></div>
+<div><div ${keyStyle}>${t('Обработано ссылок на файлы:')}</div><span>${stat.bookCountAll}</span></div>
+<div><div ${keyStyle}>${t('Из них актуальных:')}</div><span>${stat.bookCount}</span></div>
+<div><div ${keyStyle}>${t('Помеченных как удаленные:')}</div><span>${stat.bookDelCount}</span></div>
+<div><div ${keyStyle}>${t('Актуальных без автора:')}</div><span>${stat.noAuthorBookCount}</span></div>
 <br>
-<div><div ${keyStyle}>Всего имен авторов:</div><span>${stat.authorCountAll}</span></div>
-<div><div ${keyStyle}>Уникальных имен без соавторов:</div><span>${stat.authorCount}</span></div>
-<div><div ${keyStyle}>С соавторами:</div><span>${stat.authorCountAll- stat.authorCount}</span></div>
+<div><div ${keyStyle}>${t('Всего имен авторов:')}</div><span>${stat.authorCountAll}</span></div>
+<div><div ${keyStyle}>${t('Уникальных имен без соавторов:')}</div><span>${stat.authorCount}</span></div>
+<div><div ${keyStyle}>${t('С соавторами:')}</div><span>${stat.authorCountAll- stat.authorCount}</span></div>
 <br>
-<div><div ${keyStyle}>Уникальных названий книг:</div><span>${stat.titleCount}</span></div>
-<div><div ${keyStyle}>Уникальных названий серий:</div><span>${stat.seriesCount}</span></div>
-<div><div ${keyStyle}>Найдено жанров:</div><span>${stat.genreCount}</span></div>
-<div><div ${keyStyle}>Найдено языков:</div><span>${stat.langCount}</span></div>
+<div><div ${keyStyle}>${t('Уникальных названий книг:')}</div><span>${stat.titleCount}</span></div>
+<div><div ${keyStyle}>${t('Уникальных названий серий:')}</div><span>${stat.seriesCount}</span></div>
+<div><div ${keyStyle}>${t('Найдено жанров:')}</div><span>${stat.genreCount}</span></div>
+<div><div ${keyStyle}>${t('Найдено языков:')}</div><span>${stat.langCount}</span></div>
 <br>
-<div><div ${keyStyle}>Версия поисковой БД:</div><span>${this.config.dbVersion}</span></div>
+<div><div ${keyStyle}>${t('Версия поисковой БД:')}</div><span>${this.config.dbVersion}</span></div>
 `;        
 
         info += `
@@ -1664,7 +1672,7 @@ class Search {
 </div>
 `;        
 
-        this.$root.stdDialog.alert(info, 'Статистика по коллекции', {iconName: 'la la-info-circle'});
+        this.$root.stdDialog.alert(info, t('Статистика по коллекции'), {iconName: 'la la-info-circle'});
     }
 
     get newSearchLink() {
@@ -1831,7 +1839,7 @@ class Search {
             return;
 
         this.setSetting(settingName, false);
-        this.$root.notify.success('Полка скрыта. Её можно вернуть в настройках.');
+        this.$root.notify.success(t('Полка скрыта. Её можно вернуть в настройках.'));
     }
 
     toggleDiscoveryUnreadOnly() {
@@ -1914,7 +1922,7 @@ class Search {
         const next = Math.min(current + 8, 96);
         if (next === current) {
             this.discoverySimilarExhausted = true;
-            this.$root.notify.info('Новых рекомендаций пока нет.');
+            this.$root.notify.info(t('Новых рекомендаций пока нет.'));
             return;
         }
 
@@ -1935,7 +1943,7 @@ class Search {
 
         if (afterCount <= beforeCount) {
             this.discoverySimilarExhausted = true;
-            this.$root.notify.info('Новых рекомендаций пока нет.');
+            this.$root.notify.info(t('Новых рекомендаций пока нет.'));
         } else {
             this.discoverySimilarExhausted = !(afterShelf && afterShelf.discoveryHasMore === true);
         }
@@ -1964,16 +1972,16 @@ class Search {
             this.discoveryShelvesCacheKey = '';
             await this.refreshDiscoveryShelves(true);
             const messages = {
-                more_like_this: 'Будем показывать больше похожих книг.',
-                dislike_author: 'Автор будет реже появляться в рекомендациях.',
-                dislike_genre: 'Этот жанр будет реже появляться в рекомендациях.',
-                already_read: 'Книга убрана из рекомендаций.',
-                ignore_for_taste: 'Книга больше не влияет на ваши вкусы и остаётся доступной в библиотеке.',
-                not_interested: 'Книга скрыта из персональных витрин.',
+                more_like_this: t('Будем показывать больше похожих книг.'),
+                dislike_author: t('Автор будет реже появляться в рекомендациях.'),
+                dislike_genre: t('Этот жанр будет реже появляться в рекомендациях.'),
+                already_read: t('Книга убрана из рекомендаций.'),
+                ignore_for_taste: t('Книга больше не влияет на ваши вкусы и остаётся доступной в библиотеке.'),
+                not_interested: t('Книга скрыта из персональных витрин.'),
             };
             this.$root.notify.success(messages[kind] || messages.not_interested);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -1990,9 +1998,9 @@ class Search {
             this.discoverySimilarExhausted = false;
             this.discoveryShelvesCacheKey = '';
             await this.refreshDiscoveryShelves(true);
-            this.$root.notify.success('Книга возвращена в персональные витрины.');
+            this.$root.notify.success(t('Книга возвращена в персональные витрины.'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -2002,9 +2010,9 @@ class Search {
             this.discoverySimilarExhausted = false;
             this.discoveryShelvesCacheKey = '';
             await this.refreshDiscoveryShelves(true);
-            this.$root.notify.success('Вкусы сохранены. Персональная подборка обновлена.');
+            this.$root.notify.success(t('Вкусы сохранены. Персональная подборка обновлена.'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -2015,9 +2023,9 @@ class Search {
             });
             this.discoveryShelvesCacheKey = '';
             await this.refreshDiscoveryShelves(true);
-            this.$root.notify.info('Вкусы можно настроить позже на странице «Для вас».');
+            this.$root.notify.info(t('Вкусы можно настроить позже на странице «Для вас».'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -2055,8 +2063,8 @@ class Search {
             try {
                 await this.api.showProfileLoginDialog(target.login || '');
             } catch (e) {
-                if (e.message !== 'Вход в профиль отменён')
-                    this.$root.stdDialog.alert(e.message, 'Ошибка');
+                if (e.message !== t('Вход в профиль отменён'))
+                    this.$root.stdDialog.alert(e.message, t('Ошибка'));
             }
         }
 
@@ -2071,8 +2079,8 @@ class Search {
         try {
             await this.api.showProfileLoginDialog(target.anonymousProfile ? '' : target.login || '');
         } catch (e) {
-            if (e.message !== 'Вход в профиль отменён')
-                this.$root.stdDialog.alert(e.message, 'Ошибка');
+            if (e.message !== t('Вход в профиль отменён'))
+                this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -2124,7 +2132,7 @@ class Search {
                 await this.api.showProfileLoginDialog(target.login || '');
             } catch (e) {
                 await this.api.updateConfig();
-                this.$root.stdDialog.alert(e.message, 'Ошибка');
+                this.$root.stdDialog.alert(e.message, t('Ошибка'));
             }
         }
     }
@@ -2173,7 +2181,28 @@ class Search {
                 return code;
         }
 
+        //название жанра может прийти с сервера на исходном языке
+        for (const section of this.genreTreeRaw) {
+            for (const g of section.value) {
+                if (g.name === name)
+                    return g.value;
+            }
+        }
+
         return '';
+    }
+
+    get genreTree() {
+        return translateGenreTree(this.genreTreeRaw);
+    }
+
+    get genreMap() {
+        const result = new Map();
+        for (const section of this.genreTree) {
+            for (const g of section.value)
+                result.set(g.value, g.name);
+        }
+        return result;
     }
 
     setSetting(name, newValue) {
@@ -2311,19 +2340,14 @@ class Search {
                     result = await this.api.getGenreTree();
                 }
 
-                this.genreTree = result.genreTree;
-                this.genreMap = new Map();
-                for (const section of this.genreTree) {
-                    for (const g of section.value)
-                        this.genreMap.set(g.value, g.name);
-                }
+                this.genreTreeRaw = result.genreTree;
 
                 this.langList = result.langList;
                 this.extList = result.extList;
                 this.genreTreeInpxHash = result.inpxHash;
             }
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         } finally {
             this.genreTreeUpdating = false;
         }
@@ -2365,8 +2389,8 @@ class Search {
             }
         } catch (e) {
             if (requestSeq === this.discoveryShelvesRequestSeq && this.showDiscoveryShelves) {
-                const message = String(e && e.message || '').trim() || 'нет ответа от сервера';
-                this.discoveryShelvesError = `Ошибка витрины: ${message}`;
+                const message = tMessage(String(e && e.message || '').trim()) || t('нет ответа от сервера');
+                this.discoveryShelvesError = t('Ошибка витрины: {message}', {message});
             }
         } finally {
             if (requestSeq === this.discoveryShelvesRequestSeq)
@@ -2397,9 +2421,9 @@ class Search {
         if (utils.isManualDate(date)) {
             const [from, to] = date.split(',')
             if (from)
-                result.push(`<div style="display: inline-block; width: 15px; text-align: right;">с</div> ${utils.sqlDateFormat(from)}`);
+                result.push(`<div style="display: inline-block; width: 15px; text-align: right;">${t('с')}</div> ${utils.sqlDateFormat(from)}`);
             if (to)
-                result.push(`<div style="display: inline-block; width: 15px; text-align: right;">по</div> ${utils.sqlDateFormat(to)}`);
+                result.push(`<div style="display: inline-block; width: 15px; text-align: right;">${t('по')}</div> ${utils.sqlDateFormat(to)}`);
         }
 
         return result.join('<br>');

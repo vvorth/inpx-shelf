@@ -1,5 +1,6 @@
 const BasePage = require('./BasePage');
 const utils = require('../utils');
+const {t} = require('./i18n');
 
 class SeriesPage extends BasePage {
     constructor(config) {
@@ -54,7 +55,7 @@ class SeriesPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'all_series_books',
-                            title: '[Все книги серии]',
+                            title: t('[Все книги серии]'),
                             link: this.navLink({
                                 href: `/${this.id}?series=${encodeURIComponent(query.series)}&all=1`}),
                         })
@@ -62,7 +63,7 @@ class SeriesPage extends BasePage {
                 }
 
                 for (const book of sorted) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || 'Без названия'} (${book.ext})`;
+                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('Без названия')} (${book.ext})`;
 
                     entry.push(
                         this.makeEntry({
@@ -82,27 +83,27 @@ class SeriesPage extends BasePage {
                 entry.push(
                     this.makeEntry({
                         id: 'select_genre',
-                        title: '[Выбрать жанр]',
+                        title: t('[Выбрать жанр]'),
                         link: this.navLink({href: `/genre?from=${this.id}`}),
                     })
                 );
             }
 
             //навигация по каталогу
-            const queryRes = await this.opdsQuery('series', query, '[Остальные серии]');
+            const queryRes = await this.opdsQuery('series', query, t('[Остальные серии]'));
 
             for (const rec of queryRes) {
                 const e = {
                     id: rec.id,
-                    title: (rec.count ? rec.title : `Серия: ${rec.title}`),
+                    title: (rec.count ? rec.title : t('Серия: {name}', {name: rec.title})),
                     link: this.navLink({href: `/${this.id}?series=${rec.q}&genre=${encodeURIComponent(query.genre)}`}),
                 };
 
                 let countStr = '';
                 if (rec.count)
-                    countStr = `${rec.count} сери${utils.wordEnding(rec.count, 1)}${(query.genre ? ' (в выбранном жанре)' : '')}`;
+                    countStr = `${t('{n} сери{e}', {n: rec.count, e: utils.wordEnding(rec.count, 1)})}${(query.genre ? t(' (в выбранном жанре)') : '')}`;
                 if (!countStr && rec.bookCount && !query.genre)
-                    countStr = `${rec.bookCount} книг${utils.wordEnding(rec.bookCount, 8)}`;
+                    countStr = t('{n} книг{e}', {n: rec.bookCount, e: utils.wordEnding(rec.bookCount, 8)});
 
                 if (countStr) {
                     e.content = {

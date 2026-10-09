@@ -3,10 +3,10 @@
         <div v-if="!standaloneSource" class="reader-lab-empty">
             <div class="reader-lab-card">
                 <div class="reader-lab-eyebrow">Standalone Reader</div>
-                <h1 class="reader-lab-title">Локальная FB2-читалка</h1>
+                <h1 class="reader-lab-title">{{ $t('Локальная FB2-читалка') }}</h1>
                 <p class="reader-lab-text">
-                    Откройте локальный `.fb2` с компьютера или загрузите sample-файл из подключённой библиотеки.
-                    Этот режим обходит API книги и нужен именно для отладки рендера и пагинации.
+                    {{ $t('Откройте локальный `.fb2` с компьютера или загрузите sample-файл из подключённой библиотеки.') }}
+                    {{ $t('Этот режим обходит API книги и нужен именно для отладки рендера и пагинации.') }}
                 </p>
 
                 <div class="reader-lab-actions">
@@ -15,14 +15,14 @@
                         no-caps
                         color="primary"
                         icon="la la-file-upload"
-                        label="Открыть FB2"
+                        :label="$t('Открыть FB2')"
                         @click="openFilePicker"
                     />
                     <q-btn
                         flat
                         no-caps
                         icon="la la-flask"
-                        label="Открыть sample"
+                        :label="$t('Открыть sample')"
                         @click="loadSample()"
                     />
                 </div>
@@ -47,8 +47,8 @@
         <Reader v-else :standalone-source="standaloneSource" />
 
         <div v-if="standaloneSource" class="reader-lab-floating-actions">
-            <q-btn flat dense no-caps icon="la la-file-upload" label="Другой FB2" @click="openFilePicker" />
-            <q-btn flat dense no-caps icon="la la-times" label="Сбросить" @click="resetStandaloneSource" />
+            <q-btn flat dense no-caps icon="la la-file-upload" :label="$t('Другой FB2')" @click="openFilePicker" />
+            <q-btn flat dense no-caps icon="la la-times" :label="$t('Сбросить')" @click="resetStandaloneSource" />
             <input
                 ref="floatingFileInput"
                 class="reader-lab-file-input"
@@ -63,6 +63,7 @@
 <script>
 import vueComponent from '../vueComponent.js';
 import Reader from './Reader.vue';
+import {t} from '../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -191,13 +192,13 @@ class ReaderLab {
             return;
 
         this.loadingSource = true;
-        this.loadingMessage = 'Чтение локального FB2...';
+        this.loadingMessage = t('Чтение локального FB2...');
         this.sourceError = '';
         try {
             const buffer = await file.arrayBuffer();
             const fb2 = this.decodeFb2Bytes(buffer);
             if (!fb2)
-                throw new Error('Не удалось декодировать локальный FB2.');
+                throw new Error(t('Не удалось декодировать локальный FB2.'));
             const safeName = String(file.name || 'local-book.fb2').trim() || 'local-book.fb2';
             this.standaloneSource = {
                 sourceKey: `file:${safeName}:${file.size}:${file.lastModified}`,
@@ -208,7 +209,7 @@ class ReaderLab {
                 fb2,
             };
         } catch (e) {
-            this.sourceError = e.message || 'Не удалось прочитать локальный FB2.';
+            this.sourceError = e.message || t('Не удалось прочитать локальный FB2.');
         } finally {
             this.loadingSource = false;
             this.loadingMessage = '';
@@ -219,17 +220,17 @@ class ReaderLab {
 
     async loadSample(fileName = 'night-watch.fb2') {
         this.loadingSource = true;
-        this.loadingMessage = 'Загрузка sample-книги...';
+        this.loadingMessage = t('Загрузка sample-книги...');
         this.sourceError = '';
         try {
             const response = await fetch(`/reader-lab-source/${encodeURIComponent(fileName)}`);
             if (!response.ok)
-                throw new Error(`Не удалось загрузить sample: ${response.status}`);
+                throw new Error(t('Не удалось загрузить sample: {status}', {status: response.status}));
 
             const buffer = await response.arrayBuffer();
             const fb2 = this.decodeFb2Bytes(buffer);
             if (!fb2)
-                throw new Error('Не удалось декодировать sample-книгу.');
+                throw new Error(t('Не удалось декодировать sample-книгу.'));
             this.standaloneSource = {
                 sourceKey: `sample:${fileName}:${fb2.length}`,
                 fileName,
@@ -239,7 +240,7 @@ class ReaderLab {
                 fb2,
             };
         } catch (e) {
-            this.sourceError = e.message || 'Не удалось загрузить sample-книгу.';
+            this.sourceError = e.message || t('Не удалось загрузить sample-книгу.');
         } finally {
             this.loadingSource = false;
             this.loadingMessage = '';

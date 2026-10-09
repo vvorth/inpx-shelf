@@ -17,6 +17,8 @@
 import vueComponent from './vueComponent.js';
 
 //import * as utils from '../share/utils';
+import q from '../quasar';
+import {setLang} from '../share/i18n';
 import Notify from './share/Notify.vue';
 import StdDialog from './share/StdDialog.vue';
 
@@ -34,6 +36,9 @@ const componentOptions = {
     watch: {
         darkTheme(newValue) {
             this.applyTheme(newValue);
+        },
+        uiLang(newValue) {
+            this.applyLang(newValue);
         },
         '$route.path'() {
             this.applyPwaManifest();
@@ -98,6 +103,7 @@ class App {
         this.$root.stdDialog = this.$refs.stdDialog;
 
         this.applyTheme(this.darkTheme);
+        this.applyLang(this.uiLang);
         this.applyPwaManifest();
         this.setAppTitle();
     }
@@ -122,8 +128,17 @@ class App {
         return !!this.settings.darkTheme;
     }
 
+    get uiLang() {
+        return this.settings.uiLang || '';
+    }
+
     applyTheme(value) {
         this.$q.dark.set(!!value);
+    }
+
+    applyLang(value) {
+        const lang = setLang(value);
+        this.$q.lang.set(q.langs[lang] || q.langs.ru);
     }
 
     applyPwaManifest() {

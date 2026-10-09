@@ -37,6 +37,7 @@ import * as utils from '../../share/utils';
 import * as cryptoUtils from '../../share/cryptoUtils';
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
+import {t, tMessage} from '../../share/i18n';
 
 const rotor = '|/-\\';
 const profileSessionStorageKey = 'inpx-web-profile-session';
@@ -232,7 +233,7 @@ class Api {
                 this.writeStoredProfileSession(rememberedUserId, '');
             }
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -248,8 +249,8 @@ class Api {
         }
 
         try {
-            const result = await this.$root.stdDialog.password('Введите пароль:', 'Доступ ограничен', {
-                inputValidator: (str) => (str ? true : 'Пароль не должен быть пустым'),
+            const result = await this.$root.stdDialog.password(t('Введите пароль:'), t('Доступ ограничен'), {
+                inputValidator: (str) => (str ? true : t('Пароль не должен быть пустым')),
                 userName: 'access',
                 noEscDismiss: true,
                 noBackdropDismiss: true,
@@ -296,11 +297,11 @@ class Api {
                 const server = await wsc.message(await wsc.send(params));
 
                 if (server.state != 'normal') {
-                    this.mainMessage = `${server.serverMessage} ${rotor[ri]}`;
+                    this.mainMessage = `${tMessage(server.serverMessage)} ${rotor[ri]}`;
                     if (server.job == 'load inpx') {
-                        this.jobMessage = `${server.jobMessage} (${server.recsLoaded}): ${server.fileName}`;
+                        this.jobMessage = `${tMessage(server.jobMessage)} (${server.recsLoaded}): ${server.fileName}`;
                     } else {
-                        this.jobMessage = server.jobMessage;
+                        this.jobMessage = tMessage(server.jobMessage);
                     }
 
                     //this.jsonMessage = server;
@@ -722,8 +723,8 @@ class Api {
         let login = prefillLogin || current.login || '';
         while (!result) {
             const loginPrompt = await this.$root.stdDialog.profileLogin(
-                'Введите логин и пароль профиля:',
-                'Вход в профиль',
+                t('Введите логин и пароль профиля:'),
+                t('Вход в профиль'),
                 Object.assign({}, dialogOpts, {
                     login,
                     noCancel: opts.required === true,
@@ -732,14 +733,14 @@ class Api {
                 }),
             );
             if (!loginPrompt || loginPrompt === false)
-                throw new Error('Вход в профиль отменён');
+                throw new Error(t('Вход в профиль отменён'));
             login = String(loginPrompt.login || '').trim();
             try {
                 result = await this.loginUserProfile(login, String(loginPrompt.password || ''));
             } catch (error) {
                 if (!opts.required)
                     throw error;
-                await this.$root.stdDialog.alert(error.message, 'Ошибка входа');
+                await this.$root.stdDialog.alert(error.message, t('Ошибка входа'));
             }
         }
         this.commit('setSettings', {

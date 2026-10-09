@@ -3,7 +3,7 @@
         <template #header>
             <div class="row items-center">
                 <div style="font-size: 110%">
-                    Информация о книге
+                    {{ $t('Информация о книге') }}
                 </div>
             </div>
         </template>
@@ -16,7 +16,7 @@
                 <b class="info-link" @click.stop.prevent="emitNavigate('title', book.title)">{{ book.title }}</b>
             </div>
             <div v-if="libraryRating" class="text-grey-7 q-mt-xs">
-                Оценка читателей: {{ libraryRating.value.toFixed(2) }}/5 · голосов: {{ libraryRating.count }}
+                {{ $t('Оценка читателей: {value}/5 · голосов: {count}', {value: libraryRating.value.toFixed(2), count: libraryRating.count}) }}
             </div>
             <div v-if="book.series" class="q-mt-xs info-series-link" @click.stop.prevent="emitNavigate('series', book.series)">
                 {{ seriesLabel }}: {{ book.series }}<span v-if="book.serno"> #{{ book.serno }}</span>
@@ -57,7 +57,7 @@
                         >
                             <q-tab v-if="fb2.length" name="fb2" label="Fb2 info" />
                             <q-tab name="inpx" label="Inpx info" />
-                            <q-tab v-if="contents.length" name="contents" label="Содержание" />
+                            <q-tab v-if="contents.length" name="contents" :label="$t('Содержание')" />
                             <q-tab v-if="hasAuthorTab" name="author" :label="authorTabLabel" />
                         </q-tabs>
                     </div>
@@ -67,19 +67,19 @@
                             <div class="author-tab-wrap">
                                 <div v-if="authorInfoLoading" class="author-info-panel">
                                     <div class="author-info-head">
-                                        Об авторе
+                                        {{ $t('Об авторе') }}
                                     </div>
                                     <div class="row items-center text-grey-7">
                                         <q-icon class="la la-spinner icon-rotate text-green-8" size="24px" />
                                         <div class="q-ml-sm">
-                                            Загрузка информации об авторе...
+                                            {{ $t('Загрузка информации об авторе...') }}
                                         </div>
                                     </div>
                                 </div>
 
                                 <div v-else-if="authorInfo" class="author-info-panel">
                                     <div class="author-info-head">
-                                        Об авторе
+                                        {{ $t('Об авторе') }}
                                     </div>
                                     <div class="row no-wrap author-info-body">
                                         <div v-if="authorInfo.photo" class="author-photo-box">
@@ -98,7 +98,7 @@
                         <template v-else-if="selectedTab == 'contents'">
                             <div class="fb2-contents q-mx-sm q-mt-md q-mb-sm">
                                 <div class="text-blue section-label q-mb-sm">
-                                    Содержание
+                                    {{ $t('Содержание') }}
                                 </div>
                                 <div class="fb2-contents-list">
                                     <div
@@ -118,14 +118,14 @@
                             <div v-for="item in info" :key="item.name">
                                 <div class="row q-ml-sm q-mt-sm items-center">
                                     <div class="text-blue section-label">
-                                        {{ item.label }}
+                                        {{ $tm(item.label) }}
                                     </div>
                                     <div class="col q-mx-xs section-divider"></div>
                                 </div>
 
                                 <div v-for="subItem in item.value" :key="subItem.name" class="row q-ml-md info-row">
                                     <div class="info-key">
-                                        {{ subItem.label }}
+                                        {{ $tm(subItem.label) }}
                                     </div>
                                     <div class="q-ml-sm info-value" v-html="subItem.value" @click="onInfoValueClick($event)" />
                                 </div>
@@ -133,7 +133,7 @@
 
                             <div v-if="selectedTab == 'fb2' && contents.length" class="fb2-contents q-mx-sm q-mt-md q-mb-sm">
                                 <div class="text-blue section-label q-mb-sm">
-                                    Содержание
+                                    {{ $t('Содержание') }}
                                 </div>
                                 <div class="fb2-contents-list">
                                     <div
@@ -150,7 +150,7 @@
 
                             <div v-if="selectedTab == 'fb2' && fb2Images.length" class="fb2-gallery q-mx-sm q-mt-md q-mb-sm">
                                 <div class="text-blue section-label q-mb-sm">
-                                    Иллюстрации
+                                    {{ $t('Иллюстрации') }}
                                 </div>
                                 <div class="fb2-gallery-grid">
                                     <img
@@ -172,12 +172,12 @@
         <div v-if="selectedTab == 'fb2' && annotation" class="q-mt-md" v-html="annotation" />
         <div v-if="selectedTab == 'fb2' && hasAnnotationMeta" class="annotation-meta q-mt-md">
             <div class="text-blue section-label q-mb-sm">
-                Аннотация и статистика
+                {{ $t('Аннотация и статистика') }}
             </div>
 
             <div v-if="annotationMeta.epigraph && annotationMeta.epigraph.length" class="annotation-card q-mb-md">
                 <div class="annotation-card-title">
-                    Эпиграф
+                    {{ $t('Эпиграф') }}
                 </div>
                 <div
                     v-for="(line, index) in annotationMeta.epigraph"
@@ -193,11 +193,11 @@
 
             <div v-if="annotationStatRows.length" class="annotation-card q-mb-md">
                 <div class="annotation-card-title">
-                    Статистика текста
+                    {{ $t('Статистика текста') }}
                 </div>
                 <div v-for="item in annotationStatRows" :key="item.label" class="annotation-stat-row">
                     <div class="annotation-stat-label">
-                        {{ item.label }}
+                        {{ $tm(item.label) }}
                     </div>
                     <div class="annotation-stat-value">
                         {{ item.value }}
@@ -208,7 +208,7 @@
 
         <div v-if="['fb2', 'inpx'].includes(selectedTab) && reviews.length" class="reviews-block q-mt-md">
             <div class="text-blue section-label q-mb-sm">
-                Отзывы читателей
+                {{ $t('Отзывы читателей') }}
             </div>
             <div v-for="(review, index) in reviews" :key="`review-${index}`" class="review-card q-mb-md">
                 <div class="review-head">
@@ -228,7 +228,7 @@
 
         <template #footer>
             <q-btn v-if="canEditMetadata" class="q-px-md q-ml-sm" color="secondary" dense no-caps icon="la la-edit" @click="openMetadataEditor">
-                Редактировать
+                {{ $t('Редактировать') }}
             </q-btn>
             <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
                 OK
@@ -239,7 +239,7 @@
             <template #header>
                 <div class="row items-center">
                     <div style="font-size: 110%">
-                        Обложка
+                        {{ $t('Обложка') }}
                     </div>
                 </div>
             </template>
@@ -251,24 +251,24 @@
             <q-card class="metadata-edit-card">
                 <q-card-section>
                     <div class="metadata-edit-title">
-                        Редактирование метаданных
+                        {{ $t('Редактирование метаданных') }}
                     </div>
                     <div class="metadata-edit-note">
-                        Сохраняется локальное переопределение поверх INPX. Исходный архив книги не меняется.
+                        {{ $t('Сохраняется локальное переопределение поверх INPX. Исходный архив книги не меняется.') }}
                     </div>
                 </q-card-section>
                 <q-card-section class="q-gutter-sm">
-                    <q-input v-model="metadataForm.title" outlined dense label="Название" />
-                    <q-input v-model="metadataForm.author" outlined dense label="Авторы" />
-                    <q-input v-model="metadataForm.series" outlined dense label="Серия" />
-                    <q-input v-model.number="metadataForm.serno" outlined dense type="number" label="Номер в серии" />
+                    <q-input v-model="metadataForm.title" outlined dense :label="$t('Название')" />
+                    <q-input v-model="metadataForm.author" outlined dense :label="$t('Авторы')" />
+                    <q-input v-model="metadataForm.series" outlined dense :label="$t('Серия')" />
+                    <q-input v-model.number="metadataForm.serno" outlined dense type="number" :label="$t('Номер в серии')" />
                 </q-card-section>
                 <q-card-actions align="right">
                     <q-btn flat no-caps @click="metadataDialogVisible = false">
-                        Отмена
+                        {{ $t('Отмена') }}
                     </q-btn>
                     <q-btn color="primary" no-caps :loading="metadataSaving" @click="saveMetadata">
-                        Сохранить
+                        {{ $t('Сохранить') }}
                     </q-btn>
                 </q-card-actions>
             </q-card>
@@ -285,6 +285,7 @@ import Fb2Parser from '../../../../server/core/fb2/Fb2Parser';
 const {escapeHtml, safeHtml} = require('../../../../shared/safeHtml');
 import * as utils from '../../../share/utils';
 import _ from 'lodash';
+import {t, getLocale} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -402,9 +403,9 @@ class BookInfoDialog {
                 metadataOverridden: true,
             });
             this.metadataDialogVisible = false;
-            this.$root.notify.success('Метаданные сохранены');
+            this.$root.notify.success(t('Метаданные сохранены'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         } finally {
             this.metadataSaving = false;
         }
@@ -417,14 +418,14 @@ class BookInfoDialog {
     get bookAuthor() {
         if (this.book.author) {
             const a = this.book.author.split(',');
-            return a.slice(0, 3).join(', ') + (a.length > 3 ? ' и др.' : '');
+            return a.slice(0, 3).join(', ') + (a.length > 3 ? t(' и др.') : '');
         }
 
         return '';
     }
 
     get posterTitle() {
-        return this.book.title || this.bookAuthor || 'Без названия';
+        return this.book.title || this.bookAuthor || t('Без названия');
     }
 
     get posterLetter() {
@@ -436,15 +437,15 @@ class BookInfoDialog {
     }
 
     get seriesLabel() {
-        return 'Серия';
+        return t('Серия');
     }
 
     get authorTabLabel() {
-        return 'Об авторе';
+        return t('Об авторе');
     }
 
     get noAuthorInfoLabel() {
-        return 'Информация об авторе не найдена.';
+        return t('Информация об авторе не найдена.');
     }
 
     get hasAuthorTab() {
@@ -481,17 +482,17 @@ class BookInfoDialog {
         if (!stats)
             return [];
 
-        const formatInt = (value) => Number(value || 0).toLocaleString('ru-RU');
+        const formatInt = (value) => Number(value || 0).toLocaleString(getLocale());
         const rows = [];
 
         if (stats.letters)
-            rows.push({label: 'Букв', value: formatInt(stats.letters)});
+            rows.push({label: t('Букв'), value: formatInt(stats.letters)});
         if (stats.words)
-            rows.push({label: 'Слов', value: formatInt(stats.words)});
+            rows.push({label: t('Слов'), value: formatInt(stats.words)});
         if (stats.pages)
-            rows.push({label: 'Страниц', value: String(stats.pages).replace('.', ',')});
+            rows.push({label: t('Страниц'), value: String(stats.pages).replace('.', ',')});
         if (stats.images || stats.images === 0)
-            rows.push({label: 'Изображений', value: formatInt(stats.images)});
+            rows.push({label: t('Изображений'), value: formatInt(stats.images)});
 
         return rows;
     }
@@ -549,23 +550,23 @@ class BookInfoDialog {
 
     get inpx() {
         const mapping = [
-            {name: 'fileInfo', label: 'Информация о файле', value: [
-                {name: 'folder', label: 'Архив'},
-                {name: 'file', label: 'Файл в архиве'},
-                {name: 'size', label: 'Размер'},
-                {name: 'date', label: 'Добавлен'},
-                {name: 'del', label: 'Удален'},
+            {name: 'fileInfo', label: t('Информация о файле'), value: [
+                {name: 'folder', label: t('Архив')},
+                {name: 'file', label: t('Файл в архиве')},
+                {name: 'size', label: t('Размер')},
+                {name: 'date', label: t('Добавлен')},
+                {name: 'del', label: t('Удален')},
                 {name: 'libid', label: 'LibId'},
                 {name: 'insno', label: 'InsideNo'},
             ]},
-            {name: 'titleInfo', label: 'Общая информация', value: [
-                {name: 'author', label: 'Автор(ы)'},
-                {name: 'title', label: 'Название'},
-                {name: 'series', label: 'Серия'},
-                {name: 'genre', label: 'Жанр'},
-                {name: 'librate', label: 'Оценка'},
-                {name: 'lang', label: 'Язык книги'},
-                {name: 'keywords', label: 'Ключевые слова'},
+            {name: 'titleInfo', label: t('Общая информация'), value: [
+                {name: 'author', label: t('Автор(ы)')},
+                {name: 'title', label: t('Название')},
+                {name: 'series', label: t('Серия')},
+                {name: 'genre', label: t('Жанр')},
+                {name: 'librate', label: t('Оценка')},
+                {name: 'lang', label: t('Язык книги')},
+                {name: 'keywords', label: t('Ключевые слова')},
             ]},
         ];
 
@@ -583,7 +584,7 @@ class BookInfoDialog {
                 return utils.sqlDateFormat(value);
 
             if (nodePath == 'fileInfo/del')
-                return (value ? 'Да' : null);
+                return (value ? t('Да') : null);
 
             if (nodePath == 'fileInfo/insno')
                 return (value ? value : null);

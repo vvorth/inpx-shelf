@@ -5,6 +5,7 @@
 <script>
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
+import {tMessage} from '../../share/i18n';
 
 class Notify {
     notify(opts) {
@@ -19,6 +20,7 @@ class Notify {
             position = 'top-right',
         } = opts;
 
+        message = tMessage(message);
         caption = (caption ? `<div style="font-size: 120%; color: ${captionColor}"><b>${caption}</b></div><br>` : '');
         return this.$q.notify({
             position,

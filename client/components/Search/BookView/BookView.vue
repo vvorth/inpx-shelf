@@ -95,7 +95,7 @@
                     :class="{'book-discovery-note--explore': book.discoveryExploration}"
                 >
                     <q-icon :name="book.discoveryExploration ? 'la la-compass' : 'la la-lightbulb'" />
-                    <span><strong>{{ book.discoveryExploration ? 'Попробовать новое:' : 'Почему рекомендуем:' }}</strong> {{ effectiveDiscoveryReason }}</span>
+                    <span><strong>{{ book.discoveryExploration ? $t('Попробовать новое:') : $t('Почему рекомендуем:') }}</strong> {{ effectiveDiscoveryReason }}</span>
                 </div>
 
                 <div v-if="showGenres && bookGenreItems.length" class="book-genres">
@@ -266,7 +266,7 @@
                             type="button"
                             class="action-split-toggle"
                             :aria-expanded="telegramMenuOpen ? 'true' : 'false'"
-                            aria-label="Выбрать формат для Telegram"
+                            :aria-label="$t('Выбрать формат для Telegram')"
                             @click.stop.prevent="toggleShareMenu('telegram')"
                         >
                             <i :class="telegramMenuOpen ? 'la la-angle-up' : 'la la-angle-up'"></i>
@@ -299,7 +299,7 @@
                             type="button"
                             class="action-split-toggle"
                             :aria-expanded="emailMenuOpen ? 'true' : 'false'"
-                            aria-label="Выбрать формат для email"
+                            :aria-label="$t('Выбрать формат для email')"
                             @click.stop.prevent="toggleShareMenu('email')"
                         >
                             <i :class="emailMenuOpen ? 'la la-angle-up' : 'la la-angle-up'"></i>
@@ -344,7 +344,7 @@
                             type="button"
                             class="action-split-toggle"
                             :aria-expanded="formatMenuOpen ? 'true' : 'false'"
-                            aria-label="Выбрать формат"
+                            :aria-label="$t('Выбрать формат')"
                             @click.stop.prevent="toggleShareMenu('format')"
                         >
                             <i :class="formatMenuOpen ? 'la la-angle-up' : 'la la-angle-up'"></i>
@@ -377,6 +377,7 @@
 import vueComponent from '../../vueComponent.js';
 
 import * as utils from '../../../share/utils';
+import {t, tMessage} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -398,9 +399,9 @@ class BookView {
         genreMap: Object,
         showReadLink: Boolean,
         showDiscoveryDismiss: { type: Boolean, default: false},
-        discoveryDismissLabel: { type: String, default: 'Неинтересно'},
+        discoveryDismissLabel: { type: String, default: ''},
         showDiscoveryRestore: { type: Boolean, default: false},
-        discoveryRestoreLabel: { type: String, default: 'Вернуть'},
+        discoveryRestoreLabel: { type: String, default: ''},
         compactDiscovery: { type: Boolean, default: false},
         titleColor: { type: String, default: 'text-blue-10'},
         selectable: { type: Boolean, default: false},
@@ -486,7 +487,7 @@ class BookView {
     get bookAuthor() {
         if (this.book.author) {
             let a = this.book.author.split(',');
-            return a.slice(0, 3).join(', ') + (a.length > 3 ? '\u0020\u0438\u0020\u0434\u0440\u002e' : '');
+            return a.slice(0, 3).join(', ') + (a.length > 3 ? t('\u0020и\u0020др\u002e') : '');
         }
 
         return '';
@@ -626,17 +627,17 @@ class BookView {
 
     get primaryActionLabel() {
         if (this.isExternalOnlyDiscoveryBook)
-            return 'Открыть источник';
+            return t('Открыть источник');
 
         return this.effectiveDownloadLabel;
     }
 
     get deletedLabel() {
-        return '\u0423\u0434\u0430\u043b\u0435\u043d\u043e';
+        return t('Удалено');
     }
 
     get readLabel() {
-        return '\u0427\u0438\u0442\u0430\u0442\u044c';
+        return t('Читать');
     }
 
     get effectiveReadLabel() {
@@ -644,35 +645,35 @@ class BookView {
     }
 
     get infoLabel() {
-        return '\u0418\u043d\u0444\u043e';
+        return t('Инфо');
     }
 
     get authorInfoLabel() {
-        return '\u041e\u0431\u0020\u0430\u0432\u0442\u043e\u0440\u0435';
+        return t('Об\u0020авторе');
     }
 
     get readingListLabel() {
-        return '\u0412\u0020\u0441\u043f\u0438\u0441\u043e\u043a';
+        return t('В\u0020список');
     }
 
     get markReadLabel() {
-        return '\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e';
+        return t('Прочитано');
     }
 
     get markUnreadLabel() {
-        return '\u0421\u043d\u044f\u0442\u044c';
+        return t('Снять');
     }
 
     get effectiveReadingListLabel() {
-        return (this.isCompactDiscoveryMode ? '\u0421\u043f\u0438\u0441\u043e\u043a' : this.readingListLabel);
+        return (this.isCompactDiscoveryMode ? t('Список') : this.readingListLabel);
     }
 
     get effectiveDiscoveryDismissLabel() {
-        return (this.isCompactDiscoveryMode ? '\u0421\u043a\u0440\u044b\u0442\u044c' : this.discoveryDismissLabel);
+        return (this.isCompactDiscoveryMode ? t('Скрыть') : (this.discoveryDismissLabel || t('Неинтересно')));
     }
 
     get effectiveMoreLikeThisLabel() {
-        return (this.isCompactDiscoveryMode ? '\u0415\u0449\u0451' : '\u0411\u043e\u043b\u044c\u0448\u0435 \u0442\u0430\u043a\u043e\u0433\u043e');
+        return (this.isCompactDiscoveryMode ? t('Ещё') : t('Больше такого'));
     }
 
     get effectiveDiscoveryReason() {
@@ -689,13 +690,13 @@ class BookView {
             .filter(part => !/^(?:В чтении|В списках|Прочитано):\s*\d+$/i.test(part))
             .map((part) => {
                 if (/^Из списка «[^»]+»/i.test(part))
-                    return 'На основе вашей библиотеки';
+                    return t('На основе вашей библиотеки');
                 if (hasSensitiveGenre && /^(?:Вы выбрали жанр|Похожие жанры):/i.test(part))
-                    return 'Учитывает ваши читательские интересы';
-                return part;
+                    return t('Учитывает ваши читательские интересы');
+                return tMessage(part);
             });
         if (hasActivityCounters)
-            result.unshift('Популярно у читателей');
+            result.unshift(t('Популярно у читателей'));
         result = Array.from(new Set(result)).join(' · ');
 
         for (const code of genreCodes) {
@@ -707,39 +708,39 @@ class BookView {
     }
 
     get discoveryFeedbackOptionsLabel() {
-        return '\u0423\u0442\u043e\u0447\u043d\u0438\u0442\u044c \u043f\u0440\u0438\u0447\u0438\u043d\u0443';
+        return t('Уточнить причину');
     }
 
     get dislikeAuthorLabel() {
-        return '\u041d\u0435 \u043b\u044e\u0431\u043b\u044e \u044d\u0442\u043e\u0433\u043e \u0430\u0432\u0442\u043e\u0440\u0430';
+        return t('Не люблю этого автора');
     }
 
     get dislikeGenreLabel() {
-        return '\u041d\u0435 \u043c\u043e\u0439 \u0436\u0430\u043d\u0440';
+        return t('Не мой жанр');
     }
 
     get alreadyReadLabel() {
-        return '\u0423\u0436\u0435 \u0447\u0438\u0442\u0430\u043b';
+        return t('Уже читал');
     }
 
     get ignoreForTasteLabel() {
-        return '\u041d\u0435 \u0443\u0447\u0438\u0442\u044b\u0432\u0430\u0442\u044c \u0432 \u043c\u043e\u0438\u0445 \u0432\u043a\u0443\u0441\u0430\u0445';
+        return t('Не учитывать в моих вкусах');
     }
 
     get effectiveDiscoveryRestoreLabel() {
-        return (this.isCompactDiscoveryMode ? '\u0412\u0435\u0440\u043d\u0443\u0442\u044c' : this.discoveryRestoreLabel);
+        return (this.isCompactDiscoveryMode ? t('Вернуть') : (this.discoveryRestoreLabel || t('Вернуть')));
     }
 
     get seriesLabel() {
-        return '\u0421\u0435\u0440\u0438\u044f';
+        return t('Серия');
     }
 
     get noTitleLabel() {
-        return '\u0411\u0435\u0437\u0020\u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f';
+        return t('Без\u0020названия');
     }
 
     get downloadBase() {
-        return '\u0421\u043a\u0430\u0447\u0430\u0442\u044c';
+        return t('Скачать');
     }
 
     get downloadIcon() {
@@ -775,7 +776,7 @@ class BookView {
     }
 
     get formatDropdownLabel() {
-        return `Форматы (${this.extraFormats.length})`;
+        return t('Форматы ({n})', {n: this.extraFormats.length});
     }
 
     get telegramFormats() {

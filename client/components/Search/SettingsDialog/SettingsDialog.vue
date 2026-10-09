@@ -3,14 +3,30 @@
         <template #header>
             <div class="row items-center" style="font-size: 110%">
                 <q-icon class="q-mr-sm text-green" name="la la-cog" size="28px"></q-icon>
-                Настройки
+                {{ $t('Настройки') }}
             </div>
         </template>
 
         <div class="q-mx-md column settings-dialog-body" style="min-width: 300px; font-size: 120%;">
+            <div class="row items-center q-ml-sm q-mb-sm">
+                <div class="q-mr-sm">
+                    {{ $t('Язык интерфейса') }}
+                </div>
+                <q-select
+                    v-model="uiLang"
+                    :options="uiLangSelectOptions"
+                    class="bg-white"
+                    dropdown-icon="la la-angle-down la-sm"
+                    outlined
+                    dense
+                    emit-value
+                    map-options
+                />
+            </div>
+
             <div class="row items-center q-ml-sm">
                 <div class="q-mr-sm">
-                    Результатов на странице
+                    {{ $t('Результатов на странице') }}
                 </div>
                 <q-select
                     v-model="limit"
@@ -24,15 +40,15 @@
                 />
             </div>
 
-            <q-checkbox v-show="config.latestVersion" v-model="showNewReleaseAvailable" size="36px" label="Уведомлять о выходе новой версии" />
-            <q-checkbox v-model="downloadAsZip" size="36px" label="Скачивать книги в виде zip-архива" />
-            <q-checkbox v-model="showCounts" size="36px" label="Показывать количество" />
-            <q-checkbox v-model="showRates" size="36px" label="Показывать оценки" />
-            <q-checkbox v-model="showInfo" size="36px" label="Показывать кнопку «Инфо»" />
-            <q-checkbox v-model="showGenres" size="36px" label="Показывать жанры" />
+            <q-checkbox v-show="config.latestVersion" v-model="showNewReleaseAvailable" size="36px" :label="$t('Уведомлять о выходе новой версии')" />
+            <q-checkbox v-model="downloadAsZip" size="36px" :label="$t('Скачивать книги в виде zip-архива')" />
+            <q-checkbox v-model="showCounts" size="36px" :label="$t('Показывать количество')" />
+            <q-checkbox v-model="showRates" size="36px" :label="$t('Показывать оценки')" />
+            <q-checkbox v-model="showInfo" size="36px" :label="$t('Показывать кнопку «Инфо»')" />
+            <q-checkbox v-model="showGenres" size="36px" :label="$t('Показывать жанры')" />
             <div class="settings-card-view row items-center q-ml-sm q-my-xs">
                 <div class="q-mr-sm settings-card-view-label">
-                    Вид карточек
+                    {{ $t('Вид карточек') }}
                 </div>
                 <q-btn-toggle
                     v-model="bookCardView"
@@ -44,26 +60,26 @@
                     rounded
                 />
             </div>
-            <q-checkbox v-model="showDates" size="36px" label="Показывать даты поступления" />
-            <q-checkbox v-model="showDeleted" size="36px" label="Показывать удалённые" />
-            <q-checkbox v-model="abCacheEnabled" size="36px" label="Кешировать запросы" />
-            <q-checkbox v-model="darkTheme" size="36px" label="Ночная тема" />
+            <q-checkbox v-model="showDates" size="36px" :label="$t('Показывать даты поступления')" />
+            <q-checkbox v-model="showDeleted" size="36px" :label="$t('Показывать удалённые')" />
+            <q-checkbox v-model="abCacheEnabled" size="36px" :label="$t('Кешировать запросы')" />
+            <q-checkbox v-model="darkTheme" size="36px" :label="$t('Ночная тема')" />
 
             <div v-if="discoveryEnabled" class="q-mt-sm q-ml-sm text-weight-medium" style="font-size: 92%;">
-                Витрины
+                {{ $t('Витрины') }}
             </div>
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryNewest" size="36px" label="Показывать вкладку «Новинки»" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryPopular" size="36px" label="Показывать вкладку «Популярное»" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryContinueReading" size="36px" label="Показывать полку «Продолжить чтение»" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryFromLists" size="36px" label="Показывать полку «Из ваших списков»" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryUnfinishedSeries" size="36px" label="Показывать полку «Незаконченные серии»" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoverySimilar" size="36px" label="Показывать полку «Похоже на то, что вы читали»" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryUnreadOnly" size="36px" label="Во вкладке «Для вас» показывать только непрочитанное" />
-            <q-checkbox v-if="discoveryEnabled" v-model="compactDiscoveryCards" size="36px" label="Использовать компактные карточки в витринах" />
-            <q-checkbox v-if="effectiveExternalDiscoveryAvailable" v-model="showDiscoveryExternal" size="36px" label="Показывать вкладку внешнего источника" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryNewest" size="36px" :label="$t('Показывать вкладку «Новинки»')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryPopular" size="36px" :label="$t('Показывать вкладку «Популярное»')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryContinueReading" size="36px" :label="$t('Показывать полку «Продолжить чтение»')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryFromLists" size="36px" :label="$t('Показывать полку «Из ваших списков»')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryUnfinishedSeries" size="36px" :label="$t('Показывать полку «Незаконченные серии»')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoverySimilar" size="36px" :label="$t('Показывать полку «Похоже на то, что вы читали»')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryUnreadOnly" size="36px" :label="$t('Во вкладке «Для вас» показывать только непрочитанное')" />
+            <q-checkbox v-if="discoveryEnabled" v-model="compactDiscoveryCards" size="36px" :label="$t('Использовать компактные карточки в витринах')" />
+            <q-checkbox v-if="effectiveExternalDiscoveryAvailable" v-model="showDiscoveryExternal" size="36px" :label="$t('Показывать вкладку внешнего источника')" />
 
             <div v-if="discoveryEnabled" class="row items-center q-ml-sm q-mt-sm">
-                <div class="q-mr-sm">Лимит «Новинки»</div>
+                <div class="q-mr-sm">{{ $t('Лимит «Новинки»') }}</div>
                 <q-select
                     v-model="discoveryNewestLimit"
                     :options="discoveryLimitOptions"
@@ -77,7 +93,7 @@
             </div>
 
             <div v-if="discoveryEnabled" class="row items-center q-ml-sm q-mt-sm">
-                <div class="q-mr-sm">Лимит «Популярное»</div>
+                <div class="q-mr-sm">{{ $t('Лимит «Популярное»') }}</div>
                 <q-select
                     v-model="discoveryPopularLimit"
                     :options="discoveryLimitOptions"
@@ -91,7 +107,7 @@
             </div>
 
             <div v-if="discoveryEnabled && canEditExternalDiscovery" class="row items-center q-ml-sm q-mt-sm settings-inline-row">
-                <div class="q-mr-sm settings-inline-label">Внешний источник</div>
+                <div class="q-mr-sm settings-inline-label">{{ $t('Внешний источник') }}</div>
                 <div class="settings-inline-summary text-grey-8">
                     {{ externalDiscoverySummary }}
                 </div>
@@ -104,12 +120,12 @@
                     icon="la la-sliders-h"
                     @click="discoverySourceDialogVisible = true"
                 >
-                    Управлять
+                    {{ $t('Управлять') }}
                 </q-btn>
             </div>
 
             <div v-if="effectiveExternalDiscoveryAvailable && !canEditExternalDiscovery" class="q-ml-sm q-mt-sm text-grey-7" style="font-size: 85%;">
-                Внешний источник настраивает администратор профиля.
+                {{ $t('Внешний источник настраивает администратор профиля.') }}
             </div>
             <div v-if="canEditExternalDiscovery" class="admin-mail-box admin-collapse-box">
                 <button class="admin-collapse-head" type="button" @click="backupExpanded = !backupExpanded">
@@ -172,7 +188,7 @@
                             {{ adminUi.refresh }}
                         </q-btn>
                         <q-btn outline color="primary" dense no-caps icon="la la-broom" :loading="adminCleanLoading" @click="cleanAdminCache('all')">
-                            Очистить оба кэша
+                            {{ $t('Очистить оба кэша') }}
                         </q-btn>
                         <q-btn outline color="negative" dense no-caps icon="la la-database" :loading="adminReindexLoading" :disable="adminIndexBusy" @click="reindexAdmin">
                             {{ adminUi.reindex }}
@@ -191,7 +207,7 @@
 
                     <div class="admin-dashboard-sections">
                         <section class="admin-dashboard-section">
-                            <div class="admin-dashboard-section-title">Библиотека</div>
+                            <div class="admin-dashboard-section-title">{{ $t('Библиотека') }}</div>
                             <div class="admin-dashboard-grid">
                                 <div class="admin-stat">
                                     <div class="admin-stat-label">{{ adminUi.books }}</div>
@@ -209,7 +225,7 @@
                         </section>
 
                         <section class="admin-dashboard-section">
-                            <div class="admin-dashboard-section-title">Процесс</div>
+                            <div class="admin-dashboard-section-title">{{ $t('Процесс') }}</div>
                             <div class="admin-dashboard-grid">
                                 <div class="admin-stat">
                                     <div class="admin-stat-label">{{ adminUi.uptime }}</div>
@@ -255,43 +271,43 @@
                         </section>
 
                         <section class="admin-dashboard-section admin-dashboard-section--wide">
-                            <div class="admin-dashboard-section-title">Качество рекомендаций</div>
+                            <div class="admin-dashboard-section-title">{{ $t('Качество рекомендаций') }}</div>
                             <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">Показы</div>
+                                    <div class="admin-stat-label">{{ $t('Показы') }}</div>
                                     <div class="admin-stat-value">{{ discoveryMetric('impression') }}</div>
-                                    <div class="admin-stat-hint">{{ adminDiscovery.profiles || 0 }} профилей с событиями</div>
+                                    <div class="admin-stat-hint">{{ $t('{n} профилей с событиями', {n: adminDiscovery.profiles || 0}) }}</div>
                                 </div>
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">CTR открытий</div>
+                                    <div class="admin-stat-label">{{ $t('CTR открытий') }}</div>
                                     <div class="admin-stat-value">{{ discoveryRateText('ctr') }}</div>
-                                    <div class="admin-stat-hint">{{ discoveryMetric('open') }} открытий</div>
+                                    <div class="admin-stat-hint">{{ $t('{n} открытий', {n: discoveryMetric('open')}) }}</div>
                                 </div>
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">Начали читать</div>
+                                    <div class="admin-stat-label">{{ $t('Начали читать') }}</div>
                                     <div class="admin-stat-value">{{ discoveryRateText('start') }}</div>
-                                    <div class="admin-stat-hint">{{ discoveryMetric('start') }} стартов</div>
+                                    <div class="admin-stat-hint">{{ $t('{n} стартов', {n: discoveryMetric('start')}) }}</div>
                                 </div>
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">Сохранили</div>
+                                    <div class="admin-stat-label">{{ $t('Сохранили') }}</div>
                                     <div class="admin-stat-value">{{ discoveryRateText('save') }}</div>
-                                    <div class="admin-stat-hint">{{ discoveryMetric('save') }} сохранений</div>
+                                    <div class="admin-stat-hint">{{ $t('{n} сохранений', {n: discoveryMetric('save')}) }}</div>
                                 </div>
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">Негативные реакции</div>
+                                    <div class="admin-stat-label">{{ $t('Негативные реакции') }}</div>
                                     <div class="admin-stat-value">{{ discoveryRateText('negativeFeedback') }}</div>
-                                    <div class="admin-stat-hint">{{ discoveryMetric('feedback') }} реакций всего</div>
+                                    <div class="admin-stat-hint">{{ $t('{n} реакций всего', {n: discoveryMetric('feedback')}) }}</div>
                                 </div>
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">Настроили вкусы</div>
+                                    <div class="admin-stat-label">{{ $t('Настроили вкусы') }}</div>
                                     <div class="admin-stat-value">{{ adminDiscovery.configuredProfiles || 0 }}</div>
-                                    <div class="admin-stat-hint">Жанры, авторы или языки</div>
+                                    <div class="admin-stat-hint">{{ $t('Жанры, авторы или языки') }}</div>
                                 </div>
                             </div>
                         </section>
 
                         <section class="admin-dashboard-section">
-                            <div class="admin-dashboard-section-title">Хранилище</div>
+                            <div class="admin-dashboard-section-title">{{ $t('Хранилище') }}</div>
                             <div class="admin-dashboard-grid admin-dashboard-grid--storage">
                                 <div class="admin-stat">
                                     <div class="admin-stat-label">{{ adminUi.dbSize }}</div>
@@ -308,7 +324,7 @@
                                     <div class="admin-stat-hint">{{ adminCacheLimitText('cover') }}</div>
                                 </div>
                                 <div class="admin-stat">
-                                    <div class="admin-stat-label">Ротация кэша</div>
+                                    <div class="admin-stat-label">{{ $t('Ротация кэша') }}</div>
                                     <div class="admin-stat-value">{{ adminCacheRotationValue() }}</div>
                                     <div class="admin-stat-hint">{{ adminCacheRotationHint() }}</div>
                                 </div>
@@ -319,29 +335,29 @@
                     <div class="admin-subsection">
                         <div class="admin-subsection-head">
                             <div>
-                                <div class="admin-mail-title">Ротация кэша</div>
-                                <div class="admin-mail-subtitle">Лимиты задаются в мегабайтах. Плановая ротация запускается в выбранное время по локальным часам сервера.</div>
+                                <div class="admin-mail-title">{{ $t('Ротация кэша') }}</div>
+                                <div class="admin-mail-subtitle">{{ $t('Лимиты задаются в мегабайтах. Плановая ротация запускается в выбранное время по локальным часам сервера.') }}</div>
                             </div>
                             <q-btn outline color="primary" dense no-caps icon="la la-save" :loading="adminCacheSaveLoading" @click="saveAdminCacheSettings">
-                                Сохранить
+                                {{ $t('Сохранить') }}
                             </q-btn>
                         </div>
                         <div class="admin-cache-settings-grid">
-                            <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" label="Книжный кэш, MB" />
-                            <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" label="Кэш обложек, MB" />
-                            <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" label="Плановая ротация" />
-                            <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options label="Периодичность" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                            <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options label="День недели" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                            <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options label="Число месяца" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                            <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" label="Время запуска" hint="По времени сервера" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
-                            <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" label="Цель после чистки, %" />
+                            <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('Книжный кэш, MB')" />
+                            <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('Кэш обложек, MB')" />
+                            <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('Плановая ротация')" />
+                            <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('Периодичность')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                            <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('День недели')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                            <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('Число месяца')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                            <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('Время запуска')" :hint="$t('По времени сервера')" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
+                            <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('Цель после чистки, %')" />
                         </div>
                         <div class="admin-cache-actions">
                             <q-btn outline color="primary" dense no-caps icon="la la-book" :loading="adminCleanBookCacheLoading" @click="cleanAdminCache('book')">
-                                Очистить книжный кэш
+                                {{ $t('Очистить книжный кэш') }}
                             </q-btn>
                             <q-btn outline color="primary" dense no-caps icon="la la-image" :loading="adminCleanCoverCacheLoading" @click="cleanAdminCache('cover')">
-                                Очистить кэш обложек
+                                {{ $t('Очистить кэш обложек') }}
                             </q-btn>
                         </div>
                     </div>
@@ -386,7 +402,7 @@
                                 <div class="admin-event-meta">
                                     {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
                                 </div>
-                                <div class="admin-event-message">{{ event.message }}</div>
+                                <div class="admin-event-message">{{ $tm(event.message) }}</div>
                             </div>
                         </div>
                     </div>
@@ -398,8 +414,8 @@
                         <div class="admin-task-list">
                             <div v-for="task in adminTasks" :key="task.id" class="admin-task-row" :class="{'admin-task-row--active': task.active}">
                                 <div class="admin-task-main">
-                                    <div class="admin-task-title">{{ task.title }}</div>
-                                    <div class="admin-task-message">{{ task.message || task.state || adminUi.noTaskMessage }}</div>
+                                    <div class="admin-task-title">{{ $tm(task.title) }}</div>
+                                    <div class="admin-task-message">{{ task.message ? $tm(task.message) : (task.state || adminUi.noTaskMessage) }}</div>
                                     <q-linear-progress v-if="task.active" rounded size="6px" :value="taskProgress(task)" color="primary" />
                                     <div v-if="task.lastError" class="admin-task-error">{{ task.lastError }}</div>
                                 </div>
@@ -471,7 +487,7 @@
                                 <div class="admin-event-meta">
                                     {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
                                 </div>
-                                <div class="admin-event-message">{{ event.message }}</div>
+                                <div class="admin-event-message">{{ $tm(event.message) }}</div>
                             </div>
                         </div>
                     </div>
@@ -490,6 +506,7 @@
                     <div class="admin-mail-grid">
                         <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="opdsUi.enabled" />
                         <q-input v-model="opdsSettings.root" outlined dense clearable :label="opdsUi.root" />
+                        <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="opdsUi.lang" />
                         <q-input v-model="opdsSettings.user" outlined dense clearable :label="opdsUi.user" />
                         <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="opdsUi.password">
                             <template #append>
@@ -579,6 +596,7 @@ import vueComponent from '../../vueComponent.js';
 
 import Dialog from '../../share/Dialog.vue';
 import DiscoverySourceDialog from '../DiscoverySourceDialog/DiscoverySourceDialog.vue';
+import {t, getLocale, uiLangOptions} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -641,6 +659,9 @@ const componentOptions = {
         darkTheme(newValue) {
             this.commit('setSettings', {darkTheme: newValue});
         },
+        uiLang(newValue) {
+            this.commit('setSettings', {uiLang: newValue || ''});
+        },
         showDiscoveryNewest(newValue) {
             this.commit('setSettings', {showDiscoveryNewest: newValue});
         },
@@ -696,6 +717,7 @@ class SettingsDialog {
     abCacheEnabled = true;
     showNewReleaseAvailable = true;
     darkTheme = false;
+    uiLang = '';
     showDiscoveryNewest = true;
     showDiscoveryPopular = true;
     showDiscoveryContinueReading = true;
@@ -754,132 +776,145 @@ class SettingsDialog {
     adminEventLogSize = 300;
     integrations = this.makeDefaultIntegrations();
     opdsSettings = this.makeDefaultOpdsSettings();
-    adminUi = {
-        title: 'Администрирование',
-        subtitle: 'Состояние библиотеки, источники и журнал событий.',
-        refresh: 'Обновить',
-        cleanCache: 'Очистить кэш',
-        reindex: 'Переиндексировать',
-        books: 'Книги',
-        authors: 'Авторы',
-        series: 'Серии',
-        uptime: 'Uptime',
-        memory: 'Память',
-        cpu: 'CPU процесса',
-        requests: 'Запросы',
-        actionsTotal: 'WebSocket action',
-        eventLoopLag: 'Event loop',
-        lastSlowAction: 'Медленный action',
-        dbSize: 'База',
-        bookCache: 'Книжный кэш',
-        coverCache: 'Кэш обложек',
-        files: 'Файлы',
-        limit: 'Лимит',
-        coverErrors: 'Ошибки',
-        coverDiagnostics: 'Обложки',
-        coverDiagnosticsHint: 'Размер кэша, последние ошибки и ручное обслуживание обложек.',
-        coverBookUid: 'UID книги для пересборки обложки',
-        rebuildCover: 'Пересобрать обложку',
-        cleanBrokenCovers: 'Очистить битые',
-        sources: 'Источники библиотек',
-        addSource: 'Добавить',
-        saveSources: 'Сохранить источники',
-        sourceName: 'Название',
-        sourceInpx: 'INPX файл',
-        sourceLibDir: 'Папка библиотеки',
-        folder: 'Папка',
-        archives: 'Архивы',
-        foundInpx: 'Найдено .inpx',
-        checkSource: 'Проверить источник',
-        sourcesNeedReindex: 'Изменения источников применятся после переиндексации.',
-        indexNeedsReindex: 'Требуется переиндексация',
-        indexReady: 'Индекс готов',
-        indexBusy: 'Переиндексация выполняется',
-        indexNotReady: 'Индекс не готов',
-        indexWaiting: 'Ожидание состояния индекса',
-        events: 'События',
-        eventLogEnabled: 'Журнал',
-        testEvent: 'Тест',
-        eventsLoading: 'Загрузка событий...',
-        noEvents: 'Событий пока нет.',
-        eventsDisabled: 'Журнал событий выключен.',
-        savedSources: 'Источники библиотек сохранены',
-        cleanStarted: 'Чистка кэша выполнена',
-        reindexStarted: 'Переиндексация запущена',
-        coverRebuildStarted: 'Кэш обложки сброшен, новая обложка будет собрана при следующем запросе',
-        brokenCoversCleaned: 'Битые файлы обложек очищены',
-        tasks: 'Задачи и фоновые процессы',
-        noTaskMessage: 'Нет активной задачи',
-        cancel: 'Отменить',
-        noCancel: 'Отмена недоступна',
-    };
-    adminEventLevelOptions = [
-        {label: 'Все уровни', value: 'all'},
-        {label: 'Info', value: 'info'},
-        {label: 'Warn', value: 'warn'},
-        {label: 'Error', value: 'error'},
-    ];
-    adminEventCategoryOptions = [
-        {label: 'Все события', value: 'all'},
-        {label: 'Настройки', value: 'settings'},
-        {label: 'Источники', value: 'sources'},
-        {label: 'Кэш', value: 'cache'},
-        {label: 'Обложки', value: 'cover'},
-        {label: 'Индекс', value: 'index'},
-        {label: 'Отправка', value: 'delivery'},
-        {label: 'Система', value: 'system'},
-    ];
+    get adminUi() {
+        return {
+            title: t('Администрирование'),
+            subtitle: t('Состояние библиотеки, источники и журнал событий.'),
+            refresh: t('Обновить'),
+            cleanCache: t('Очистить кэш'),
+            reindex: t('Переиндексировать'),
+            books: t('Книги'),
+            authors: t('Авторы'),
+            series: t('Серии'),
+            uptime: 'Uptime',
+            memory: t('Память'),
+            cpu: t('CPU процесса'),
+            requests: t('Запросы'),
+            actionsTotal: 'WebSocket action',
+            eventLoopLag: 'Event loop',
+            lastSlowAction: t('Медленный action'),
+            dbSize: t('База'),
+            bookCache: t('Книжный кэш'),
+            coverCache: t('Кэш обложек'),
+            files: t('Файлы'),
+            limit: t('Лимит'),
+            coverErrors: t('Ошибки'),
+            coverDiagnostics: t('Обложки'),
+            coverDiagnosticsHint: t('Размер кэша, последние ошибки и ручное обслуживание обложек.'),
+            coverBookUid: t('UID книги для пересборки обложки'),
+            rebuildCover: t('Пересобрать обложку'),
+            cleanBrokenCovers: t('Очистить битые'),
+            sources: t('Источники библиотек'),
+            addSource: t('Добавить'),
+            saveSources: t('Сохранить источники'),
+            sourceName: t('Название'),
+            sourceInpx: t('INPX файл'),
+            sourceLibDir: t('Папка библиотеки'),
+            folder: t('Папка'),
+            archives: t('Архивы'),
+            foundInpx: t('Найдено .inpx'),
+            checkSource: t('Проверить источник'),
+            sourcesNeedReindex: t('Изменения источников применятся после переиндексации.'),
+            indexNeedsReindex: t('Требуется переиндексация'),
+            indexReady: t('Индекс готов'),
+            indexBusy: t('Переиндексация выполняется'),
+            indexNotReady: t('Индекс не готов'),
+            indexWaiting: t('Ожидание состояния индекса'),
+            events: t('События'),
+            eventLogEnabled: t('Журнал'),
+            testEvent: t('Тест'),
+            eventsLoading: t('Загрузка событий...'),
+            noEvents: t('Событий пока нет.'),
+            eventsDisabled: t('Журнал событий выключен.'),
+            savedSources: t('Источники библиотек сохранены'),
+            cleanStarted: t('Чистка кэша выполнена'),
+            reindexStarted: t('Переиндексация запущена'),
+            coverRebuildStarted: t('Кэш обложки сброшен, новая обложка будет собрана при следующем запросе'),
+            brokenCoversCleaned: t('Битые файлы обложек очищены'),
+            tasks: t('Задачи и фоновые процессы'),
+            noTaskMessage: t('Нет активной задачи'),
+            cancel: t('Отменить'),
+            noCancel: t('Отмена недоступна'),
+        };
+    }
+    get adminEventLevelOptions() {
+        return [
+            {label: t('Все уровни'), value: 'all'},
+            {label: 'Info', value: 'info'},
+            {label: 'Warn', value: 'warn'},
+            {label: 'Error', value: 'error'},
+        ];
+    }
+    get adminEventCategoryOptions() {
+        return [
+            {label: t('Все события'), value: 'all'},
+            {label: t('Настройки'), value: 'settings'},
+            {label: t('Источники'), value: 'sources'},
+            {label: t('Кэш'), value: 'cache'},
+            {label: t('Обложки'), value: 'cover'},
+            {label: t('Индекс'), value: 'index'},
+            {label: t('Отправка'), value: 'delivery'},
+            {label: t('Система'), value: 'system'},
+        ];
+    }
     adminEventLogSizeOptions = [
         {label: '100', value: 100},
         {label: '300', value: 300},
         {label: '500', value: 500},
         {label: '1000', value: 1000},
     ];
-    backupUi = {
-        title: 'Резервная копия',
-        subtitle: 'Полный бэкап и отдельный экспорт конфигурации.',
-        fullBackupInfo: 'Полный ZIP сохраняет состояние сервиса: настройки, secret.key, профили, списки, прогресс чтения, закладки и кэш витрины. Архивы книг, обложки, временные кэши и поисковая БД не входят.',
-        settingsBackupInfo: 'JSON настроек нужен только для переноса конфигурации. Пользователи, списки, прогресс и закладки в него не входят.',
-        backup: 'Скачать полный бэкап',
-        backupImport: 'Восстановить полный ZIP',
-        settings: 'Экспорт настроек JSON',
-        settingsImport: 'Восстановить настройки JSON',
-        restoreNote: 'Восстановление полного ZIP заменяет текущее состояние данными из архива. После восстановления перезапустите контейнер или приложение; если в бэкапе другие источники библиотек, выполните переиндексацию.',
-        restoreConfirm: 'Восстановить полный ZIP-бэкап? Текущие настройки, профили, списки, прогресс чтения и закладки будут заменены данными из архива.',
-        restored: 'Полный бэкап восстановлен. Перезапустите приложение; если менялись источники библиотек, выполните переиндексацию.',
-        ready: 'Резервная копия готова',
-    };
-    mailUi = {
-        title: 'Отправка книг',
-        subtitle: 'Настройки SMTP и Telegram доступны только администратору.',
-        telegramEnabled: 'Включить Telegram',
-        telegramToken: 'Telegram bot token',
-        telegramChatId: 'Telegram chat id задаётся в профиле пользователя',
-        telegramCaption: 'Подпись Telegram',
-        smtpEnabled: 'Включить email',
-        smtpHost: 'SMTP host',
-        smtpPort: 'SMTP port',
-        smtpUser: 'SMTP user',
-        smtpPass: 'SMTP password',
-        smtpSecure: 'SMTP secure / SSL',
-        emailFrom: 'Email from',
-        emailTo: 'Email to по умолчанию',
-        save: 'Сохранить',
-        test: 'Проверить',
-        saved: 'Настройки отправки сохранены',
-        errorTitle: 'Ошибка',
-    };
+    get backupUi() {
+        return {
+            title: t('Резервная копия'),
+            subtitle: t('Полный бэкап и отдельный экспорт конфигурации.'),
+            fullBackupInfo: t('Полный ZIP сохраняет состояние сервиса: настройки, secret.key, профили, списки, прогресс чтения, закладки и кэш витрины. Архивы книг, обложки, временные кэши и поисковая БД не входят.'),
+            settingsBackupInfo: t('JSON настроек нужен только для переноса конфигурации. Пользователи, списки, прогресс и закладки в него не входят.'),
+            backup: t('Скачать полный бэкап'),
+            backupImport: t('Восстановить полный ZIP'),
+            settings: t('Экспорт настроек JSON'),
+            settingsImport: t('Восстановить настройки JSON'),
+            restoreNote: t('Восстановление полного ZIP заменяет текущее состояние данными из архива. После восстановления перезапустите контейнер или приложение; если в бэкапе другие источники библиотек, выполните переиндексацию.'),
+            restoreConfirm: t('Восстановить полный ZIP-бэкап? Текущие настройки, профили, списки, прогресс чтения и закладки будут заменены данными из архива.'),
+            restored: t('Полный бэкап восстановлен. Перезапустите приложение; если менялись источники библиотек, выполните переиндексацию.'),
+            ready: t('Резервная копия готова'),
+        };
+    }
+    get mailUi() {
+        return {
+            title: t('Отправка книг'),
+            subtitle: t('Настройки SMTP и Telegram доступны только администратору.'),
+            telegramEnabled: t('Включить Telegram'),
+            telegramToken: 'Telegram bot token',
+            telegramChatId: t('Telegram chat id задаётся в профиле пользователя'),
+            telegramCaption: t('Подпись Telegram'),
+            smtpEnabled: t('Включить email'),
+            smtpHost: 'SMTP host',
+            smtpPort: 'SMTP port',
+            smtpUser: 'SMTP user',
+            smtpPass: 'SMTP password',
+            smtpSecure: 'SMTP secure / SSL',
+            emailFrom: 'Email from',
+            emailTo: t('Email to по умолчанию'),
+            save: t('Сохранить'),
+            test: t('Проверить'),
+            saved: t('Настройки отправки сохранены'),
+            errorTitle: t('Ошибка'),
+        };
+    }
 
-    opdsUi = {
-        title: 'Общий OPDS',
-        subtitle: 'Администратор может включить каталог /opds и задать общий Basic Auth. Смена пути каталога применяется после перезапуска.',
-        enabled: 'Включить OPDS',
-        root: 'Путь каталога',
-        user: 'Логин',
-        password: 'Пароль',
-        save: 'Сохранить',
-        saved: 'Настройки OPDS сохранены',
-    };
+    get opdsUi() {
+        return {
+            title: t('Общий OPDS'),
+            subtitle: t('Администратор может включить каталог /opds и задать общий Basic Auth. Смена пути каталога применяется после перезапуска.'),
+            enabled: t('Включить OPDS'),
+            root: t('Путь каталога'),
+            lang: t('Язык каталога'),
+            user: t('Логин'),
+            password: t('Пароль'),
+            save: t('Сохранить'),
+            saved: t('Настройки OPDS сохранены'),
+        };
+    }
 
     limitOptions = [
         {label: '10', value: 10},
@@ -902,31 +937,51 @@ class SettingsDialog {
         {label: '24', value: 24},
     ];
 
-    bookCardViewOptions = [
-        {label: 'Карточки', value: 'cards'},
-        {label: 'Список', value: 'list'},
-    ];
+    get opdsLangOptions() {
+        return [
+            {label: t('Автоматически (по языку читалки)'), value: ''},
+            {label: 'Русский', value: 'ru'},
+            {label: 'English', value: 'en'},
+        ];
+    }
 
-    adminCacheFrequencyOptions = [
-        {label: 'Каждый день', value: 'daily'},
-        {label: 'Раз в неделю', value: 'weekly'},
-        {label: 'Раз в месяц', value: 'monthly'},
-    ];
+    get uiLangSelectOptions() {
+        return uiLangOptions.map(option => (option.value ? option : {...option, label: t(option.label)}));
+    }
 
-    adminCacheWeekDayOptions = [
-        {label: 'Понедельник', value: 1},
-        {label: 'Вторник', value: 2},
-        {label: 'Среда', value: 3},
-        {label: 'Четверг', value: 4},
-        {label: 'Пятница', value: 5},
-        {label: 'Суббота', value: 6},
-        {label: 'Воскресенье', value: 0},
-    ];
+    get bookCardViewOptions() {
+        return [
+            {label: t('Карточки'), value: 'cards'},
+            {label: t('Список'), value: 'list'},
+        ];
+    }
 
-    adminCacheMonthDayOptions = Array.from({length: 31}, (_, index) => ({
-        label: `${index + 1} число`,
-        value: index + 1,
-    }));
+    get adminCacheFrequencyOptions() {
+        return [
+            {label: t('Каждый день'), value: 'daily'},
+            {label: t('Раз в неделю'), value: 'weekly'},
+            {label: t('Раз в месяц'), value: 'monthly'},
+        ];
+    }
+
+    get adminCacheWeekDayOptions() {
+        return [
+            {label: t('Понедельник'), value: 1},
+            {label: t('Вторник'), value: 2},
+            {label: t('Среда'), value: 3},
+            {label: t('Четверг'), value: 4},
+            {label: t('Пятница'), value: 5},
+            {label: t('Суббота'), value: 6},
+            {label: t('Воскресенье'), value: 0},
+        ];
+    }
+
+    get adminCacheMonthDayOptions() {
+        return Array.from({length: 31}, (_, index) => ({
+            label: t('{n} число', {n: index + 1}),
+            value: index + 1,
+        }));
+    }
 
     created() {
         this.commit = this.$store.commit;
@@ -987,10 +1042,10 @@ class SettingsDialog {
 
     get externalDiscoverySummary() {
         if (!this.effectiveExternalDiscoveryAvailable)
-            return 'Не настроен';
+            return t('Не настроен');
 
-        const name = this.effectiveExternalDiscoveryName || 'Внешний источник';
-        return `${name} · веб-витрина`;
+        const name = this.effectiveExternalDiscoveryName || t('Внешний источник');
+        return t('{name} · веб-витрина', {name});
     }
 
     makeDefaultIntegrations() {
@@ -1016,6 +1071,7 @@ class SettingsDialog {
             root: '/opds',
             user: '',
             password: '',
+            lang: '',
         };
     }
 
@@ -1067,6 +1123,7 @@ class SettingsDialog {
         this.abCacheEnabled = settings.abCacheEnabled;
         this.showNewReleaseAvailable = settings.showNewReleaseAvailable;
         this.darkTheme = settings.darkTheme;
+        this.uiLang = settings.uiLang || '';
         this.showDiscoveryNewest = (settings.showDiscoveryNewest !== false);
         this.showDiscoveryPopular = (settings.showDiscoveryPopular !== false);
         this.showDiscoveryContinueReading = (settings.showDiscoveryContinueReading !== false);
@@ -1241,9 +1298,9 @@ class SettingsDialog {
         const minutes = Math.floor(total / 60);
 
         return [
-            days ? `${days}д` : '',
-            hours ? `${hours}ч` : '',
-            `${minutes}м`,
+            days ? t('{n}д', {n: days}) : '',
+            hours ? t('{n}ч', {n: hours}) : '',
+            t('{n}м', {n: minutes}),
         ].filter(Boolean).join(' ');
     }
 
@@ -1270,7 +1327,7 @@ class SettingsDialog {
         const parts = [];
 
         if (limit !== null && limit !== undefined)
-            parts.push(`Лимит: ${this.formatBytes(limit)}`);
+            parts.push(t('Лимит: {value}', {value: this.formatBytes(limit)}));
         if (target !== null && target !== undefined)
             parts.push(this.adminCacheTargetText(target));
 
@@ -1282,15 +1339,15 @@ class SettingsDialog {
         const schedule = String(limits.cacheCleanSchedule || '').trim();
         const parsed = this.parseAdminCacheSchedule(schedule);
         if (!parsed.enabled)
-            return 'Отключена';
+            return t('Отключена');
         if (parsed.advancedSchedule)
-            return 'По cron';
+            return t('По cron');
         if (parsed.frequency === 'weekly')
-            return 'Раз в неделю';
+            return t('Раз в неделю');
         if (parsed.frequency === 'monthly')
-            return 'Раз в месяц';
+            return t('Раз в месяц');
 
-        return 'Каждый день';
+        return t('Каждый день');
     }
 
     adminCacheRotationHint() {
@@ -1304,14 +1361,14 @@ class SettingsDialog {
             if (parsed.frequency === 'weekly')
                 parts.push(`${this.adminCacheWeekDayLabel(parsed.weekDay)}, ${parsed.time}`);
             else if (parsed.frequency === 'monthly')
-                parts.push(`${parsed.monthDay} число, ${parsed.time}`);
+                parts.push(t('{day} число, {time}', {day: parsed.monthDay, time: parsed.time}));
             else
                 parts.push(parsed.time);
         } else if (parsed.advancedSchedule) {
             parts.push(schedule);
         }
         if (nextRun)
-            parts.push(`Следующая: ${nextRun}`);
+            parts.push(t('Следующая: {value}', {value: nextRun}));
         if (limits.cacheCleanServerTimeZone)
             parts.push(limits.cacheCleanServerTimeZone);
 
@@ -1322,17 +1379,17 @@ class SettingsDialog {
         if (value === null || value === undefined)
             return '';
 
-        return `Цель после чистки: ${this.formatBytes(value)}`;
+        return t('Цель после чистки: {value}', {value: this.formatBytes(value)});
     }
 
     adminCacheScheduleText(schedule = '', nextRunAt = '', timeZone = '') {
         if (!schedule)
-            return 'Ротация: отключена';
+            return t('Ротация: отключена');
 
-        const parts = [`Ротация: ${this.adminCacheScheduleLabel(schedule)}`];
+        const parts = [t('Ротация: {value}', {value: this.adminCacheScheduleLabel(schedule)})];
         const nextRun = this.formatServerDateTime(nextRunAt, timeZone);
         if (nextRun)
-            parts.push(`след.: ${nextRun}`);
+            parts.push(t('след.: {value}', {value: nextRun}));
         if (timeZone)
             parts.push(timeZone);
 
@@ -1342,15 +1399,15 @@ class SettingsDialog {
     adminCacheScheduleLabel(schedule = '') {
         const parsed = this.parseAdminCacheSchedule(schedule);
         if (!parsed.enabled)
-            return 'отключена';
+            return t('отключена');
         if (parsed.advancedSchedule)
             return schedule;
         if (parsed.frequency === 'weekly')
-            return `еженедельно, ${this.adminCacheWeekDayLabel(parsed.weekDay)} в ${parsed.time}`;
+            return t('еженедельно, {day} в {time}', {day: this.adminCacheWeekDayLabel(parsed.weekDay), time: parsed.time});
         if (parsed.frequency === 'monthly')
-            return `ежемесячно, ${parsed.monthDay} числа в ${parsed.time}`;
+            return t('ежемесячно, {day} числа в {time}', {day: parsed.monthDay, time: parsed.time});
 
-        return `ежедневно в ${parsed.time}`;
+        return t('ежедневно в {time}', {time: parsed.time});
     }
 
     formatServerDateTime(value = '', timeZone = '') {
@@ -1358,7 +1415,7 @@ class SettingsDialog {
             return '';
 
         try {
-            return new Date(value).toLocaleString('ru-RU', {
+            return new Date(value).toLocaleString(getLocale(), {
                 timeZone: timeZone || undefined,
                 day: '2-digit',
                 month: '2-digit',
@@ -1386,9 +1443,9 @@ class SettingsDialog {
     get adminCpuHint() {
         const cpu = (this.adminDashboard && this.adminDashboard.cpu) || {};
         const average = Number(cpu.averagePercent);
-        const averageText = Number.isFinite(average) ? `Среднее: ${average.toFixed(average >= 10 ? 0 : 1)}% · ` : '';
+        const averageText = Number.isFinite(average) ? `${t('Среднее: {value}%', {value: average.toFixed(average >= 10 ? 0 : 1)})} · ` : '';
         const totalSeconds = Number(cpu.totalSeconds);
-        const totalText = Number.isFinite(totalSeconds) ? `CPU-время: ${this.formatDuration(totalSeconds)}` : '';
+        const totalText = Number.isFinite(totalSeconds) ? t('CPU-время: {value}', {value: this.formatDuration(totalSeconds)}) : '';
         return `${averageText}${totalText}`.trim();
     }
 
@@ -1412,7 +1469,7 @@ class SettingsDialog {
     get adminRuntimeHint() {
         const inFlight = Number(this.adminRuntime.inFlightActions || 0);
         const actionCount = Number(this.adminRuntime.actionCount || 0);
-        return `${inFlight} выполняется · ${actionCount} типов`;
+        return t('{inFlight} выполняется · {count} типов', {inFlight, count: actionCount});
     }
 
     get runtimeLagText() {
@@ -1425,13 +1482,13 @@ class SettingsDialog {
 
     get runtimeLastSlowActionText() {
         const slow = this.adminRuntime.lastSlowAction || {};
-        return slow.action || 'нет';
+        return slow.action || t('нет');
     }
 
     get runtimeLastSlowActionHint() {
         const slow = this.adminRuntime.lastSlowAction || {};
         if (!slow.action)
-            return 'Порог: 1.5 s';
+            return t('Порог: 1.5 s');
 
         const time = slow.at ? this.formatDateTime(slow.at) : '';
         return `${this.formatMilliseconds(slow.durationMs)}${time ? ` · ${time}` : ''}`;
@@ -1766,12 +1823,12 @@ class SettingsDialog {
     cacheCleanSummary(result = {}) {
         const rows = Array.isArray(result.cleaned) ? result.cleaned : [];
         if (!rows.length)
-            return 'Кэш уже чист';
+            return t('Кэш уже чист');
 
         return rows.map(row => {
-            const title = row.title || row.id || 'Кэш';
+            const title = row.title || row.id || t('Кэш');
             const removed = Number(row.removed || 0);
-            return `${title}: удалено ${removed}, сейчас ${this.formatBytes(row.after || row.size || 0)}`;
+            return t('{title}: удалено {removed}, сейчас {size}', {title, removed, size: this.formatBytes(row.after || row.size || 0)});
         }).join(' · ');
     }
 
@@ -1786,7 +1843,7 @@ class SettingsDialog {
             });
             await this.api.updateConfig();
             await this.refreshAdminDashboard(false);
-            this.$root.notify.success('Настройки ротации кэша сохранены');
+            this.$root.notify.success(t('Настройки ротации кэша сохранены'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
         } finally {
@@ -2006,7 +2063,7 @@ class SettingsDialog {
             await this.api.importAdminSettings(data);
             await this.api.updateConfig();
             this.loadSettings();
-            this.$root.notify.success('Настройки восстановлены');
+            this.$root.notify.success(t('Настройки восстановлены'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
         } finally {

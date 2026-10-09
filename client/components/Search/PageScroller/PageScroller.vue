@@ -1,7 +1,7 @@
 <template>
     <div class="page-scroller row items-center q-ml-md q-my-xs">
         <div class="page-scroller-label q-mr-xs">
-            Страница
+            {{ $t('Страница') }}
         </div>
         <div class="page-scroller-control trans" :class="{'bg-green-4': highlight, 'bg-white': !highlight}">
             <NumInput
@@ -10,7 +10,7 @@
             />
         </div>
         <div class="page-scroller-count q-ml-xs">
-            из {{ pageCount }}
+            {{ $t('из {n}', {n: pageCount}) }}
         </div>
     </div>
 </template>

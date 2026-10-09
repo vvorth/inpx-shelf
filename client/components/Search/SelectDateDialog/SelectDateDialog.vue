@@ -3,7 +3,7 @@
         <template #header>
             <div class="row items-center">
                 <div style="font-size: 110%">
-                    Выбрать даты
+                    {{ $t('Выбрать даты') }}
                 </div>
             </div>
         </template>
@@ -11,13 +11,13 @@
         <div ref="box" class="column q-mt-xs overflow-auto no-wrap" style="width: 240px; padding: 0px 10px 10px 10px;">
             <div class="row items-center">
                 <div class="row justify-end q-mr-sm" style="width: 15px">
-                    С:
+                    {{ $t('С:') }}
                 </div>
                 <q-btn icon="la la-calendar" color="secondary" :label="labelFrom" dense no-caps style="width: 150px;">
                     <q-popup-proxy cover transition-show="scale" transition-hide="scale">
                         <q-date v-model="from" mask="YYYY-MM-DD">
                             <div class="row items-center justify-end q-gutter-sm">
-                                <q-btn v-close-popup label="Отмена" color="primary" flat />
+                                <q-btn v-close-popup :label="$t('Отмена')" color="primary" flat />
                                 <q-btn v-close-popup label="OK" color="primary" flat @click="save" />
                             </div>
                         </q-date>
@@ -29,13 +29,13 @@
             <div class="q-my-sm" />
             <div class="row items-center">
                 <div class="row justify-end q-mr-sm" style="width: 15px">
-                    По:
+                    {{ $t('По:') }}
                 </div>
                 <q-btn icon="la la-calendar" color="secondary" :label="labelTo" dense no-caps style="width: 150px;">
                     <q-popup-proxy cover transition-show="scale" transition-hide="scale">
                         <q-date v-model="to" mask="YYYY-MM-DD">
                             <div class="row items-center justify-end q-gutter-sm">
-                                <q-btn v-close-popup label="Отмена" color="primary" flat />
+                                <q-btn v-close-popup :label="$t('Отмена')" color="primary" flat />
                                 <q-btn v-close-popup label="OK" color="primary" flat @click="save" />
                             </div>
                         </q-date>
@@ -59,6 +59,7 @@ import vueComponent from '../../vueComponent.js';
 
 import Dialog from '../../share/Dialog.vue';
 import * as utils from '../../../share/utils';
+import {t} from '../../../share/i18n';
 
 const componentOptions = {
     components: {
@@ -109,11 +110,11 @@ class SelectDateDialog {
     }
 
     get labelFrom() {
-        return (this.splitDate.from ? utils.sqlDateFormat(this.splitDate.from) : 'Не указано');
+        return (this.splitDate.from ? utils.sqlDateFormat(this.splitDate.from) : t('Не указано'));
     }
 
     get labelTo() {
-        return (this.splitDate.to ? utils.sqlDateFormat(this.splitDate.to) : 'Не указано');
+        return (this.splitDate.to ? utils.sqlDateFormat(this.splitDate.to) : t('Не указано'));
     }
 
     save() {

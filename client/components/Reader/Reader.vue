@@ -124,7 +124,7 @@
                     <q-btn
                         v-if="config.ttsEnabled && !isStandaloneMode"
                         flat dense round icon="la la-headphones" class="reader-icon-btn"
-                        aria-label="Озвучка книги" title="Озвучка книги — Silero"
+                        :aria-label="$t('Озвучка книги')" :title="$t('Озвучка книги — Silero')"
                         @click="openReaderAudio"
                     />
                     <q-btn
@@ -1016,8 +1016,8 @@
                 />
                 <q-btn
                     v-if="config.ttsEnabled && !isStandaloneMode"
-                    flat no-caps stack icon="la la-headphones" label="Озвучка"
-                    class="reader-mobile-btn" aria-label="Озвучка книги"
+                    flat no-caps stack icon="la la-headphones" :label="$t('Озвучка')"
+                    class="reader-mobile-btn" :aria-label="$t('Озвучка книги')"
                     @click="openReaderAudio"
                 />
                 <q-btn
@@ -1563,6 +1563,7 @@ import readerContent from '../../../server/core/fb2/ReaderContent';
 import _ from 'lodash';
 import he from 'he';
 import ReaderAudio from './ReaderAudio.vue';
+import {t, tMessage, getLocale} from '../../share/i18n';
 
 const readerPreferencesStorageKey = 'inpx.reader.preferences.v1';
 const readerProgressStorageKey = 'inpx.reader.progress.v1';
@@ -2103,7 +2104,7 @@ class Reader {
         const current = this.currentSelectedProfile;
         if (!current)
             return this.uiText.profileNotSelected;
-        const profileName = current.name || this.uiText.profile;
+        const profileName = tMessage(current.name) || this.uiText.profile;
         if (this.isCompactLayout) {
             if (this.readerProfileCanLogin)
                 return this.uiText.profileLoginAction;
@@ -2112,10 +2113,10 @@ class Reader {
         if (this.readerAnonymousProfile)
             return `${profileName}: ${this.uiText.profileLoginAction}`;
         if (this.readerProfileCanLogin)
-            return `${current.name || this.uiText.profile}: ${this.uiText.profileNeedsLoginShort}`;
+            return `${tMessage(current.name) || this.uiText.profile}: ${this.uiText.profileNeedsLoginShort}`;
         if (this.config.profileAuthorized)
             return profileName;
-        return `${current.name || this.uiText.profile}: ${this.uiText.profileOpenShort}`;
+        return `${tMessage(current.name) || this.uiText.profile}: ${this.uiText.profileOpenShort}`;
     }
 
     get readerProfileChipClass() {
@@ -2172,7 +2173,7 @@ class Reader {
             return this.uiText.profileSelectReaderHint;
         if (this.readerProfileNeedsLogin)
             return this.uiText.profileLoginReaderHint;
-        return current.name ? `${this.uiText.profile}: ${current.name}` : this.uiText.continueReading;
+        return current.name ? `${this.uiText.profile}: ${tMessage(current.name)}` : this.uiText.continueReading;
     }
 
     get readerHomeEmptyText() {
@@ -2302,7 +2303,7 @@ class Reader {
 
     updateStatusClock() {
         const date = new Date();
-        this.statusClockText = date.toLocaleTimeString('ru-RU', {
+        this.statusClockText = date.toLocaleTimeString(getLocale(), {
             hour: '2-digit',
             minute: '2-digit',
         });
@@ -2534,194 +2535,194 @@ class Reader {
 
     get uiText() {
         return {
-            back: '\u041d\u0430\u0437\u0430\u0434',
-            myPlaces: '\u041c\u043e\u0438 \u043c\u0435\u0441\u0442\u0430',
-            continueReading: '\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c',
-            bookmarks: '\u0417\u0430\u043a\u043b\u0430\u0434\u043a\u0438',
-            notes: '\u0417\u0430\u043c\u0435\u0442\u043a\u0438',
-            readerHelp: '\u041a\u0430\u043a \u0447\u0438\u0442\u0430\u0442\u044c',
-            searchTitle: '\u041f\u043e\u0438\u0441\u043a \u043f\u043e \u0442\u0435\u043a\u0441\u0442\u0443',
-            searchPlaceholder: '\u041d\u0430\u0439\u0442\u0438 \u0444\u0440\u0430\u0437\u0443 \u0438\u043b\u0438 \u0441\u043b\u043e\u0432\u043e',
-            searchPrev: '\u041d\u0430\u0437\u0430\u0434',
-            searchNext: '\u0414\u0430\u043b\u044c\u0448\u0435',
-            searchEmpty: '\u0421\u043e\u0432\u043f\u0430\u0434\u0435\u043d\u0438\u0439 \u043d\u0435\u0442.',
-            searchHint: '\u041f\u043e\u0438\u0441\u043a \u0438\u0449\u0435\u0442 \u043f\u043e \u0443\u0436\u0435 \u0440\u0430\u0437\u0431\u0438\u0442\u044b\u043c \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430\u043c.',
-            helpMobileIntro: '\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c',
-            helpDesktopIntro: '\u0414\u0435\u0441\u043a\u0442\u043e\u043f\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c',
-            bookmark: '\u0417\u0430\u043a\u043b\u0430\u0434\u043a\u0430',
-            readShort: '\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e',
-            unreadShort: '\u0421\u043d\u044f\u0442\u044c',
-            noBookmarks: '\u0423 \u044d\u0442\u043e\u0439 \u043a\u043d\u0438\u0433\u0438 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0440\u0443\u0447\u043d\u044b\u0445 \u0437\u0430\u043a\u043b\u0430\u0434\u043e\u043a.',
-            noNotes: '\u0417\u0430\u043c\u0435\u0442\u043e\u043a \u043f\u043e\u043a\u0430 \u043d\u0435\u0442.',
-            newPlace: '\u041d\u043e\u0432\u043e\u0435 \u043c\u0435\u0441\u0442\u043e',
-            noteLabel: '\u0417\u0430\u043c\u0435\u0442\u043a\u0430',
-            simpleBookmark: '\u041f\u0440\u043e\u0441\u0442\u0430\u044f \u0437\u0430\u043a\u043b\u0430\u0434\u043a\u0430',
-            saveAsNote: '\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043a\u0430\u043a \u0437\u0430\u043c\u0435\u0442\u043a\u0443',
-            readPrefix: '\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e',
-            bookmarkAdded: '\u0417\u0430\u043a\u043b\u0430\u0434\u043a\u0430 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u0430',
-            noteSaved: '\u0417\u0430\u043c\u0435\u0442\u043a\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0430',
-            readMarked: '\u041a\u043d\u0438\u0433\u0430 \u043f\u043e\u043c\u0435\u0447\u0435\u043d\u0430 \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043d\u043e\u0439',
-            readUnmarked: '\u041e\u0442\u043c\u0435\u0442\u043a\u0430 \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e \u0441\u043d\u044f\u0442\u0430',
-            bookmarkTitle: '\u0417\u0430\u043a\u043b\u0430\u0434\u043a\u0430',
-            error: '\u041e\u0448\u0438\u0431\u043a\u0430',
-            profileLoginRequired: '\u0412\u043e\u0439\u0442\u0438 \u0432 \u043f\u0440\u043e\u0444\u0438\u043b\u044c',
-            profileNotSelected: '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d',
-            profileLoginReaderHint: '\u0412\u043e\u0439\u0434\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0442\u044c \u043b\u0438\u0447\u043d\u044b\u0439 \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441.',
-            profileSelectReaderHint: '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u044c, \u0447\u0442\u043e\u0431\u044b \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0442\u044c \u043b\u0438\u0447\u043d\u044b\u0439 \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441 \u0447\u0442\u0435\u043d\u0438\u044f.',
-            profileLoginAction: '\u0412\u043e\u0439\u0442\u0438',
-            profile: '\u041f\u0440\u043e\u0444\u0438\u043b\u044c',
-            profileNeedsLoginShort: 'нужен вход',
-            profileLoggedInShort: 'вход выполнен',
-            profileOpenShort: 'без пароля',
-            refresh: '\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c',
+            back: t('Назад'),
+            myPlaces: t('Мои места'),
+            continueReading: t('Продолжить'),
+            bookmarks: t('Закладки'),
+            notes: t('Заметки'),
+            readerHelp: t('Как читать'),
+            searchTitle: t('Поиск по тексту'),
+            searchPlaceholder: t('Найти фразу или слово'),
+            searchPrev: t('Назад'),
+            searchNext: t('Дальше'),
+            searchEmpty: t('Совпадений нет.'),
+            searchHint: t('Поиск ищет по уже разбитым страницам.'),
+            helpMobileIntro: t('Мобильный режим'),
+            helpDesktopIntro: t('Десктопный режим'),
+            bookmark: t('Закладка'),
+            readShort: t('Прочитано'),
+            unreadShort: t('Снять'),
+            noBookmarks: t('У этой книги пока нет ручных закладок.'),
+            noNotes: t('Заметок пока нет.'),
+            newPlace: t('Новое место'),
+            noteLabel: t('Заметка'),
+            simpleBookmark: t('Простая закладка'),
+            saveAsNote: t('Сохранить как заметку'),
+            readPrefix: t('Прочитано'),
+            bookmarkAdded: t('Закладка добавлена'),
+            noteSaved: t('Заметка сохранена'),
+            readMarked: t('Книга помечена прочитанной'),
+            readUnmarked: t('Отметка прочитано снята'),
+            bookmarkTitle: t('Закладка'),
+            error: t('Ошибка'),
+            profileLoginRequired: t('Войти в профиль'),
+            profileNotSelected: t('Профиль не выбран'),
+            profileLoginReaderHint: t('Войдите, чтобы сохранять личный прогресс.'),
+            profileSelectReaderHint: t('Выберите профиль, чтобы сохранять личный прогресс чтения.'),
+            profileLoginAction: t('Войти'),
+            profile: t('Профиль'),
+            profileNeedsLoginShort: t('нужен вход'),
+            profileLoggedInShort: t('вход выполнен'),
+            profileOpenShort: t('без пароля'),
+            refresh: t('Обновить'),
             readerWebApp: 'INPX Reader',
-            readerHomeTitle: '\u0427\u0438\u0442\u0430\u043b\u043a\u0430',
-            readerHomeEmptyTitle: '\u041d\u0435\u0442 \u043a\u043d\u0438\u0433 \u0432 \u0447\u0442\u0435\u043d\u0438\u0438',
-            readerHomeEmptyText: '\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043a\u043d\u0438\u0433\u0443 \u0438\u0437 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0430, \u0438 \u043e\u043d\u0430 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0437\u0434\u0435\u0441\u044c.',
-            readerHomeSearchPlaceholder: 'Быстрый поиск по своим книгам',
-            readerHomeSearchEmptyText: 'По этому запросу в выбранном разделе ничего не найдено.',
-            readerHomeUnavailableText: 'Прогресс сохранён, но книга не найдена в текущей библиотеке. Проверьте выбранную библиотеку и её INPX-индекс.',
-            readerHomeReadEmptyText: 'Здесь появятся книги, вручную отмеченные прочитанными или дочитанные до конца.',
-            readerHomeHiddenEmptyText: 'Скрытых книг нет. Если убрать книгу из чтения, её можно будет вернуть отсюда.',
-            readerHomeFilterReading: 'Читаю',
-            readerHomeFilterRead: 'Прочитано',
-            readerHomeFilterHidden: 'Скрыто',
-            readerHomeFilterAll: 'Все',
-            readerHomeSortUpdatedDesc: 'Сначала новые',
-            readerHomeSortUpdatedAsc: 'Сначала старые',
-            readerHomeSortTitle: 'По названию',
-            readerHomeSortAuthor: 'По автору',
-            readerHomeSortProgressDesc: 'Прогресс по убыванию',
-            readerHomeSortProgressAsc: 'Прогресс по возрастанию',
-            resetReaderProgress: 'Сбросить прогресс',
-            resetReaderProgressAction: 'Сбросить',
-            resetReaderProgressConfirm: 'Сбросить все позиции чтения профиля «{profile}»? Книги исчезнут из разделов «Читаю», «Прочитано» и «Скрыто». Закладки и настройки читалки останутся.',
-            resetReaderProgressSuccess: 'Прогресс чтения сброшен',
-            openBook: 'Открыть',
-            restoreToReading: 'Вернуть',
-            restoreReadingSuccess: 'Книга возвращена в чтение',
-            removeFromReading: 'Скрыть',
-            removeReadingConfirm: 'Скрыть книгу «{title}»? Её можно будет вернуть из раздела «Скрыто».',
-            removeReadingSuccess: 'Книга перемещена в «Скрыто»',
-            untitledBook: '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f',
-            series: '\u0421\u0435\u0440\u0438\u044f',
-            themeDark: '\u0422\u0451\u043c\u043d\u0430\u044f',
-            themeSepia: '\u0421\u0435\u043f\u0438\u044f',
-            themeLight: '\u0421\u0432\u0435\u0442\u043b\u0430\u044f',
+            readerHomeTitle: t('Читалка'),
+            readerHomeEmptyTitle: t('Нет книг в чтении'),
+            readerHomeEmptyText: t('Откройте книгу из каталога, и она появится здесь.'),
+            readerHomeSearchPlaceholder: t('Быстрый поиск по своим книгам'),
+            readerHomeSearchEmptyText: t('По этому запросу в выбранном разделе ничего не найдено.'),
+            readerHomeUnavailableText: t('Прогресс сохранён, но книга не найдена в текущей библиотеке. Проверьте выбранную библиотеку и её INPX-индекс.'),
+            readerHomeReadEmptyText: t('Здесь появятся книги, вручную отмеченные прочитанными или дочитанные до конца.'),
+            readerHomeHiddenEmptyText: t('Скрытых книг нет. Если убрать книгу из чтения, её можно будет вернуть отсюда.'),
+            readerHomeFilterReading: t('Читаю'),
+            readerHomeFilterRead: t('Прочитано'),
+            readerHomeFilterHidden: t('Скрыто'),
+            readerHomeFilterAll: t('Все'),
+            readerHomeSortUpdatedDesc: t('Сначала новые'),
+            readerHomeSortUpdatedAsc: t('Сначала старые'),
+            readerHomeSortTitle: t('По названию'),
+            readerHomeSortAuthor: t('По автору'),
+            readerHomeSortProgressDesc: t('Прогресс по убыванию'),
+            readerHomeSortProgressAsc: t('Прогресс по возрастанию'),
+            resetReaderProgress: t('Сбросить прогресс'),
+            resetReaderProgressAction: t('Сбросить'),
+            resetReaderProgressConfirm: t('Сбросить все позиции чтения профиля «{profile}»? Книги исчезнут из разделов «Читаю», «Прочитано» и «Скрыто». Закладки и настройки читалки останутся.'),
+            resetReaderProgressSuccess: t('Прогресс чтения сброшен'),
+            openBook: t('Открыть'),
+            restoreToReading: t('Вернуть'),
+            restoreReadingSuccess: t('Книга возвращена в чтение'),
+            removeFromReading: t('Скрыть'),
+            removeReadingConfirm: t('Скрыть книгу «{title}»? Её можно будет вернуть из раздела «Скрыто».'),
+            removeReadingSuccess: t('Книга перемещена в «Скрыто»'),
+            untitledBook: t('Без названия'),
+            series: t('Серия'),
+            themeDark: t('Тёмная'),
+            themeSepia: t('Сепия'),
+            themeLight: t('Светлая'),
             themeEink: 'eink',
-            readModeScroll: '\u041b\u0435\u043d\u0442\u0430',
-            readModePages: '\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u044b',
-            widthFixed: '\u0424\u0438\u043a\u0441',
-            widthViewport: '\u042d\u043a\u0440\u0430\u043d',
-            textShadowOn: '\u0422\u0435\u043d\u044c \u0431\u0443\u043a\u0432',
-            textShadowOff: '\u0411\u0435\u0437 \u0442\u0435\u043d\u0438',
-            spreadSingle: '1 \u0441\u0442\u0440.',
-            spreadDual: '2 \u0441\u0442\u0440.',
-            pageGap: '\u0426\u0435\u043d\u0442\u0440',
-            pageVerticalPadding: '\u0412\u0435\u0440\u0445/\u043d\u0438\u0437',
-            pageHorizontalPadding: '\u041a\u0440\u0430\u044f',
-            pageOuterGap: '\u042d\u043a\u0440\u0430\u043d \u0432\u0435\u0440\u0445/\u043d\u0438\u0437',
-            pagePaddingTop: '\u041b\u0438\u0441\u0442 \u0441\u0432\u0435\u0440\u0445\u0443',
-            pagePaddingBottom: '\u041b\u0438\u0441\u0442 \u0441\u043d\u0438\u0437\u0443',
-            pagePaddingLeft: '\u041b\u0438\u0441\u0442 \u0441\u043b\u0435\u0432\u0430',
-            pagePaddingRight: '\u041b\u0438\u0441\u0442 \u0441\u043f\u0440\u0430\u0432\u0430',
-            pageOuterGapTop: '\u042d\u043a\u0440\u0430\u043d \u0441\u0432\u0435\u0440\u0445\u0443',
-            pageOuterGapBottom: '\u042d\u043a\u0440\u0430\u043d \u0441\u043d\u0438\u0437\u0443',
-            pageOuterGapLeft: '\u042d\u043a\u0440\u0430\u043d \u0441\u043b\u0435\u0432\u0430',
-            pageOuterGapRight: '\u042d\u043a\u0440\u0430\u043d \u0441\u043f\u0440\u0430\u0432\u0430',
-            controlsText: '\u0422\u0435\u043a\u0441\u0442',
-            controlsPage: '\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430',
-            controlsBackground: '\u0424\u043e\u043d',
-            controlsStatus: '\u0421\u0442\u0430\u0442\u0443\u0441',
-            controlsReset: '\u0421\u0431\u0440\u043e\u0441',
-            controlsView: '\u0412\u0438\u0434',
-            controlsTheme: '\u0422\u0435\u043c\u0430',
-            controlsFont: '\u0428\u0440\u0438\u0444\u0442',
-            controlsTypography: '\u0422\u0435\u043a\u0441\u0442',
-            controlsFontSize: '\u0420\u0430\u0437\u043c\u0435\u0440 \u0448\u0440\u0438\u0444\u0442\u0430',
-            controlsLineHeight: '\u041c\u0435\u0436\u0434\u0443\u0441\u0442\u0440\u043e\u0447\u0438\u0435',
-            controlsTextShadow: '\u0422\u0435\u043d\u044c',
-            controlsWidth: '\u0428\u0438\u0440\u0438\u043d\u0430',
-            controlsTextWidth: '\u0428\u0438\u0440\u0438\u043d\u0430 \u0442\u0435\u043a\u0441\u0442\u0430',
-            controlsTextWidthMode: '\u0420\u0435\u0436\u0438\u043c \u0448\u0438\u0440\u0438\u043d\u044b',
+            readModeScroll: t('Лента'),
+            readModePages: t('Страницы'),
+            widthFixed: t('Фикс'),
+            widthViewport: t('Экран'),
+            textShadowOn: t('Тень букв'),
+            textShadowOff: t('Без тени'),
+            spreadSingle: t('1 стр.'),
+            spreadDual: t('2 стр.'),
+            pageGap: t('Центр'),
+            pageVerticalPadding: t('Верх/низ'),
+            pageHorizontalPadding: t('Края'),
+            pageOuterGap: t('Экран верх/низ'),
+            pagePaddingTop: t('Лист сверху'),
+            pagePaddingBottom: t('Лист снизу'),
+            pagePaddingLeft: t('Лист слева'),
+            pagePaddingRight: t('Лист справа'),
+            pageOuterGapTop: t('Экран сверху'),
+            pageOuterGapBottom: t('Экран снизу'),
+            pageOuterGapLeft: t('Экран слева'),
+            pageOuterGapRight: t('Экран справа'),
+            controlsText: t('Текст'),
+            controlsPage: t('Страница'),
+            controlsBackground: t('Фон'),
+            controlsStatus: t('Статус'),
+            controlsReset: t('Сброс'),
+            controlsView: t('Вид'),
+            controlsTheme: t('Тема'),
+            controlsFont: t('Шрифт'),
+            controlsTypography: t('Текст'),
+            controlsFontSize: t('Размер шрифта'),
+            controlsLineHeight: t('Междустрочие'),
+            controlsTextShadow: t('Тень'),
+            controlsWidth: t('Ширина'),
+            controlsTextWidth: t('Ширина текста'),
+            controlsTextWidthMode: t('Режим ширины'),
             controlsInk: 'E-ink',
-            controlsMode: '\u0420\u0435\u0436\u0438\u043c \u0447\u0442\u0435\u043d\u0438\u044f',
-            controlsReadMode: '\u0424\u043e\u0440\u043c\u0430\u0442',
-            controlsPageFlow: '\u041b\u0438\u0441\u0442\u0430\u043d\u0438\u0435',
-            controlsSpread: '\u0420\u0430\u0437\u0432\u043e\u0440\u043e\u0442',
-            controlsSpacing: '\u041e\u0442\u0441\u0442\u0443\u043f\u044b',
-            controlsAnimation: '\u0410\u043d\u0438\u043c\u0430\u0446\u0438\u044f',
-            controlsAnimationType: '\u042d\u0444\u0444\u0435\u043a\u0442',
-            controlsAnimationSpeed: '\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c',
-            controlsBackgroundImage: '\u041a\u0430\u0440\u0442\u0438\u043d\u043a\u0430',
-            controlsBackgroundLayers: '\u041f\u043e\u0432\u0435\u0440\u0445 \u0444\u043e\u043d\u0430',
-            controlsPages: '\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u044b',
-            controlsStatusBar: '\u0421\u0442\u0430\u0442\u0443\u0441-\u0431\u0430\u0440',
-            controlsStatusField: '\u041f\u0430\u043d\u0435\u043b\u044c',
-            controlsStatusVisibility: '\u0412\u0438\u0434\u0438\u043c\u043e\u0441\u0442\u044c',
-            controlsStatusPosition: '\u0420\u0430\u0441\u043f\u043e\u043b\u043e\u0436\u0435\u043d\u0438\u0435',
-            controlsStatusContent: '\u0427\u0442\u043e \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0442\u044c',
-            controlsClock: '\u0427\u0430\u0441\u044b',
-            controlsProgressBar: '\u0428\u043a\u0430\u043b\u0430',
-            controlsProgressPosition: '\u0413\u0434\u0435 \u0448\u043a\u0430\u043b\u0430',
-            controlsRemaining: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a',
-            noteReturn: '\u041d\u0430\u0437\u0430\u0434 \u043a \u0442\u0435\u043a\u0441\u0442\u0443',
-            directionVertical: '\u0412\u0435\u0440\u0442\u0438\u043a\u0430\u043b\u044c\u043d\u043e',
-            directionHorizontal: '\u0413\u043e\u0440\u0438\u0437\u043e\u043d\u0442\u0430\u043b\u044c\u043d\u043e',
-            animationNone: '\u0411\u0435\u0437 \u0430\u043d\u0438\u043c\u0430\u0446\u0438\u0438',
-            animationSoft: '\u041c\u044f\u0433\u043a\u043e',
-            animationSlide: '\u0421\u043b\u0430\u0439\u0434',
-            speedFast: '\u0411\u044b\u0441\u0442\u0440\u043e',
-            speedNormal: '\u041d\u043e\u0440\u043c\u0430\u043b\u044c\u043d\u043e',
-            speedSlow: '\u041c\u0435\u0434\u043b\u0435\u043d\u043d\u043e',
-            statusBarOn: '\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441',
-            statusBarOff: '\u0421\u043a\u0440\u044b\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441',
-            statusClockOn: '\u0427\u0430\u0441\u044b',
-            statusClockOff: '\u0411\u0435\u0437 \u0447\u0430\u0441\u043e\u0432',
-            statusProgressOn: '\u0428\u043a\u0430\u043b\u0430 \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441\u0430',
-            statusProgressOff: '\u0411\u0435\u0437 \u0448\u043a\u0430\u043b\u044b',
-            statusProgressBottom: '\u0428\u043a\u0430\u043b\u0430 \u0441\u043d\u0438\u0437\u0443',
-            statusProgressSide: '\u0428\u043a\u0430\u043b\u0430 \u0441\u043f\u0440\u0430\u0432\u0430',
-            statusRemainingOn: '\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c \u0441\u0442\u0440\u0430\u043d\u0438\u0446',
-            statusRemainingOff: '\u0411\u0435\u0437 \u043e\u0441\u0442\u0430\u0442\u043a\u0430',
-            statusAlignCenter: '\u041f\u043e \u0446\u0435\u043d\u0442\u0440\u0443',
-            statusAlignEdge: '\u0423 \u043a\u0440\u0430\u044f',
-            statusSize: '\u0420\u0430\u0437\u043c\u0435\u0440',
-            backgroundUpload: '\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0444\u043e\u043d',
-            backgroundClear: '\u0423\u0431\u0440\u0430\u0442\u044c \u0444\u043e\u043d',
-            backgroundPagesSolid: '\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u044b',
-            backgroundPagesTransparent: '\u0422\u0435\u043a\u0441\u0442 \u043d\u0430 \u0444\u043e\u043d\u0435',
-            backgroundStatusSolid: '\u0421\u0442\u0430\u0442\u0443\u0441',
-            backgroundStatusTransparent: '\u0421\u0442\u0430\u0442\u0443\u0441 \u043d\u0430 \u0444\u043e\u043d\u0435',
-            resetReaderAppearance: '\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435',
-            resetReaderAppearanceHint: '\u041f\u0440\u043e\u0433\u0440\u0435\u0441\u0441 \u0438 \u0437\u0430\u043a\u043b\u0430\u0434\u043a\u0438 \u043e\u0441\u0442\u0430\u043d\u0443\u0442\u0441\u044f.',
-            resetReaderAppearanceConfirm: '\u0412\u0435\u0440\u043d\u0443\u0442\u044c \u0441\u0442\u0430\u043d\u0434\u0430\u0440\u0442\u043d\u043e\u0435 \u043e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435 \u0447\u0438\u0442\u0430\u043b\u043a\u0438? \u041f\u0440\u043e\u0433\u0440\u0435\u0441\u0441 \u0438 \u0437\u0430\u043a\u043b\u0430\u0434\u043a\u0438 \u043d\u0435 \u0438\u0437\u043c\u0435\u043d\u044f\u0442\u0441\u044f.',
-            resetReaderAppearanceSuccess: '\u041e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435 \u0447\u0438\u0442\u0430\u043b\u043a\u0438 \u0441\u0431\u0440\u043e\u0448\u0435\u043d\u043e.',
-            backgroundTooLarge: '\u041a\u0430\u0440\u0442\u0438\u043d\u043a\u0430 \u0444\u043e\u043d\u0430 \u0434\u043e\u043b\u0436\u043d\u0430 \u0431\u044b\u0442\u044c \u0434\u043e 4 \u041c\u0411.',
-            backgroundInvalid: '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0444\u0430\u0439\u043b \u043a\u0430\u0440\u0442\u0438\u043d\u043a\u0438.',
-            einkContrast: '\u041a\u043e\u043d\u0442\u0440\u0430\u0441\u0442',
-            einkPaper: '\u0411\u0443\u043c\u0430\u0433\u0430',
-            einkInk: '\u0427\u0435\u0440\u043d\u0438\u043b\u0430',
-            loadingBook: '\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043a\u0430 \u043a\u043d\u0438\u0433\u0438...',
-            loadingFetch: '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438...',
-            loadingParse: '\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430...',
-            loadingPages: '\u0420\u0430\u0437\u0431\u0438\u0432\u043a\u0430 \u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b...',
-            loadingPagesCompact: '\u0421\u0447\u0438\u0442\u0430\u044e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b...',
-            loadingPagesCompacting: '\u0423\u0431\u0438\u0440\u0430\u044e \u043f\u0443\u0441\u0442\u044b\u0435 \u043c\u0435\u0441\u0442\u0430...',
-            loadingPagesFinalizing: '\u0413\u043e\u0442\u043e\u0432\u043b\u044e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443...',
-            loadingPagedPage: '\u0413\u043e\u0442\u043e\u0432\u043b\u044e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443',
-            restoringPage: '\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u0430\u0432\u043b\u0438\u0432\u0430\u044e \u043c\u0435\u0441\u0442\u043e \u0447\u0442\u0435\u043d\u0438\u044f...',
-            refreshingPagesCompact: '\u041f\u0435\u0440\u0435\u0441\u0442\u0440\u0430\u0438\u0432\u0430\u044e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b...',
-            contents: '\u0421\u043e\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u0435',
-            annotation: '\u0410\u043d\u043d\u043e\u0442\u0430\u0446\u0438\u044f',
-            bookNotes: '\u041f\u0440\u0438\u043c\u0435\u0447\u0430\u043d\u0438\u044f',
-            backToContents: '\u041d\u0430\u0437\u0430\u0434 \u043a \u0441\u043e\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u044e',
-            show: '\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c',
-            hide: '\u0421\u043a\u0440\u044b\u0442\u044c',
-            settings: '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438',
-            screen: '\u042d\u043a\u0440\u0430\u043d',
-            rebuildPages: '\u041f\u0435\u0440\u0435\u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443',
-            refreshingLayout: '\u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0432\u0438\u0434\u0430...',
+            controlsMode: t('Режим чтения'),
+            controlsReadMode: t('Формат'),
+            controlsPageFlow: t('Листание'),
+            controlsSpread: t('Разворот'),
+            controlsSpacing: t('Отступы'),
+            controlsAnimation: t('Анимация'),
+            controlsAnimationType: t('Эффект'),
+            controlsAnimationSpeed: t('Скорость'),
+            controlsBackgroundImage: t('Картинка'),
+            controlsBackgroundLayers: t('Поверх фона'),
+            controlsPages: t('Страницы'),
+            controlsStatusBar: t('Статус-бар'),
+            controlsStatusField: t('Панель'),
+            controlsStatusVisibility: t('Видимость'),
+            controlsStatusPosition: t('Расположение'),
+            controlsStatusContent: t('Что показывать'),
+            controlsClock: t('Часы'),
+            controlsProgressBar: t('Шкала'),
+            controlsProgressPosition: t('Где шкала'),
+            controlsRemaining: t('Остаток'),
+            noteReturn: t('Назад к тексту'),
+            directionVertical: t('Вертикально'),
+            directionHorizontal: t('Горизонтально'),
+            animationNone: t('Без анимации'),
+            animationSoft: t('Мягко'),
+            animationSlide: t('Слайд'),
+            speedFast: t('Быстро'),
+            speedNormal: t('Нормально'),
+            speedSlow: t('Медленно'),
+            statusBarOn: t('Показать статус'),
+            statusBarOff: t('Скрыть статус'),
+            statusClockOn: t('Часы'),
+            statusClockOff: t('Без часов'),
+            statusProgressOn: t('Шкала прогресса'),
+            statusProgressOff: t('Без шкалы'),
+            statusProgressBottom: t('Шкала снизу'),
+            statusProgressSide: t('Шкала справа'),
+            statusRemainingOn: t('Осталось страниц'),
+            statusRemainingOff: t('Без остатка'),
+            statusAlignCenter: t('По центру'),
+            statusAlignEdge: t('У края'),
+            statusSize: t('Размер'),
+            backgroundUpload: t('Загрузить фон'),
+            backgroundClear: t('Убрать фон'),
+            backgroundPagesSolid: t('Страницы'),
+            backgroundPagesTransparent: t('Текст на фоне'),
+            backgroundStatusSolid: t('Статус'),
+            backgroundStatusTransparent: t('Статус на фоне'),
+            resetReaderAppearance: t('Сбросить оформление'),
+            resetReaderAppearanceHint: t('Прогресс и закладки останутся.'),
+            resetReaderAppearanceConfirm: t('Вернуть стандартное оформление читалки? Прогресс и закладки не изменятся.'),
+            resetReaderAppearanceSuccess: t('Оформление читалки сброшено.'),
+            backgroundTooLarge: t('Картинка фона должна быть до 4 МБ.'),
+            backgroundInvalid: t('Выберите файл картинки.'),
+            einkContrast: t('Контраст'),
+            einkPaper: t('Бумага'),
+            einkInk: t('Чернила'),
+            loadingBook: t('Подготовка книги...'),
+            loadingFetch: t('Загрузка книги...'),
+            loadingParse: t('Подготовка текста...'),
+            loadingPages: t('Разбивка на страницы...'),
+            loadingPagesCompact: t('Считаю страницы...'),
+            loadingPagesCompacting: t('Убираю пустые места...'),
+            loadingPagesFinalizing: t('Готовлю страницу...'),
+            loadingPagedPage: t('Готовлю страницу'),
+            restoringPage: t('Восстанавливаю место чтения...'),
+            refreshingPagesCompact: t('Перестраиваю страницы...'),
+            contents: t('Содержание'),
+            annotation: t('Аннотация'),
+            bookNotes: t('Примечания'),
+            backToContents: t('Назад к содержанию'),
+            show: t('Показать'),
+            hide: t('Скрыть'),
+            settings: t('Настройки'),
+            screen: t('Экран'),
+            rebuildPages: t('Перестроить страницу'),
+            refreshingLayout: t('Обновление вида...'),
         };
     }
 
@@ -2733,33 +2734,33 @@ class Reader {
         if (this.isPagedMode) {
             if (this.isCompactLayout) {
                 return [
-                    '\u041a\u0430\u0441\u0430\u043d\u0438\u0435 \u0441\u043b\u0435\u0432\u0430/\u0441\u043f\u0440\u0430\u0432\u0430 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b \u043b\u0438\u0441\u0442\u0430\u0435\u0442 \u043a\u043d\u0438\u0433\u0443.',
-                    '\u0421\u0432\u0430\u0439\u043f \u0432\u0432\u0435\u0440\u0445/\u0432\u043d\u0438\u0437 \u0438\u043b\u0438 \u0432\u043b\u0435\u0432\u043e/\u0432\u043f\u0440\u0430\u0432\u043e \u0442\u043e\u0436\u0435 \u043f\u0435\u0440\u0435\u043b\u0438\u0441\u0442\u044b\u0432\u0430\u0435\u0442.',
-                    '\u041a\u0430\u0441\u0430\u043d\u0438\u0435 \u043f\u043e \u0446\u0435\u043d\u0442\u0440\u0443 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u0442 \u0438\u043b\u0438 \u0441\u043a\u0440\u044b\u0432\u0430\u0435\u0442 \u043f\u0430\u043d\u0435\u043b\u0438.',
-                    '\u041a\u043d\u043e\u043f\u043a\u0430 \u00ab?\u00bb \u0432\u0441\u0435\u0433\u0434\u0430 \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442 \u044d\u0442\u0443 \u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0443.',
+                    t('Касание слева/справа страницы листает книгу.'),
+                    t('Свайп вверх/вниз или влево/вправо тоже перелистывает.'),
+                    t('Касание по центру показывает или скрывает панели.'),
+                    t('Кнопка «?» всегда открывает эту подсказку.'),
                 ];
             }
 
             return [
-                '\u041a\u043b\u0438\u043a \u043f\u043e \u0432\u0435\u0440\u0445\u043d\u0435\u0439/\u043d\u0438\u0436\u043d\u0435\u0439 \u0437\u043e\u043d\u0435 \u0438\u043b\u0438 \u043f\u043e \u043b\u0435\u0432\u043e\u0439/\u043f\u0440\u0430\u0432\u043e\u0439 \u0437\u043e\u043d\u0435 \u043b\u0438\u0441\u0442\u0430\u0435\u0442 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b.',
-                '\u041a\u043e\u043b\u0435\u0441\u043e \u043c\u044b\u0448\u0438 \u0442\u043e\u0436\u0435 \u043b\u0438\u0441\u0442\u0430\u0435\u0442 \u043a\u043d\u0438\u0433\u0443.',
-                '\u041a\u043b\u0430\u0432\u0438\u0448\u0438 `\u2190 \u2192 \u2191 \u2193`, `PageUp`, `PageDown` \u0438 `Space` \u0440\u0430\u0431\u043e\u0442\u0430\u044e\u0442 \u0434\u043b\u044f \u043d\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u0438.',
-                '\u041a\u043b\u0438\u043a \u043f\u043e \u0446\u0435\u043d\u0442\u0440\u0443 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u0442 \u0438\u043b\u0438 \u0441\u043a\u0440\u044b\u0432\u0430\u0435\u0442 \u043f\u0430\u043d\u0435\u043b\u0438.',
+                t('Клик по верхней/нижней зоне или по левой/правой зоне листает страницы.'),
+                t('Колесо мыши тоже листает книгу.'),
+                t('Клавиши `← → ↑ ↓`, `PageUp`, `PageDown` и `Space` работают для навигации.'),
+                t('Клик по центру показывает или скрывает панели.'),
             ];
         }
 
         if (this.isCompactLayout) {
             return [
-                '\u041b\u0438\u0441\u0442\u0430\u0439\u0442\u0435 \u043a\u043d\u0438\u0433\u0443 \u043e\u0431\u044b\u0447\u043d\u044b\u043c \u0441\u043a\u0440\u043e\u043b\u043b\u043e\u043c \u0438\u043b\u0438 \u0441\u0432\u0430\u0439\u043f\u043e\u043c.',
-                '\u041d\u0438\u0436\u043d\u044f\u044f \u043f\u0430\u043d\u0435\u043b\u044c \u0434\u0430\u0451\u0442 \u0431\u044b\u0441\u0442\u0440\u044b\u0439 \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u043c\u0435\u0441\u0442\u0430\u043c, \u043e\u0433\u043b\u0430\u0432\u043b\u0435\u043d\u0438\u044e \u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u043c.',
-                '\u041a\u043d\u043e\u043f\u043a\u0430 \u00ab?\u00bb \u0432 \u043b\u044e\u0431\u043e\u0439 \u043c\u043e\u043c\u0435\u043d\u0442 \u043e\u0442\u043a\u0440\u043e\u0435\u0442 \u044d\u0442\u0443 \u043f\u0430\u043c\u044f\u0442\u043a\u0443.',
+                t('Листайте книгу обычным скроллом или свайпом.'),
+                t('Нижняя панель даёт быстрый доступ к местам, оглавлению и настройкам.'),
+                t('Кнопка «?» в любой момент откроет эту памятку.'),
             ];
         }
 
         return [
-            '\u0412 \u0440\u0435\u0436\u0438\u043c\u0435 \u00ab\u043b\u0435\u043d\u0442\u0430\u00bb \u043a\u043d\u0438\u0433\u0430 \u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f \u043e\u0431\u044b\u0447\u043d\u044b\u043c \u0441\u043a\u0440\u043e\u043b\u043b\u043e\u043c.',
-            '\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043c\u044b\u0448\u044c, \u0442\u0430\u0447\u043f\u0430\u0434 \u0438\u043b\u0438 \u043a\u043b\u0430\u0432\u0438\u0448\u0438 `PageUp`/`PageDown`, `Space`, `Home`, `End`.',
-            '\u041e\u0433\u043b\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0438 \u00ab\u041c\u043e\u0438 \u043c\u0435\u0441\u0442\u0430\u00bb \u043f\u043e\u043c\u043e\u0433\u0430\u044e\u0442 \u0431\u044b\u0441\u0442\u0440\u043e \u0432\u0435\u0440\u043d\u0443\u0442\u044c\u0441\u044f \u043a \u043d\u0443\u0436\u043d\u043e\u043c\u0443 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0443.',
+            t('В режиме «лента» книга читается обычным скроллом.'),
+            t('Используйте мышь, тачпад или клавиши `PageUp`/`PageDown`, `Space`, `Home`, `End`.'),
+            t('Оглавление и «Мои места» помогают быстро вернуться к нужному фрагменту.'),
         ];
     }
 
@@ -2791,7 +2792,7 @@ class Reader {
         const total = Math.max(1, Number(this.displayTotalPages || this.totalPages || 1) || 1);
         const current = Math.max(1, Math.min(total, Number(this.displayCurrentPage || this.currentPage || 1) || 1));
         const remaining = Math.max(0, total - current);
-        return `${remaining} \u0441\u0442\u0440.`;
+        return t('{n} стр.', {n: remaining});
     }
 
     get statusBarProgressPercent() {
@@ -3816,7 +3817,7 @@ class Reader {
                 this.readerHomeCounters.all = this.readerHomeBooks.length;
             }
         } catch (e) {
-            this.error = e.message || String(e);
+            this.error = tMessage(e.message || String(e));
         } finally {
             this.readerHomeLoading = false;
         }
@@ -8698,7 +8699,7 @@ class Reader {
                     continue;
 
                 const anchorAttribute = notesAnchorAdded ? '' : ` id="${this.escapeHtml(notesAnchorId)}"`;
-                parts.push(`<section class="reader-notes"><h2${anchorAttribute}>Примечания</h2>${html}</section>`);
+                parts.push(`<section class="reader-notes"><h2${anchorAttribute}>${this.escapeHtml(t('Примечания'))}</h2>${html}</section>`);
                 notesAnchorAdded = true;
             } else {
                 parts.push(`<section class="reader-section">${html}</section>`);
@@ -8742,7 +8743,7 @@ class Reader {
         const fb2Info = parser.bookInfo();
         const authorFallback = ((fb2Info.titleInfo && fb2Info.titleInfo.author) ? fb2Info.titleInfo.author.join(', ') : '');
 
-        this.title = this.decodeReaderText(book.title || (fb2Info.titleInfo && fb2Info.titleInfo.bookTitle) || 'Без названия');
+        this.title = this.decodeReaderText(book.title || (fb2Info.titleInfo && fb2Info.titleInfo.bookTitle) || t('Без названия'));
         this.authorLine = this.decodeReaderText(book.author || authorFallback);
         this.seriesLine = this.decodeReaderText(book.series ? `${book.series}${book.serno ? ` #${book.serno}` : ''}` : '');
         if (stateResponse && stateResponse.preferences)
@@ -8852,7 +8853,7 @@ class Reader {
 
         const api = this.$root.api;
         if (!api && !this.isStandaloneMode) {
-            this.error = 'Читалка ещё не готова. Попробуйте открыть книгу ещё раз.';
+            this.error = t('Читалка ещё не готова. Попробуйте открыть книгу ещё раз.');
             return;
         }
 
@@ -8921,7 +8922,7 @@ class Reader {
                 this.bookInfo = (bookResponse ? bookResponse.bookInfo : null);
                 const info = (this.bookInfo || {});
                 if (!info.fb2)
-                    throw new Error('Встроенная читалка пока поддерживает только FB2.');
+                    throw new Error(t('Встроенная читалка пока поддерживает только FB2.'));
 
                 await this.applyReaderDocumentSource({
                     book: (info.book || {}),
@@ -8953,7 +8954,7 @@ class Reader {
                 for (let attempt = 0; attempt < 3 && !initialBuildCommitted; attempt += 1) {
                     const initialBuildJobId = ++this.pagedBuildJobId;
                     if (!await this.waitForPagedBuildIdle(2400))
-                        throw new Error('Не удалось завершить предыдущую разбивку страниц.');
+                        throw new Error(t('Не удалось завершить предыдущую разбивку страниц.'));
                     await this.waitForStablePagedStage();
                     if (
                         loadJobId !== this.readerLoadJobId
@@ -8972,7 +8973,7 @@ class Reader {
                         await this.waitForAnimationFrames(2);
                 }
                 if (!initialBuildCommitted)
-                    throw new Error('Геометрия страницы не стабилизировалась.');
+                    throw new Error(t('Геометрия страницы не стабилизировалась.'));
                 if (this.hasReaderProgressPlace(this.progress))
                     this.restorePending = true;
                 this.restoreFromSavedProgress = this.restorePending;
@@ -8996,7 +8997,7 @@ class Reader {
             await this.waitForAnimationFrames(2);
         } catch (e) {
             if (loadJobId === this.readerLoadJobId)
-                this.error = e.message;
+                this.error = tMessage(e.message);
         } finally {
             if (loadJobId === this.readerLoadJobId) {
                 this.loading = false;
@@ -10146,7 +10147,7 @@ class Reader {
             const response = await api.deleteReaderBookmark(this.bookUid, bookmarkId);
             this.bookmarks = Array.isArray(response.bookmarks) ? response.bookmarks : [];
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -10203,7 +10204,7 @@ class Reader {
         const date = new Date(value);
         if (Number.isNaN(date.getTime()))
             return '';
-        return date.toLocaleString('ru-RU', {
+        return date.toLocaleString(getLocale(), {
             day: '2-digit',
             month: '2-digit',
             hour: '2-digit',
@@ -10788,7 +10789,7 @@ class Reader {
             return true;
         } catch (e) {
             const message = e.message || String(e);
-            if (message !== '\u0412\u0445\u043e\u0434 \u0432 \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u043e\u0442\u043c\u0435\u043d\u0451\u043d')
+            if (message !== t('Вход в профиль отменён'))
                 this.$root.stdDialog.alert(message, this.uiText.error);
             return false;
         }

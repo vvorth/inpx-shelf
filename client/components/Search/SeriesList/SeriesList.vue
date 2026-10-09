@@ -20,7 +20,7 @@
                 </div>
 
                 <div class="clickable2 q-ml-xs q-py-sm text-bold" @click="selectSeries(item.series)">
-                    Серия: {{ item.series }}
+                    {{ $t('Серия: {name}', {name: item.series}) }}
                 </div>
 
                 <div class="q-ml-sm text-bold" style="color: #555">
@@ -29,10 +29,10 @@
 
                 <div class="series-read-actions">
                     <q-btn flat dense no-caps icon="la la-check-circle" @click.stop="markSeriesRead(item, true)">
-                        Прочитана
+                        {{ $t('Прочитана') }}
                     </q-btn>
                     <q-btn flat dense no-caps icon="la la-undo" @click.stop="markSeriesRead(item, false)">
-                        Снять
+                        {{ $t('Снять') }}
                     </q-btn>
                 </div>
             </div>
@@ -40,7 +40,7 @@
             <div v-if="item.bookLoading" class="book-row row items-center">
                 <q-icon class="la la-spinner icon-rotate text-blue-8" size="28px" />
                 <div class="q-ml-xs">
-                    Обработка...
+                    {{ $t('Обработка...') }}
                 </div>
             </div>
 
@@ -64,7 +64,7 @@
 
                 <!--div v-if="!item.showAllBooks && isExpandedSeries(item) && item.books && !item.books.length" class="book-row row items-center">
                     <q-icon class="la la-meh q-mr-xs" size="24px" />
-                    Возможно у этой серии были найдены книги, помеченные как удаленные, но подходящие по критериям
+                    {{ $t('Возможно у этой серии были найдены книги, помеченные как удаленные, но подходящие по критериям') }}
                 </div-->
 
                 <div
@@ -75,20 +75,20 @@
                     <div v-if="item.showAllBooks && item.showMoreAll" class="row items-center q-mr-md">
                         <i class="las la-ellipsis-h text-red" style="font-size: 40px"></i>
                         <q-btn class="q-ml-md" color="red" style="width: 200px" dense rounded no-caps @click="showMoreAll(item)">
-                            Показать еще (~{{ showMoreCount }})
+                            {{ $t('Показать еще (~{n})', {n: showMoreCount}) }}
                         </q-btn>
                         <q-btn class="q-ml-sm" color="red" style="width: 200px" dense rounded no-caps @click="showMoreAll(item, true)">
-                            Показать все ({{ (item.allBooksLoaded && item.allBooksLoaded.length) || '?' }})
+                            {{ $t('Показать все ({n})', {n: (item.allBooksLoaded && item.allBooksLoaded.length) || '?'}) }}
                         </q-btn>
                     </div>
 
                     <div v-if="item.showAllBooks" class="row items-center clickable2 text-blue-10" @click="item.showAllBooks = false">
                         <q-icon class="la la-long-arrow-alt-up" size="28px" />
-                        Только найденные книги
+                        {{ $t('Только найденные книги') }}
                     </div>
                     <div v-else class="row items-center clickable2 text-red" @click="item.showAllBooks = true">
                         <q-icon class="la la-long-arrow-alt-down" size="28px" />
-                        Все книги серии
+                        {{ $t('Все книги серии') }}
                     </div>
                 </div>
             </div>
@@ -96,10 +96,10 @@
             <div v-if="isExpandedSeries(item) && item.showMore" class="row items-center book-row q-mb-sm">
                 <i class="las la-ellipsis-h text-blue-10" style="font-size: 40px"></i>
                 <q-btn class="q-ml-md" color="primary" style="width: 200px" dense rounded no-caps @click="showMore(item)">
-                    Показать еще (~{{ showMoreCount }})
+                    {{ $t('Показать еще (~{n})', {n: showMoreCount}) }}
                 </q-btn>
                 <q-btn class="q-ml-sm" color="primary" style="width: 200px" dense rounded no-caps @click="showMore(item, true)">
-                    Показать все ({{ (item.booksLoaded && item.booksLoaded.length) || '?' }})
+                    {{ $t('Показать все ({n})', {n: (item.booksLoaded && item.booksLoaded.length) || '?'}) }}
                 </q-btn>
             </div>
         </div>
@@ -107,7 +107,7 @@
 
         <div v-if="!refreshing && (!tableData.length || error)" class="row items-center q-ml-md" style="font-size: 120%">
             <q-icon class="la la-meh q-mr-xs" size="28px" />
-            {{ (error ? error : 'Поиск не дал результатов') }}
+            {{ (error ? error : $t('Поиск не дал результатов')) }}
         </div>
     </div>
 </template>
@@ -122,10 +122,11 @@ import BaseList from '../BaseList';
 import * as utils from '../../../share/utils';
 
 import _ from 'lodash';
+import {t, tMessage} from '../../../share/i18n';
 
 class SeriesList extends BaseList {
     get foundCountMessage() {
-        return `${this.list.totalFound} сери${utils.wordEnding(this.list.totalFound, 1)}`;
+        return t('{n} сери{e}', {n: this.list.totalFound, e: utils.wordEnding(this.list.totalFound, 1)});
     }
 
     isFoundSeriesBook(seriesItem, seriesBook) {
@@ -188,18 +189,18 @@ class SeriesList extends BaseList {
         const count = Number(item.count || 0) || 0;
         const confirmed = await this.$root.stdDialog.confirm(
             read
-                ? `Пометить всю серию «${item.series}» прочитанной${count ? ` (${count} книг)` : ''}?`
-                : `Снять отметку прочитано со всей серии «${item.series}»${count ? ` (${count} книг)` : ''}?`,
-            read ? 'Серия прочитана' : 'Снять отметку',
+                ? (count ? t('Пометить всю серию «{name}» прочитанной ({n} книг)?', {name: item.series, n: count}) : t('Пометить всю серию «{name}» прочитанной?', {name: item.series}))
+                : (count ? t('Снять отметку прочитано со всей серии «{name}» ({n} книг)?', {name: item.series, n: count}) : t('Снять отметку прочитано со всей серии «{name}»?', {name: item.series})),
+            read ? t('Серия прочитана') : t('Снять отметку'),
         );
         if (!confirmed)
             return;
 
         try {
             const result = await this.api.markSeriesRead(item.series, read);
-            this.$root.notify.success(read ? `Серия помечена прочитанной: ${result.changedBooks}` : `Отметка снята: ${result.changedBooks}`);
+            this.$root.notify.success(read ? t('Серия помечена прочитанной: {n}', {n: result.changedBooks}) : t('Отметка снята: {n}', {n: result.changedBooks}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -268,7 +269,7 @@ class SeriesList extends BaseList {
         (async() => {
             await utils.sleep(500);
             if (this.refreshing)
-                this.loadingMessage = 'Поиск серий...';
+                this.loadingMessage = t('Поиск серий...');
         })();
 
         try {
@@ -297,7 +298,7 @@ class SeriesList extends BaseList {
                     this.searchResult = {found: []};
                     await this.updateTableData();
                     //this.$root.stdDialog.alert(e.message, 'Ошибка');
-                    this.error = `Ошибка: ${e.message}`;
+                    this.error = t('Ошибка: {message}', {message: tMessage(e.message)});
                 }
             }
         } finally {

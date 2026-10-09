@@ -20,6 +20,7 @@
     "build:all": "npm run build:linux && npm run build:win && npm run build:macos && npm run build:linux-arm64",
     "test:release": "node scripts/release-smoke-tests.js",
     "test:tts": "node scripts/reader-speech-tests.js",
+    "test:i18n": "node --no-warnings scripts/i18n-check.js",
     "release": "npm run build:all && node build/release.js",
     "release:linux": "npm run build:linux && node build/release.js linux",
     "release:win": "npm run build:win && node build/release.js win",

@@ -7,6 +7,7 @@ import authorBooksStorage from './authorBooksStorage';
 import BookView from './BookView/BookView.vue';
 import LoadingMessage from './LoadingMessage/LoadingMessage.vue';
 import * as utils from '../../share/utils';
+import {t, tHtml} from '../../share/i18n';
 
 const showMoreCount = 100;//значение для "Показать еще"
 const maxItemCount = 500;//выше этого значения показываем "Загрузка"
@@ -121,7 +122,7 @@ export default class BaseList {
 
     get ratingFilterOptions() {
         return [
-            {label: 'Топ 5', value: '5'},
+            {label: t('Топ 5'), value: '5'},
             {label: '4+', value: '4,5'},
             {label: '3+', value: '3,4,5'},
         ];
@@ -169,21 +170,21 @@ export default class BaseList {
 
     getActionLoadingMessage(action, format = '') {
         if (action == 'bookInfo')
-            return 'Загрузка информации о книге...';
+            return t('Загрузка информации о книге...');
 
         if (action == 'authorInfo')
-            return 'Загрузка информации об авторе...';
+            return t('Загрузка информации об авторе...');
 
         if (action == 'sendTelegram')
-            return (format ? `Отправка ${format.toUpperCase()} в Telegram...` : 'Отправка книги в Telegram...');
+            return (format ? t('Отправка {format} в Telegram...', {format: format.toUpperCase()}) : t('Отправка книги в Telegram...'));
 
         if (action == 'sendEmail')
-            return (format ? `Отправка ${format.toUpperCase()} на email...` : 'Отправка книги на email...');
+            return (format ? t('Отправка {format} на email...', {format: format.toUpperCase()}) : t('Отправка книги на email...'));
 
         if (format)
-            return `Подготовка ${format.toUpperCase()}...`;
+            return t('Подготовка {format}...', {format: format.toUpperCase()});
 
-        return 'Подготовка файла...';
+        return t('Подготовка файла...');
     }
 
     getDownloadFileName(response, book, format = '') {
@@ -260,7 +261,7 @@ export default class BaseList {
             return;
 
         if (format && this.config.conversionEnabled === false) {
-            this.$root.stdDialog.alert('Конвертация книг отключена в текущем образе.', 'Информация');
+            this.$root.stdDialog.alert(t('Конвертация книг отключена в текущем образе.'), t('Информация'));
             return;
         }
 
@@ -286,13 +287,13 @@ export default class BaseList {
 
             if (action == 'sendTelegram') {
                 await this.api.sendBookTelegram(book._uid, format);
-                this.$root.notify.success(`Книга отправлена в Telegram${format ? ` (${format.toUpperCase()})` : ''}`);
+                this.$root.notify.success(`${t('Книга отправлена в Telegram')}${format ? ` (${format.toUpperCase()})` : ''}`);
                 return;
             }
 
             if (action == 'sendEmail') {
                 await this.api.sendBookEmail(book._uid, format);
-                this.$root.notify.success(`Книга отправлена на email${format ? ` (${format.toUpperCase()})` : ''}`);
+                this.$root.notify.success(`${t('Книга отправлена на email')}${format ? ` (${format.toUpperCase()})` : ''}`);
                 return;
             }
 
@@ -322,15 +323,15 @@ export default class BaseList {
             if (action == 'copyLink') {
                 //копирование ссылки
                 if (await utils.copyTextToClipboard(href))
-                    this.$root.notify.success('Ссылка успешно скопирована');
+                    this.$root.notify.success(t('Ссылка успешно скопирована'));
                 else
-                    this.$root.stdDialog.alert(
+                    this.$root.stdDialog.alert(tHtml('copyLinkFailed',
 `Копирование ссылки не удалось. Пожалуйста, попробуйте еще раз.
 <br><br>
 <b>Пояснение</b>: вероятно, браузер запретил копирование, т.к. прошло<br>
 слишком много времени с момента нажатия на кнопку (инициация<br>
 пользовательского события). Сейчас ссылка уже закеширована,<br>
-поэтому повторная попытка должна быть успешной.`, 'Ошибка');
+поэтому повторная попытка должна быть успешной.`), t('Ошибка'));
             } else if (action == 'readBook') {
                 //читать
                 if (this.config.onlineReaderEnabled && String(book.ext || '').toLowerCase() === 'fb2') {
@@ -340,7 +341,7 @@ export default class BaseList {
                 } else {
                     const bookReadLink = this.config.bookReadLink;
                     if (!bookReadLink) {
-                        this.$root.stdDialog.alert('Встроенная читалка пока поддерживает только FB2.', 'Информация');
+                        this.$root.stdDialog.alert(t('Встроенная читалка пока поддерживает только FB2.'), t('Информация'));
                         return;
                     }
                     let url = bookReadLink;
@@ -359,7 +360,7 @@ export default class BaseList {
             }
         } catch(e) {
             const message = await this.getErrorMessage(e);
-            this.$root.stdDialog.alert(message, 'Ошибка');
+            this.$root.stdDialog.alert(message, t('Ошибка'));
         } finally {
             this.downloadFlag = false;
             this.loadingMessage2 = '';
@@ -380,9 +381,9 @@ export default class BaseList {
         try {
             const result = await this.api.markReaderBooksRead(normalized, read);
             const count = (result && result.changedBooks) || normalized.length;
-            this.$root.notify.success(read ? `Помечено прочитанными: ${count}` : `Отметка снята: ${count}`);
+            this.$root.notify.success(read ? t('Помечено прочитанными: {n}', {n: count}) : t('Отметка снята: {n}', {n: count}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -482,7 +483,7 @@ export default class BaseList {
 
             return result.books;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -505,7 +506,7 @@ export default class BaseList {
 
             return result.series;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -528,7 +529,7 @@ export default class BaseList {
 
             return result.books;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, 'Ошибка');
+            this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -726,14 +727,14 @@ export default class BaseList {
     queryDate(date) {
         if (!utils.isManualDate(date)) {//!manual
             /*
-            {label: 'сегодня', value: 'today'},
-            {label: 'за 3 дня', value: '3days'},
-            {label: 'за неделю', value: 'week'},
-            {label: 'за 2 недели', value: '2weeks'},
-            {label: 'за месяц', value: 'month'},
-            {label: 'за 2 месяца', value: '2months'},
-            {label: 'за 3 месяца', value: '3months'},
-            {label: 'указать даты', value: 'manual'},
+            {label: t('сегодня'), value: 'today'},
+            {label: t('за 3 дня'), value: '3days'},
+            {label: t('за неделю'), value: 'week'},
+            {label: t('за 2 недели'), value: '2weeks'},
+            {label: t('за месяц'), value: 'month'},
+            {label: t('за 2 месяца'), value: '2months'},
+            {label: t('за 3 месяца'), value: '3months'},
+            {label: t('указать даты'), value: 'manual'},
             */
             const sqlFormat = 'YYYY-MM-DD';
             switch (date) {

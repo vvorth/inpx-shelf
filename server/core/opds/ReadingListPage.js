@@ -1,4 +1,5 @@
 const BasePage = require('./BasePage');
+const {t} = require('./i18n');
 
 class ReadingListPage extends BasePage {
     constructor(config) {
@@ -23,11 +24,11 @@ class ReadingListPage extends BasePage {
         this.title = list.name;
 
         for (const book of books) {
-            const title = `${book._readingListRead ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || 'Без названия'} (${book.ext})`;
+            const title = `${book._readingListRead ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('Без названия')} (${book.ext})`;
             const subtitle = [
                 this.bookAuthor(book.author),
-                book.series ? `Серия: ${book.series}` : '',
-                book._readingListRead ? 'Прочитано' : 'Не прочитано',
+                book.series ? t('Серия: {name}', {name: book.series}) : '',
+                book._readingListRead ? t('Прочитано') : t('Не прочитано'),
             ].filter(Boolean).join(' · ');
 
             entry.push(
@@ -47,11 +48,11 @@ class ReadingListPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: '[Список пуст]',
+                    title: t('[Список пуст]'),
                     link: this.navLink({href: `/reading-lists`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': 'Добавьте книги в этот список через веб-интерфейс',
+                        '*TEXT': t('Добавьте книги в этот список через веб-интерфейс'),
                     },
                 }),
             );

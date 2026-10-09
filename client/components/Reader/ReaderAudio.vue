@@ -1,98 +1,98 @@
 <template>
-    <aside v-show="visible" class="reader-audio" :class="{'reader-audio--minimized': minimized}" aria-label="Озвучка книги">
+    <aside v-show="visible" class="reader-audio" :class="{'reader-audio--minimized': minimized}" :aria-label="$t('Озвучка книги')">
         <div v-show="!minimized" class="reader-audio-panel">
             <div class="reader-audio-header">
                 <div class="reader-audio-title">
-                    {{ title || 'Озвучка книги' }}
+                    {{ title || $t('Озвучка книги') }}
                 </div>
-                <q-btn flat dense round icon="la la-minus" aria-label="Свернуть плеер" @click="minimized = true" />
-                <q-btn flat dense round icon="la la-times" aria-label="Закрыть и остановить озвучку" @click="close" />
+                <q-btn flat dense round icon="la la-minus" :aria-label="$t('Свернуть плеер')" @click="minimized = true" />
+                <q-btn flat dense round icon="la la-times" :aria-label="$t('Закрыть и остановить озвучку')" @click="close" />
             </div>
             <div class="reader-audio-options">
-                <label>Голос
+                <label>{{ $t('Голос') }}
                     <select v-model="speaker" :disabled="busy">
-                        <option v-for="voice in voices" :key="voice.id" :value="voice.id">{{ voice.name }}</option>
+                        <option v-for="voice in voices" :key="voice.id" :value="voice.id">{{ $t(voice.name) }}</option>
                     </select>
                 </label>
-                <label>Скорость
+                <label>{{ $t('Скорость') }}
                     <select v-model.number="rate" @change="applyRate">
                         <option v-for="speed in [0.75, 1, 1.25, 1.5, 2]" :key="speed" :value="speed">{{ speed }}×</option>
                     </select>
                 </label>
             </div>
             <div class="reader-audio-mode">
-                <label>Озвучка
+                <label>{{ $t('Озвучка') }}
                     <select v-model="mode" :disabled="busy">
-                        <option value="online">Слушать сразу</option>
-                        <option value="chapters">По главам</option>
-                        <option value="book">Вся книга в MP3</option>
+                        <option value="online">{{ $t('Слушать сразу') }}</option>
+                        <option value="chapters">{{ $t('По главам') }}</option>
+                        <option value="book">{{ $t('Вся книга в MP3') }}</option>
                     </select>
                 </label>
-                <label v-if="mode !== 'book' && chapters.length">{{ mode === 'online' ? 'Фрагмент' : 'Глава' }}
+                <label v-if="mode !== 'book' && chapters.length">{{ mode === 'online' ? $t('Фрагмент') : $t('Глава') }}
                     <select v-model.number="chapterIndex" :disabled="busy" @change="changeChapter">
-                        <option v-for="chapter in chapters" :key="chapter.index" :value="chapter.index">{{ chapter.index + 1 }}. {{ chapter.title }}</option>
+                        <option v-for="chapter in chapters" :key="chapter.index" :value="chapter.index">{{ chapter.index + 1 }}. {{ $tm(chapter.title) }}</option>
                     </select>
                 </label>
             </div>
             <details class="reader-audio-tuning">
                 <summary>
                     <i class="la la-sliders-h" aria-hidden="true" />
-                    <span>Настроить озвучку</span>
+                    <span>{{ $t('Настроить озвучку') }}</span>
                     <i class="la la-angle-down reader-audio-tuning-arrow" aria-hidden="true" />
                 </summary>
                 <fieldset :disabled="busy">
-                    <label>Высота голоса
+                    <label>{{ $t('Высота голоса') }}
                         <select v-model="draftOptions.pitch">
-                            <option value="x-low">Очень низкая</option><option value="low">Низкая</option>
-                            <option value="medium">Обычная</option><option value="high">Высокая</option><option value="x-high">Очень высокая</option>
+                            <option value="x-low">{{ $t('Очень низкая') }}</option><option value="low">{{ $t('Низкая') }}</option>
+                            <option value="medium">{{ $t('Обычная') }}</option><option value="high">{{ $t('Высокая') }}</option><option value="x-high">{{ $t('Очень высокая') }}</option>
                         </select>
                     </label>
-                    <label v-for="pause in pauseControls" :key="pause.key">{{ pause.label }}
+                    <label v-for="pause in pauseControls" :key="pause.key">{{ $t(pause.label) }}
                         <select v-model="draftOptions[pause.key]">
-                            <option :value="null">Автоматически</option>
-                            <option v-for="ms in pause.values" :key="ms" :value="ms">{{ ms === 0 ? 'Без дополнительной паузы' : `${ms / 1000} сек` }}</option>
+                            <option :value="null">{{ $t('Автоматически') }}</option>
+                            <option v-for="ms in pause.values" :key="ms" :value="ms">{{ ms === 0 ? $t('Без дополнительной паузы') : $t('{n} сек', {n: ms / 1000}) }}</option>
                         </select>
                     </label>
-                    <label class="reader-audio-dictionary">Словарь произношения
+                    <label class="reader-audio-dictionary">{{ $t('Словарь произношения') }}
                         <textarea v-model="draftOptions.dictionary" rows="2" maxlength="10000" placeholder="Гермиона = Герми+она" />
                     </label>
                     <p class="reader-audio-hint">
-                        Одна замена на строку. Плюс перед гласной задаёт ударение.
+                        {{ $t('Одна замена на строку. Плюс перед гласной задаёт ударение.') }}
                     </p>
                     <p v-if="tuningError" class="reader-audio-error" role="alert">
                         {{ tuningError }}
                     </p>
                     <div class="reader-audio-tuning-actions">
-                        <q-btn no-caps outline label="Применить" :disabled="!tuningDirty || !!tuningError" @click="applyTuning" />
-                        <q-btn no-caps flat label="Сбросить" @click="resetTuning" />
+                        <q-btn no-caps outline :label="$t('Применить')" :disabled="!tuningDirty || !!tuningError" @click="applyTuning" />
+                        <q-btn no-caps flat :label="$t('Сбросить')" @click="resetTuning" />
                     </div>
                     <p class="reader-audio-hint">
-                        Применение остановит текущую запись.
+                        {{ $t('Применение остановит текущую запись.') }}
                     </p>
-                    <label class="reader-audio-dictionary">Текст пробы
+                    <label class="reader-audio-dictionary">{{ $t('Текст пробы') }}
                         <textarea v-model="sampleText" rows="2" maxlength="500" />
                     </label>
                     <p class="reader-audio-hint">
-                        До 500 символов. Проба учитывает выбранные настройки.
+                        {{ $t('До 500 символов. Проба учитывает выбранные настройки.') }}
                     </p>
                 </fieldset>
             </details>
-            <q-btn v-if="!busy" :disabled="tuningDirty" class="reader-audio-preview" no-caps outline icon="la la-volume-up" label="Послушать пробу" @click="prepare(true, true)" />
+            <q-btn v-if="!busy" :disabled="tuningDirty" class="reader-audio-preview" no-caps outline icon="la la-volume-up" :label="$t('Послушать пробу')" @click="prepare(true, true)" />
             <p v-if="!src && !busy && !error" class="reader-audio-hint">
-                {{ mode === 'online' ? 'Начните с первого фрагмента — остальные готовятся по ходу чтения.' : mode === 'chapters' ? 'Выбранная глава готовится первой, затем следующая.' : 'Прослушивание начнётся после подготовки всей книги.' }}
+                {{ mode === 'online' ? $t('Начните с первого фрагмента — остальные готовятся по ходу чтения.') : mode === 'chapters' ? $t('Выбранная глава готовится первой, затем следующая.') : $t('Прослушивание начнётся после подготовки всей книги.') }}
             </p>
             <p v-if="!busy && (!src || isPreview)" class="reader-audio-hint" role="status">
-                {{ planLoading ? 'Оцениваем время подготовки…' : estimateText }}
+                {{ planLoading ? $t('Оцениваем время подготовки…') : estimateText }}
             </p>
             <div v-if="busy" class="reader-audio-status" role="status">
-                <q-spinner size="20px" /> {{ state === 'queued' ? `В очереди${queuePosition ? ' · место ' + queuePosition : ''}…` : phase === 'loading' ? 'Загружаем модель Silero…' : `Готовим ${isPreview ? 'пробу голоса' : mode === 'book' ? 'аудиокнигу' : 'фрагмент'} · ${Math.round(progress * 100)}%` }}
-                <span v-if="remainingSeconds !== null">Осталось примерно {{ formatTime(remainingSeconds) }}</span>
+                <q-spinner size="20px" /> {{ busyText }}
+                <span v-if="remainingSeconds !== null">{{ $t('Осталось примерно {time}', {time: formatTime(remainingSeconds)}) }}</span>
             </div>
-            <progress v-if="busy && state !== 'queued'" :value="progress" max="1" aria-label="Прогресс создания аудио" />
+            <progress v-if="busy && state !== 'queued'" :value="progress" max="1" :aria-label="$t('Прогресс создания аудио')" />
             <p v-if="error" class="reader-audio-error" role="alert">
                 {{ error }}
             </p>
-            <q-btn v-if="(!src || isPreview) && !busy" class="reader-audio-start" :disabled="planLoading || tuningDirty" no-caps outline icon="la la-headphones" :label="error ? 'Повторить подготовку' : mode === 'book' ? 'Создать аудиокнигу' : 'Подготовить и слушать'" @click="prepare(false)" />
+            <q-btn v-if="(!src || isPreview) && !busy" class="reader-audio-start" :disabled="planLoading || tuningDirty" no-caps outline icon="la la-headphones" :label="error ? $t('Повторить подготовку') : mode === 'book' ? $t('Создать аудиокнигу') : $t('Подготовить и слушать')" @click="prepare(false)" />
             <audio
                 v-show="src" ref="audio" :src="src || undefined" controls preload="metadata"
                 @loadedmetadata="restorePosition" @play="onPlay" @pause="onPause"
@@ -100,14 +100,15 @@
             />
             <audio ref="preloadAudio" class="reader-audio-preload" :src="nextSrc || undefined" preload="auto" aria-hidden="true" />
             <p v-if="src" class="reader-audio-hint">
-                {{ isPreview ? 'Проба голоса' : mode === 'book' ? 'Вся книга' : `${mode === 'online' ? 'Фрагмент' : 'Глава'} ${activeChapter + 1}/${chapters.length} · ${nextSrc ? 'следующий готов' : nextError || (activeChapter + 1 < chapters.length ? 'следующий готовится…' : 'конец книги')}` }}
+                {{ isPreview ? $t('Проба голоса') : mode === 'book' ? $t('Вся книга') : `${mode === 'online' ? $t('Фрагмент') : $t('Глава')} ${activeChapter + 1}/${chapters.length} · ${nextSrc ? $t('следующий готов') : nextError || (activeChapter + 1 < chapters.length ? $t('следующий готовится…') : $t('конец книги'))}` }}
             </p>
         </div>
-        <q-btn v-show="minimized" no-caps icon="la la-headphones" :label="busy ? 'Готовим озвучку…' : 'Озвучка'" @click="minimized = false" />
+        <q-btn v-show="minimized" no-caps icon="la la-headphones" :label="busy ? $t('Готовим озвучку…') : $t('Озвучка')" @click="minimized = false" />
     </aside>
 </template>
 
 <script>
+const {t, tk, tMessage} = require('../../share/i18n');
 const {defaultSpeechOptions, normalizeSpeechOptions, hasSpeechOptions} = require('../../../shared/speechOptions');
 let mediaOwner = null;
 const mediaActions = ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'stop'];
@@ -124,11 +125,11 @@ export default {
         return {
             visible: false, minimized: false, speaker: 'xenia', rate: 1, mode: 'online',
             speechOptions: defaultSpeechOptions(), draftOptions: defaultSpeechOptions(), loadedTuningKey: '', engineId: '',
-            sampleText: 'Гермиона открыла книгу и устроилась поудобнее. За окном тихо шумел дождь.\n\nКаждая новая история — это путешествие. Послушайте мой голос и выберите удобную скорость чтения.',
+            sampleText: ('Гермиона открыла книгу и устроилась поудобнее. За окном тихо шумел дождь.\n\nКаждая новая история — это путешествие. Послушайте мой голос и выберите удобную скорость чтения.'),
             pauseControls: [
-                {key: 'sentencePauseMs', label: 'Между предложениями', values: [0, 150, 300, 500, 1000, 2000]},
-                {key: 'paragraphPauseMs', label: 'Между абзацами', values: [0, 300, 500, 1000, 2000, 3000, 5000]},
-                {key: 'chapterPauseMs', label: 'Между главами', values: [0, 500, 1000, 2000, 3000, 5000, 10000]},
+                {key: 'sentencePauseMs', label: tk('Между предложениями'), values: [0, 150, 300, 500, 1000, 2000]},
+                {key: 'paragraphPauseMs', label: tk('Между абзацами'), values: [0, 300, 500, 1000, 2000, 3000, 5000]},
+                {key: 'chapterPauseMs', label: tk('Между главами'), values: [0, 500, 1000, 2000, 3000, 5000, 10000]},
             ],
             state: '', src: '', error: '', jobId: '', generation: 0,
             pollTimer: null, storageKey: '', lastSaved: 0, pageHideHandler: null,
@@ -136,20 +137,31 @@ export default {
             isPreview: false, autoPlay: false, nextSrc: '', nextJob: null, nextTimer: null, nextError: '',
             progress: 0, remainingSeconds: null, queuePosition: 0, phase: '',
             voices: [
-                {id: 'xenia', name: 'Ксения (Xenia)'}, {id: 'kseniya', name: 'Ксения (Kseniya)'},
-                {id: 'baya', name: 'Бая'}, {id: 'aidar', name: 'Айдар'}, {id: 'eugene', name: 'Евгений'},
+                {id: 'xenia', name: tk('Ксения (Xenia)')}, {id: 'kseniya', name: tk('Ксения (Kseniya)')},
+                {id: 'baya', name: tk('Бая')}, {id: 'aidar', name: tk('Айдар')}, {id: 'eugene', name: tk('Евгений')},
             ],
         };
     },
     computed: {
-        tuningError() { try { normalizeSpeechOptions(this.draftOptions); return ''; } catch (error) { return error.message; } },
+        tuningError() { try { normalizeSpeechOptions(this.draftOptions); return ''; } catch (error) { return tMessage(error.message); } },
         tuningDirty() { try { return JSON.stringify(normalizeSpeechOptions(this.draftOptions)) !== JSON.stringify(this.speechOptions); } catch { return true; } },
         busy() { return this.state === 'queued' || this.state === 'generating' || this.state === 'requesting'; },
         estimateText() {
-            if (!this.estimate) return 'Время подготовки пока неизвестно. Короткая проба поможет оценить скорость сервера.';
+            if (!this.estimate) return t('Время подготовки пока неизвестно. Короткая проба поможет оценить скорость сервера.');
             const selected = this.chapters[this.chapterIndex];
             const first = this.mode === 'book' ? this.estimate.totalSeconds : Math.ceil((selected?.characters || 1) / this.estimate.charactersPerSecond + this.estimate.warmupSeconds);
-            return `Подготовка: примерно ${this.formatTime(first)}${this.estimate.queueSeconds ? ' + очередь ' + this.formatTime(this.estimate.queueSeconds) : ''}. ${this.estimate.measured ? 'По скорости этого сервера.' : 'Предварительная оценка; после пробы станет точнее.'}`;
+            const time = (this.estimate.queueSeconds
+                ? t('{time} + очередь {queue}', {time: this.formatTime(first), queue: this.formatTime(this.estimate.queueSeconds)})
+                : this.formatTime(first));
+            return `${t('Подготовка: примерно {time}.', {time})} ${this.estimate.measured ? t('По скорости этого сервера.') : t('Предварительная оценка; после пробы станет точнее.')}`;
+        },
+        busyText() {
+            if (this.state === 'queued')
+                return `${t('В очереди')}${this.queuePosition ? t(' · место {n}', {n: this.queuePosition}) : ''}…`;
+            if (this.phase === 'loading')
+                return t('Загружаем модель Silero…');
+            const what = (this.isPreview ? t('пробу голоса') : this.mode === 'book' ? t('аудиокнигу') : t('фрагмент'));
+            return `${t('Готовим {what}', {what})} · ${Math.round(this.progress * 100)}%`;
         },
         profileIdentity() {
             const config = this.$store.state.config || {};
@@ -197,10 +209,10 @@ export default {
         resetTuning() { this.draftOptions = defaultSpeechOptions(); this.applyTuning(); },
         formatTime(seconds) {
             seconds = Math.max(1, Math.ceil(seconds));
-            if (seconds < 60) return `${seconds} сек`;
+            if (seconds < 60) return t('{n} сек', {n: seconds});
             const minutes = Math.ceil(seconds / 60);
-            if (minutes < 60) return `${minutes} мин`;
-            return `${Math.floor(minutes / 60)} ч ${minutes % 60} мин`;
+            if (minutes < 60) return t('{n} мин', {n: minutes});
+            return t('{h} ч {m} мин', {h: Math.floor(minutes / 60), m: minutes % 60});
         },
         positionKey() {
             const settings = this.$store.state.settings || {}, config = this.$store.state.config || {};
@@ -259,7 +271,7 @@ export default {
             }
             this.jobId = result.id;
             this.state = result.state;
-            this.error = result.error || '';
+            this.error = tMessage(result.error || '');
             this.progress = result.progress || 0; this.remainingSeconds = result.remainingSeconds ?? null; this.queuePosition = result.queuePosition || 0;
             this.phase = result.phase || '';
             if (result.state === 'ready') { this.src = result.url; if (!this.isPreview) this.prefetchNext(generation); return; }
@@ -272,7 +284,7 @@ export default {
                 if (generation === this.generation) this.acceptStatus(result, generation);
             } catch (error) { if (generation === this.generation) this.fail(error); }
         },
-        fail(error) { this.state = 'error'; this.error = error.message || String(error); },
+        fail(error) { this.state = 'error'; this.error = tMessage(error.message || String(error)); },
         async prefetchNext(generation) {
             if (this.activeChapter + 1 >= this.chapters.length) return;
             try {
@@ -280,21 +292,21 @@ export default {
                 if (generation !== this.generation) return;
                 this.nextJob = next;
                 this.acceptNext(next, generation);
-            } catch (error) { if (generation === this.generation) this.nextError = `Следующий фрагмент: ${error.message || error}`; }
+            } catch (error) { if (generation === this.generation) this.nextError = t('Следующий фрагмент: {error}', {error: tMessage(error.message || error)}); }
         },
         acceptNext(result, generation) {
             this.nextJob = result;
             if (typeof result.engineId === 'string' && result.engineId !== this.engineId) {
-                this.nextError = 'Способ расстановки ударений изменился. Откройте плеер заново.';
+                this.nextError = t('Способ расстановки ударений изменился. Откройте плеер заново.');
                 return;
             }
             if (result.state === 'ready') { this.nextSrc = result.url; return; }
-            if (result.state === 'error') { this.nextError = `Следующий фрагмент: ${result.error}`; return; }
+            if (result.state === 'error') { this.nextError = t('Следующий фрагмент: {error}', {error: tMessage(result.error)}); return; }
             this.nextTimer = setTimeout(async() => {
                 try {
                     const next = await this.$root.api.getReaderAudioStatus(result.id);
                     if (generation === this.generation) this.acceptNext(next, generation);
-                } catch (error) { if (generation === this.generation) this.nextError = `Следующий фрагмент: ${error.message || error}`; }
+                } catch (error) { if (generation === this.generation) this.nextError = t('Следующий фрагмент: {error}', {error: tMessage(error.message || error)}); }
             }, 2000);
         },
         restorePosition() {
@@ -308,7 +320,7 @@ export default {
             this.applyRate();
             if (this.autoPlay) {
                 this.autoPlay = false;
-                audio.play().catch(() => { this.error = 'Нажмите ▶ в плеере, чтобы начать воспроизведение.'; });
+                audio.play().catch(() => { this.error = t('Нажмите ▶ в плеере, чтобы начать воспроизведение.'); });
             }
         },
         savePosition(force) {
@@ -357,7 +369,7 @@ export default {
                 this.chapterIndex = this.activeChapter + 1;
                 if (typeof this.nextJob?.engineId === 'string' && this.nextJob.engineId !== this.engineId) {
                     this.clearAudio();
-                    this.fail(new Error('Способ расстановки ударений изменился. Повторите подготовку аудио.'));
+                    this.fail(new Error(t('Способ расстановки ударений изменился. Повторите подготовку аудио.')));
                     return;
                 }
                 if (this.nextSrc) {
@@ -395,7 +407,7 @@ export default {
             this.savePosition(true);
             this.releaseMediaSession();
             this.src = '';
-            this.fail(new Error('Не удалось загрузить аудио. Повторите подготовку, чтобы обновить ссылку.'));
+            this.fail(new Error(t('Не удалось загрузить аудио. Повторите подготовку, чтобы обновить ссылку.')));
         },
     },
 };

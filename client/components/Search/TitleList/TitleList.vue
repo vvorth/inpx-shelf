@@ -8,7 +8,7 @@
         <!-- Формирование списка ------------------------------------------------------------------------>
         <div class="rating-toolbar q-mx-md q-mb-sm">
             <div class="rating-toolbar-label">
-                Топы по оценкам
+                {{ $t('Топы по оценкам') }}
             </div>
             <q-chip
                 v-for="item in ratingFilterOptions"
@@ -31,7 +31,7 @@
                 text-color="grey-9"
                 @click="clearRatingFilter"
             >
-                Сброс
+                {{ $t('Сброс') }}
             </q-chip>
         </div>
 
@@ -53,7 +53,7 @@
 
         <div v-if="!refreshing && (!tableData.length || error)" class="row items-center q-ml-md" style="font-size: 120%">
             <q-icon class="la la-meh q-mr-xs" size="28px" />
-            {{ (error ? error : 'Поиск не дал результатов') }}
+            {{ (error ? error : $t('Поиск не дал результатов')) }}
         </div>
     </div>
 </template>
@@ -68,10 +68,11 @@ import BaseList from '../BaseList';
 import * as utils from '../../../share/utils';
 
 import _ from 'lodash';
+import {t, tMessage} from '../../../share/i18n';
 
 class TitleList extends BaseList {
     get foundCountMessage() {
-        return `${this.list.totalFound} уникальн${utils.wordEnding(this.list.totalFound, 6)} назван${utils.wordEnding(this.list.totalFound, 3)}`;
+        return t('{n} уникальн{e1} назван{e2}', {n: this.list.totalFound, e1: utils.wordEnding(this.list.totalFound, 6), e2: utils.wordEnding(this.list.totalFound, 3)});
     }
 
     getTitleBookDedupeKey(book = {}) {
@@ -176,7 +177,7 @@ class TitleList extends BaseList {
         (async() => {
             await utils.sleep(500);
             if (this.refreshing)
-                this.loadingMessage = 'Поиск книг...';
+                this.loadingMessage = t('Поиск книг...');
         })();
 
         try {
@@ -205,7 +206,7 @@ class TitleList extends BaseList {
                     this.searchResult = {found: []};
                     await this.updateTableData();
                     //this.$root.stdDialog.alert(e.message, 'Ошибка');
-                    this.error = `Ошибка: ${e.message}`;
+                    this.error = t('Ошибка: {message}', {message: tMessage(e.message)});
                 }
             }
         } finally {

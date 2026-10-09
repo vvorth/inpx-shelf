@@ -44,7 +44,7 @@
                         </template>
                     </q-input>
                     <q-input v-model="newProfile.emailTo" outlined dense clearable :label="uiText.emailTo" />
-                    <q-input v-model="newProfile.telegramChatId" outlined dense clearable label="Личный Telegram chat id" />
+                    <q-input v-model="newProfile.telegramChatId" outlined dense clearable :label="$t('Личный Telegram chat id')" />
                     <q-toggle class="profile-toggle" v-model="newProfile.opdsEnabled" :label="uiText.showProfileInOpds" />
                     <q-toggle class="profile-toggle" v-model="newProfile.opdsAuthEnabled" :disable="!newProfile.login || !newProfile.password" :label="uiText.requireOpdsAuth" />
                     <div class="profile-submit-row">
@@ -67,7 +67,7 @@
             </div>
 
             <div v-if="config.profileBoundId" class="admin-note">
-                Профиль выбран по вашему входу через SSO. Для смены пользователя выйдите из SSO.
+                {{ $t('Профиль выбран по вашему входу через SSO. Для смены пользователя выйдите из SSO.') }}
             </div>
             <div v-else-if="!canViewAllProfiles" class="profile-session-actions">
                 <q-btn flat dense no-caps color="primary" icon="la la-sign-in-alt" @click="loginOtherProfile">
@@ -94,7 +94,7 @@
                 <div v-for="item in profiles" :key="item.id" class="profile-card">
                     <div class="profile-head">
                         <div class="profile-name">
-                            {{ item.name }}
+                            {{ $tm(item.name) }}
                             <span v-if="item.id === currentUserId" class="current-badge">{{ uiText.current }}</span>
                             <span v-if="item.id === currentUserId && item.requiresLogin && !config.profileAuthorized" class="pending-badge">{{ uiText.loginNotCompleted }}</span>
                             <span v-if="item.isAdmin" class="admin-badge">Admin</span>
@@ -179,7 +179,7 @@
                                 <div class="reading-progress-header">
                                     <div class="reading-progress-summary">
                                         <span class="reading-progress-summary-badge">{{ currentReadingItems.length }}</span>
-                                        <span class="reading-progress-summary-text">книг в чтении</span>
+                                        <span class="reading-progress-summary-text">{{ $t('книг в чтении') }}</span>
                                     </div>
                                     <q-btn
                                         flat
@@ -221,7 +221,7 @@
                                                 icon="la la-book-open"
                                                 @click="openReader(book)"
                                             >
-                                                Читать
+                                                {{ $t('Читать') }}
                                             </q-btn>
                                             <q-btn
                                                 flat
@@ -231,7 +231,7 @@
                                                 icon="la la-times"
                                                 @click="removeReadingBook(book)"
                                             >
-                                                Убрать
+                                                {{ $t('Убрать') }}
                                             </q-btn>
                                         </div>
                                     </div>
@@ -290,7 +290,7 @@
                                             icon="la la-pen"
                                             @click="renameList(list)"
                                         >
-                                            Переименовать
+                                            {{ $t('Переименовать') }}
                                         </q-btn>
                                         <q-btn
                                             flat
@@ -300,7 +300,7 @@
                                             icon="la la-trash"
                                             @click="deleteListEntry(list)"
                                         >
-                                            Удалить
+                                            {{ $t('Удалить') }}
                                         </q-btn>
                                     </div>
                                     <div
@@ -366,7 +366,7 @@
                                 </template>
                             </q-input>
                             <q-input v-model="editableProfile.emailTo" outlined dense clearable label="Email" />
-                            <q-input v-model="editableProfile.telegramChatId" outlined dense clearable label="Личный Telegram chat id" />
+                            <q-input v-model="editableProfile.telegramChatId" outlined dense clearable :label="$t('Личный Telegram chat id')" />
                             <q-toggle class="profile-toggle" v-model="editableProfile.opdsEnabled" :disable="!!currentProfile.isAdmin" :label="uiText.showProfileInOpds" />
                             <q-toggle class="profile-toggle" v-model="editableProfile.opdsAuthEnabled" :disable="!!currentProfile.isAdmin || !editableProfile.login || (!currentProfile.hasPassword && !editableProfile.password)" :label="uiText.requireOpdsAuth" />
                             <div v-if="currentProfile.isAdmin" class="profile-backup-hint profile-opds-admin-note">
@@ -484,6 +484,7 @@
 import vueComponent from '../../vueComponent.js';
 import Dialog from '../../share/Dialog.vue';
 import ReadingListsDialog from '../ReadingListsDialog/ReadingListsDialog.vue';
+import {t, tk} from '../../../share/i18n';
 import {copyTextToClipboard} from '../../../share/utils';
 
 const componentOptions = {
@@ -563,109 +564,109 @@ class UserProfilesDialog {
 
     get uiText() {
         return {
-            dialogTitle: '\u041f\u0440\u043e\u0444\u0438\u043b\u0438 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u0439',
-            createProfile: '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c',
-            showCreateForm: '\u041d\u043e\u0432\u044b\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c',
-            hideCreateForm: '\u0421\u043a\u0440\u044b\u0442\u044c \u0444\u043e\u0440\u043c\u0443',
-            profileName: '\u0418\u043c\u044f \u043f\u0440\u043e\u0444\u0438\u043b\u044f',
-            name: '\u0418\u043c\u044f',
-            login: '\u041b\u043e\u0433\u0438\u043d',
-            password: '\u041f\u0430\u0440\u043e\u043b\u044c',
-            newPassword: '\u041d\u043e\u0432\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c',
-            emailTo: 'Email \u0434\u043b\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438',
-            showProfileInOpds: '\u041f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0432 OPDS',
-            requireOpdsAuth: '\u0422\u0440\u0435\u0431\u043e\u0432\u0430\u0442\u044c \u043f\u0430\u0440\u043e\u043b\u044c \u0434\u043b\u044f OPDS',
-            opdsAuthHint: '\u0412 OPDS-\u0447\u0438\u0442\u0430\u043b\u043a\u0435 \u0443\u043a\u0430\u0436\u0438\u0442\u0435 \u043b\u043e\u0433\u0438\u043d \u0438 \u043f\u0430\u0440\u043e\u043b\u044c \u044d\u0442\u043e\u0433\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044f.',
-            adminNotInOpds: '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430 \u043d\u0435 \u043f\u0443\u0431\u043b\u0438\u043a\u0443\u0435\u0442\u0441\u044f \u0432 OPDS.',
-            create: '\u0421\u043e\u0437\u0434\u0430\u0442\u044c',
-            adminOnly: '\u0421\u043e\u0437\u0434\u0430\u0432\u0430\u0442\u044c \u0438 \u0443\u0434\u0430\u043b\u044f\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u0438 \u043c\u043e\u0436\u0435\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440.',
-            availableProfiles: '\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u0438',
-            loginOtherProfile: '\u0412\u043e\u0439\u0442\u0438 \u0432 \u0434\u0440\u0443\u0433\u043e\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c',
-            logout: '\u0412\u044b\u0439\u0442\u0438 \u0438\u0437 \u043f\u0440\u043e\u0444\u0438\u043b\u044f',
-            noProfiles: '\u041f\u0440\u043e\u0444\u0438\u043b\u0435\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442',
-            current: '\u0422\u0435\u043a\u0443\u0449\u0438\u0439',
-            loginNotCompleted: '\u0412\u0445\u043e\u0434 \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d',
-            select: '\u0412\u044b\u0431\u0440\u0430\u0442\u044c',
-            reading: '\u0427\u0442\u0435\u043d\u0438\u0435',
-            lists: '\u0421\u043f\u0438\u0441\u043a\u0438',
-            settings: '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438',
-            backup: '\u0411\u044d\u043a\u0430\u043f',
-            profileBackupTitle: '\u0411\u044d\u043a\u0430\u043f \u043f\u0440\u043e\u0444\u0438\u043b\u044f',
-            profileBackupHint: '\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442 \u043b\u0438\u0447\u043d\u044b\u0435 \u0441\u043f\u0438\u0441\u043a\u0438, \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441 \u0447\u0442\u0435\u043d\u0438\u044f, \u0437\u0430\u043a\u043b\u0430\u0434\u043a\u0438, \u0441\u043a\u0440\u044b\u0442\u044b\u0435 \u043a\u043d\u0438\u0433\u0438 \u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0447\u0438\u0442\u0430\u043b\u043a\u0438. \u041f\u0430\u0440\u043e\u043b\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u043d\u0435 \u044d\u043a\u0441\u043f\u043e\u0440\u0442\u0438\u0440\u0443\u0435\u0442\u0441\u044f.',
-            exportProfileBackup: '\u0421\u043a\u0430\u0447\u0430\u0442\u044c JSON',
-            importProfileBackup: '\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c JSON',
-            profileBackupReady: '\u0411\u044d\u043a\u0430\u043f \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u0441\u043a\u0430\u0447\u0430\u043d',
-            profileBackupImportConfirm: '\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c JSON-\u0431\u044d\u043a\u0430\u043f \u0432 \u0442\u0435\u043a\u0443\u0449\u0438\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c? \u0421\u043f\u0438\u0441\u043a\u0438, \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441, \u0437\u0430\u043a\u043b\u0430\u0434\u043a\u0438 \u0438 \u043b\u0438\u0447\u043d\u044b\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0431\u0443\u0434\u0443\u0442 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u044b \u0438\u043b\u0438 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u044b.',
-            profileBackupImported: '\u0411\u044d\u043a\u0430\u043f \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d',
-            loginToEdit: '\u0414\u043b\u044f \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u044d\u0442\u043e\u0433\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u0432\u043e\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u043b\u043e\u0433\u0438\u043d\u0443 \u0438 \u043f\u0430\u0440\u043e\u043b\u044e.',
-            loginAction: '\u0412\u043e\u0439\u0442\u0438',
-            series: '\u0421\u0435\u0440\u0438\u044f',
-            noReadingProgress: '\u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d\u043d\u043e\u0433\u043e \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441\u0430 \u0447\u0442\u0435\u043d\u0438\u044f.',
-            read: '\u0427\u0438\u0442\u0430\u0442\u044c',
-            remove: '\u0423\u0431\u0440\u0430\u0442\u044c',
-            manageLists: '\u0423\u043f\u0440\u0430\u0432\u043b\u044f\u0442\u044c \u0441\u043f\u0438\u0441\u043a\u0430\u043c\u0438',
-            rename: '\u041f\u0435\u0440\u0435\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u0442\u044c',
-            delete: '\u0423\u0434\u0430\u043b\u0438\u0442\u044c',
-            private: '\u041b\u0438\u0447\u043d\u044b\u0439',
-            noReadingLists: '\u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0441\u043f\u0438\u0441\u043a\u043e\u0432 \u0447\u0442\u0435\u043d\u0438\u044f.',
-            listIsEmpty: '\u0412 \u044d\u0442\u043e\u043c \u0441\u043f\u0438\u0441\u043a\u0435 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u043a\u043d\u0438\u0433.',
-            moreBooks: '\u0415\u0449\u0451 {count} \u043a\u043d\u0438\u0433',
-            expandList: '\u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c',
-            collapseList: '\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c',
-            listCollapsedHint: '\u0421\u043f\u0438\u0441\u043e\u043a \u0441\u0432\u0435\u0440\u043d\u0443\u0442, \u0432\u043d\u0443\u0442\u0440\u0438 {count} \u043a\u043d\u0438\u0433',
-            untitledBook: '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f',
-            errorTitle: '\u041e\u0448\u0438\u0431\u043a\u0430',
-            currentReadingTitle: '\u0422\u0435\u043a\u0443\u0449\u0435\u0435 \u0447\u0442\u0435\u043d\u0438\u0435',
-            removeReadingConfirm: 'Скрыть книгу «{title}»? Её можно будет вернуть из главного экрана читалки.',
-            removeReadingSuccess: 'Книга перемещена в «Скрыто»',
-            removeBookFromListConfirm: '\u0423\u0431\u0440\u0430\u0442\u044c \u043a\u043d\u0438\u0433\u0443 \u00ab{title}\u00bb \u0438\u0437 \u0441\u043f\u0438\u0441\u043a\u0430 \u00ab{list}\u00bb?',
-            removeBookFromListSuccess: '\u041a\u043d\u0438\u0433\u0430 \u0443\u0431\u0440\u0430\u043d\u0430 \u0438\u0437 \u0441\u043f\u0438\u0441\u043a\u0430',
-            readStatus: '\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e',
-            renameListPrompt: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043d\u043e\u0432\u043e\u0435 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0441\u043f\u0438\u0441\u043a\u0430:',
-            renameListTitle: '\u041f\u0435\u0440\u0435\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a',
-            nameRequired: '\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043d\u0435 \u0434\u043e\u043b\u0436\u043d\u043e \u0431\u044b\u0442\u044c \u043f\u0443\u0441\u0442\u044b\u043c',
-            renameListSuccess: '\u0421\u043f\u0438\u0441\u043e\u043a \u043f\u0435\u0440\u0435\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d',
-            deleteListConfirm: '\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u00ab{name}\u00bb?',
-            deleteListTitle: '\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435 \u0441\u043f\u0438\u0441\u043a\u0430',
-            deleteListSuccess: '\u0421\u043f\u0438\u0441\u043e\u043a \u0443\u0434\u0430\u043b\u0451\u043d',
-            profileSaved: '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d',
-            deleteProfileConfirm: '\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u00ab{name}\u00bb \u0432\u043c\u0435\u0441\u0442\u0435 \u0441\u043e \u0432\u0441\u0435\u043c\u0438 \u0435\u0433\u043e \u0441\u043f\u0438\u0441\u043a\u0430\u043c\u0438?',
-            deleteProfileTitle: '\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u044f',
-            resetPasswordPrompt: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c \u0434\u043b\u044f \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u00ab{name}\u00bb:',
-            resetPasswordTitle: '\u0421\u0431\u0440\u043e\u0441 \u043f\u0430\u0440\u043e\u043b\u044f',
-            passwordRequired: '\u041f\u0430\u0440\u043e\u043b\u044c \u043d\u0435 \u0434\u043e\u043b\u0436\u0435\u043d \u0431\u044b\u0442\u044c \u043f\u0443\u0441\u0442\u044b\u043c',
-            resetPasswordSuccess: '\u041f\u0430\u0440\u043e\u043b\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044f \u00ab{name}\u00bb \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d',
-            cancel: '\u041e\u0442\u043c\u0435\u043d\u0430',
-            close: '\u0417\u0430\u043a\u0440\u044b\u0442\u044c',
-            koboHint: 'Kobo синхронизирует книги из выбранных списков чтения: книга в списке — книга на устройстве. FB2 конвертируется в KEPUB. Каждый список появляется на Kobo как коллекция, а книга, дочитанная на Kobo, отмечается прочитанной.',
-            koboEndpointTitle: 'Адрес для Kobo',
-            koboEndpointHint: 'Подключите Kobo к компьютеру, откройте .kobo/Kobo/Kobo eReader.conf и замените строку api_endpoint в разделе [OneStoreServices]. Адрес показывается только сейчас; если потеряете его, создайте новую ссылку.',
-            koboCopy: 'Скопировать',
-            koboHideEndpoint: 'Скрыть',
-            koboNoDevices: 'Устройств пока нет.',
-            koboDeviceName: 'Название устройства',
-            koboBooksOnDevice: 'Книг на устройстве',
-            koboLastSync: 'Последняя синхронизация',
-            koboNever: 'ещё не было',
-            koboListsTitle: 'Синхронизируемые списки',
-            koboKeepRemovedBooks: 'Оставлять книги на устройстве после удаления из списка',
-            koboKeepRemovedBooksHint: 'Если выключено, книга, убранная из всех выбранных списков, удаляется с Kobo при следующей синхронизации.',
-            koboStoreProxy: 'Подключать магазин Kobo',
-            koboStoreProxyHint: 'Для купленных в магазине Kobo книг: вход, покупки и их прогресс передаются на серверы Kobo. Если выключено, устройство общается только с inpx-web.',
-            koboSave: 'Сохранить',
-            koboResync: 'Синхронизировать заново',
-            koboResyncConfirm: 'Отправить на «{name}» все книги из списков заново при следующей синхронизации?',
-            koboNewLink: 'Новая ссылка',
-            koboNewLinkConfirm: 'Создать новую ссылку для «{name}»? Старая перестанет работать, и её нужно будет заменить в Kobo eReader.conf.',
-            koboDeleteConfirm: 'Удалить устройство «{name}»? Kobo перестанет синхронизироваться, книги на нём останутся.',
-            koboAddDevice: 'Добавить устройство',
-            koboSaved: 'Устройство сохранено',
-            koboCopied: 'Адрес скопирован',
-            koboRefresh: 'Обновить книги на устройстве',
-            koboRefreshConfirm: 'Отправить на «{name}» заново все книги, которые уже на нём, с текущими авторами, сериями и файлами? Книги не удаляются с устройства, поэтому прогресс чтения и заметки сохраняются.',
-            koboRefreshPending: 'ожидают обновления',
-            koboResendDeletedBooks: 'Возвращать книги, удалённые на устройстве',
-            koboResendDeletedBooksHint: 'Если включено, книга из выбранных списков, удалённая на Kobo, загружается снова при следующей синхронизации. Чтобы убрать книгу с устройства, уберите её из списка.',
+            dialogTitle: t('Профили пользователей'),
+            createProfile: t('Создать профиль'),
+            showCreateForm: t('Новый профиль'),
+            hideCreateForm: t('Скрыть форму'),
+            profileName: t('Имя профиля'),
+            name: t('Имя'),
+            login: t('Логин'),
+            password: t('Пароль'),
+            newPassword: t('Новый пароль'),
+            emailTo: t('Email для отправки'),
+            showProfileInOpds: t('Показывать профиль в OPDS'),
+            requireOpdsAuth: t('Требовать пароль для OPDS'),
+            opdsAuthHint: t('В OPDS-читалке укажите логин и пароль этого профиля.'),
+            adminNotInOpds: t('Профиль администратора не публикуется в OPDS.'),
+            create: t('Создать'),
+            adminOnly: t('Создавать и удалять профили может только администратор.'),
+            availableProfiles: t('Доступные профили'),
+            loginOtherProfile: t('Войти в другой профиль'),
+            logout: t('Выйти из профиля'),
+            noProfiles: t('Профилей пока нет'),
+            current: t('Текущий'),
+            loginNotCompleted: t('Вход не выполнен'),
+            select: t('Выбрать'),
+            reading: t('Чтение'),
+            lists: t('Списки'),
+            settings: t('Настройки'),
+            backup: t('Бэкап'),
+            profileBackupTitle: t('Бэкап профиля'),
+            profileBackupHint: t('Сохраняет личные списки, прогресс чтения, закладки, скрытые книги и настройки читалки. Пароль профиля не экспортируется.'),
+            exportProfileBackup: t('Скачать JSON'),
+            importProfileBackup: t('Восстановить JSON'),
+            profileBackupReady: t('Бэкап профиля скачан'),
+            profileBackupImportConfirm: t('Восстановить JSON-бэкап в текущий профиль? Списки, прогресс, закладки и личные настройки будут добавлены или обновлены.'),
+            profileBackupImported: t('Бэкап профиля восстановлен'),
+            loginToEdit: t('Для редактирования этого профиля войдите по логину и паролю.'),
+            loginAction: t('Войти'),
+            series: t('Серия'),
+            noReadingProgress: t('Для этого профиля пока нет сохранённого прогресса чтения.'),
+            read: t('Читать'),
+            remove: t('Убрать'),
+            manageLists: t('Управлять списками'),
+            rename: t('Переименовать'),
+            delete: t('Удалить'),
+            private: t('Личный'),
+            noReadingLists: t('Для этого профиля пока нет списков чтения.'),
+            listIsEmpty: t('В этом списке пока нет книг.'),
+            moreBooks: t('Ещё {count} книг'),
+            expandList: t('Развернуть'),
+            collapseList: t('Свернуть'),
+            listCollapsedHint: t('Список свернут, внутри {count} книг'),
+            untitledBook: t('Без названия'),
+            errorTitle: t('Ошибка'),
+            currentReadingTitle: t('Текущее чтение'),
+            removeReadingConfirm: t('Скрыть книгу «{title}»? Её можно будет вернуть из главного экрана читалки.'),
+            removeReadingSuccess: t('Книга перемещена в «Скрыто»'),
+            removeBookFromListConfirm: t('Убрать книгу «{title}» из списка «{list}»?'),
+            removeBookFromListSuccess: t('Книга убрана из списка'),
+            readStatus: t('Прочитано'),
+            renameListPrompt: t('Введите новое название списка:'),
+            renameListTitle: t('Переименовать список'),
+            nameRequired: t('Название не должно быть пустым'),
+            renameListSuccess: t('Список переименован'),
+            deleteListConfirm: t('Удалить список «{name}»?'),
+            deleteListTitle: t('Удаление списка'),
+            deleteListSuccess: t('Список удалён'),
+            profileSaved: t('Профиль сохранён'),
+            deleteProfileConfirm: t('Удалить профиль «{name}» вместе со всеми его списками?'),
+            deleteProfileTitle: t('Удаление профиля'),
+            resetPasswordPrompt: t('Введите новый пароль для профиля «{name}»:'),
+            resetPasswordTitle: t('Сброс пароля'),
+            passwordRequired: t('Пароль не должен быть пустым'),
+            resetPasswordSuccess: t('Пароль профиля «{name}» обновлён'),
+            koboHint: t('Kobo синхронизирует книги из выбранных списков чтения: книга в списке — книга на устройстве. FB2 конвертируется в KEPUB. Каждый список появляется на Kobo как коллекция, а книга, дочитанная на Kobo, отмечается прочитанной.'),
+            koboEndpointTitle: t('Адрес для Kobo'),
+            koboEndpointHint: t('Подключите Kobo к компьютеру, откройте .kobo/Kobo/Kobo eReader.conf и замените строку api_endpoint в разделе [OneStoreServices]. Адрес показывается только сейчас; если потеряете его, создайте новую ссылку.'),
+            koboCopy: t('Скопировать'),
+            koboHideEndpoint: t('Скрыть'),
+            koboNoDevices: t('Устройств пока нет.'),
+            koboDeviceName: t('Название устройства'),
+            koboBooksOnDevice: t('Книг на устройстве'),
+            koboLastSync: t('Последняя синхронизация'),
+            koboNever: t('ещё не было'),
+            koboListsTitle: t('Синхронизируемые списки'),
+            koboKeepRemovedBooks: t('Оставлять книги на устройстве после удаления из списка'),
+            koboKeepRemovedBooksHint: t('Если выключено, книга, убранная из всех выбранных списков, удаляется с Kobo при следующей синхронизации.'),
+            koboResendDeletedBooks: t('Возвращать книги, удалённые на устройстве'),
+            koboResendDeletedBooksHint: t('Если включено, книга из выбранных списков, удалённая на Kobo, загружается снова при следующей синхронизации. Чтобы убрать книгу с устройства, уберите её из списка.'),
+            koboStoreProxy: t('Подключать магазин Kobo'),
+            koboStoreProxyHint: t('Для купленных в магазине Kobo книг: вход, покупки и их прогресс передаются на серверы Kobo. Если выключено, устройство общается только с inpx-web.'),
+            koboSave: t('Сохранить'),
+            koboResync: t('Синхронизировать заново'),
+            koboResyncConfirm: t('Отправить на «{name}» все книги из списков заново при следующей синхронизации?'),
+            koboRefresh: t('Обновить книги на устройстве'),
+            koboRefreshConfirm: t('Отправить на «{name}» заново все книги, которые уже на нём, с текущими авторами, сериями и файлами? Книги не удаляются с устройства, поэтому прогресс чтения и заметки сохраняются.'),
+            koboRefreshPending: t('ожидают обновления'),
+            koboNewLink: t('Новая ссылка'),
+            koboNewLinkConfirm: t('Создать новую ссылку для «{name}»? Старая перестанет работать, и её нужно будет заменить в Kobo eReader.conf.'),
+            koboDeleteConfirm: t('Удалить устройство «{name}»? Kobo перестанет синхронизироваться, книги на нём останутся.'),
+            koboAddDevice: t('Добавить устройство'),
+            koboSaved: t('Устройство сохранено'),
+            koboCopied: t('Адрес скопирован'),
+            cancel: t('Отмена'),
+            close: t('Закрыть'),
         };
     }
 
@@ -810,13 +811,13 @@ class UserProfilesDialog {
         const count = Math.max(0, Math.round(Number(value || 0) || 0));
         const mod10 = count % 10;
         const mod100 = count % 100;
-        let noun = 'книг';
+        let key = tk('{n} книг');
         if (mod10 === 1 && mod100 !== 11)
-            noun = 'книга';
+            key = tk('{n} книга');
         else if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14))
-            noun = 'книги';
+            key = tk('{n} книги');
 
-        return `${count} ${noun}`;
+        return t(key, {n: count});
     }
 
     toggleReadingSectionExpanded() {
@@ -1207,7 +1208,7 @@ class UserProfilesDialog {
             try {
                 await this.api.showProfileLoginDialog(item.login || '');
             } catch (e) {
-                this.$root.stdDialog.alert(e.message, 'Ошибка');
+                this.$root.stdDialog.alert(e.message, t('Ошибка'));
             }
         }
 
@@ -1219,8 +1220,8 @@ class UserProfilesDialog {
             await this.api.showProfileLoginDialog(item.login || '');
             await this.loadProfiles();
         } catch (e) {
-            if (e.message !== 'Вход в профиль отменён')
-                this.$root.stdDialog.alert(e.message, 'Ошибка');
+            if (e.message !== t('Вход в профиль отменён'))
+                this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 
@@ -1229,8 +1230,8 @@ class UserProfilesDialog {
             await this.api.showProfileLoginDialog('');
             await this.loadProfiles();
         } catch (e) {
-            if (e.message !== 'Вход в профиль отменён')
-                this.$root.stdDialog.alert(e.message, 'Ошибка');
+            if (e.message !== t('Вход в профиль отменён'))
+                this.$root.stdDialog.alert(e.message, t('Ошибка'));
         }
     }
 

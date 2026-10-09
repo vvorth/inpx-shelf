@@ -1,5 +1,6 @@
 const BasePage = require('./BasePage');
 const utils = require('../utils');
+const {t} = require('./i18n');
 
 class TitlePage extends BasePage {
     constructor(config) {
@@ -37,7 +38,7 @@ class TitlePage extends BasePage {
                 const filtered = this.filterBooks(books, query);
 
                 for (const book of filtered) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || 'Без названия'} (${book.ext})`;
+                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('Без названия')} (${book.ext})`;
 
                     entry.push(
                         this.makeEntry({
@@ -57,14 +58,14 @@ class TitlePage extends BasePage {
                 entry.push(
                     this.makeEntry({
                         id: 'select_genre',
-                        title: '[Выбрать жанр]',
+                        title: t('[Выбрать жанр]'),
                         link: this.navLink({href: `/genre?from=${this.id}`}),
                     })
                 );
             }
 
             //навигация по каталогу
-            const queryRes = await this.opdsQuery('title', query, '[Остальные названия]');
+            const queryRes = await this.opdsQuery('title', query, t('[Остальные названия]'));
 
             for (const rec of queryRes) {
                 const e = {
@@ -75,9 +76,9 @@ class TitlePage extends BasePage {
 
                 let countStr = '';
                 if (rec.count)
-                    countStr = `${rec.count} назван${utils.wordEnding(rec.count, 3)}${(query.genre ? ' (в выбранном жанре)' : '')}`;
+                    countStr = `${t('{n} назван{e}', {n: rec.count, e: utils.wordEnding(rec.count, 3)})}${(query.genre ? t(' (в выбранном жанре)') : '')}`;
                 if (!countStr && rec.bookCount && !query.genre)
-                    countStr = `${rec.bookCount} книг${utils.wordEnding(rec.bookCount, 8)}`;
+                    countStr = t('{n} книг{e}', {n: rec.bookCount, e: utils.wordEnding(rec.bookCount, 8)});
 
                 if (countStr) {
                     e.content = {
