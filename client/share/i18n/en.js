@@ -1337,6 +1337,13 @@ export default {
     "Добавить в список": "Add to list",
     "В список «{list}» добавлено книг серии: {n}": "{n} books from the series added to “{list}”",
     "Все книги серии уже в списке «{list}»": "All books from the series are already in “{list}”",
+    "Список «{name}» уже есть": "The list “{name}” already exists",
+    "серия добавлена в «{list}»": "series added to “{list}”",
+    "убрано из «{list}»": "removed from “{list}”",
+    "добавлено в «{list}»": "added to “{list}”",
+    "обновлено в «{list}»": "updated in “{list}”",
+    "Обновляю списки...": "Updating lists...",
+    "Проверяю, в каких списках уже есть книга. Отмечать можно сразу.": "Checking which lists already have this book. You can tick lists right away.",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

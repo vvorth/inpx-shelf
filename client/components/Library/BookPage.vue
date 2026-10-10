@@ -188,7 +188,7 @@
             </template>
         </div>
 
-        <AddToListDialog v-if="book" v-model="readingListsDialogVisible" :book="book" @update:model-value="onListsDialog" />
+        <AddToListDialog v-if="book" v-model="readingListsDialogVisible" :book="book" @changed="loadLists" />
         <BookInfoDialog v-if="bookInfo" v-model="bookInfoDialogVisible" :book-info="bookInfo" :genre-map="genreMap" initial-tab="fb2" @navigate="onInfoNavigate" />
     </div>
 </template>
@@ -468,12 +468,6 @@ class BookPage {
         const read = !(this.progress >= 1);
         if (await markBooksRead(this, [bookUid(this.book)], read))
             await this.loadStates([this.book]);
-    }
-
-    onListsDialog(visible) {
-        this.readingListsDialogVisible = visible;
-        if (!visible)
-            this.loadLists();
     }
 
     onInfoNavigate(event) {

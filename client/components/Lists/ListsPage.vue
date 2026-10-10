@@ -193,6 +193,7 @@ import vueComponent from '../vueComponent.js';
 
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
+import {refreshReadingLists} from '../../share/readingLists';
 
 const readingNowId = '__reading__';
 
@@ -262,6 +263,7 @@ class ListsPage {
         try {
             const response = await this.api.getReadingLists('');
             this.lists = response.lists || [];
+            refreshReadingLists(this.api, String(this.config.currentUserId || ''));
             if (this.selectedId !== readingNowId && !this.selectedList)
                 this.selectedId = readingNowId;
             if (this.selectedList)

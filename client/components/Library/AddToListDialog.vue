@@ -16,90 +16,68 @@
                         {{ subtitle }}
                     </div>
                 </div>
-                <button type="button" class="atl-close" :aria-label="$t('Закрыть')" @click="visible = false">
-                    <q-icon name="la la-times" size="18px" />
-                </button>
             </header>
 
+            <q-linear-progress v-if="stateLoading" indeterminate size="2px" color="primary" class="atl-loading" />
+            <div v-if="stateLoading" class="atl-hint">
+                {{ series ? $t('Обновляю списки...') : $t('Проверяю, в каких списках уже есть книга. Отмечать можно сразу.') }}
+            </div>
             <div class="atl-body">
-                <div v-if="loading && !lists.length" class="atl-empty">
+                <div v-if="!rows.length && !listsKnown" class="atl-empty">
                     {{ $t('Загрузка списков...') }}
                 </div>
-                <div v-else-if="!lists.length" class="atl-empty">
+                <div v-else-if="!rows.length" class="atl-empty">
                     {{ $t('Списков пока нет. Создайте первый ниже.') }}
                 </div>
 
-                <div v-for="item in lists" :key="item.id" class="atl-row" :class="{'is-on': !series && item.containsBook}">
-                    <label v-if="!series" class="atl-row-main">
+                <div v-for="row in rows" :key="row.key" class="atl-row" :class="{'is-on': row.checked, 'is-changed': isChanged(row)}">
+                    <label class="atl-row-main">
                         <input
                             type="checkbox"
                             class="atl-check"
-                            :checked="item.containsBook"
-                            :disabled="item.busy"
-                            @change="toggleBook(item, $event.target.checked)"
+                            :checked="row.checked"
+                            @change="row.checked = $event.target.checked; row.touched = true"
                         />
                         <span class="atl-row-copy">
-                            <span class="atl-row-name">{{ item.name }}</span>
-                            <span class="atl-row-meta num">{{ listMeta(item) }}</span>
+                            <span class="atl-row-name">{{ row.name }}</span>
+                            <span class="atl-row-meta num">{{ rowMeta(row) }}</span>
                         </span>
                     </label>
-                    <div v-else class="atl-row-main">
-                        <span class="atl-row-copy">
-                            <span class="atl-row-name">{{ item.name }}</span>
-                            <span class="atl-row-meta num">{{ listMeta(item) }}</span>
-                        </span>
-                    </div>
 
-                    <span v-if="item.visibility === 'opds'" class="atl-badge">OPDS</span>
+                    <span v-if="row.visibility === 'opds'" class="atl-badge">OPDS</span>
 
                     <q-toggle
-                        v-if="!series && item.containsBook"
-                        :model-value="!!item.readBook"
-                        :disable="item.busy"
+                        v-if="!series && row.checked"
+                        v-model="row.read"
                         dense
                         size="sm"
                         :label="$t('Прочитано')"
                         class="atl-read"
-                        @update:model-value="toggleRead(item, $event)"
                     />
 
-                    <q-btn
-                        v-if="series"
-                        unelevated
-                        dense
-                        no-caps
-                        :color="item.seriesAdded ? undefined : 'primary'"
-                        :flat="!!item.seriesAdded"
-                        :loading="item.busy"
-                        :icon="item.seriesAdded ? 'la la-check' : 'la la-plus'"
-                        @click="addSeries(item)"
-                    >
-                        {{ item.seriesAdded > 0 ? $t('Добавлено: {n}', {n: item.seriesAdded}) : (item.seriesAdded < 0 ? $t('Уже в списке') : $t('Добавить серию')) }}
-                    </q-btn>
-                    <q-btn v-else-if="book && book.series" flat dense round size="sm" icon="la la-ellipsis-h" :aria-label="$t('Ещё')">
+                    <q-btn v-if="!series && book && book.series && !row.isNew" flat dense round size="sm" icon="la la-ellipsis-h" :aria-label="$t('Ещё')">
                         <q-menu anchor="bottom right" self="top right">
                             <div class="atl-menu">
-                                <button v-close-popup type="button" class="atl-menu-item" @click="addSeries(item)">
-                                    <q-icon name="la la-layer-group" size="16px" />
+                                <label class="atl-menu-item">
+                                    <input v-model="row.addSeries" type="checkbox" class="atl-check" />
                                     {{ $t('Добавить всю серию «{name}»', {name: book.series}) }}
-                                </button>
+                                </label>
                             </div>
                         </q-menu>
                     </q-btn>
                 </div>
             </div>
 
-            <form class="atl-create" @submit.prevent="createList">
+            <form class="atl-create" @submit.prevent="stageNewList">
                 <q-input
                     v-model="newListName"
                     dense
                     outlined
                     class="atl-create-input"
                     :placeholder="$t('Новый список')"
-                    :disable="creating"
                 />
-                <q-btn type="submit" color="primary" unelevated dense no-caps icon="la la-plus" :loading="creating" :disable="!String(newListName || '').trim()">
-                    {{ series ? $t('Создать и добавить серию') : $t('Создать') }}
+                <q-btn type="submit" outline color="primary" dense no-caps icon="la la-plus" :disable="!String(newListName || '').trim()">
+                    {{ $t('Создать') }}
                 </q-btn>
             </form>
 
@@ -107,8 +85,12 @@
                 <router-link to="/lists" @click="visible = false">
                     {{ $t('Все списки') }}
                 </router-link>
-                <q-btn color="primary" flat dense no-caps @click="visible = false">
-                    {{ $t('Готово') }}
+                <span class="atl-foot-spacer" />
+                <q-btn flat dense no-caps @click="visible = false">
+                    {{ $t('Отмена') }}
+                </q-btn>
+                <q-btn color="primary" unelevated dense no-caps class="atl-save" :disable="!hasChanges" @click="save">
+                    {{ $t('Сохранить') }}
                 </q-btn>
             </footer>
         </div>
@@ -122,6 +104,7 @@ import BookCover from './BookCover.vue';
 
 import {t, tMessage} from '../../share/i18n';
 import {bookUid, bookAuthors} from '../../share/bookActions';
+import {readingListsCache, refreshReadingLists} from '../../share/readingLists';
 
 const componentOptions = {
     components: {
@@ -130,7 +113,9 @@ const componentOptions = {
     emits: ['update:modelValue', 'changed'],
 };
 
-//Добавление книги (или всей серии) в списки чтения
+//Добавление книги (или всей серии) в списки чтения.
+//Изменения копятся в окне и отправляются только по «Сохранить»; Отмена, Esc и щелчок мимо окна их отбрасывают.
+//Списки показываются сразу из заранее загруженного кеша, состояние книги в них подгружается в фоне.
 class AddToListDialog {
     _options = componentOptions;
     _props = {
@@ -140,11 +125,12 @@ class AddToListDialog {
         series: {type: String, default: ''},
     };
 
-    lists = [];
-    loading = false;
-    creating = false;
+    rows = [];
+    listsKnown = false;
+    stateLoading = false;
     newListName = '';
     narrow = false;
+    openSeq = 0;
 
     created() {
         this.api = this.$root.api;
@@ -168,6 +154,10 @@ class AddToListDialog {
         this.$emit('update:modelValue', value);
     }
 
+    get userKey() {
+        return String(this.$store.state.config.currentUserId || '');
+    }
+
     get title() {
         return (this.series ? t('Серия в список') : t('Добавить в список'));
     }
@@ -180,107 +170,155 @@ class AddToListDialog {
         return [bookAuthors(this.book).join(', '), this.book.series ? `${this.book.series}${this.book.serno ? ` #${this.book.serno}` : ''}` : ''].filter(Boolean).join(' · ');
     }
 
-    listMeta(item) {
-        const total = Number(item.bookCount || 0);
-        const read = Number(item.readCount || 0);
+    get hasChanges() {
+        return this.rows.some(row => this.isChanged(row));
+    }
+
+    isChanged(row) {
+        if (row.isNew)
+            return row.checked;
+        if (this.series)
+            return row.checked;
+        return row.checked !== row.inList || (row.checked && row.read !== row.wasRead) || (row.checked && row.addSeries);
+    }
+
+    rowMeta(row) {
+        if (row.isNew)
+            return t('Новый список');
+        if (row.bookCount === undefined)
+            return '';
+        const total = Number(row.bookCount || 0);
+        const read = Number(row.readCount || 0);
         return (read ? t('{read} из {total} прочитано', {read, total}) : t('Книг: {n}', {n: total}));
     }
 
-    onShow() {
-        this.newListName = '';
-        this.load();
+    makeRow(list) {
+        return {
+            key: list.id,
+            id: list.id,
+            name: list.name,
+            visibility: list.visibility,
+            bookCount: list.bookCount,
+            readCount: list.readCount,
+            //состояние на сервере (пока неизвестно - считаем, что книги в списке нет)
+            inList: false,
+            wasRead: false,
+            //то, что выбрано в окне
+            checked: false,
+            read: false,
+            addSeries: false,
+            touched: false,
+            isNew: false,
+        };
     }
 
-    async load() {
+    onShow() {
+        const seq = ++this.openSeq;
+        const cache = readingListsCache();
+        this.newListName = '';
+        this.rows = (cache.userKey === this.userKey ? cache.lists : []).map(list => this.makeRow(list));
+        this.listsKnown = (cache.userKey === this.userKey && cache.loaded);
+        this.loadState(seq);
+    }
+
+    //Фоновая загрузка: счётчики и есть ли книга в каждом списке. Выбор пользователя не трогаем.
+    async loadState(seq) {
         if (!this.book)
             return;
-        this.loading = true;
+        this.stateLoading = true;
         try {
             const response = await this.api.getReadingLists(this.series ? '' : bookUid(this.book));
-            this.lists = (response.lists || []).map(item => Object.assign({}, item, {busy: false, seriesAdded: 0}));
-        } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
-        } finally {
-            this.loading = false;
-        }
-    }
-
-    async toggleBook(item, enabled) {
-        item.busy = true;
-        try {
-            await this.api.updateReadingListBook(item.id, bookUid(this.book), enabled);
-            if (!enabled && item.readBook) {
-                item.readBook = false;
-                item.readCount = Math.max(0, (item.readCount || 0) - 1);
+            if (seq !== this.openSeq)
+                return;
+            const byId = new Map(this.rows.map(row => [row.id, row]));
+            const rows = [];
+            for (const list of (response.lists || [])) {
+                const row = byId.get(list.id) || this.makeRow(list);
+                const pristine = !row.touched && row.checked === row.inList && row.read === row.wasRead;
+                Object.assign(row, {name: list.name, visibility: list.visibility, bookCount: list.bookCount, readCount: list.readCount});
+                if (!this.series) {
+                    row.inList = !!list.containsBook;
+                    row.wasRead = !!list.readBook;
+                    if (pristine) {
+                        row.checked = row.inList;
+                        row.read = row.wasRead;
+                    }
+                }
+                rows.push(row);
             }
-            item.containsBook = !!enabled;
-            item.bookCount = Math.max(0, (item.bookCount || 0) + (enabled ? 1 : -1));
-            this.$emit('changed');
+            //новые списки, созданные в этом окне, остаются сверху
+            this.rows = [...this.rows.filter(row => row.isNew), ...rows];
+            this.listsKnown = true;
         } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
-            await this.load();
+            this.listsKnown = true;
         } finally {
-            item.busy = false;
+            if (seq === this.openSeq)
+                this.stateLoading = false;
         }
+        refreshReadingLists(this.api, this.userKey);
     }
 
-    async toggleRead(item, read) {
-        item.busy = true;
-        try {
-            await this.api.setReadingListBookRead(item.id, bookUid(this.book), read);
-            if (!!item.readBook !== !!read)
-                item.readCount = Math.max(0, (item.readCount || 0) + (read ? 1 : -1));
-            item.readBook = !!read;
-            this.$emit('changed');
-        } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
-        } finally {
-            item.busy = false;
-        }
-    }
-
-    async addSeries(item) {
-        const series = this.series || (this.book && this.book.series);
-        if (!series)
-            return;
-        item.busy = true;
-        try {
-            const result = await this.api.addSeriesToReadingList(item.id, series);
-            const added = Number(result && result.addedBooks) || 0;
-            item.seriesAdded = added || item.seriesAdded || -1;
-            item.bookCount = (item.bookCount || 0) + added;
-            if (!this.series && !item.containsBook && added)
-                item.containsBook = true;
-            this.$root.notify.success(added
-                ? t('В список «{list}» добавлено книг серии: {n}', {list: item.name, n: added})
-                : t('Все книги серии уже в списке «{list}»', {list: item.name}));
-            this.$emit('changed');
-        } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
-        } finally {
-            item.busy = false;
-        }
-    }
-
-    async createList() {
+    stageNewList() {
         const name = String(this.newListName || '').trim();
         if (!name)
             return;
-        this.creating = true;
+        if (this.rows.some(row => row.name.toLowerCase() === name.toLowerCase())) {
+            this.$root.notify.info(t('Список «{name}» уже есть', {name}));
+            return;
+        }
+        this.rows.unshift(Object.assign(this.makeRow({id: `new-${Date.now()}`, name, visibility: 'private'}), {isNew: true, checked: true}));
+        this.newListName = '';
+    }
+
+    //Закрываем окно сразу, изменения отправляем в фоне
+    save() {
+        const book = this.book;
+        const series = this.series || (book && book.series) || '';
+        const ops = this.rows.filter(row => this.isChanged(row)).map(row => Object.assign({}, row));
+        this.visible = false;
+        this.apply(book, series, ops, !!this.series);
+    }
+
+    async apply(book, series, ops, seriesMode) {
+        const uid = bookUid(book);
+        const done = [];
         try {
-            const response = await this.api.createReadingListWithVisibility(name, 'private');
-            const created = response.list;
-            if (this.series)
-                await this.api.addSeriesToReadingList(created.id, this.series);
-            else
-                await this.api.updateReadingListBook(created.id, bookUid(this.book), true);
-            this.newListName = '';
-            await this.load();
-            this.$emit('changed');
+            for (const row of ops) {
+                let listId = row.id;
+                if (row.isNew) {
+                    const response = await this.api.createReadingListWithVisibility(row.name, 'private');
+                    listId = response.list.id;
+                }
+
+                if (seriesMode) {
+                    await this.api.addSeriesToReadingList(listId, series);
+                    done.push(t('серия добавлена в «{list}»', {list: row.name}));
+                    continue;
+                }
+
+                if (row.checked && !row.inList)
+                    await this.api.updateReadingListBook(listId, uid, true);
+                if (!row.checked && row.inList) {
+                    await this.api.updateReadingListBook(listId, uid, false);
+                    done.push(t('убрано из «{list}»', {list: row.name}));
+                    continue;
+                }
+                if (row.checked && row.read !== row.wasRead)
+                    await this.api.setReadingListBookRead(listId, uid, row.read);
+                if (row.checked && row.addSeries && series)
+                    await this.api.addSeriesToReadingList(listId, series);
+                if (row.checked && (!row.inList || row.addSeries))
+                    done.push(t('добавлено в «{list}»', {list: row.name}));
+                else if (row.checked)
+                    done.push(t('обновлено в «{list}»', {list: row.name}));
+            }
+            if (done.length)
+                this.$root.notify.success(done.join(', '));
         } catch (e) {
             this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
         } finally {
-            this.creating = false;
+            this.$emit('changed');
+            refreshReadingLists(this.api, this.userKey);
         }
     }
 }
@@ -313,7 +351,7 @@ export default vueComponent(AddToListDialog);
     display: flex;
     align-items: flex-start;
     gap: 14px;
-    padding: 16px 16px 14px 18px;
+    padding: 16px 18px 14px;
     border-bottom: 1px solid var(--app-border);
 }
 
@@ -357,21 +395,14 @@ export default vueComponent(AddToListDialog);
     white-space: nowrap;
 }
 
-.atl-close {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
+.atl-loading {
     flex: none;
-    border: 0;
-    border-radius: 50%;
-    background: none;
-    color: var(--app-muted);
-    cursor: pointer;
 }
 
-.atl-close:hover {
-    background: var(--app-surface-3);
+.atl-hint {
+    padding: 8px 18px 0;
+    color: var(--app-muted);
+    font-size: 12px;
 }
 
 .atl-body {
@@ -407,6 +438,11 @@ export default vueComponent(AddToListDialog);
     background: var(--app-accent-soft);
 }
 
+.atl-row.is-changed .atl-row-name::after {
+    content: " •";
+    color: var(--app-primary);
+}
+
 .atl-row-main {
     display: flex;
     align-items: center;
@@ -439,6 +475,7 @@ export default vueComponent(AddToListDialog);
 }
 
 .atl-row-meta {
+    min-height: 16px;
     color: var(--app-muted);
     font-size: 12px;
 }
@@ -470,11 +507,7 @@ export default vueComponent(AddToListDialog);
     align-items: center;
     gap: 10px;
     padding: 8px 14px;
-    border: 0;
-    background: none;
     color: var(--app-text);
-    font: inherit;
-    text-align: left;
     cursor: pointer;
 }
 
@@ -497,8 +530,16 @@ export default vueComponent(AddToListDialog);
 .atl-foot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 4px 10px 10px 18px;
+    gap: 8px;
+    padding: 4px 16px 14px 18px;
     font-size: 13px;
+}
+
+.atl-foot-spacer {
+    flex: 1;
+}
+
+.atl-save {
+    min-width: 96px;
 }
 </style>

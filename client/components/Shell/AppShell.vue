@@ -137,6 +137,7 @@ import {currentProfile, isSignedIn, isAdmin, initials} from '../../share/session
 import {enabledDiscoveryRoutes, discoveryRouteLabel} from '../../share/discoveryRoutes';
 import {newReleaseAvailable} from '../../share/release';
 import {myLanguages, langDefaultFor} from '../../share/languages';
+import {refreshReadingLists} from '../../share/readingLists';
 
 const discoveryIcons = {
     'for-you': 'la la-magic',
@@ -167,6 +168,13 @@ const componentOptions = {
         '$store.state.settings.langDefault'(value) {
             if (value !== this.langDefault)
                 this.$store.commit('setSettings', {langDefault: this.langDefault});
+        },
+        //списки чтения загружаются заранее, чтобы окно «Добавить в список» открывалось сразу
+        listsCacheKey: {
+            handler(key) {
+                refreshReadingLists(this.$root.api, key);
+            },
+            immediate: true,
         },
         '$route'(to) {
             if (catalogRoutes.has(to.path))
@@ -235,6 +243,10 @@ class AppShell {
 
     get avatarText() {
         return initials(this.userName);
+    }
+
+    get listsCacheKey() {
+        return (this.signedIn ? String(this.config.currentUserId || '') : '');
     }
 
     get langDefault() {
