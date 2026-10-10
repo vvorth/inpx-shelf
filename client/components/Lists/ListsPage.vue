@@ -74,9 +74,9 @@
                                 <tbody>
                                     <tr v-for="book in readingNow" :key="book.bookUid">
                                         <td>
-                                            <div class="book-title">
+                                            <router-link class="book-title" :to="bookLink(book.bookUid)">
                                                 {{ book.title }}
-                                            </div>
+                                            </router-link>
                                             <div class="book-meta">
                                                 {{ bookMeta(book) }}
                                             </div>
@@ -160,9 +160,9 @@
                                             <q-checkbox :model-value="book.read" dense :aria-label="$t('Прочитано')" @update:model-value="toggleRead(book, $event)" />
                                         </td>
                                         <td>
-                                            <div class="book-title">
+                                            <router-link class="book-title" :to="bookLink(book.bookUid)">
                                                 {{ book.title || $t('Без названия') }}
-                                            </div>
+                                            </router-link>
                                             <div class="book-meta">
                                                 {{ bookMeta(book) }}
                                             </div>
@@ -329,6 +329,10 @@ class ListsPage {
 
     percent(value) {
         return Math.max(0, Math.min(100, Math.round((Number(value || 0) || 0) * 100)));
+    }
+
+    bookLink(bookUid) {
+        return `/book/${encodeURIComponent(bookUid)}`;
     }
 
     openReader(bookUid) {
@@ -637,8 +641,16 @@ export default vueComponent(ListsPage);
 }
 
 .book-title {
+    display: block;
+    color: var(--app-text) !important;
     font-family: var(--app-font-serif);
     font-weight: 600;
+    text-decoration: none;
+}
+
+.book-title:hover {
+    color: var(--app-primary) !important;
+    text-decoration: underline;
 }
 
 .book-meta {
