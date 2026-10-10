@@ -26,7 +26,7 @@
             </div>
             <div v-else-if="!books.length" class="page-empty">
                 <div>{{ $t('В библиотеке нет книг этого автора.') }}</div>
-                <q-btn color="primary" unelevated no-caps @click="$router.push({path: '/author', query: {author: name}})">
+                <q-btn color="primary" unelevated no-caps @click="$router.push({path: '/search', query: {q: name}})">
                     {{ $t('Искать в каталоге') }}
                 </q-btn>
             </div>

@@ -144,7 +144,7 @@ class HomePage {
     }
 
     get catalogPath() {
-        return '/author';
+        return '/search';
     }
 
     get greeting() {

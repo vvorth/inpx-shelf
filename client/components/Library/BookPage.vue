@@ -6,7 +6,7 @@
             </div>
             <div v-else-if="error" class="page-empty">
                 <div>{{ error }}</div>
-                <q-btn color="primary" unelevated no-caps @click="$router.push('/author')">
+                <q-btn color="primary" unelevated no-caps @click="$router.push('/search')">
                     {{ $t('В каталог') }}
                 </q-btn>
             </div>
@@ -107,7 +107,7 @@
                                 <dt>{{ $t('Жанр') }}</dt>
                                 <dd>
                                     <template v-for="(code, index) in genres" :key="code">
-                                        <router-link :to="{path: '/books', query: {genre: code}}">
+                                        <router-link :to="{path: '/search', query: {genre: code}}">
                                             {{ genreLabel(code) }}
                                         </router-link><span v-if="index < genres.length - 1">, </span>
                                     </template>

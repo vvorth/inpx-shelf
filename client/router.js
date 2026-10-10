@@ -4,6 +4,7 @@ const Search = () => import('./components/Search/Search.vue');
 const Reader = () => import('./components/Reader/Reader.vue');
 const ReaderLab = () => import('./components/Reader/ReaderLab.vue');
 const HomePage = () => import('./components/Library/HomePage.vue');
+const SearchPage = () => import('./components/Library/SearchPage.vue');
 const BookPage = () => import('./components/Library/BookPage.vue');
 const AuthorPage = () => import('./components/Library/AuthorPage.vue');
 const SeriesPage = () => import('./components/Library/SeriesPage.vue');
@@ -18,6 +19,7 @@ const searchPaths = ['/author', '/series', '/title', '/books', '/for-you', '/new
 const routes = [
     //старые ссылки вида /#/?author=... открывали каталог
     {path: '/', component: HomePage, meta: {section: 'home'}, beforeEnter: to => (Object.keys(to.query).length ? {path: '/author', query: to.query} : true)},
+    {path: '/search', component: SearchPage, meta: {section: 'library'}},
     {path: '/book/:uid', component: BookPage, meta: {section: 'library'}},
     {path: '/author/:name', component: AuthorPage, meta: {section: 'library'}},
     {path: '/series/:name', component: SeriesPage, meta: {section: 'library'}},

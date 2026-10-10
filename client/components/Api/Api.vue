@@ -525,6 +525,14 @@ class Api {
         return await this.request({action: 'get-book-link', bookUid}, 120);
     }
 
+    async catalogSearch(params = {}) {
+        return await this.request(Object.assign({action: 'catalog-search'}, params), 60);
+    }
+
+    async catalogSuggest(q) {
+        return await this.request({action: 'catalog-suggest', q}, 20);
+    }
+
     async getBook(bookUid) {
         return await this.request({action: 'get-book', bookUid}, 60);
     }

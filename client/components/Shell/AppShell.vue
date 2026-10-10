@@ -80,9 +80,14 @@
             </div>
         </nav>
 
-        <main class="shell-main">
-            <slot></slot>
-        </main>
+        <div class="shell-column">
+            <header v-if="!bare" class="shell-top">
+                <Omnibox />
+            </header>
+            <main class="shell-main">
+                <slot></slot>
+            </main>
+        </div>
 
         <nav v-if="!bare" class="shell-tabbar" :aria-label="$t('Разделы')">
             <router-link class="shell-tab" :class="{'is-active': activeItem === 'home' || discoveryActive}" to="/">
@@ -113,6 +118,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import ShellUserMenu from './ShellUserMenu.vue';
+import Omnibox from './Omnibox.vue';
 
 import {t, tMessage} from '../../share/i18n';
 import {currentProfile, isSignedIn, isAdmin, initials} from '../../share/session';
@@ -125,11 +131,12 @@ const discoveryIcons = {
     'popular': 'la la-fire',
     'bestsellers': 'la la-globe',
 };
-const catalogRoutes = new Set(['/author', '/series', '/title', '/books', '/extended']);
+const catalogRoutes = new Set(['/search', '/author', '/series', '/title', '/books', '/extended']);
 
 const componentOptions = {
     components: {
         ShellUserMenu,
+        Omnibox,
     },
     watch: {
         '$route'(to) {
@@ -145,7 +152,7 @@ class AppShell {
         bare: Boolean,
     };
 
-    lastCatalogPath = '/author';
+    lastCatalogPath = '/search';
 
     created() {
         if (catalogRoutes.has(this.$route.path))
@@ -205,7 +212,7 @@ class AppShell {
     }
 
     get catalogPath() {
-        return this.lastCatalogPath || '/author';
+        return this.lastCatalogPath || '/search';
     }
 
     get discoveryItems() {
@@ -274,11 +281,30 @@ export default vueComponent(AppShell);
     grid-template-columns: minmax(0, 1fr);
 }
 
-.shell-main {
+.shell-column {
     display: flex;
+    flex-direction: column;
     min-width: 0;
     min-height: 0;
     height: 100%;
+}
+
+.shell-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 28px;
+    border-bottom: 1px solid var(--app-border);
+    background: var(--app-surface);
+    position: relative;
+    z-index: 20;
+}
+
+.shell-main {
+    flex: 1 1 auto;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -465,6 +491,11 @@ export default vueComponent(AppShell);
 
     .shell-rail {
         display: none;
+    }
+
+    .shell-top {
+        padding: 8px 12px;
+        padding-top: calc(8px + env(safe-area-inset-top, 0px));
     }
 
     .shell-tabbar {
