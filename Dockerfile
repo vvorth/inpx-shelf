@@ -15,20 +15,21 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 # Let the locked packaging dependency select and verify its matching base binary.
 RUN node -e "require('@yao-pkg/pkg-fetch').need({nodeRange:'node24',platform:'linux',arch:'x64'}).catch(error=>{console.error(error);process.exit(1)})"
 
+# Collect exactly the files the client build reads (client/, shared/, build/
+# and whatever they import, e.g. server modules). This stage re-runs on any
+# source change, but BuildKit keys the COPY --from below on file content, so
+# the webpack layer stays cached unless one of these files actually changed.
+FROM ${NODE_IMAGE} AS client-sources
+
+WORKDIR /src
+COPY . .
+RUN node build/collect-client-sources.js /client-sources
+
 FROM build-deps AS build
 
-# Copy sources in order of how often they change relative to what they affect:
-# a server-only change reuses the client bundle layer.
-COPY build ./build
-COPY shared ./shared
-# Server modules the client bundle imports directly; keep in sync with client imports.
-COPY server/core/LockQueue.js server/core/WebSocketConnection.js ./server/core/
-COPY server/core/fb2 ./server/core/fb2
-COPY server/core/xml ./server/core/xml
-COPY client ./client
+COPY --from=client-sources /client-sources/ ./
 RUN npm run build:client
 
-COPY README.md ./
 COPY server ./server
 RUN npm run pack:linux
 
