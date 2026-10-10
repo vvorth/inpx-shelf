@@ -1327,6 +1327,8 @@ export default {
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js
 export const patterns = [
+    //английские имена авторов
+    [/^Wikidata недоступна: (.*)$/, 'Wikidata is unavailable: $1'],
     //витрины
     [/^Добавлена (\d+) дн(?:я|ей) назад$/, 'Added $1 days ago'],
     [/^Оценка библиотеки (.+)$/, 'Library rating $1'],

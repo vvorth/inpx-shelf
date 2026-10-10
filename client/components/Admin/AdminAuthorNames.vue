@@ -21,7 +21,7 @@
             </div>
         </div>
         <div v-else-if="job.error" class="names-error">
-            {{ $t('Не удалось скачать: {error}', {error: job.error}) }}
+            {{ $t('Не удалось скачать: {error}', {error: $tm(job.error)}) }}
         </div>
         <div v-else-if="status.ready" class="card-hint num">
             {{ $t('Имён в таблице: {count}, обновлена {date}. Сопоставлено авторов библиотеки: {matched}.', {count: status.count.toLocaleString(), date: formatDate(status.updatedAt), matched: status.matched.toLocaleString()}) }}
