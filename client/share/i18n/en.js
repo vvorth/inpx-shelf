@@ -1307,6 +1307,8 @@ export default {
     "Карточками": "As cards",
     "Вид списков книг": "Book list view",
     "Вид карточек в поиске по полям": "Card view in search by fields",
+    "Скачать в другом формате": "Download in another format",
+    "Конвертировать и скачать": "Convert and download",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

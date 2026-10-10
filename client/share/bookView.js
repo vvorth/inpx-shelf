@@ -5,7 +5,7 @@ export const bookViews = ['covers', 'cards', 'list'];
 
 export function bookView(settings = {}) {
     const value = String(settings.bookView || '');
-    return (bookViews.includes(value) ? value : 'covers');
+    return (bookViews.includes(value) ? value : 'cards');
 }
 
 export function bookViewOptions() {
