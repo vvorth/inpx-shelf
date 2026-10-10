@@ -199,7 +199,7 @@ import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 import BookCard from './BookCard.vue';
 import AddToListDialog from './AddToListDialog.vue';
-import BookInfoDialog from '../Search/BookInfoDialog/BookInfoDialog.vue';
+import BookInfoDialog from './BookInfoDialog.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tMessage} from '../../share/i18n';

@@ -1168,6 +1168,13 @@ async function testCatalogIndexSearch() {
         assert.deepStrictEqual(facets.lang, [['ru', 5], ['en', 1]]);
         assert.deepStrictEqual(facets.ext, [['epub', 1]]);
 
+        const authorsAll = index.listNames({kind: 'author', limit: 2});
+        assert.strictEqual(authorsAll.total, 5);
+        assert.deepStrictEqual(authorsAll.items.map(item => item.name), ['Le Guin Ursula', 'Булгаков Михаил Афанасьевич'], 'authors are listed alphabetically');
+        assert.deepStrictEqual(index.listNames({kind: 'author', q: 'струг'}).items.map(item => item.name).sort(), ['Стругацкий Аркадий Натанович', 'Стругацкий Борис Натанович']);
+        assert.deepStrictEqual(index.listNames({kind: 'series', q: 'пол'}).items, [{name: 'Мир Полудня', books: 1}]);
+        assert.strictEqual(index.listNames({kind: 'author', q: 'xyz'}).total, 0);
+
         const suggest = index.suggest({q: 'струг'});
         assert.deepStrictEqual(suggest.books.map(item => item.id), [3]);
         assert.strictEqual(suggest.authors.length, 2);

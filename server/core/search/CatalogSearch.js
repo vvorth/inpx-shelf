@@ -152,6 +152,11 @@ class CatalogSearch {
         });
     }
 
+    async listNames(request = {}) {
+        this.checkReady();
+        return await this.getThread().call('listNames', request);
+    }
+
     async authorAliases(name = '') {
         if (!this.ready)
             return [];

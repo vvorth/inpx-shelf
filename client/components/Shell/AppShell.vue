@@ -2,7 +2,7 @@
     <div class="app-shell" :class="{'app-shell--bare': bare}">
         <nav v-if="!bare" class="shell-rail" :aria-label="$t('Разделы')">
             <router-link class="shell-brand" to="/">
-                <img class="shell-brand-logo" src="../Search/assets/logo.png" alt="" />
+                <img class="shell-brand-logo" src="./assets/logo.png" alt="" />
                 <span class="shell-brand-name">{{ collectionName || config.name || 'inpx-web' }}</span>
             </router-link>
 
@@ -147,7 +147,7 @@ const discoveryIcons = {
 };
 const namesBannerKey = 'inpx-web-author-names-banner';
 const weekMs = 7 * 24 * 3600 * 1000;
-const catalogRoutes = new Set(['/search', '/author', '/series', '/title', '/books', '/extended']);
+const catalogRoutes = new Set(['/search']);
 
 const componentOptions = {
     components: {

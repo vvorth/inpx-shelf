@@ -657,6 +657,31 @@ export default vueComponent(StdDialog);
 </style>
 
 <style scoped>
+/* окна приложения в общем стиле; окна читалки оформляются её темой (std-dialog-card--reader) */
+.std-dialog-card:not(.std-dialog-card--reader) {
+    min-width: min(380px, 92vw);
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface) !important;
+    color: var(--app-text) !important;
+    box-shadow: var(--app-shadow);
+}
+
+.std-dialog-card:not(.std-dialog-card--reader) .caption {
+    font-family: var(--app-font-serif);
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.std-dialog-card:not(.std-dialog-card--reader) .caption :deep(.q-icon) {
+    color: var(--app-primary) !important;
+}
+
+.std-dialog-card:not(.std-dialog-card--reader) .buttons .q-btn:last-child {
+    background: var(--app-primary) !important;
+    color: var(--app-on-primary) !important;
+}
+
 .q-dialog__inner--top {
     padding-top: max(12px, env(safe-area-inset-top));
     align-items: flex-start;
@@ -682,7 +707,7 @@ export default vueComponent(StdDialog);
 .error {
     height: 20px;
     font-size: 80%;
-    color: red;
+    color: var(--app-danger);
 }
 
 @media (max-width: 640px) {

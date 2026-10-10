@@ -1,6 +1,6 @@
 <template>
     <q-dialog v-model="active" no-route-dismiss @show="onShow" @hide="onHide">
-        <div class="column bg-white no-wrap">
+        <div class="app-dialog column no-wrap">
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <slot name="header"></slot>
@@ -65,12 +65,23 @@ export default vueComponent(Dialog);
 </script>
 
 <style scoped>
+.app-dialog {
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    box-shadow: var(--app-shadow);
+}
+
 .header {
-    min-height: 50px;
+    min-height: 54px;
+    border-bottom: 1px solid var(--app-border);
 }
 
 .caption {
-    font-size: 110%;
+    font-family: var(--app-font-serif);
+    font-size: 17px;
+    font-weight: 600;
     overflow: hidden;
 }
 

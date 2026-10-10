@@ -278,14 +278,14 @@
 
 <script>
 //-----------------------------------------------------------------------------
-import vueComponent from '../../vueComponent.js';
+import vueComponent from '../vueComponent.js';
 
-import Dialog from '../../share/Dialog.vue';
-import Fb2Parser from '../../../../server/core/fb2/Fb2Parser';
-const {escapeHtml, safeHtml} = require('../../../../shared/safeHtml');
-import * as utils from '../../../share/utils';
+import Dialog from '../share/Dialog.vue';
+import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
+const {escapeHtml, safeHtml} = require('../../../shared/safeHtml');
+import * as utils from '../../share/utils';
 import _ from 'lodash';
-import {t, getLocale} from '../../../share/i18n';
+import {t, getLocale} from '../../share/i18n';
 
 const componentOptions = {
     components: {

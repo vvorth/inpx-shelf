@@ -421,7 +421,7 @@ Afterwards, update §6 ("Not yet") and the README section «Синхрониза
 | `INPX_KOBO_ENABLED`, `INPX_KOBO_PUBLIC_URL`; `koboEnabled` in the web config | `server/config/base.js` |
 | WebSocket actions `get/create/update/delete-kobo-device`, `regenerate-kobo-device-token`, `reset-kobo-device`, `refresh-kobo-device` | `server/controllers/WebSocketController.js` |
 | Devices removed with their profile | `WebWorker.deleteUserProfile` |
-| Profile dialog → "Kobo" tab | `client/components/Search/UserProfilesDialog/UserProfilesDialog.vue`, `client/components/Api/Api.vue` |
+| Profile dialog → "Kobo" tab | `client/components/Me/MeDevices.vue`, `client/components/Api/Api.vue` |
 | Release tests (fake Kobo and fake Kobo Store) | `scripts/kobo-sync-tests.js` |
 | Phase 3: Kobo cover resizing to JPEG (`fitToJpeg`) | `server/core/ImageUtils.js` |
 | Phase 2: pre-warm hooks on list edits, lookup by `sourceId:libid`, `kobo-sync.json` in admin backups | `server/core/WebWorker.js`, `server/core/BackupArchive.js`, `server/core/BackupTransaction.js` |

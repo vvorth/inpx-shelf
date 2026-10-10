@@ -480,7 +480,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
-import DiscoverySourceDialog from '../Search/DiscoverySourceDialog/DiscoverySourceDialog.vue';
+import DiscoverySourceDialog from './DiscoverySourceDialog.vue';
 import AdminUsers from './AdminUsers.vue';
 import AdminAuthorNames from './AdminAuthorNames.vue';
 import {t, getLocale} from '../../share/i18n';

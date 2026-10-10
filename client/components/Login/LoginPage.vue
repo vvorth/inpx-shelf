@@ -2,7 +2,7 @@
     <div class="login-page">
         <form class="login-card" @submit.prevent="submit">
             <div class="login-brand">
-                <img src="../Search/assets/logo.png" alt="" />
+                <img src="../Shell/assets/logo.png" alt="" />
                 <div>
                     <div class="login-title">
                         {{ collectionName || config.name || 'inpx-web' }}

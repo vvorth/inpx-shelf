@@ -196,6 +196,8 @@ class WebSocketController {
                     await this.adminAuthorNamesStatus(req, ws); break;
                 case 'admin-author-names-update':
                     await this.adminAuthorNamesUpdate(req, ws); break;
+                case 'catalog-names':
+                    await this.catalogNames(req, ws); break;
                 case 'catalog-search':
                     await this.catalogSearch(req, ws); break;
                 case 'catalog-suggest':
@@ -722,6 +724,17 @@ class WebSocketController {
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
         this.webWorker.catalogSearch.startAuthorNamesDownload();
         this.send(await this.webWorker.catalogSearch.authorNamesStatus(), req, ws);
+    }
+
+    async catalogNames(req, ws) {
+        this.webWorker.checkMyState();
+        const result = await this.webWorker.catalogSearch.listNames({
+            kind: (req.kind === 'series' ? 'series' : 'author'),
+            q: String(req.q || ''),
+            offset: req.offset,
+            limit: req.limit,
+        });
+        this.send(result, req, ws);
     }
 
     async catalogSearch(req, ws) {

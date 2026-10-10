@@ -1,23 +1,29 @@
 <template>
     <div class="page">
         <div class="page-body search-body">
-            <div v-if="notReady" class="card">
+            <div v-if="searchDisabled" class="card">
                 <h2 class="card-title">
-                    {{ $t('Поиск готовится') }}
+                    {{ $t('Поиск по каталогу выключен') }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('Индекс каталога строится, это занимает несколько минут после обновления библиотеки.') }}
-                    <span v-if="indexProgress" class="num">{{ Math.round(indexProgress * 100) }}%</span>
+                    {{ $t('Индекс каталога отключён параметром INPX_CATALOG_SEARCH=false (catalogSearch в config.json). Книги по-прежнему доступны на страницах авторов и серий, в витринах и в OPDS.') }}
                 </div>
-                <div class="card-actions">
-                    <q-btn outline color="primary" no-caps @click="$router.push(classicLink)">
-                        {{ $t('Поиск по полям') }}
-                    </q-btn>
+            </div>
+            <div v-else-if="notReady" class="card index-progress">
+                <h2 class="card-title">
+                    {{ $t('Готовлю поиск') }}
+                </h2>
+                <div class="card-hint">
+                    {{ $t('После обновления библиотеки сервер строит поисковый индекс: читает все книги и составляет словарь для поиска с опечатками. На большой библиотеке это занимает несколько минут, страница обновится сама.') }}
+                </div>
+                <q-linear-progress rounded size="8px" :value="indexProgress" :indeterminate="!indexProgress" color="primary" />
+                <div class="card-hint num">
+                    {{ indexProgress ? $t('Готово {n}%', {n: Math.round(indexProgress * 100)}) : $t('Подготовка...') }}
                 </div>
             </div>
 
-            <div v-else class="search-layout">
-                <aside class="facets" :class="{'facets--open': facetsOpen}">
+            <div v-else class="search-layout" :class="{'search-layout--names': tab !== 'books'}">
+                <aside v-if="tab === 'books'" class="facets" :class="{'facets--open': facetsOpen}">
                     <div class="facets-head">
                         <h2 class="card-title">
                             {{ $t('Фильтры') }}
@@ -53,9 +59,6 @@
                         </label>
                     </div>
 
-                    <router-link class="facets-classic" :to="classicLink">
-                        {{ $t('Поиск по полям и списки авторов') }}
-                    </router-link>
                 </aside>
 
                 <section class="results">
@@ -102,6 +105,52 @@
                         </div>
                     </div>
 
+                    <nav class="tabs" :aria-label="$t('Что искать')">
+                        <button type="button" class="tab" :class="{'is-active': tab === 'books'}" @click="setTab('books')">
+                            {{ $t('Книги') }}<span v-if="result" class="tab-count num">{{ total.toLocaleString() }}</span>
+                        </button>
+                        <button type="button" class="tab" :class="{'is-active': tab === 'authors'}" @click="setTab('authors')">
+                            {{ $t('Авторы') }}<span v-if="namesTotals.author !== null" class="tab-count num">{{ namesTotals.author.toLocaleString() }}</span>
+                        </button>
+                        <button type="button" class="tab" :class="{'is-active': tab === 'series'}" @click="setTab('series')">
+                            {{ $t('Серии') }}<span v-if="namesTotals.series !== null" class="tab-count num">{{ namesTotals.series.toLocaleString() }}</span>
+                        </button>
+                    </nav>
+
+                    <template v-if="tab !== 'books'">
+                        <div v-if="namesLoading && !names.items.length" class="page-empty page-empty--inline">
+                            {{ $t('Ищу...') }}
+                        </div>
+                        <div v-else-if="!names.items.length" class="page-empty page-empty--inline">
+                            {{ tab === 'authors' ? $t('Авторы не найдены.') : $t('Серии не найдены.') }}
+                        </div>
+                        <ol v-else class="name-list" :class="{'is-loading': namesLoading}">
+                            <li v-for="item in names.items" :key="item.name">
+                                <router-link class="name-row" :to="tab === 'authors' ? `/author/${encodeURIComponent(item.name)}` : `/series/${encodeURIComponent(item.name)}`">
+                                    <span class="entity-avatar" :class="{'entity-avatar--series': tab === 'series'}">
+                                        <q-icon v-if="tab === 'series'" name="la la-layer-group" size="18px" />
+                                        <template v-else>{{ initials(item.name) }}</template>
+                                    </span>
+                                    <span class="entity-copy">
+                                        <span class="entity-name">{{ item.name }}</span>
+                                        <span v-if="item.alias" class="entity-meta">{{ item.alias }}</span>
+                                    </span>
+                                    <span class="name-count num">{{ $t('Книг: {n}', {n: item.books}) }}</span>
+                                </router-link>
+                            </li>
+                        </ol>
+                        <nav v-if="namesPageCount > 1" class="pager" :aria-label="$t('Страницы')">
+                            <q-btn flat dense no-caps icon="la la-angle-left" :disable="page <= 1" @click="setQuery({page: page > 2 ? String(page - 1) : undefined})">
+                                {{ $t('Назад') }}
+                            </q-btn>
+                            <span class="num">{{ $t('Страница {page} из {count}', {page, count: namesPageCount}) }}</span>
+                            <q-btn flat dense no-caps icon-right="la la-angle-right" :disable="page >= namesPageCount" @click="setQuery({page: String(page + 1)})">
+                                {{ $t('Дальше') }}
+                            </q-btn>
+                        </nav>
+                    </template>
+
+                    <template v-else>
                     <div v-if="result && result.corrected" class="notice">
                         <div>
                             {{ result.layout ? $t('Похоже, запрос набран в другой раскладке. Показаны результаты для') : $t('Показаны результаты для') }}
@@ -134,6 +183,15 @@
                         </router-link>
                     </div>
 
+                    <div v-if="result && page === 1 && (namesTotals.author > result.authors.length || namesTotals.series > result.series.length) && (result.authors.length || result.series.length)" class="entities-more">
+                        <button v-if="namesTotals.author > result.authors.length" type="button" class="link-btn" @click="setTab('authors')">
+                            {{ $t('Все авторы ({n})', {n: namesTotals.author}) }}
+                        </button>
+                        <button v-if="namesTotals.series > result.series.length" type="button" class="link-btn" @click="setTab('series')">
+                            {{ $t('Все серии ({n})', {n: namesTotals.series}) }}
+                        </button>
+                    </div>
+
                     <div v-if="error" class="page-empty page-empty--inline">
                         {{ error }}
                     </div>
@@ -158,6 +216,7 @@
                             {{ $t('Дальше') }}
                         </q-btn>
                     </nav>
+                    </template>
 
                     <details class="syntax-help">
                         <summary>{{ $t('Точный поиск') }}</summary>
@@ -216,6 +275,10 @@ class SearchPage {
     loading = false;
     error = '';
     notReady = false;
+    names = {items: [], total: 0};
+    namesLoading = false;
+    namesTotals = {author: null, series: null};
+    namesTotalsKey = null;
     facetsOpen = false;
     expanded = {};
     genresReady = 0;
@@ -335,8 +398,55 @@ class SearchPage {
         return Number((this.config.catalogSearch || {}).progress || 0);
     }
 
-    get classicLink() {
-        return (this.q ? {path: '/author', query: {author: this.q}} : '/author');
+    get searchDisabled() {
+        return (this.config.catalogSearch || {}).enabled === false;
+    }
+
+    get tab() {
+        return (['authors', 'series'].includes(this.query.tab) ? this.query.tab : 'books');
+    }
+
+    get namesPageCount() {
+        return Math.ceil((this.names.total || 0) / this.limit);
+    }
+
+    setTab(tab) {
+        this.setQuery({tab: (tab === 'books' ? undefined : tab), page: undefined});
+    }
+
+    //число авторов и серий по запросу - для подписей вкладок
+    async loadNameTotals(q) {
+        const key = q;
+        this.namesTotalsKey = key;
+        try {
+            const [authors, series] = await Promise.all([
+                this.api.catalogNames('author', q, 0, 1),
+                this.api.catalogNames('series', q, 0, 1),
+            ]);
+            if (this.namesTotalsKey === key)
+                this.namesTotals = {author: authors.total, series: series.total};
+        } catch (e) {
+            //подписи вкладок не обязательны; при следующей загрузке попробуем снова (например, когда индекс достроится)
+            if (this.namesTotalsKey === key)
+                this.namesTotalsKey = null;
+        }
+    }
+
+    async loadNames(seq) {
+        this.namesLoading = true;
+        try {
+            const result = await this.api.catalogNames(this.tab === 'authors' ? 'author' : 'series', this.q, (this.page - 1) * this.limit, this.limit);
+            if (seq === this.requestSeq)
+                this.names = result;
+        } catch (e) {
+            if (String(e.message).includes('catalog_index_not_ready')) {
+                this.notReady = true;
+                this.schedulePoll();
+            }
+        } finally {
+            if (seq === this.requestSeq)
+                this.namesLoading = false;
+        }
     }
 
     get sortOptions() {
@@ -472,13 +582,24 @@ class SearchPage {
         this.loading = true;
         this.error = '';
         this.$root.setAppTitle(this.q ? t('Поиск: «{q}»', {q: this.q}) : t('Поиск'));
+        if (this.searchDisabled) {
+            this.loading = false;
+            return;
+        }
+        if (this.namesTotalsKey !== this.q)
+            this.loadNameTotals(this.q);
+        const booksTab = (this.tab === 'books');
+        if (!booksTab)
+            this.loadNames(seq);
         try {
+            //на вкладках авторов и серий нужен только счётчик книг для подписи вкладки
             const result = await this.api.catalogSearch({
                 q: this.q,
                 filters: this.filters,
                 sort: this.sort,
-                offset: (this.page - 1) * this.limit,
-                limit: this.limit,
+                offset: (booksTab ? (this.page - 1) * this.limit : 0),
+                limit: (booksTab ? this.limit : 1),
+                facets: booksTab,
                 hideCopies: this.hideCopies,
                 showDeleted: !!this.settings.showDeleted,
             });
@@ -604,9 +725,6 @@ export default vueComponent(SearchPage);
     margin-top: 2px;
 }
 
-.facets-classic {
-    font-size: 13px;
-}
 
 .link-btn {
     padding: 0;
@@ -616,6 +734,89 @@ export default vueComponent(SearchPage);
     font: inherit;
     font-size: 13px;
     cursor: pointer;
+}
+
+.search-layout--names {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.index-progress {
+    max-width: 640px;
+}
+
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: -1px;
+    padding: 8px 12px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--app-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.tab.is-active {
+    border-bottom-color: var(--app-primary);
+    color: var(--app-text);
+    font-weight: 600;
+}
+
+.tab-count {
+    color: var(--app-muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.entities-more {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+}
+
+.name-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
+}
+
+.name-list li + li {
+    border-top: 1px solid var(--app-border);
+}
+
+.name-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    color: var(--app-text) !important;
+    text-decoration: none;
+}
+
+.name-row:hover {
+    background: var(--app-surface-3);
+}
+
+.name-row .entity-copy {
+    flex: 1;
+}
+
+.name-count {
+    color: var(--app-muted);
+    font-size: 12px;
 }
 
 .results {

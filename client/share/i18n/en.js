@@ -1355,6 +1355,22 @@ export default {
     "Больше похожих": "More like this",
     "Уже читал(а)": "Already read",
     "Не учитывать во вкусах": "Don't use for my taste",
+
+    //--- поиск: вкладки и подготовка индекса
+    "Библиотека обновляется": "The library is updating",
+    "Сервер готовит базу книг": "The server is preparing the book database",
+    "Сервер читает INPX и строит базу для поиска. Приложение откроется само, когда всё будет готово.": "The server is reading the INPX and building the search database. The app opens by itself when it's ready.",
+    "Поиск по каталогу выключен": "Catalog search is turned off",
+    "Индекс каталога отключён параметром INPX_CATALOG_SEARCH=false (catalogSearch в config.json). Книги по-прежнему доступны на страницах авторов и серий, в витринах и в OPDS.": "The catalog index is turned off with INPX_CATALOG_SEARCH=false (catalogSearch in config.json). Books are still available on author and series pages, in the showcases and over OPDS.",
+    "Готовлю поиск": "Preparing search",
+    "После обновления библиотеки сервер строит поисковый индекс: читает все книги и составляет словарь для поиска с опечатками. На большой библиотеке это занимает несколько минут, страница обновится сама.": "After the library is updated, the server builds a search index: it reads every book and builds a dictionary for typo-tolerant search. On a large library this takes a few minutes; the page updates by itself.",
+    "Готово {n}%": "{n}% done",
+    "Подготовка...": "Getting ready...",
+    "Что искать": "What to search",
+    "Авторы не найдены.": "No authors found.",
+    "Серии не найдены.": "No series found.",
+    "Все авторы ({n})": "All authors ({n})",
+    "Все серии ({n})": "All series ({n})",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

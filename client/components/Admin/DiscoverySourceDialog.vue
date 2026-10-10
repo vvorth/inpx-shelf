@@ -101,10 +101,10 @@
 
 <script>
 //-----------------------------------------------------------------------------
-import vueComponent from '../../vueComponent.js';
+import vueComponent from '../vueComponent.js';
 
-import Dialog from '../../share/Dialog.vue';
-import {t} from '../../../share/i18n';
+import Dialog from '../share/Dialog.vue';
+import {t} from '../../share/i18n';
 
 const componentOptions = {
     components: {

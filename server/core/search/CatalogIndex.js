@@ -704,6 +704,48 @@ class CatalogIndex {
         return result;
     }
 
+    //Авторы или серии для вкладок поиска: без запроса - по алфавиту, с запросом - по совпадению имени
+    listNames(request = {}) {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+
+        const isAuthor = (request.kind !== 'series');
+        const table = (isAuthor ? 'author' : 'series');
+        const limit = Math.max(1, Math.min(200, parseInt(request.limit, 10) || 50));
+        const offset = Math.max(0, parseInt(request.offset, 10) || 0);
+        const words = tokens(request.q);
+        const aliasOf = this.db.prepare('SELECT alias FROM author_alias WHERE author_id = ?');
+        const describe = (row) => {
+            const alias = (isAuthor ? (aliasOf.get(row.id) || {}).alias : '');
+            return (alias ? {name: row.name, books: row.books, alias} : {name: row.name, books: row.books});
+        };
+
+        if (!words.length) {
+            const total = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE books > 0`).get().n;
+            const rows = this.db.prepare(`SELECT id, name, books FROM ${table} WHERE books > 0 ORDER BY name_norm LIMIT ? OFFSET ?`).all(limit, offset);
+            return {items: rows.map(describe), total};
+        }
+
+        //все слова запроса должны встретиться в имени (у авторов - и в английском имени)
+        const kinds = (isAuthor ? ['author', 'alias'] : ['series']);
+        const kindIn = kinds.map(() => '?').join(',');
+        const long = words.filter(word => word.length >= 3);
+        const short = words.filter(word => word.length < 3);
+        let ids;
+        if (long.length) {
+            const where = short.map(() => ' AND n.name_norm LIKE ?').join('');
+            ids = this.db.prepare(`SELECT n.ref AS id, MAX(n.books) AS books FROM name_tri JOIN name n ON n.id = name_tri.rowid
+                WHERE name_tri MATCH ? AND n.kind IN (${kindIn})${where} GROUP BY n.ref ORDER BY books DESC LIMIT 5000`)
+                .all(long.map(word => `"${word}"`).join(' AND '), ...kinds, ...short.map(word => `%${word}%`));
+        } else {
+            ids = this.db.prepare(`SELECT ref AS id, MAX(books) AS books FROM name WHERE kind IN (${kindIn}) AND name_norm LIKE ? GROUP BY ref ORDER BY books DESC LIMIT 5000`)
+                .all(...kinds, `%${words[0]}%`);
+        }
+        const select = this.db.prepare(`SELECT id, name, books FROM ${table} WHERE id = ?`);
+        const rows = ids.slice(offset, offset + limit).map(row => select.get(row.id)).filter(row => row && row.books > 0);
+        return {items: rows.map(describe), total: ids.length};
+    }
+
     authorAliases(name = '') {
         if (!this.db)
             return [];

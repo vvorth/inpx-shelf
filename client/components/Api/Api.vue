@@ -1,26 +1,21 @@
 <template>
     <div>
         <q-dialog v-model="busyDialogVisible" no-route-dismiss no-esc-dismiss no-backdrop-dismiss>
-            <div class="q-pa-lg bg-white column" style="width: 400px">
-                <div style="font-weight: bold; font-size: 120%;">
-                    {{ mainMessage }}
+            <div class="busy-card" role="status" aria-live="polite">
+                <div class="busy-eyebrow">
+                    {{ $t('Библиотека обновляется') }}
                 </div>
-
-                <div v-show="jobMessage" class="q-mt-sm" style="width: 350px; white-space: nowrap; overflow: hidden">
-                    {{ jobMessage }}
+                <div class="busy-title">
+                    {{ mainMessage || $t('Сервер готовит базу книг') }}
                 </div>
-                <div v-show="jobMessage">
-                    <q-linear-progress stripe rounded size="30px" :value="progress" color="green">
-                        <div class="absolute-full flex flex-center">
-                            <div class="text-black bg-white" style="font-size: 10px; padding: 1px 4px 1px 4px; border-radius: 4px">
-                                {{ (progress*100).toFixed(2) }}%
-                            </div>
-                        </div>
-                    </q-linear-progress>
+                <div class="busy-hint">
+                    {{ $t('Сервер читает INPX и строит базу для поиска. Приложение откроется само, когда всё будет готово.') }}
                 </div>
-                <!--div class="q-ml-sm">
-                    {{ jsonMessage }}
-                </div-->                
+                <q-linear-progress rounded size="8px" :value="progress" :indeterminate="!progress" color="primary" />
+                <div class="busy-meta">
+                    <span class="busy-job">{{ jobMessage }}</span>
+                    <span v-if="progress" class="busy-percent">{{ (progress*100).toFixed(0) }}%</span>
+                </div>
             </div>
         </q-dialog>
     </div>
@@ -39,7 +34,6 @@ import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tMessage} from '../../share/i18n';
 
-const rotor = '|/-\\';
 const profileSessionStorageKey = 'inpx-web-profile-session';
 const profileLoginHistoryStorageKey = 'inpx-web-profile-login-history';
 const stepBound = [
@@ -287,7 +281,6 @@ class Api {
         this.jobMessage = '';
         this.busyDialogVisible = true;
         try {
-            let ri = 0;
             while (1) {// eslint-disable-line
                 const params = {action: 'get-worker-state', workerId: 'server_state'};
                 if (this.accessToken)
@@ -300,7 +293,7 @@ class Api {
                 const server = await wsc.message(await wsc.send(params));
 
                 if (server.state != 'normal') {
-                    this.mainMessage = `${tMessage(server.serverMessage)} ${rotor[ri]}`;
+                    this.mainMessage = tMessage(server.serverMessage);
                     if (server.job == 'load inpx') {
                         this.jobMessage = `${tMessage(server.jobMessage)} (${server.recsLoaded}): ${server.fileName}`;
                     } else {
@@ -321,7 +314,6 @@ class Api {
                 }
 
                 await utils.sleep(300);
-                ri = (ri < rotor.length - 1 ? ri + 1 : 0);
             }
         } finally {
             this.busyDialogVisible = false;
@@ -539,6 +531,10 @@ class Api {
 
     async adminAuthorNamesUpdate() {
         return await this.request({action: 'admin-author-names-update'}, 30);
+    }
+
+    async catalogNames(kind, q, offset = 0, limit = 50) {
+        return await this.request({action: 'catalog-names', kind, q, offset, limit}, 30);
     }
 
     async catalogSuggest(q) {
@@ -886,4 +882,51 @@ export default vueComponent(Api);
 </script>
 
 <style scoped>
+.busy-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(440px, 92vw);
+    padding: 22px 24px;
+    border-radius: 10px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    box-shadow: var(--app-shadow);
+}
+
+.busy-eyebrow {
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.busy-title {
+    font-family: var(--app-font-serif);
+    font-size: 19px;
+    font-weight: 600;
+}
+
+.busy-hint {
+    color: var(--app-muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.busy-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--app-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.busy-job {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 </style>
