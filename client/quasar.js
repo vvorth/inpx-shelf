@@ -3,7 +3,7 @@ import {
     Quasar, QLinearProgress, QInput, QBtn, QBtnToggle, QIcon, QTabs, QTab,
     QItem, QItemSection, QItemLabel, QTooltip, QCheckbox, QToggle, QSelect, QPopupProxy,
     QDate, QDialog, QTree, QOptionGroup, QKnob, QCard, QCardSection, QCardActions,
-    QChip, QSpace, QSpinner, Ripple, ClosePopup, Dark, Notify,
+    QChip, QSpace, QSpinner, QMenu, Ripple, ClosePopup, Dark, Notify,
 } from 'quasar';
 import lang from 'quasar/lang/ru';
 import langEn from 'quasar/lang/en-US';
@@ -14,7 +14,7 @@ const components = {
     QLinearProgress, QInput, QBtn, QBtnToggle, QIcon, QTabs, QTab,
     QItem, QItemSection, QItemLabel, QTooltip, QCheckbox, QToggle, QSelect,
     QPopupProxy, QDate, QDialog, QTree, QOptionGroup, QKnob,
-    QCard, QCardSection, QCardActions, QChip, QSpace, QSpinner,
+    QCard, QCardSection, QCardActions, QChip, QSpace, QSpinner, QMenu,
 };
 
 export default {

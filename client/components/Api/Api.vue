@@ -87,6 +87,7 @@ class Api {
     currentUserId = '';
     profileAccessToken = '';
     profileLoginPromise = null;
+    loginPageRequest = null;
 
     created() {
         this.commit = this.$store.commit;
@@ -210,9 +211,11 @@ class Api {
                 return;
             }
             const selectedUserId = String(this.settings.currentUserId || this.currentUserId || '').trim();
+            //Без выбранного профиля - гость (анонимный профиль), если он есть
             const preferredProfile = Array.isArray(config.userProfiles)
                 ? (
-                    config.userProfiles.find((profile) => profile && !profile.anonymousProfile && !profile.isAdmin)
+                    config.userProfiles.find((profile) => profile && profile.anonymousProfile)
+                    || config.userProfiles.find((profile) => profile && !profile.anonymousProfile && !profile.isAdmin)
                     || config.userProfiles.find((profile) => profile && !profile.anonymousProfile)
                     || null
                 )
@@ -708,7 +711,106 @@ class Api {
         await this.request({action: 'test'});
     }
 
+    //Вход в профиль: в читалке - диалогом поверх книги, в остальном приложении - страницей /login.
     async showProfileLoginDialog(prefillLogin = '', opts = {}) {
+        const route = this.$router.currentRoute.value || {};
+        if (route.path === '/reader' || opts.dialog === true)
+            return await this.showProfileLoginPrompt(prefillLogin, opts);
+
+        return await this.requestLoginPage(prefillLogin, opts);
+    }
+
+    requestLoginPage(prefillLogin = '', opts = {}) {
+        if (!this.loginPageRequest) {
+            let resolve, reject;
+            const promise = new Promise((res, rej) => {
+                resolve = res;
+                reject = rej;
+            });
+            this.loginPageRequest = {promise, resolve, reject, required: opts.required === true};
+        }
+
+        const route = this.$router.currentRoute.value || {};
+        if (route.path !== '/login') {
+            const query = {redirect: route.fullPath || '/'};
+            if (prefillLogin)
+                query.login = prefillLogin;
+            this.$router.push({path: '/login', query});
+        }
+
+        return this.loginPageRequest.promise;
+    }
+
+    get loginRequired() {
+        return !!(this.$store.state.config.profileLoginRequired && !this.$store.state.config.profileAuthorized);
+    }
+
+    cancelLoginPage() {
+        const request = this.loginPageRequest;
+        if (!request || request.required)
+            return;
+
+        this.loginPageRequest = null;
+        request.reject(new Error(t('Вход в профиль отменён')));
+    }
+
+    async completeProfileLogin(result) {
+        this.commit('setSettings', {
+            currentUserId: result.userId,
+            profileAccessToken: result.profileAccessToken || '',
+        });
+        this.currentUserId = result.userId;
+        this.profileAccessToken = result.profileAccessToken || '';
+        this.rememberStoredProfileLogin(result.userId);
+        this.writeStoredProfileSession(result.userId, result.profileAccessToken || '');
+        await this.updateConfig();
+
+        const request = this.loginPageRequest;
+        this.loginPageRequest = null;
+        if (request)
+            request.resolve(result);
+
+        return result;
+    }
+
+    //Профиль без пароля или гость: выбирается без входа.
+    async selectOpenProfile(userId = '') {
+        if (this.$store.state.config.profileAuthorized) {
+            try {
+                await this.logoutUserProfile();
+            } catch (e) {
+                // Ignore stale profile session cleanup errors while switching profiles.
+            }
+        }
+
+        this.commit('setSettings', {currentUserId: String(userId || ''), profileAccessToken: ''});
+        this.currentUserId = String(userId || '');
+        this.profileAccessToken = '';
+        this.writeStoredProfileSession(this.currentUserId, '');
+        await this.updateConfig();
+
+        const request = this.loginPageRequest;
+        this.loginPageRequest = null;
+        if (request)
+            request.resolve({userId: this.currentUserId});
+    }
+
+    async signOutProfile() {
+        try {
+            await this.logoutUserProfile();
+        } catch (e) {
+            // Ignore stale profile session cleanup errors during sign out.
+        }
+
+        const guest = (this.$store.state.config.userProfiles || []).find(profile => profile && profile.anonymousProfile);
+        this.commit('setSettings', {currentUserId: (guest ? guest.id : ''), profileAccessToken: ''});
+        this.currentUserId = (guest ? guest.id : '');
+        this.profileAccessToken = '';
+        this.writeStoredProfileSession('', '');
+        await this.updateConfig();
+    }
+
+    async showProfileLoginPrompt(prefillLogin = '', opts = {}) {
         const config = this.$store.state.config || {};
         const selectedUserId = String(this.settings.currentUserId || this.currentUserId || '').trim();
         const selectedProfile = Array.isArray(config.userProfiles)
@@ -743,16 +845,7 @@ class Api {
                 await this.$root.stdDialog.alert(error.message, t('Ошибка входа'));
             }
         }
-        this.commit('setSettings', {
-            currentUserId: result.userId,
-            profileAccessToken: result.profileAccessToken || '',
-        });
-        this.currentUserId = result.userId;
-        this.profileAccessToken = result.profileAccessToken || '';
-        this.rememberStoredProfileLogin(result.userId);
-        this.writeStoredProfileSession(result.userId, result.profileAccessToken || '');
-        await this.updateConfig();
-        return result;
+        return await this.completeProfileLogin(result);
     }
 }
 

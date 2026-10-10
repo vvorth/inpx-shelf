@@ -1,734 +1,506 @@
 <template>
-    <Dialog ref="dialog" v-model="dialogVisible">
-        <template #header>
-            <div class="row items-center" style="font-size: 110%">
-                <q-icon class="q-mr-sm text-green" name="la la-cog" size="28px"></q-icon>
-                {{ $t('Настройки') }}
-            </div>
-        </template>
-
-        <div class="q-mx-md column settings-dialog-body" style="min-width: 300px; font-size: 120%;">
-            <div class="row items-center q-ml-sm q-mb-sm">
-                <div class="q-mr-sm">
-                    {{ $t('Язык интерфейса') }}
+    <div class="page admin-page">
+        <div class="page-body">
+            <header class="page-head">
+                <div>
+                    <div class="page-eyebrow"><q-icon name="la la-shield-alt" size="16px" />{{ $t('Администрирование') }}</div>
+                    <h1 class="page-title">{{ sectionLabel }}</h1>
                 </div>
-                <q-select
-                    v-model="uiLang"
-                    :options="uiLangSelectOptions"
-                    class="bg-white"
-                    dropdown-icon="la la-angle-down la-sm"
-                    outlined
-                    dense
-                    emit-value
-                    map-options
-                />
-            </div>
-
-            <div class="row items-center q-ml-sm">
-                <div class="q-mr-sm">
-                    {{ $t('Результатов на странице') }}
+                <div v-if="canEditExternalDiscovery && section === 'overview'" class="admin-toolbar">
+                    <q-btn outline color="primary" dense no-caps icon="la la-sync" :loading="adminLoading" @click="loadAdminPanel">
+                        {{ adminUi.refresh }}
+                    </q-btn>
+                    <q-btn outline color="primary" dense no-caps icon="la la-broom" :loading="adminCleanLoading" @click="cleanAdminCache('all')">
+                        {{ $t('Очистить оба кэша') }}
+                    </q-btn>
+                    <q-btn outline color="negative" dense no-caps icon="la la-database" :loading="adminReindexLoading" :disable="adminIndexBusy" @click="reindexAdmin">
+                        {{ adminUi.reindex }}
+                    </q-btn>
                 </div>
-                <q-select
-                    v-model="limit"
-                    :options="limitOptions"
-                    class="bg-white"
-                    dropdown-icon="la la-angle-down la-sm"
-                    outlined
-                    dense
-                    emit-value
-                    map-options
-                />
+            </header>
+
+            <div v-if="!canEditExternalDiscovery" class="card">
+                <div>{{ $t('Этот раздел доступен только администратору.') }}</div>
             </div>
 
-            <q-checkbox v-show="config.latestVersion" v-model="showNewReleaseAvailable" size="36px" :label="$t('Уведомлять о выходе новой версии')" />
-            <q-checkbox v-model="downloadAsZip" size="36px" :label="$t('Скачивать книги в виде zip-архива')" />
-            <q-checkbox v-model="showCounts" size="36px" :label="$t('Показывать количество')" />
-            <q-checkbox v-model="showRates" size="36px" :label="$t('Показывать оценки')" />
-            <q-checkbox v-model="showInfo" size="36px" :label="$t('Показывать кнопку «Инфо»')" />
-            <q-checkbox v-model="showGenres" size="36px" :label="$t('Показывать жанры')" />
-            <div class="settings-card-view row items-center q-ml-sm q-my-xs">
-                <div class="q-mr-sm settings-card-view-label">
-                    {{ $t('Вид карточек') }}
-                </div>
-                <q-btn-toggle
-                    v-model="bookCardView"
-                    class="settings-card-view-toggle"
-                    toggle-color="primary"
-                    :options="bookCardViewOptions"
-                    push
-                    no-caps
-                    rounded
-                />
-            </div>
-            <q-checkbox v-model="showDates" size="36px" :label="$t('Показывать даты поступления')" />
-            <q-checkbox v-model="showDeleted" size="36px" :label="$t('Показывать удалённые')" />
-            <q-checkbox v-model="abCacheEnabled" size="36px" :label="$t('Кешировать запросы')" />
-            <q-checkbox v-model="darkTheme" size="36px" :label="$t('Ночная тема')" />
+            <div v-else class="section-layout">
+                <nav class="section-nav" :aria-label="$t('Разделы администрирования')">
+                    <router-link
+                        v-for="item in sections"
+                        :key="item.id"
+                        class="section-nav-item"
+                        :class="{'is-active': item.id === section}"
+                        :to="`/admin/${item.id}`"
+                    >
+                        <q-icon :name="item.icon" size="18px" />{{ item.label }}
+                    </router-link>
+                    <div class="section-nav-sep" />
+                    <router-link class="section-nav-item" to="/">
+                        <q-icon name="la la-arrow-left" size="18px" />{{ $t('В библиотеку') }}
+                    </router-link>
+                </nav>
 
-            <div v-if="discoveryEnabled" class="q-mt-sm q-ml-sm text-weight-medium" style="font-size: 92%;">
-                {{ $t('Витрины') }}
-            </div>
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryNewest" size="36px" :label="$t('Показывать вкладку «Новинки»')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryPopular" size="36px" :label="$t('Показывать вкладку «Популярное»')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryContinueReading" size="36px" :label="$t('Показывать полку «Продолжить чтение»')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryFromLists" size="36px" :label="$t('Показывать полку «Из ваших списков»')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryUnfinishedSeries" size="36px" :label="$t('Показывать полку «Незаконченные серии»')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoverySimilar" size="36px" :label="$t('Показывать полку «Похоже на то, что вы читали»')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="showDiscoveryUnreadOnly" size="36px" :label="$t('Во вкладке «Для вас» показывать только непрочитанное')" />
-            <q-checkbox v-if="discoveryEnabled" v-model="compactDiscoveryCards" size="36px" :label="$t('Использовать компактные карточки в витринах')" />
-            <q-checkbox v-if="effectiveExternalDiscoveryAvailable" v-model="showDiscoveryExternal" size="36px" :label="$t('Показывать вкладку внешнего источника')" />
-
-            <div v-if="discoveryEnabled" class="row items-center q-ml-sm q-mt-sm">
-                <div class="q-mr-sm">{{ $t('Лимит «Новинки»') }}</div>
-                <q-select
-                    v-model="discoveryNewestLimit"
-                    :options="discoveryLimitOptions"
-                    class="bg-white"
-                    dropdown-icon="la la-angle-down la-sm"
-                    outlined
-                    dense
-                    emit-value
-                    map-options
-                />
-            </div>
-
-            <div v-if="discoveryEnabled" class="row items-center q-ml-sm q-mt-sm">
-                <div class="q-mr-sm">{{ $t('Лимит «Популярное»') }}</div>
-                <q-select
-                    v-model="discoveryPopularLimit"
-                    :options="discoveryLimitOptions"
-                    class="bg-white"
-                    dropdown-icon="la la-angle-down la-sm"
-                    outlined
-                    dense
-                    emit-value
-                    map-options
-                />
-            </div>
-
-            <div v-if="discoveryEnabled && canEditExternalDiscovery" class="row items-center q-ml-sm q-mt-sm settings-inline-row">
-                <div class="q-mr-sm settings-inline-label">{{ $t('Внешний источник') }}</div>
-                <div class="settings-inline-summary text-grey-8">
-                    {{ externalDiscoverySummary }}
-                </div>
-                <q-btn
-                    class="q-ml-sm"
-                    color="primary"
-                    flat
-                    dense
-                    no-caps
-                    icon="la la-sliders-h"
-                    @click="discoverySourceDialogVisible = true"
-                >
-                    {{ $t('Управлять') }}
-                </q-btn>
-            </div>
-
-            <div v-if="effectiveExternalDiscoveryAvailable && !canEditExternalDiscovery" class="q-ml-sm q-mt-sm text-grey-7" style="font-size: 85%;">
-                {{ $t('Внешний источник настраивает администратор профиля.') }}
-            </div>
-            <div v-if="canEditExternalDiscovery" class="admin-mail-box admin-collapse-box">
-                <button class="admin-collapse-head" type="button" @click="backupExpanded = !backupExpanded">
-                    <div class="admin-collapse-copy">
-                        <div class="admin-mail-title">{{ backupUi.title }}</div>
-                        <div class="admin-mail-subtitle">{{ backupUi.subtitle }}</div>
-                    </div>
-                    <q-icon class="admin-collapse-icon" :name="backupExpanded ? 'la la-angle-up' : 'la la-angle-down'" size="20px" />
-                </button>
-
-                <div v-show="backupExpanded" class="admin-collapse-body">
-                    <div class="admin-backup-note">
-                        <div>{{ backupUi.fullBackupInfo }}</div>
-                        <div>{{ backupUi.settingsBackupInfo }}</div>
-                        <div>{{ backupUi.restoreNote }}</div>
-                    </div>
-                    <div class="admin-backup-actions">
-                        <q-btn color="primary" dense no-caps icon="la la-download" :loading="backupLoading" @click="createBackup">
-                            {{ backupUi.backup }}
-                        </q-btn>
-                        <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="backupImportLoading" @click="openBackupImport">
-                            {{ backupUi.backupImport }}
-                        </q-btn>
-                        <q-btn outline color="primary" dense no-caps icon="la la-file-export" :loading="settingsExportLoading" @click="exportSettings">
-                            {{ backupUi.settings }}
-                        </q-btn>
-                        <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="settingsImportLoading" @click="openSettingsImport">
-                            {{ backupUi.settingsImport }}
-                        </q-btn>
-                        <input
-                            ref="settingsImportInput"
-                            type="file"
-                            accept="application/json,.json"
-                            style="display: none"
-                            @change="onSettingsImportSelected"
-                        />
-                        <input
-                            ref="backupImportInput"
-                            type="file"
-                            accept="application/zip,.zip"
-                            style="display: none"
-                            @change="onBackupImportSelected"
-                        />
+                <div class="section-content">
+                <div v-if="adminIndexStatusVisible" class="admin-index-status" :class="{'admin-index-status--busy': adminIndexBusy}">
+                    <q-spinner v-if="adminIndexBusy" color="primary" size="22px" />
+                    <q-icon v-else name="la la-check-circle" size="22px" />
+                    <div class="admin-index-status-copy">
+                        <div class="admin-index-status-title">{{ adminIndexStatusTitle }}</div>
+                        <div class="admin-index-status-text">{{ adminIndexStatusText }}</div>
+                        <q-linear-progress v-if="adminIndexBusy" rounded size="6px" :value="adminIndexProgress" color="primary" />
                     </div>
                 </div>
-            </div>
 
-            <div v-if="canEditExternalDiscovery" class="admin-mail-box admin-collapse-box">
-                <button class="admin-collapse-head" type="button" @click="toggleAdminExpanded">
-                    <div class="admin-collapse-copy">
-                        <div class="admin-mail-title">{{ adminUi.title }}</div>
-                        <div class="admin-mail-subtitle">{{ adminUi.subtitle }}</div>
-                    </div>
-                    <q-icon class="admin-collapse-icon" :name="adminExpanded ? 'la la-angle-up' : 'la la-angle-down'" size="20px" />
-                </button>
-
-                <div v-show="adminExpanded" class="admin-collapse-body">
-                    <div class="admin-toolbar">
-                        <q-btn outline color="primary" dense no-caps icon="la la-sync" :loading="adminLoading" @click="loadAdminPanel">
-                            {{ adminUi.refresh }}
-                        </q-btn>
-                        <q-btn outline color="primary" dense no-caps icon="la la-broom" :loading="adminCleanLoading" @click="cleanAdminCache('all')">
-                            {{ $t('Очистить оба кэша') }}
-                        </q-btn>
-                        <q-btn outline color="negative" dense no-caps icon="la la-database" :loading="adminReindexLoading" :disable="adminIndexBusy" @click="reindexAdmin">
-                            {{ adminUi.reindex }}
-                        </q-btn>
-                    </div>
-
-                    <div v-if="adminIndexStatusVisible" class="admin-index-status" :class="{'admin-index-status--busy': adminIndexBusy}">
-                        <q-spinner v-if="adminIndexBusy" color="primary" size="22px" />
-                        <q-icon v-else name="la la-check-circle" size="22px" />
-                        <div class="admin-index-status-copy">
-                            <div class="admin-index-status-title">{{ adminIndexStatusTitle }}</div>
-                            <div class="admin-index-status-text">{{ adminIndexStatusText }}</div>
-                            <q-linear-progress v-if="adminIndexBusy" rounded size="6px" :value="adminIndexProgress" color="primary" />
+                    <template v-if="section === 'overview'">
+                <div class="admin-dashboard-sections">
+                    <section class="admin-dashboard-section">
+                        <div class="admin-dashboard-section-title">{{ $t('Библиотека') }}</div>
+                        <div class="admin-dashboard-grid">
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.books }}</div>
+                                <div class="admin-stat-value">{{ adminStat('bookCountAll') }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.authors }}</div>
+                                <div class="admin-stat-value">{{ adminStat('authorCountAll') }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.series }}</div>
+                                <div class="admin-stat-value">{{ adminStat('seriesCount') }}</div>
+                            </div>
                         </div>
-                    </div>
+                    </section>
 
-                    <div class="admin-dashboard-sections">
-                        <section class="admin-dashboard-section">
-                            <div class="admin-dashboard-section-title">{{ $t('Библиотека') }}</div>
-                            <div class="admin-dashboard-grid">
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.books }}</div>
-                                    <div class="admin-stat-value">{{ adminStat('bookCountAll') }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.authors }}</div>
-                                    <div class="admin-stat-value">{{ adminStat('authorCountAll') }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.series }}</div>
-                                    <div class="admin-stat-value">{{ adminStat('seriesCount') }}</div>
-                                </div>
+                    <section class="admin-dashboard-section">
+                        <div class="admin-dashboard-section-title">{{ $t('Процесс') }}</div>
+                        <div class="admin-dashboard-grid">
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.uptime }}</div>
+                                <div class="admin-stat-value">{{ adminUptime }}</div>
                             </div>
-                        </section>
-
-                        <section class="admin-dashboard-section">
-                            <div class="admin-dashboard-section-title">{{ $t('Процесс') }}</div>
-                            <div class="admin-dashboard-grid">
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.uptime }}</div>
-                                    <div class="admin-stat-value">{{ adminUptime }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.memory }}</div>
-                                    <div class="admin-stat-value">{{ formatBytes(adminDashboard.memory && adminDashboard.memory.rss) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.cpu }}</div>
-                                    <div class="admin-stat-value">{{ adminCpuText }}</div>
-                                    <div class="admin-stat-hint">{{ adminCpuHint }}</div>
-                                </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.memory }}</div>
+                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.memory && adminDashboard.memory.rss) }}</div>
                             </div>
-                        </section>
-
-                        <section class="admin-dashboard-section admin-dashboard-section--wide">
-                            <div class="admin-dashboard-section-title">{{ adminUi.requests }}</div>
-                            <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.actionsTotal }}</div>
-                                    <div class="admin-stat-value">{{ adminRuntime.totalActions || 0 }}</div>
-                                    <div class="admin-stat-hint">{{ adminRuntimeHint }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.eventLoopLag }}</div>
-                                    <div class="admin-stat-value">{{ runtimeLagText }}</div>
-                                    <div class="admin-stat-hint">{{ runtimeLagHint }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.lastSlowAction }}</div>
-                                    <div class="admin-stat-value admin-stat-value--small">{{ runtimeLastSlowActionText }}</div>
-                                    <div class="admin-stat-hint">{{ runtimeLastSlowActionHint }}</div>
-                                </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.cpu }}</div>
+                                <div class="admin-stat-value">{{ adminCpuText }}</div>
+                                <div class="admin-stat-hint">{{ adminCpuHint }}</div>
                             </div>
-                            <div v-if="runtimeSlowestActions.length" class="admin-runtime-list">
-                                <div v-for="item in runtimeSlowestActions" :key="item.action" class="admin-runtime-row">
-                                    <span class="admin-runtime-action">{{ item.action }}</span>
-                                    <span class="admin-runtime-value">{{ actionDurationText(item) }}</span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="admin-dashboard-section admin-dashboard-section--wide">
-                            <div class="admin-dashboard-section-title">{{ $t('Качество рекомендаций') }}</div>
-                            <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('Показы') }}</div>
-                                    <div class="admin-stat-value">{{ discoveryMetric('impression') }}</div>
-                                    <div class="admin-stat-hint">{{ $t('{n} профилей с событиями', {n: adminDiscovery.profiles || 0}) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('CTR открытий') }}</div>
-                                    <div class="admin-stat-value">{{ discoveryRateText('ctr') }}</div>
-                                    <div class="admin-stat-hint">{{ $t('{n} открытий', {n: discoveryMetric('open')}) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('Начали читать') }}</div>
-                                    <div class="admin-stat-value">{{ discoveryRateText('start') }}</div>
-                                    <div class="admin-stat-hint">{{ $t('{n} стартов', {n: discoveryMetric('start')}) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('Сохранили') }}</div>
-                                    <div class="admin-stat-value">{{ discoveryRateText('save') }}</div>
-                                    <div class="admin-stat-hint">{{ $t('{n} сохранений', {n: discoveryMetric('save')}) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('Негативные реакции') }}</div>
-                                    <div class="admin-stat-value">{{ discoveryRateText('negativeFeedback') }}</div>
-                                    <div class="admin-stat-hint">{{ $t('{n} реакций всего', {n: discoveryMetric('feedback')}) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('Настроили вкусы') }}</div>
-                                    <div class="admin-stat-value">{{ adminDiscovery.configuredProfiles || 0 }}</div>
-                                    <div class="admin-stat-hint">{{ $t('Жанры, авторы или языки') }}</div>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="admin-dashboard-section">
-                            <div class="admin-dashboard-section-title">{{ $t('Хранилище') }}</div>
-                            <div class="admin-dashboard-grid admin-dashboard-grid--storage">
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.dbSize }}</div>
-                                    <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.db && adminDashboard.sizes.db.size) }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.bookCache }}</div>
-                                    <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.bookCache && adminDashboard.sizes.bookCache.size) }}</div>
-                                    <div class="admin-stat-hint">{{ adminCacheLimitText('book') }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ adminUi.coverCache }}</div>
-                                    <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.coverCache && adminDashboard.sizes.coverCache.size) }}</div>
-                                    <div class="admin-stat-hint">{{ adminCacheLimitText('cover') }}</div>
-                                </div>
-                                <div class="admin-stat">
-                                    <div class="admin-stat-label">{{ $t('Ротация кэша') }}</div>
-                                    <div class="admin-stat-value">{{ adminCacheRotationValue() }}</div>
-                                    <div class="admin-stat-hint">{{ adminCacheRotationHint() }}</div>
-                                </div>
-                            </div>
-                        </section>
-                    </div>
-
-                    <div class="admin-subsection">
-                        <div class="admin-subsection-head">
-                            <div>
-                                <div class="admin-mail-title">{{ $t('Ротация кэша') }}</div>
-                                <div class="admin-mail-subtitle">{{ $t('Лимиты задаются в мегабайтах. Плановая ротация запускается в выбранное время по локальным часам сервера.') }}</div>
-                            </div>
-                            <q-btn outline color="primary" dense no-caps icon="la la-save" :loading="adminCacheSaveLoading" @click="saveAdminCacheSettings">
-                                {{ $t('Сохранить') }}
-                            </q-btn>
                         </div>
-                        <div class="admin-cache-settings-grid">
-                            <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('Книжный кэш, MB')" />
-                            <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('Кэш обложек, MB')" />
-                            <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('Плановая ротация')" />
-                            <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('Периодичность')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                            <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('День недели')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                            <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('Число месяца')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                            <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('Время запуска')" :hint="$t('По времени сервера')" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
-                            <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('Цель после чистки, %')" />
-                        </div>
-                        <div class="admin-cache-actions">
-                            <q-btn outline color="primary" dense no-caps icon="la la-book" :loading="adminCleanBookCacheLoading" @click="cleanAdminCache('book')">
-                                {{ $t('Очистить книжный кэш') }}
-                            </q-btn>
-                            <q-btn outline color="primary" dense no-caps icon="la la-image" :loading="adminCleanCoverCacheLoading" @click="cleanAdminCache('cover')">
-                                {{ $t('Очистить кэш обложек') }}
-                            </q-btn>
-                        </div>
-                    </div>
+                    </section>
 
-                    <div class="admin-subsection">
-                        <div class="admin-subsection-head">
-                            <div>
-                                <div class="admin-mail-title">{{ adminUi.coverDiagnostics }}</div>
-                                <div class="admin-mail-subtitle">{{ adminUi.coverDiagnosticsHint }}</div>
+                    <section class="admin-dashboard-section admin-dashboard-section--wide">
+                        <div class="admin-dashboard-section-title">{{ adminUi.requests }}</div>
+                        <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.actionsTotal }}</div>
+                                <div class="admin-stat-value">{{ adminRuntime.totalActions || 0 }}</div>
+                                <div class="admin-stat-hint">{{ adminRuntimeHint }}</div>
                             </div>
-                            <q-btn flat dense no-caps color="negative" icon="la la-broom" :loading="adminBrokenCoversLoading" @click="cleanBrokenCovers">
-                                {{ adminUi.cleanBrokenCovers }}
-                            </q-btn>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.eventLoopLag }}</div>
+                                <div class="admin-stat-value">{{ runtimeLagText }}</div>
+                                <div class="admin-stat-hint">{{ runtimeLagHint }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.lastSlowAction }}</div>
+                                <div class="admin-stat-value admin-stat-value--small">{{ runtimeLastSlowActionText }}</div>
+                                <div class="admin-stat-hint">{{ runtimeLastSlowActionHint }}</div>
+                            </div>
                         </div>
-                        <div class="admin-dashboard-grid admin-dashboard-grid--compact">
+                        <div v-if="runtimeSlowestActions.length" class="admin-runtime-list">
+                            <div v-for="item in runtimeSlowestActions" :key="item.action" class="admin-runtime-row">
+                                <span class="admin-runtime-action">{{ item.action }}</span>
+                                <span class="admin-runtime-value">{{ actionDurationText(item) }}</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="admin-dashboard-section admin-dashboard-section--wide">
+                        <div class="admin-dashboard-section-title">{{ $t('Качество рекомендаций') }}</div>
+                        <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ $t('Показы') }}</div>
+                                <div class="admin-stat-value">{{ discoveryMetric('impression') }}</div>
+                                <div class="admin-stat-hint">{{ $t('{n} профилей с событиями', {n: adminDiscovery.profiles || 0}) }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ $t('CTR открытий') }}</div>
+                                <div class="admin-stat-value">{{ discoveryRateText('ctr') }}</div>
+                                <div class="admin-stat-hint">{{ $t('{n} открытий', {n: discoveryMetric('open')}) }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ $t('Начали читать') }}</div>
+                                <div class="admin-stat-value">{{ discoveryRateText('start') }}</div>
+                                <div class="admin-stat-hint">{{ $t('{n} стартов', {n: discoveryMetric('start')}) }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ $t('Сохранили') }}</div>
+                                <div class="admin-stat-value">{{ discoveryRateText('save') }}</div>
+                                <div class="admin-stat-hint">{{ $t('{n} сохранений', {n: discoveryMetric('save')}) }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ $t('Негативные реакции') }}</div>
+                                <div class="admin-stat-value">{{ discoveryRateText('negativeFeedback') }}</div>
+                                <div class="admin-stat-hint">{{ $t('{n} реакций всего', {n: discoveryMetric('feedback')}) }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ $t('Настроили вкусы') }}</div>
+                                <div class="admin-stat-value">{{ adminDiscovery.configuredProfiles || 0 }}</div>
+                                <div class="admin-stat-hint">{{ $t('Жанры, авторы или языки') }}</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="admin-dashboard-section">
+                        <div class="admin-dashboard-section-title">{{ $t('Хранилище') }}</div>
+                        <div class="admin-dashboard-grid admin-dashboard-grid--storage">
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.dbSize }}</div>
+                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.db && adminDashboard.sizes.db.size) }}</div>
+                            </div>
+                            <div class="admin-stat">
+                                <div class="admin-stat-label">{{ adminUi.bookCache }}</div>
+                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.bookCache && adminDashboard.sizes.bookCache.size) }}</div>
+                                <div class="admin-stat-hint">{{ adminCacheLimitText('book') }}</div>
+                            </div>
                             <div class="admin-stat">
                                 <div class="admin-stat-label">{{ adminUi.coverCache }}</div>
-                                <div class="admin-stat-value">{{ formatBytes(adminCoverStats.size) }}</div>
+                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.coverCache && adminDashboard.sizes.coverCache.size) }}</div>
+                                <div class="admin-stat-hint">{{ adminCacheLimitText('cover') }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.files }}</div>
-                                <div class="admin-stat-value">{{ adminCoverStats.files || 0 }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.limit }}</div>
-                                <div class="admin-stat-value">{{ formatBytes(adminCoverStats.limit) }}</div>
-                                <div class="admin-stat-hint">{{ adminCacheTargetText(adminCoverStats.targetSize) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.coverErrors }}</div>
-                                <div class="admin-stat-value">{{ adminCoverErrors.length }}</div>
+                                <div class="admin-stat-label">{{ $t('Ротация кэша') }}</div>
+                                <div class="admin-stat-value">{{ adminCacheRotationValue() }}</div>
+                                <div class="admin-stat-hint">{{ adminCacheRotationHint() }}</div>
                             </div>
                         </div>
-                        <div class="admin-cover-actions">
-                            <q-input v-model="adminCoverBookUid" outlined dense clearable :label="adminUi.coverBookUid" />
-                            <q-btn color="primary" dense no-caps icon="la la-sync" :loading="adminCoverRebuildLoading" @click="rebuildAdminCover">
-                                {{ adminUi.rebuildCover }}
-                            </q-btn>
-                        </div>
-                        <div v-if="adminCoverErrors.length" class="admin-event-list admin-event-list--compact">
-                            <div v-for="event in adminCoverErrors" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
-                                <div class="admin-event-meta">
-                                    {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
-                                </div>
-                                <div class="admin-event-message">{{ $tm(event.message) }}</div>
-                            </div>
-                        </div>
-                    </div>
+                    </section>
+                </div>
 
-                    <div class="admin-subsection">
-                        <div class="admin-subsection-head">
-                            <div class="admin-mail-title">{{ adminUi.tasks }}</div>
-                        </div>
-                        <div class="admin-task-list">
-                            <div v-for="task in adminTasks" :key="task.id" class="admin-task-row" :class="{'admin-task-row--active': task.active}">
-                                <div class="admin-task-main">
-                                    <div class="admin-task-title">{{ $tm(task.title) }}</div>
-                                    <div class="admin-task-message">{{ task.message ? $tm(task.message) : (task.state || adminUi.noTaskMessage) }}</div>
-                                    <q-linear-progress v-if="task.active" rounded size="6px" :value="taskProgress(task)" color="primary" />
-                                    <div v-if="task.lastError" class="admin-task-error">{{ task.lastError }}</div>
-                                </div>
-                                <q-btn flat dense no-caps :disable="true" icon="la la-ban">
-                                    {{ task.cancellable ? adminUi.cancel : adminUi.noCancel }}
-                                </q-btn>
-                            </div>
-                        </div>
+                <div class="admin-subsection">
+                    <div class="admin-subsection-head">
+                        <div class="admin-mail-title">{{ adminUi.tasks }}</div>
                     </div>
-
-                    <div class="admin-subsection">
-                        <div class="admin-subsection-head">
-                            <div class="admin-mail-title">{{ adminUi.sources }}</div>
-                            <q-btn flat dense no-caps color="primary" icon="la la-plus" @click="addAdminSource">
-                                {{ adminUi.addSource }}
+                    <div class="admin-task-list">
+                        <div v-for="task in adminTasks" :key="task.id" class="admin-task-row" :class="{'admin-task-row--active': task.active}">
+                            <div class="admin-task-main">
+                                <div class="admin-task-title">{{ $tm(task.title) }}</div>
+                                <div class="admin-task-message">{{ task.message ? $tm(task.message) : (task.state || adminUi.noTaskMessage) }}</div>
+                                <q-linear-progress v-if="task.active" rounded size="6px" :value="taskProgress(task)" color="primary" />
+                                <div v-if="task.lastError" class="admin-task-error">{{ task.lastError }}</div>
+                            </div>
+                            <q-btn flat dense no-caps :disable="true" icon="la la-ban">
+                                {{ task.cancellable ? adminUi.cancel : adminUi.noCancel }}
                             </q-btn>
-                        </div>
-                        <div class="admin-source-list">
-                            <div v-for="(source, index) in adminSources" :key="index" class="admin-source-row">
-                                <q-checkbox v-model="source.enabled" size="32px" />
-                                <q-input v-model="source.name" outlined dense :label="adminUi.sourceName" />
-                                <q-input v-model="source.inpx" outlined dense :label="adminUi.sourceInpx" />
-                                <q-input v-model="source.libDir" outlined dense :label="adminUi.sourceLibDir" />
-                                <q-btn flat dense round color="primary" icon="la la-search" :loading="source.diagnosticsLoading" @click="diagnoseAdminSource(index)">
-                                    <q-tooltip>{{ adminUi.checkSource }}</q-tooltip>
-                                </q-btn>
-                                <q-btn flat dense round color="negative" icon="la la-trash" @click="removeAdminSource(index)" />
-                                <div class="admin-source-diagnostics">
-                                    <span :class="source.inpxExists ? 'text-positive' : 'text-negative'">INPX</span>
-                                    <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ adminUi.folder }}</span>
-                                    <span>{{ adminUi.archives }}: {{ source.archiveCount || 0 }}{{ source.archiveCountTruncated ? '+' : '' }}</span>
-                                    <span>covers: {{ source.hasCovers ? 'ok' : '-' }}</span>
-                                    <span>etc: {{ source.hasEtc ? 'ok' : '-' }}</span>
-                                    <span>images: {{ source.hasImages ? 'ok' : '-' }}</span>
-                                    <span>bin: {{ source.hasBin ? 'ok' : '-' }}</span>
-                                    <span v-if="source.foundInpx && source.foundInpx.length">{{ adminUi.foundInpx }}: {{ source.foundInpx.length }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-if="adminSourcesChanged || adminSourcesReindexNeeded" class="admin-source-warning">
-                            <q-icon name="la la-exclamation-triangle" size="18px" />
-                            <span>{{ adminUi.sourcesNeedReindex }}</span>
-                        </div>
-                        <div class="admin-mail-actions">
-                            <q-btn color="primary" dense no-caps icon="la la-save" :loading="adminSourcesLoading" @click="saveAdminSources">
-                                {{ adminUi.saveSources }}
-                            </q-btn>
-                        </div>
-                    </div>
-
-                    <div class="admin-subsection">
-                        <div class="admin-subsection-head">
-                            <div class="admin-mail-title">{{ adminUi.events }}</div>
-                            <div class="admin-event-filters">
-                                <q-checkbox v-model="adminEventLogEnabled" size="32px" :label="adminUi.eventLogEnabled" @update:model-value="saveAdminEventLog" />
-                                <q-select v-model="adminEventLogSize" :options="adminEventLogSizeOptions" outlined dense emit-value map-options @update:model-value="saveAdminEventLog" />
-                                <q-select v-model="adminEventLevel" :options="adminEventLevelOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
-                                <q-select v-model="adminEventCategory" :options="adminEventCategoryOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
-                                <q-btn flat dense no-caps color="primary" icon="la la-bug" :loading="adminTestEventLoading" @click="addAdminTestEvent">
-                                    {{ adminUi.testEvent }}
-                                </q-btn>
-                            </div>
-                        </div>
-                        <div v-if="adminEventsLoading" class="admin-empty">{{ adminUi.eventsLoading }}</div>
-                        <div v-else-if="!adminEventLogEnabled" class="admin-empty">{{ adminUi.eventsDisabled }}</div>
-                        <div v-else-if="!adminEvents.length" class="admin-empty">{{ adminUi.noEvents }}</div>
-                        <div v-else class="admin-event-list">
-                            <div v-for="event in adminEvents" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
-                                <div class="admin-event-meta">
-                                    {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
-                                </div>
-                                <div class="admin-event-message">{{ $tm(event.message) }}</div>
-                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+                    </template>
 
-            <div v-if="canEditExternalDiscovery" class="admin-mail-box admin-collapse-box">
-                <button class="admin-collapse-head" type="button" @click="opdsExpanded = !opdsExpanded">
-                    <div class="admin-collapse-copy">
-                        <div class="admin-mail-title">{{ opdsUi.title }}</div>
-                        <div class="admin-mail-subtitle">{{ opdsUi.subtitle }}</div>
+                    <AdminUsers v-else-if="section === 'users'" />
+
+                    <template v-else-if="section === 'library'">
+                <div class="admin-subsection">
+                    <div class="admin-subsection-head">
+                        <div class="admin-mail-title">{{ adminUi.sources }}</div>
+                        <q-btn flat dense no-caps color="primary" icon="la la-plus" @click="addAdminSource">
+                            {{ adminUi.addSource }}
+                        </q-btn>
                     </div>
-                    <q-icon class="admin-collapse-icon" :name="opdsExpanded ? 'la la-angle-up' : 'la la-angle-down'" size="20px" />
-                </button>
-                <div v-show="opdsExpanded" class="admin-collapse-body">
+                    <div class="admin-source-list">
+                        <div v-for="(source, index) in adminSources" :key="index" class="admin-source-row">
+                            <q-checkbox v-model="source.enabled" size="32px" />
+                            <q-input v-model="source.name" outlined dense :label="adminUi.sourceName" />
+                            <q-input v-model="source.inpx" outlined dense :label="adminUi.sourceInpx" />
+                            <q-input v-model="source.libDir" outlined dense :label="adminUi.sourceLibDir" />
+                            <q-btn flat dense round color="primary" icon="la la-search" :loading="source.diagnosticsLoading" @click="diagnoseAdminSource(index)">
+                                <q-tooltip>{{ adminUi.checkSource }}</q-tooltip>
+                            </q-btn>
+                            <q-btn flat dense round color="negative" icon="la la-trash" @click="removeAdminSource(index)" />
+                            <div class="admin-source-diagnostics">
+                                <span :class="source.inpxExists ? 'text-positive' : 'text-negative'">INPX</span>
+                                <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ adminUi.folder }}</span>
+                                <span>{{ adminUi.archives }}: {{ source.archiveCount || 0 }}{{ source.archiveCountTruncated ? '+' : '' }}</span>
+                                <span>covers: {{ source.hasCovers ? 'ok' : '-' }}</span>
+                                <span>etc: {{ source.hasEtc ? 'ok' : '-' }}</span>
+                                <span>images: {{ source.hasImages ? 'ok' : '-' }}</span>
+                                <span>bin: {{ source.hasBin ? 'ok' : '-' }}</span>
+                                <span v-if="source.foundInpx && source.foundInpx.length">{{ adminUi.foundInpx }}: {{ source.foundInpx.length }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="adminSourcesChanged || adminSourcesReindexNeeded" class="admin-source-warning">
+                        <q-icon name="la la-exclamation-triangle" size="18px" />
+                        <span>{{ adminUi.sourcesNeedReindex }}</span>
+                    </div>
+                    <div class="admin-mail-actions">
+                        <q-btn color="primary" dense no-caps icon="la la-save" :loading="adminSourcesLoading" @click="saveAdminSources">
+                            {{ adminUi.saveSources }}
+                        </q-btn>
+                    </div>
+                </div>
+
+                        <section v-if="discoveryEnabled" class="card">
+                            <h2 class="card-title">{{ $t('Внешняя витрина') }}</h2>
+                            <div class="card-hint">{{ externalDiscoverySummary }}</div>
+                            <div class="card-actions">
+                                <q-btn outline color="primary" dense no-caps icon="la la-sliders-h" @click="discoverySourceDialogVisible = true">
+                                    {{ $t('Управлять') }}
+                                </q-btn>
+                            </div>
+                        </section>
+                    </template>
+
+                    <template v-else-if="section === 'integrations'">
+                        <section class="card">
+                            <h2 class="card-title">{{ mailUi.title }}</h2>
+                            <div class="card-hint">{{ $t('Telegram-бот и почта для отправки книг читателям. Получателей каждый читатель указывает в своём профиле.') }}</div>
+                <div class="admin-mail-section">
+                    <div class="admin-mail-section-head">
+                        <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="mailUi.telegramEnabled" />
+                        <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="telegramTestLoading" @click="testTelegram">
+                            {{ mailUi.test }}
+                        </q-btn>
+                    </div>
                     <div class="admin-mail-grid">
-                        <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="opdsUi.enabled" />
-                        <q-input v-model="opdsSettings.root" outlined dense clearable :label="opdsUi.root" />
-                        <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="opdsUi.lang" />
-                        <q-input v-model="opdsSettings.user" outlined dense clearable :label="opdsUi.user" />
-                        <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="opdsUi.password">
+                        <q-input v-model="integrations.telegramBotToken" outlined dense clearable :type="telegramTokenVisible ? 'text' : 'password'" :label="mailUi.telegramToken">
                             <template #append>
-                                <q-icon :name="opdsPasswordVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="opdsPasswordVisible = !opdsPasswordVisible" />
+                                <q-icon :name="telegramTokenVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="telegramTokenVisible = !telegramTokenVisible" />
                             </template>
                         </q-input>
+                        <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :label="mailUi.telegramCaption" />
                     </div>
-                    <div class="admin-mail-actions">
-                        <q-btn color="primary" dense no-caps icon="la la-save" :loading="opdsSaveLoading" @click="saveOpdsSettings">
-                            {{ opdsUi.save }}
+                </div>
+
+                <div class="admin-mail-section">
+                    <div class="admin-mail-section-head">
+                        <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :label="mailUi.smtpEnabled" />
+                        <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="smtpTestLoading" @click="testSmtp">
+                            {{ mailUi.test }}
+                        </q-btn>
+                    </div>
+                    <div class="admin-mail-grid">
+                        <q-input v-model="integrations.smtpHost" outlined dense clearable :label="mailUi.smtpHost" />
+                        <q-input v-model.number="integrations.smtpPort" outlined dense type="number" :label="mailUi.smtpPort" />
+                        <q-input v-model="integrations.smtpUser" outlined dense clearable :label="mailUi.smtpUser" />
+                        <q-input v-model="integrations.smtpPass" outlined dense clearable :type="smtpPassVisible ? 'text' : 'password'" :label="mailUi.smtpPass">
+                            <template #append>
+                                <q-icon :name="smtpPassVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="smtpPassVisible = !smtpPassVisible" />
+                            </template>
+                        </q-input>
+                        <q-input v-model="integrations.emailFrom" outlined dense clearable :label="mailUi.emailFrom" />
+                        <q-input v-model="integrations.emailTo" outlined dense clearable :label="mailUi.emailTo" />
+                        <q-checkbox v-model="integrations.smtpSecure" size="34px" :label="mailUi.smtpSecure" />
+                    </div>
+                </div>
+
+                <div class="admin-mail-actions">
+                    <q-btn color="primary" dense no-caps icon="la la-save" :loading="integrationSaveLoading" @click="saveIntegrations">
+                        {{ mailUi.save }}
+                    </q-btn>
+                </div>
+                        </section>
+
+                        <section class="card">
+                            <h2 class="card-title">{{ opdsUi.title }}</h2>
+                            <div class="card-hint">{{ opdsUi.subtitle }}</div>
+                <div class="admin-mail-grid">
+                    <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="opdsUi.enabled" />
+                    <q-input v-model="opdsSettings.root" outlined dense clearable :label="opdsUi.root" />
+                    <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="opdsUi.lang" />
+                    <q-input v-model="opdsSettings.user" outlined dense clearable :label="opdsUi.user" />
+                    <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="opdsUi.password">
+                        <template #append>
+                            <q-icon :name="opdsPasswordVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="opdsPasswordVisible = !opdsPasswordVisible" />
+                        </template>
+                    </q-input>
+                </div>
+                <div class="admin-mail-actions">
+                    <q-btn color="primary" dense no-caps icon="la la-save" :loading="opdsSaveLoading" @click="saveOpdsSettings">
+                        {{ opdsUi.save }}
+                    </q-btn>
+                </div>
+                        </section>
+                    </template>
+
+                    <template v-else-if="section === 'storage'">
+                <div class="admin-subsection">
+                    <div class="admin-subsection-head">
+                        <div>
+                            <div class="admin-mail-title">{{ $t('Ротация кэша') }}</div>
+                            <div class="admin-mail-subtitle">{{ $t('Лимиты задаются в мегабайтах. Плановая ротация запускается в выбранное время по локальным часам сервера.') }}</div>
+                        </div>
+                        <q-btn outline color="primary" dense no-caps icon="la la-save" :loading="adminCacheSaveLoading" @click="saveAdminCacheSettings">
+                            {{ $t('Сохранить') }}
+                        </q-btn>
+                    </div>
+                    <div class="admin-cache-settings-grid">
+                        <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('Книжный кэш, MB')" />
+                        <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('Кэш обложек, MB')" />
+                        <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('Плановая ротация')" />
+                        <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('Периодичность')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('День недели')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('Число месяца')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                        <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('Время запуска')" :hint="$t('По времени сервера')" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
+                        <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('Цель после чистки, %')" />
+                    </div>
+                    <div class="admin-cache-actions">
+                        <q-btn outline color="primary" dense no-caps icon="la la-book" :loading="adminCleanBookCacheLoading" @click="cleanAdminCache('book')">
+                            {{ $t('Очистить книжный кэш') }}
+                        </q-btn>
+                        <q-btn outline color="primary" dense no-caps icon="la la-image" :loading="adminCleanCoverCacheLoading" @click="cleanAdminCache('cover')">
+                            {{ $t('Очистить кэш обложек') }}
                         </q-btn>
                     </div>
                 </div>
-            </div>
 
-            <div v-if="canEditExternalDiscovery" class="admin-mail-box admin-collapse-box">
-                <button class="admin-collapse-head" type="button" @click="mailExpanded = !mailExpanded">
-                    <div class="admin-collapse-copy">
-                        <div class="admin-mail-title">{{ mailUi.title }}</div>
-                        <div class="admin-mail-subtitle">{{ mailUi.subtitle }}</div>
-                    </div>
-                    <q-icon class="admin-collapse-icon" :name="mailExpanded ? 'la la-angle-up' : 'la la-angle-down'" size="20px" />
-                </button>
-
-                <div v-show="mailExpanded" class="admin-collapse-body">
-                    <div class="admin-mail-section">
-                        <div class="admin-mail-section-head">
-                            <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="mailUi.telegramEnabled" />
-                            <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="telegramTestLoading" @click="testTelegram">
-                                {{ mailUi.test }}
-                            </q-btn>
+                <div class="admin-subsection">
+                    <div class="admin-subsection-head">
+                        <div>
+                            <div class="admin-mail-title">{{ adminUi.coverDiagnostics }}</div>
+                            <div class="admin-mail-subtitle">{{ adminUi.coverDiagnosticsHint }}</div>
                         </div>
-                        <div class="admin-mail-grid">
-                            <q-input v-model="integrations.telegramBotToken" outlined dense clearable :type="telegramTokenVisible ? 'text' : 'password'" :label="mailUi.telegramToken">
-                                <template #append>
-                                    <q-icon :name="telegramTokenVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="telegramTokenVisible = !telegramTokenVisible" />
-                                </template>
-                            </q-input>
-                            <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :label="mailUi.telegramCaption" />
-                        </div>
-                    </div>
-
-                    <div class="admin-mail-section">
-                        <div class="admin-mail-section-head">
-                            <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :label="mailUi.smtpEnabled" />
-                            <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="smtpTestLoading" @click="testSmtp">
-                                {{ mailUi.test }}
-                            </q-btn>
-                        </div>
-                        <div class="admin-mail-grid">
-                            <q-input v-model="integrations.smtpHost" outlined dense clearable :label="mailUi.smtpHost" />
-                            <q-input v-model.number="integrations.smtpPort" outlined dense type="number" :label="mailUi.smtpPort" />
-                            <q-input v-model="integrations.smtpUser" outlined dense clearable :label="mailUi.smtpUser" />
-                            <q-input v-model="integrations.smtpPass" outlined dense clearable :type="smtpPassVisible ? 'text' : 'password'" :label="mailUi.smtpPass">
-                                <template #append>
-                                    <q-icon :name="smtpPassVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="smtpPassVisible = !smtpPassVisible" />
-                                </template>
-                            </q-input>
-                            <q-input v-model="integrations.emailFrom" outlined dense clearable :label="mailUi.emailFrom" />
-                            <q-input v-model="integrations.emailTo" outlined dense clearable :label="mailUi.emailTo" />
-                            <q-checkbox v-model="integrations.smtpSecure" size="34px" :label="mailUi.smtpSecure" />
-                        </div>
-                    </div>
-
-                    <div class="admin-mail-actions">
-                        <q-btn color="primary" dense no-caps icon="la la-save" :loading="integrationSaveLoading" @click="saveIntegrations">
-                            {{ mailUi.save }}
+                        <q-btn flat dense no-caps color="negative" icon="la la-broom" :loading="adminBrokenCoversLoading" @click="cleanBrokenCovers">
+                            {{ adminUi.cleanBrokenCovers }}
                         </q-btn>
                     </div>
+                    <div class="admin-dashboard-grid admin-dashboard-grid--compact">
+                        <div class="admin-stat">
+                            <div class="admin-stat-label">{{ adminUi.coverCache }}</div>
+                            <div class="admin-stat-value">{{ formatBytes(adminCoverStats.size) }}</div>
+                        </div>
+                        <div class="admin-stat">
+                            <div class="admin-stat-label">{{ adminUi.files }}</div>
+                            <div class="admin-stat-value">{{ adminCoverStats.files || 0 }}</div>
+                        </div>
+                        <div class="admin-stat">
+                            <div class="admin-stat-label">{{ adminUi.limit }}</div>
+                            <div class="admin-stat-value">{{ formatBytes(adminCoverStats.limit) }}</div>
+                            <div class="admin-stat-hint">{{ adminCacheTargetText(adminCoverStats.targetSize) }}</div>
+                        </div>
+                        <div class="admin-stat">
+                            <div class="admin-stat-label">{{ adminUi.coverErrors }}</div>
+                            <div class="admin-stat-value">{{ adminCoverErrors.length }}</div>
+                        </div>
+                    </div>
+                    <div class="admin-cover-actions">
+                        <q-input v-model="adminCoverBookUid" outlined dense clearable :label="adminUi.coverBookUid" />
+                        <q-btn color="primary" dense no-caps icon="la la-sync" :loading="adminCoverRebuildLoading" @click="rebuildAdminCover">
+                            {{ adminUi.rebuildCover }}
+                        </q-btn>
+                    </div>
+                    <div v-if="adminCoverErrors.length" class="admin-event-list admin-event-list--compact">
+                        <div v-for="event in adminCoverErrors" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
+                            <div class="admin-event-meta">
+                                {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
+                            </div>
+                            <div class="admin-event-message">{{ $tm(event.message) }}</div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+                    </template>
 
-            <div class="settings-dialog-actions">
-                <q-btn class="settings-ok-btn" color="primary" dense no-caps @click="okClick">
-                    OK
-                </q-btn>
+                    <section v-else-if="section === 'backups'" class="card">
+                        <h2 class="card-title">{{ backupUi.title }}</h2>
+                <div class="admin-backup-note">
+                    <div>{{ backupUi.fullBackupInfo }}</div>
+                    <div>{{ backupUi.settingsBackupInfo }}</div>
+                    <div>{{ backupUi.restoreNote }}</div>
+                </div>
+                <div class="admin-backup-actions">
+                    <q-btn color="primary" dense no-caps icon="la la-download" :loading="backupLoading" @click="createBackup">
+                        {{ backupUi.backup }}
+                    </q-btn>
+                    <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="backupImportLoading" @click="openBackupImport">
+                        {{ backupUi.backupImport }}
+                    </q-btn>
+                    <q-btn outline color="primary" dense no-caps icon="la la-file-export" :loading="settingsExportLoading" @click="exportSettings">
+                        {{ backupUi.settings }}
+                    </q-btn>
+                    <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="settingsImportLoading" @click="openSettingsImport">
+                        {{ backupUi.settingsImport }}
+                    </q-btn>
+                    <input
+                        ref="settingsImportInput"
+                        type="file"
+                        accept="application/json,.json"
+                        style="display: none"
+                        @change="onSettingsImportSelected"
+                    />
+                    <input
+                        ref="backupImportInput"
+                        type="file"
+                        accept="application/zip,.zip"
+                        style="display: none"
+                        @change="onBackupImportSelected"
+                    />
+                </div>
+                    </section>
+
+                    <template v-else-if="section === 'log'">
+                <div class="admin-subsection">
+                    <div class="admin-subsection-head">
+                        <div class="admin-mail-title">{{ adminUi.events }}</div>
+                        <div class="admin-event-filters">
+                            <q-checkbox v-model="adminEventLogEnabled" size="32px" :label="adminUi.eventLogEnabled" @update:model-value="saveAdminEventLog" />
+                            <q-select v-model="adminEventLogSize" :options="adminEventLogSizeOptions" outlined dense emit-value map-options @update:model-value="saveAdminEventLog" />
+                            <q-select v-model="adminEventLevel" :options="adminEventLevelOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
+                            <q-select v-model="adminEventCategory" :options="adminEventCategoryOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
+                            <q-btn flat dense no-caps color="primary" icon="la la-bug" :loading="adminTestEventLoading" @click="addAdminTestEvent">
+                                {{ adminUi.testEvent }}
+                            </q-btn>
+                        </div>
+                    </div>
+                    <div v-if="adminEventsLoading" class="admin-empty">{{ adminUi.eventsLoading }}</div>
+                    <div v-else-if="!adminEventLogEnabled" class="admin-empty">{{ adminUi.eventsDisabled }}</div>
+                    <div v-else-if="!adminEvents.length" class="admin-empty">{{ adminUi.noEvents }}</div>
+                    <div v-else class="admin-event-list">
+                        <div v-for="event in adminEvents" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
+                            <div class="admin-event-meta">
+                                {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
+                            </div>
+                            <div class="admin-event-message">{{ $tm(event.message) }}</div>
+                        </div>
+                    </div>
+                </div>
+                    </template>
+                </div>
             </div>
         </div>
 
         <DiscoverySourceDialog v-if="canEditExternalDiscovery" v-model="discoverySourceDialogVisible" />
-    </Dialog>
+    </div>
 </template>
 
 <script>
 //-----------------------------------------------------------------------------
-import vueComponent from '../../vueComponent.js';
+import vueComponent from '../vueComponent.js';
 
-import Dialog from '../../share/Dialog.vue';
-import DiscoverySourceDialog from '../DiscoverySourceDialog/DiscoverySourceDialog.vue';
-import {t, getLocale, uiLangOptions} from '../../../share/i18n';
+import DiscoverySourceDialog from '../Search/DiscoverySourceDialog/DiscoverySourceDialog.vue';
+import AdminUsers from './AdminUsers.vue';
+import {t, getLocale} from '../../share/i18n';
+import {isAdmin} from '../../share/session';
 
 const componentOptions = {
     components: {
-        Dialog,
         DiscoverySourceDialog,
+        AdminUsers,
     },
     watch: {
-        modelValue(newValue) {
-            this.dialogVisible = newValue;
-        },
-        dialogVisible(newValue) {
-            this.$emit('update:modelValue', newValue);
-            if (!newValue) {
-                this.stopAdminMetricsPolling();
-                this.stopAdminIndexPolling();
-                return;
-            }
-
-            if (this.adminExpanded && this.adminDashboard.generatedAt)
-                this.startAdminMetricsPolling();
-        },
         settings() {
             this.loadSettings();
         },
-        limit(newValue) {
-            this.commit('setSettings', {limit: newValue});
-        },
-        downloadAsZip(newValue) {
-            this.commit('setSettings', {downloadAsZip: newValue});
-        },
-        showCounts(newValue) {
-            this.commit('setSettings', {showCounts: newValue});
-        },
-        showRates(newValue) {
-            this.commit('setSettings', {showRates: newValue});
-        },
-        showInfo(newValue) {
-            this.commit('setSettings', {showInfo: newValue});
-        },
-        showGenres(newValue) {
-            this.commit('setSettings', {showGenres: newValue});
-        },
-        bookCardView(newValue) {
-            this.commit('setSettings', {
-                bookCardView: (newValue === 'list' ? 'list' : 'cards'),
-            });
-        },
-        showDates(newValue) {
-            this.commit('setSettings', {showDates: newValue});
-        },
-        showDeleted(newValue) {
-            this.commit('setSettings', {showDeleted: newValue});
-        },
-        abCacheEnabled(newValue) {
-            this.commit('setSettings', {abCacheEnabled: newValue});
-        },
-        showNewReleaseAvailable(newValue) {
-            this.commit('setSettings', {showNewReleaseAvailable: newValue});
-        },
-        darkTheme(newValue) {
-            this.commit('setSettings', {darkTheme: newValue});
-        },
-        uiLang(newValue) {
-            this.commit('setSettings', {uiLang: newValue || ''});
-        },
-        showDiscoveryNewest(newValue) {
-            this.commit('setSettings', {showDiscoveryNewest: newValue});
-        },
-        showDiscoveryPopular(newValue) {
-            this.commit('setSettings', {showDiscoveryPopular: newValue});
-        },
-        showDiscoveryContinueReading(newValue) {
-            this.commit('setSettings', {showDiscoveryContinueReading: newValue});
-        },
-        showDiscoveryFromLists(newValue) {
-            this.commit('setSettings', {showDiscoveryFromLists: newValue});
-        },
-        showDiscoveryUnfinishedSeries(newValue) {
-            this.commit('setSettings', {showDiscoveryUnfinishedSeries: newValue});
-        },
-        showDiscoverySimilar(newValue) {
-            this.commit('setSettings', {showDiscoverySimilar: newValue});
-        },
-        showDiscoveryExternal(newValue) {
-            this.commit('setSettings', {showDiscoveryExternal: newValue});
-        },
-        showDiscoveryUnreadOnly(newValue) {
-            this.commit('setSettings', {showDiscoveryUnreadOnly: newValue});
-        },
-        compactDiscoveryCards(newValue) {
-            this.commit('setSettings', {compactDiscoveryCards: newValue});
-        },
-        discoveryNewestLimit(newValue) {
-            this.commit('setSettings', {discoveryNewestLimit: newValue});
-        },
-        discoveryPopularLimit(newValue) {
-            this.commit('setSettings', {discoveryPopularLimit: newValue});
+        section() {
+            this.updateTitle();
         },
     },
 };
 
-class SettingsDialog {
+class AdminPage {
     _options = componentOptions;
-    _props = {
-        modelValue: Boolean,
-    };
-
-    dialogVisible = false;
-    limit = 20;
-    downloadAsZip = false;
-    showCounts = true;
-    showRates = true;
-    showInfo = true;
-    showGenres = true;
-    bookCardView = 'cards';
-    showDates = false;
-    showDeleted = false;
-    abCacheEnabled = true;
-    showNewReleaseAvailable = true;
-    darkTheme = false;
-    uiLang = '';
-    showDiscoveryNewest = true;
-    showDiscoveryPopular = true;
-    showDiscoveryContinueReading = true;
-    showDiscoveryFromLists = true;
-    showDiscoveryUnfinishedSeries = true;
-    showDiscoverySimilar = true;
-    showDiscoveryExternal = true;
-    showDiscoveryUnreadOnly = false;
-    compactDiscoveryCards = false;
-    discoveryNewestLimit = 8;
-    discoveryPopularLimit = 8;
+    isActive = false;
     discoveryExternalSource = '';
     discoveryExternalName = '';
     discoveryExternalUrl = '';
@@ -740,14 +512,10 @@ class SettingsDialog {
     backupImportLoading = false;
     settingsExportLoading = false;
     settingsImportLoading = false;
-    backupExpanded = false;
     opdsSaveLoading = false;
     smtpPassVisible = false;
     telegramTokenVisible = false;
     opdsPasswordVisible = false;
-    opdsExpanded = false;
-    mailExpanded = false;
-    adminExpanded = false;
     adminLoading = false;
     adminCleanLoading = false;
     adminCleanBookCacheLoading = false;
@@ -916,43 +684,11 @@ class SettingsDialog {
         };
     }
 
-    limitOptions = [
-        {label: '10', value: 10},
-        {label: '20', value: 20},
-        {label: '50', value: 50},
-        {label: '100', value: 100},
-        {label: '200', value: 200},
-        {label: '500', value: 500},
-        {label: '1000', value: 1000},
-    ];
-
-    discoveryLimitOptions = [
-        {label: '4', value: 4},
-        {label: '6', value: 6},
-        {label: '8', value: 8},
-        {label: '10', value: 10},
-        {label: '12', value: 12},
-        {label: '16', value: 16},
-        {label: '20', value: 20},
-        {label: '24', value: 24},
-    ];
-
     get opdsLangOptions() {
         return [
             {label: t('Автоматически (по языку читалки)'), value: ''},
             {label: 'Русский', value: 'ru'},
             {label: 'English', value: 'en'},
-        ];
-    }
-
-    get uiLangSelectOptions() {
-        return uiLangOptions.map(option => (option.value ? option : {...option, label: t(option.label)}));
-    }
-
-    get bookCardViewOptions() {
-        return [
-            {label: t('Карточки'), value: 'cards'},
-            {label: t('Список'), value: 'list'},
         ];
     }
 
@@ -989,9 +725,49 @@ class SettingsDialog {
         this.loadSettings();
     }
 
+    activated() {
+        this.isActive = true;
+        this.updateTitle();
+        if (this.canEditExternalDiscovery)
+            this.loadAdminPanel();// no await
+    }
+
+    deactivated() {
+        this.isActive = false;
+        this.stopAdminMetricsPolling();
+    }
+
     unmounted() {
+        this.isActive = false;
         this.stopAdminMetricsPolling();
         this.stopAdminIndexPolling();
+    }
+
+    get sections() {
+        return [
+            {id: 'overview', label: t('Обзор'), icon: 'la la-tachometer-alt'},
+            {id: 'users', label: t('Пользователи'), icon: 'la la-users'},
+            {id: 'library', label: t('Библиотека'), icon: 'la la-book'},
+            {id: 'integrations', label: t('Интеграции'), icon: 'la la-plug'},
+            {id: 'storage', label: t('Хранилище'), icon: 'la la-hdd'},
+            {id: 'backups', label: t('Резервные копии'), icon: 'la la-archive'},
+            {id: 'log', label: t('Журнал событий'), icon: 'la la-stream'},
+        ];
+    }
+
+    get section() {
+        const value = String(this.$route.params.section || 'overview');
+        return this.sections.some(item => item.id === value) ? value : 'overview';
+    }
+
+    get sectionLabel() {
+        const item = this.sections.find(row => row.id === this.section);
+        return item ? item.label : t('Администрирование');
+    }
+
+    updateTitle() {
+        if (this.$route.path.startsWith('/admin'))
+            this.$root.setAppTitle(`${t('Администрирование')}: ${this.sectionLabel}`);
     }
 
     get config() {
@@ -1011,8 +787,7 @@ class SettingsDialog {
     }
 
     get canEditExternalDiscovery() {
-        const current = this.config.currentUserProfile || {};
-        return !!(this.config.profileAuthorized && current.isAdmin);
+        return isAdmin(this.config);
     }
 
     get externalDiscoveryAvailable() {
@@ -1111,30 +886,6 @@ class SettingsDialog {
             });
         }
 
-        this.limit = settings.limit;
-        this.downloadAsZip = settings.downloadAsZip;
-        this.showCounts = settings.showCounts;
-        this.showRates = settings.showRates;
-        this.showInfo = settings.showInfo;
-        this.showGenres = settings.showGenres;
-        this.bookCardView = (settings.bookCardView === 'list' ? 'list' : 'cards');
-        this.showDates = settings.showDates;
-        this.showDeleted = settings.showDeleted;
-        this.abCacheEnabled = settings.abCacheEnabled;
-        this.showNewReleaseAvailable = settings.showNewReleaseAvailable;
-        this.darkTheme = settings.darkTheme;
-        this.uiLang = settings.uiLang || '';
-        this.showDiscoveryNewest = (settings.showDiscoveryNewest !== false);
-        this.showDiscoveryPopular = (settings.showDiscoveryPopular !== false);
-        this.showDiscoveryContinueReading = (settings.showDiscoveryContinueReading !== false);
-        this.showDiscoveryFromLists = (settings.showDiscoveryFromLists !== false);
-        this.showDiscoveryUnfinishedSeries = (settings.showDiscoveryUnfinishedSeries !== false);
-        this.showDiscoverySimilar = (settings.showDiscoverySimilar !== false);
-        this.showDiscoveryExternal = (settings.showDiscoveryExternal !== false);
-        this.showDiscoveryUnreadOnly = (settings.showDiscoveryUnreadOnly === true);
-        this.compactDiscoveryCards = (settings.compactDiscoveryCards === true);
-        this.discoveryNewestLimit = parseInt(settings.discoveryNewestLimit, 10) || 8;
-        this.discoveryPopularLimit = parseInt(settings.discoveryPopularLimit, 10) || 8;
         this.discoveryExternalSource = (String(settings.discoveryExternalSource || this.discoveryConfig.externalSource || 'none').trim().toLowerCase() === 'none'
             ? 'none'
             : 'web-page');
@@ -1599,19 +1350,6 @@ class SettingsDialog {
         }));
     }
 
-    async toggleAdminExpanded() {
-        this.adminExpanded = !this.adminExpanded;
-        if (!this.adminExpanded) {
-            this.stopAdminMetricsPolling();
-            return;
-        }
-
-        if (!this.adminDashboard.generatedAt)
-            await this.loadAdminPanel();
-        else
-            this.startAdminMetricsPolling();
-    }
-
     async loadAdminPanel() {
         this.adminLoading = true;
         try {
@@ -1639,12 +1377,12 @@ class SettingsDialog {
 
     startAdminMetricsPolling(delay = 5000) {
         this.stopAdminMetricsPolling();
-        if (!this.dialogVisible || !this.adminExpanded)
+        if (!this.isActive)
             return;
 
         this.adminMetricsPollTimer = setTimeout(async() => {
             this.adminMetricsPollTimer = null;
-            if (!this.dialogVisible || !this.adminExpanded)
+            if (!this.isActive)
                 return;
 
             if (this.adminMetricsPollInFlight || this.adminIndexBusy || this.adminReindexInProgress) {
@@ -1662,7 +1400,7 @@ class SettingsDialog {
                 this.adminMetricsPollInFlight = false;
             }
 
-            if (this.dialogVisible && this.adminExpanded)
+            if (this.isActive)
                 this.startAdminMetricsPolling();
         }, delay);
     }
@@ -1679,7 +1417,7 @@ class SettingsDialog {
         this.stopAdminIndexPolling();
         this.adminIndexPollTimer = setTimeout(async() => {
             this.adminIndexPollTimer = null;
-            if (!this.adminExpanded && !this.adminReindexInProgress)
+            if (!this.isActive && !this.adminReindexInProgress)
                 return;
 
             try {
@@ -2118,88 +1856,25 @@ class SettingsDialog {
             this.backupLoading = false;
         }
     }
-
-    okClick() {
-        this.dialogVisible = false;
-    }
 }
 
-export default vueComponent(SettingsDialog);
+export default vueComponent(AdminPage);
 //-----------------------------------------------------------------------------
 </script>
 
 <style scoped>
-.settings-dialog-body {
-    padding-bottom: 16px;
-}
 
-.settings-inline-row {
-    flex-wrap: wrap;
-    gap: 6px 8px;
-}
 
-.settings-inline-label {
-    min-width: 132px;
-}
 
-.settings-inline-summary {
-    flex: 1 1 220px;
-    min-width: 180px;
-}
 
-.settings-card-view {
-    flex-wrap: wrap;
-    gap: 8px;
-}
 
-.settings-card-view-label {
-    min-width: 110px;
-}
 
-.settings-card-view-toggle {
-    background: var(--app-surface);
-}
 
-.admin-mail-box {
-    margin: 18px 0 4px;
-    padding: 14px;
-    border: 1px solid var(--app-border);
-    border-radius: 14px;
-    background: var(--app-surface);
-}
 
-.admin-collapse-box {
-    padding: 0;
-    overflow: hidden;
-}
 
-.admin-collapse-head {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    gap: 12px;
-    padding: 14px;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-}
 
-.admin-collapse-copy {
-    min-width: 0;
-    flex: 1;
-}
 
-.admin-collapse-icon {
-    flex: 0 0 auto;
-    color: var(--app-muted);
-}
 
-.admin-collapse-body {
-    padding: 0 14px 14px;
-}
 
 .admin-mail-title {
     font-size: 15px;
@@ -2435,9 +2110,13 @@ export default vueComponent(SettingsDialog);
 }
 
 .admin-subsection {
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid var(--app-border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
 }
 
 .admin-subsection-head {
@@ -2595,17 +2274,7 @@ export default vueComponent(SettingsDialog);
     cursor: pointer;
 }
 
-.settings-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 18px;
-    padding-top: 14px;
-    border-top: 1px solid var(--app-border);
-}
 
-.settings-ok-btn {
-    min-width: 78px;
-}
 
 @media (max-width: 720px) {
     .admin-dashboard-grid {

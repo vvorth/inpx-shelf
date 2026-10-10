@@ -1,49 +1,28 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
-import _ from 'lodash';
 
 const Search = () => import('./components/Search/Search.vue');
 const Reader = () => import('./components/Reader/Reader.vue');
 const ReaderLab = () => import('./components/Reader/ReaderLab.vue');
+const LoginPage = () => import('./components/Login/LoginPage.vue');
+const ListsPage = () => import('./components/Lists/ListsPage.vue');
+const MePage = () => import('./components/Me/MePage.vue');
+const AdminPage = () => import('./components/Admin/AdminPage.vue');
 
-const myRoutes = [
-    ['/', Search],
-    ['/author', Search],
-    ['/series', Search],
-    ['/title', Search],
-    ['/books', Search],
-    ['/for-you', Search],
-    ['/newest', Search],
-    ['/popular', Search],
-    ['/bestsellers', Search],
-    ['/extended', Search],
-    ['/reader', Reader],
-    ['/reader-lab', ReaderLab],
-    ['/:pathMatch(.*)*', null, null, '/'],
+//bare: страница без меню приложения (читалка, вход)
+const searchPaths = ['/', '/author', '/series', '/title', '/books', '/for-you', '/newest', '/popular', '/bestsellers', '/extended'];
+
+const routes = [
+    ...searchPaths.map(path => ({path, component: Search, meta: {section: 'library'}})),
+    {path: '/lists', component: ListsPage, meta: {section: 'lists'}},
+    {path: '/me', redirect: '/me/account'},
+    {path: '/me/:section', component: MePage, meta: {section: 'me'}},
+    {path: '/admin', redirect: '/admin/overview'},
+    {path: '/admin/:section', component: AdminPage, meta: {section: 'admin'}},
+    {path: '/login', component: LoginPage, meta: {bare: true}},
+    {path: '/reader', component: Reader, meta: {bare: true}},
+    {path: '/reader-lab', component: ReaderLab, meta: {bare: true}},
+    {path: '/:pathMatch(.*)*', redirect: '/'},
 ];
-
-let routes = {};
-
-for (let route of myRoutes) {
-    const [path, component, name, redirect] = route;
-    let cleanRoute = _.pickBy({path, component, name, redirect}, _.identity);
-    
-    let parts = cleanRoute.path.split('~');
-    let f = routes;
-    for (let part of parts) {
-        const curRoute = _.assign({}, cleanRoute, { path: part });
-
-        if (!f.children)
-            f.children = [];
-        let r = f.children;
-
-        f = _.find(r, {path: part});
-        if (!f) {
-            r.push(curRoute);
-            f = curRoute;
-        }
-    }
-}
-routes = routes.children;
 
 export default createRouter({
     history: createWebHashHistory(),
