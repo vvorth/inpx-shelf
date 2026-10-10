@@ -1,0 +1,621 @@
+<title>inpx-web Redesign Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Literata:opsz,wght@7..72,500;7..72,600&display=swap">
+<style>
+/* Layout: app shell = left rail + top omnibox + content; phone = bottom tab bar. Library / Me / Admin never mix. */
+:root {
+  --bg: #f4f6f5; --surface: #ffffff; --sunken: #e9edeb; --line: #d6dcd9;
+  --fg: #18201d; --muted: #5c6863; --accent: #1f5c50; --accent-ink: #ffffff; --accent-soft: #dcebe6;
+  --warn: #9a5b00; --warn-soft: #f6ead6; --ok: #2f6b2f; --bad: #a33a2a;
+  --serif: "Literata", Georgia, "Times New Roman", serif;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --r: 6px; --rail: 208px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121715; --surface: #1a201e; --sunken: #232b28; --line: #313b37;
+  --fg: #e6ece9; --muted: #98a59f; --accent: #6fbfa9; --accent-ink: #0d1d18; --accent-soft: #1f3a33;
+  --warn: #e0a957; --warn-soft: #3a2e1b; --ok: #8cc68c; --bad: #e8806f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121715; --surface: #1a201e; --sunken: #232b28; --line: #313b37;
+  --fg: #e6ece9; --muted: #98a59f; --accent: #6fbfa9; --accent-ink: #0d1d18; --accent-soft: #1f3a33;
+  --warn: #e0a957; --warn-soft: #3a2e1b; --ok: #8cc68c; --bad: #e8806f; color-scheme: dark }
+
+* { box-sizing: border-box }
+html, body { height: 100% }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); }
+button, input, select { font: inherit; color: inherit }
+button { cursor: pointer }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.num { font-variant-numeric: tabular-nums }
+
+.app { display: grid; grid-template-columns: var(--rail) 1fr; height: 100%; }
+.rail { background: var(--surface); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; overflow: auto }
+.brand { font: 600 18px/1 var(--serif); padding: 4px 10px 16px; display: flex; align-items: baseline; gap: 6px }
+.brand small { font: 500 11px var(--mono); color: var(--muted) }
+.nav-h { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 14px 10px 4px }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r); color: var(--fg); text-decoration: none; cursor: pointer }
+.nav a:hover { background: var(--sunken) }
+.nav a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600 }
+.nav a .c { margin-left: auto; font-size: 12px; color: var(--muted) }
+.ico { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round }
+
+.main { display: flex; flex-direction: column; min-width: 0; height: 100% }
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--line); position: relative; z-index: 5 }
+.omni { flex: 1; max-width: 680px; position: relative }
+.omni input { width: 100%; padding: 9px 12px 9px 36px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg) }
+.omni input:focus { outline: none; border-color: var(--accent); background: var(--surface) }
+.omni .ico { position: absolute; left: 10px; top: 10px; color: var(--muted) }
+.kbd { font: 500 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--muted) }
+.omni .kbd { position: absolute; right: 10px; top: 9px }
+.sugg { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 6px 0; }
+.sugg .g { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 14px 2px }
+.sugg .it { display: flex; gap: 10px; align-items: baseline; padding: 6px 14px; cursor: pointer }
+.sugg .it:hover, .sugg .it.hi { background: var(--sunken) }
+.sugg .it .m { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap }
+.sugg .dym { padding: 6px 14px; color: var(--warn) }
+.sugg .dym b { cursor: pointer; text-decoration: underline }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 600; border: 0 }
+.menu { position: absolute; right: 24px; top: 52px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 10px 30px rgba(0,0,0,.14); min-width: 220px; padding: 6px 0 }
+.menu .who { padding: 8px 14px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px }
+.menu .who small { display: block; color: var(--muted) }
+.menu a { display: block; padding: 7px 14px; cursor: pointer }
+.menu a:hover { background: var(--sunken) }
+.menu .seg { display: flex; gap: 2px; margin: 6px 14px; background: var(--sunken); border-radius: var(--r); padding: 2px }
+.menu .seg button { flex: 1; border: 0; background: none; padding: 4px; border-radius: 4px; font-size: 12px }
+.menu .seg button.on { background: var(--surface) }
+
+.content { flex: 1; overflow: auto; padding: 24px; min-width: 0 }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px }
+h1 { font: 600 26px/1.2 var(--serif); margin: 0; text-wrap: balance }
+h2 { font: 600 17px/1.3 var(--sans); margin: 0 }
+.sub { color: var(--muted) }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
+.between { justify-content: space-between }
+.link { color: var(--accent); cursor: pointer; text-decoration: none }
+.link:hover { text-decoration: underline }
+
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 7px 14px; border-radius: var(--r); display: inline-flex; align-items: center; gap: 8px; white-space: nowrap }
+.btn:hover { border-color: var(--muted) }
+.btn.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600 }
+.btn.sm { padding: 4px 10px; font-size: 13px }
+.btn.ghost { border-color: transparent; background: none }
+.btn.danger { color: var(--bad) }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; background: var(--sunken); font-size: 12px; border: 0 }
+.chip.on { background: var(--accent-soft); color: var(--accent) }
+.chip .x { cursor: pointer; opacity: .7 }
+.pill { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--sunken); color: var(--muted); white-space: nowrap }
+.pill.ok { background: var(--accent-soft); color: var(--accent) }
+.pill.warn { background: var(--warn-soft); color: var(--warn) }
+
+/* covers: generated typographic placeholders */
+.cover { aspect-ratio: 2/3; border-radius: 3px 5px 5px 3px; padding: 10% 9%; display: flex; flex-direction: column; justify-content: space-between; color: #fff; position: relative; overflow: hidden; box-shadow: inset 4px 0 0 rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.2); max-width: 100% }
+.cover .t { font: 600 clamp(11px, 1.05vw, 15px)/1.15 var(--serif); text-wrap: balance }
+.cover .a { font-size: 10px; opacity: .85; letter-spacing: .03em }
+.cover .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.25) }
+.cover .bar i { display: block; height: 100%; background: #fff }
+
+.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 18px }
+.card { cursor: pointer; display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.card .tt { font-weight: 500; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical }
+.card .au { font-size: 12px; color: var(--muted) }
+.genres { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px }
+.genre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px }
+.genre:hover { border-color: var(--accent) }
+
+/* search */
+.sr { display: grid; grid-template-columns: 230px 1fr; gap: 28px; align-items: start }
+.facets { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0 }
+.facet h3 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; font-weight: 600 }
+.facet label { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer }
+.facet label .n { margin-left: auto; color: var(--muted); font-size: 12px }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line) }
+.tabs button { border: 0; background: none; padding: 8px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--muted) }
+.tabs button.on { color: var(--fg); border-color: var(--accent); font-weight: 600 }
+.notice { background: var(--warn-soft); color: var(--warn); padding: 8px 12px; border-radius: var(--r) }
+.notice b { text-decoration: underline; cursor: pointer }
+.pin { display: flex; gap: 16px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px }
+.mono-av { width: 48px; height: 48px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font: 600 18px var(--serif); flex: none }
+.tbl-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r) }
+table { width: 100%; border-collapse: collapse }
+th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap }
+td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle }
+tr:last-child td { border-bottom: 0 }
+tbody tr.click { cursor: pointer }
+tbody tr.click:hover { background: var(--sunken) }
+.bt { font-family: var(--serif); font-weight: 600 }
+.ser { font-size: 12px; color: var(--muted) }
+.seq { width: 34px; height: 50px; flex: none }
+.seq .cover { padding: 3px; height: 100% } .seq .cover .t, .seq .cover .a { display: none }
+
+/* book panel */
+.scrim { position: fixed; inset: 0; background: rgba(10,15,13,.35); z-index: 20 }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--surface); z-index: 21; overflow: auto; padding: 24px; padding-top: calc(24px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 20px; box-shadow: -10px 0 40px rgba(0,0,0,.2) }
+.bk { display: grid; grid-template-columns: 150px 1fr; gap: 20px }
+.meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px }
+.meta dt { color: var(--muted) } .meta dd { margin: 0 }
+.prog { height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden } .prog i { display: block; height: 100%; background: var(--accent) }
+.annot { font-family: var(--serif); font-size: 15px; line-height: 1.6; max-width: 62ch }
+.pop { position: absolute; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 10px 30px rgba(0,0,0,.16); padding: 8px 0; min-width: 230px; z-index: 30 }
+.pop label, .pop a { display: flex; gap: 8px; align-items: center; padding: 6px 14px; cursor: pointer }
+.pop label:hover, .pop a:hover { background: var(--sunken) }
+.pop .m { margin-left: auto; color: var(--muted); font-size: 12px }
+
+/* lists, me, admin */
+.split { display: grid; grid-template-columns: 240px 1fr; gap: 28px; align-items: start }
+.side { display: flex; flex-direction: column; gap: 2px }
+.side a { display: flex; gap: 8px; padding: 8px 10px; border-radius: var(--r); cursor: pointer }
+.side a:hover { background: var(--sunken) }
+.side a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600 }
+.side a .c { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px }
+.sec { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; display: flex; flex-direction: column; gap: 16px }
+.sec + .sec { margin-top: 16px }
+.field { display: flex; flex-direction: column; gap: 4px; max-width: 420px }
+.field label { font-size: 12px; color: var(--muted) }
+.field input, .field select { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg) }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px }
+.tog { display: flex; align-items: flex-start; gap: 12px; cursor: pointer }
+.tog input { appearance: none; width: 36px; height: 20px; border-radius: 99px; background: var(--line); position: relative; flex: none; margin: 1px 0 0; cursor: pointer; transition: background .15s }
+.tog input::after { content: ""; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; border-radius: 50%; background: var(--surface); transition: left .15s }
+.tog input:checked { background: var(--accent) } .tog input:checked::after { left: 18px }
+.tog small { display: block; color: var(--muted) }
+.code { font: 13px var(--mono); background: var(--sunken); padding: 8px 10px; border-radius: var(--r); overflow-x: auto; white-space: nowrap; min-width: 0; flex: 1 }
+.device { border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 10px }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px }
+.stat .v { font: 600 22px var(--sans) } .stat .l { color: var(--muted); font-size: 12px }
+.meter { height: 8px; border-radius: 4px; background: var(--sunken); overflow: hidden } .meter i { display: block; height: 100%; background: var(--accent) }
+.meter.w i { background: var(--warn) }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--ok) } .dot.w { background: var(--warn) }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: var(--r); z-index: 40 }
+.adminbar { display: flex; align-items: center; gap: 8px; color: var(--warn); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600 }
+
+.tabbar { display: none }
+.mob-only { display: none }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr }
+  .rail { display: none }
+  .top { padding: 8px 16px }
+  .content { padding: 16px 16px 84px }
+  .sr, .split { grid-template-columns: 1fr }
+  .facets { position: static; display: none } .facets.open { display: flex }
+  .mob-only { display: inline-flex }
+  .side { flex-direction: row; overflow-x: auto; gap: 4px } .side a { white-space: nowrap }
+  .tabbar { display: grid; grid-template-columns: repeat(4, 1fr); position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); z-index: 15 }
+  .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; font-size: 11px; color: var(--muted); cursor: pointer }
+  .tabbar a.on { color: var(--accent) }
+  .shelf { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px }
+  .bk { grid-template-columns: 110px 1fr }
+  .hide-m { display: none }
+  .menu { right: 16px }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <aside class="rail">
+    <div class="brand">inpx-web <small>1.8</small></div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div class="omni">
+        <svg class="ico"><use href="#i-search"/></svg>
+        <input id="q" placeholder="Authors, series, books, genres" autocomplete="off" aria-label="Search the library">
+        <span class="kbd hide-m">/</span>
+        <div class="sugg" id="sugg" hidden></div>
+      </div>
+      <button class="avatar" id="avatarBtn" aria-label="Account menu">ВВ</button>
+      <div class="menu" id="menu" hidden></div>
+    </header>
+    <div class="content" id="content"></div>
+  </div>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+<div id="overlay"></div>
+
+<script>
+/* ---------- example data (a small slice of a typical Russian INPX) ---------- */
+const GENRES = { sf_social:'Социальная фантастика', sf:'Научная фантастика', prose_classic:'Классическая проза', sf_fantasy:'Фэнтези', prose_contemporary:'Современная проза', sf_humor:'Юмористическая фантастика', det_classic:'Классический детектив' };
+const GENRE_COL = { sf_social:'#2f5d7c', sf:'#24566b', prose_classic:'#6b3a3a', sf_fantasy:'#4b3f73', prose_contemporary:'#5b5a2e', sf_humor:'#7a4a1c', det_classic:'#3c4a3a' };
+const AUTHORS = [
+  { id:1, name:'Булгаков Михаил Афанасьевич', n:214 }, { id:2, name:'Стругацкий Аркадий Натанович', n:186 },
+  { id:3, name:'Стругацкий Борис Натанович', n:171 }, { id:4, name:'Пелевин Виктор Олегович', n:98 },
+  { id:5, name:'Лукьяненко Сергей Васильевич', n:312 }, { id:6, name:'Толстой Лев Николаевич', n:540 },
+  { id:7, name:'Ле Гуин Урсула', n:143 }, { id:8, name:'Пратчетт Терри', n:205 }, { id:9, name:'Кристи Агата', n:402 },
+];
+const SERIES = [ { id:1, name:'Мир Полудня', n:11 }, { id:2, name:'Дозоры', n:6 }, { id:3, name:'Земноморье', n:6 }, { id:4, name:'Плоский мир', n:41 }, { id:5, name:'Эркюль Пуаро', n:39 } ];
+const B = (uid,title,au,ser,no,g,lang,ext,kb,year,added,rate,prog) => ({uid,title,au,ser,no,g,lang,ext,kb,year,added,rate,prog});
+const BOOKS = [
+  B(1,'Мастер и Маргарита',[1],null,0,'prose_classic','ru','fb2',1240,1966,'2026-10-03',5,43),
+  B(2,'Собачье сердце',[1],null,0,'prose_classic','ru','fb2',310,1925,'2026-09-12',5,0),
+  B(3,'Белая гвардия',[1],null,0,'prose_classic','ru','fb2',820,1925,'2026-06-20',4,0),
+  B(4,'Записки юного врача',[1],null,0,'prose_classic','ru','epub',402,1926,'2026-10-03',4,0),
+  B(5,'Пикник на обочине',[2,3],null,0,'sf_social','ru','fb2',480,1972,'2026-08-14',5,100),
+  B(6,'Трудно быть богом',[2,3],1,3,'sf_social','ru','fb2',530,1964,'2026-07-02',5,100),
+  B(7,'Обитаемый остров',[2,3],1,6,'sf_social','ru','fb2',910,1969,'2026-07-02',5,72),
+  B(8,'Жук в муравейнике',[2,3],1,8,'sf_social','ru','fb2',540,1979,'2026-07-02',5,0),
+  B(9,'Понедельник начинается в субботу',[2,3],null,0,'sf_humor','ru','fb2',650,1965,'2026-10-03',5,0),
+  B(10,'Ночной дозор',[5],2,1,'sf_fantasy','ru','fb2',1180,1998,'2026-05-11',4,0),
+  B(11,'Generation «П»',[4],null,0,'prose_contemporary','ru','fb2',760,1999,'2026-09-28',4,12),
+  B(12,'Волшебник Земноморья',[7],3,1,'sf_fantasy','ru','fb2',520,1968,'2026-10-03',5,0),
+  B(13,'A Wizard of Earthsea',[7],3,1,'sf_fantasy','en','epub',380,1968,'2026-10-03',5,0),
+  B(14,'Цвет волшебства',[8],4,1,'sf_humor','ru','fb2',600,1983,'2026-09-12',4,0),
+  B(15,'Убийство в «Восточном экспрессе»',[9],5,10,'det_classic','ru','fb2',540,1934,'2026-08-30',5,0),
+  B(16,'Анна Каренина',[6],null,0,'prose_classic','ru','fb2',2800,1877,'2026-04-01',5,0),
+  B(17,'Полдень, XXII век',[2,3],1,1,'sf_social','ru','fb2',610,1962,'2026-07-02',4,100),
+];
+const LISTS = [
+  { id:1, name:'В отпуск', books:[1,9,12,14], read:[], opds:true, kobo:'Kobo Libra 2' },
+  { id:2, name:'Мир Полудня по порядку', books:[17,6,7,8], read:[17,6], opds:false, kobo:null },
+  { id:3, name:'Перечитать', books:[5,16], read:[5], opds:true, kobo:null },
+];
+const USERS = [
+  { name:'Вера В.', login:'vera', role:'Admin', last:'now', opds:false, kobo:1, lists:3, status:'active' },
+  { name:'Андрей', login:'andrey', role:'Reader', last:'2 h ago', opds:true, kobo:1, lists:5, status:'active' },
+  { name:'Дети', login:'kids', role:'Reader', last:'yesterday', opds:true, kobo:0, lists:2, status:'active' },
+  { name:'Гость', login:'—', role:'Guest', last:'12 min ago', opds:false, kobo:0, lists:0, status:'browse only' },
+  { name:'Олег (старый)', login:'oleg', role:'Reader', last:'5 Mar', opds:false, kobo:0, lists:1, status:'disabled' },
+];
+
+/* ---------- search: the matching pipeline from the spec, in miniature ---------- */
+const norm = s => s.toLowerCase().replace(/ё/g,'е').replace(/[«»"'„“”()\[\].,!?:;]/g,' ').replace(/\s+/g,' ').trim();
+const EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.", RU = 'йцукенгшщзхъфывапролджэячсмитьбю';
+const fixLayout = s => [...s.toLowerCase()].map(c => { const i = EN.indexOf(c); return i < 0 ? c : RU[i]; }).join('');
+function lev(a, b) {
+  const d = Array.from({length: a.length + 1}, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+const words = s => norm(s).split(' ');
+const authorName = id => AUTHORS.find(a => a.id === id).name;
+const shortAuthor = id => { const p = authorName(id).split(' '); return p.length > 1 ? `${p[1][0]}. ${p[0]}` : p[0]; };
+const bookAuthors = b => b.au.map(shortAuthor).join(', ');
+const bookText = b => norm([b.title, ...b.au.map(authorName), b.ser ? SERIES[b.ser-1].name : ''].join(' '));
+function matchAll(q) {
+  const qw = words(q).filter(Boolean);
+  return text => qw.every(w => text.split(' ').some(t => t.startsWith(w)) || (w.length >= 3 && text.includes(w)));
+}
+function runSearch(raw) {
+  let q = norm(raw), note = null;
+  if (!q) return { q, note, books: BOOKS, authors: [], series: [] };
+  let m = matchAll(q);
+  let books = BOOKS.filter(b => m(bookText(b)));
+  if (!books.length && /[a-z]/.test(q)) {
+    const alt = norm(fixLayout(q)), m2 = matchAll(alt), hit = BOOKS.filter(b => m2(bookText(b)));
+    if (hit.length) { note = { kind:'layout', from: raw, to: alt }; q = alt; m = m2; books = hit; }
+  }
+  if (!books.length) {
+    let best = null;
+    const vocab = new Set(); [...AUTHORS.map(a => a.name), ...SERIES.map(s => s.name), ...BOOKS.map(b => b.title)].forEach(s => words(s).forEach(w => w.length > 2 && vocab.add(w)));
+    const fixed = words(q).map(w => { let bw = w, bd = 99; vocab.forEach(v => { const d = lev(w, v.slice(0, Math.max(w.length, Math.min(v.length, w.length + 1)))); if (d < bd) { bd = d; bw = v; } }); return bd <= Math.max(1, Math.floor(w.length / 4)) ? bw : w; }).join(' ');
+    if (fixed !== q) { const m3 = matchAll(fixed); const hit = BOOKS.filter(b => m3(bookText(b))); if (hit.length) { best = fixed; books = hit; m = m3; } }
+    if (best) { note = { kind:'typo', from: raw, to: best }; q = best; }
+  }
+  const authors = AUTHORS.filter(a => m(norm(a.name)));
+  const series = SERIES.filter(s => m(norm(s.name)));
+  return { q, note, books, authors, series };
+}
+
+/* ---------- state ---------- */
+const S = { view:'home', q:'', tab:'books', f:{ lang:new Set(), g:new Set(), ext:new Set() }, sort:'rel', layout:'list', book:null, list:1, me:'devices', admin:'overview', author:null, facetsOpen:false, menu:false };
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const icon = id => `<svg class="ico"><use href="#i-${id}"/></svg>`;
+const cover = (b, bar = true) => `<div class="cover" style="background:${GENRE_COL[b.g]}"><div class="t">${esc(b.title)}</div><div class="a">${esc(bookAuthors(b))}</div>${bar && b.prog > 0 && b.prog < 100 ? `<div class="bar"><i style="width:${b.prog}%"></i></div>` : ''}</div>`;
+const fmtKb = kb => kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+const bookByUid = uid => BOOKS.find(b => b.uid === uid);
+let toastT;
+function toast(msg) { const o = $('#overlay'); const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 1800); }
+
+/* ---------- shell ---------- */
+const NAV = [ ['home','Home','home'], ['search','Search','search'], ['discover','For you','spark'], ['lists','Lists','list'] ];
+function renderNav() {
+  const v = S.view;
+  $('#nav').innerHTML = `
+    ${NAV.map(([k, l, i]) => `<a class="${v === k ? 'on' : ''}" data-go="${k}">${icon(i)}${l}${k === 'lists' ? `<span class="c num">${LISTS.length}</span>` : ''}</a>`).join('')}
+    <div class="nav-h">Me</div>
+    <a class="${v === 'me' ? 'on' : ''}" data-go="me">${icon('user')}Account and devices</a>
+    <div class="nav-h">Server</div>
+    <a class="${v === 'admin' ? 'on' : ''}" data-go="admin">${icon('shield')}Admin</a>`;
+  $('#tabbar').innerHTML = [['home','Home','home'],['search','Search','search'],['lists','Lists','list'],['me','Me','user']]
+    .map(([k, l, i]) => `<a class="${v === k || (k === 'me' && v === 'admin') ? 'on' : ''}" data-go="${k}">${icon(i)}${l}</a>`).join('');
+  $('#menu').hidden = !S.menu;
+  const theme = document.documentElement.dataset.theme || 'system';
+  $('#menu').innerHTML = `<div class="who"><b>Вера В.</b><small>vera · Admin</small></div>
+    <a data-go="me" data-me="account">Account</a><a data-go="me" data-me="devices">Devices: OPDS and Kobo</a><a data-go="me" data-me="prefs">Preferences</a><a data-go="admin">Admin console</a>
+    <div class="seg" role="group" aria-label="Theme">${['system','light','dark'].map(t => `<button data-theme-set="${t}" class="${theme === t ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+    <a data-act="signout">Sign out</a>`;
+}
+
+/* ---------- views ---------- */
+function vHome() {
+  const cont = BOOKS.filter(b => b.prog > 0 && b.prog < 100);
+  const fresh = BOOKS.filter(b => b.added === '2026-10-03');
+  const unfinished = [bookByUid(8)];
+  const gcount = {}; BOOKS.forEach(b => gcount[b.g] = (gcount[b.g] || 0) + 1);
+  return `<div class="wrap">
+    <section class="row between"><div><h1>Good evening, Вера</h1><div class="sub num">412,806 books · 98,140 authors · last import 3 Oct 2026</div></div></section>
+    <section><div class="row between" style="margin-bottom:12px"><h2>Continue reading</h2><a class="link" data-go="lists" data-list="reading">All in progress</a></div>
+      <div class="shelf">${cont.map(b => `<div class="card" data-book="${b.uid}">${cover(b)}<div class="tt">${esc(b.title)}</div><div class="au num">${b.prog}% · ${esc(bookAuthors(b))}</div></div>`).join('')}</div></section>
+    <section><div class="row between" style="margin-bottom:12px"><h2>New in the library <span class="sub num" style="font-weight:400">· added 3 Oct · 1,284 books</span></h2><a class="link" data-q="added:7d">See all</a></div>
+      <div class="shelf">${fresh.map(b => `<div class="card" data-book="${b.uid}">${cover(b)}<div class="tt">${esc(b.title)}</div><div class="au">${esc(bookAuthors(b))}</div></div>`).join('')}</div></section>
+    <section><div class="row between" style="margin-bottom:12px"><h2>Unfinished series</h2></div>
+      <div class="pin"><div style="width:64px;flex:none">${cover(unfinished[0], false)}</div>
+        <div style="flex:1;min-width:0"><div class="bt">Мир Полудня</div><div class="sub num">You read 2 of 11. Next: #8 Жук в муравейнике</div><div class="prog" style="margin-top:8px;max-width:320px"><i style="width:18%"></i></div></div>
+        <button class="btn pri" data-book="8">Read next</button></div></section>
+    <section><h2 style="margin-bottom:12px">Browse by genre</h2>
+      <div class="genres">${Object.entries(GENRES).map(([k, l]) => `<div class="genre" data-genre="${k}"><span>${l}</span><span class="sub num">${(gcount[k] || 1) * 4127}</span></div>`).join('')}</div></section>
+  </div>`;
+}
+
+function facetCounts(books, key) { const c = {}; books.forEach(b => c[b[key]] = (c[b[key]] || 0) + 1); return Object.entries(c).sort((a, b) => b[1] - a[1]); }
+function vSearch() {
+  const r = runSearch(S.q);
+  const F = S.f;
+  let books = r.books.filter(b => (!F.lang.size || F.lang.has(b.lang)) && (!F.g.size || F.g.has(b.g)) && (!F.ext.size || F.ext.has(b.ext)));
+  if (S.sort === 'new') books = [...books].sort((a, b) => b.added.localeCompare(a.added));
+  if (S.sort === 'title') books = [...books].sort((a, b) => a.title.localeCompare(b.title, 'ru'));
+  const facet = (title, key, set, label = x => x) => `<div class="facet"><h3>${title}</h3>${facetCounts(r.books, key).map(([v, n]) =>
+    `<label><input type="checkbox" data-facet="${key}" value="${v}" ${set.has(v) ? 'checked' : ''}>${esc(label(v))}<span class="n num">${n}</span></label>`).join('')}</div>`;
+  const chips = [...[...F.lang].map(v => ['lang', v, v.toUpperCase()]), ...[...F.g].map(v => ['g', v, GENRES[v]]), ...[...F.ext].map(v => ['ext', v, v])]
+    .map(([k, v, l]) => `<span class="chip on">${esc(l)}<span class="x" data-unfacet="${k}" data-v="${v}" role="button" aria-label="Remove filter">✕</span></span>`).join('');
+  const topAuthor = r.authors.length === 1 || (r.authors[0] && norm(r.authors[0].name).startsWith(r.q)) ? r.authors[0] : null;
+  const note = r.note ? `<div class="notice">${r.note.kind === 'typo' ? 'Showing results for' : 'Wrong keyboard layout? Showing results for'} <b data-q="${esc(r.note.to)}">${esc(r.note.to)}</b>. Search instead for <b data-q-exact="${esc(r.note.from)}">${esc(r.note.from)}</b></div>` : '';
+  const rows = books.map(b => `<tr class="click" data-book="${b.uid}">
+      <td><div class="row" style="flex-wrap:nowrap;gap:12px"><div class="seq">${cover(b)}</div><div style="min-width:0"><div class="bt">${esc(b.title)}</div>
+      <div class="ser">${esc(bookAuthors(b))}${b.ser ? ` · ${esc(SERIES[b.ser-1].name)} #${b.no}` : ''}</div></div></div></td>
+      <td class="hide-m">${GENRES[b.g]}</td><td class="hide-m num">${b.lang} · ${b.ext} · ${fmtKb(b.kb)}</td>
+      <td class="num">${b.prog === 100 ? '<span class="pill ok">Read</span>' : b.prog ? `<span class="pill">${b.prog}%</span>` : '★'.repeat(b.rate)}</td></tr>`).join('');
+  const grid = `<div class="shelf">${books.map(b => `<div class="card" data-book="${b.uid}">${cover(b)}<div class="tt">${esc(b.title)}</div><div class="au">${esc(bookAuthors(b))}</div></div>`).join('')}</div>`;
+  let body;
+  if (S.tab === 'authors') body = `<div class="tbl-wrap"><table><tbody>${r.authors.map(a => `<tr class="click" data-author="${a.id}"><td class="bt">${esc(a.name)}</td><td class="num sub">${a.n} books</td></tr>`).join('') || '<tr><td class="sub">No authors match</td></tr>'}</tbody></table></div>`;
+  else if (S.tab === 'series') body = `<div class="tbl-wrap"><table><tbody>${r.series.map(s => `<tr class="click"><td class="bt">${esc(s.name)}</td><td class="num sub">${s.n} books</td></tr>`).join('') || '<tr><td class="sub">No series match</td></tr>'}</tbody></table></div>`;
+  else body = books.length ? (S.layout === 'list' ? `<div class="tbl-wrap"><table><thead><tr><th>Book</th><th class="hide-m">Genre</th><th class="hide-m">File</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : grid)
+    : `<div class="sec"><b>Nothing matches these filters.</b><span class="sub">Remove a filter above, or search all languages.</span></div>`;
+  return `<div class="wrap"><div class="sr">
+    <aside class="facets ${S.facetsOpen ? 'open' : ''}">
+      ${facet('Language', 'lang', F.lang, v => ({ru:'Russian', en:'English'}[v] || v))}
+      ${facet('Genre', 'g', F.g, v => GENRES[v])}
+      ${facet('Format', 'ext', F.ext)}
+      <div class="facet"><h3>Added</h3>${['Last 7 days','Last 30 days','This year'].map(l => `<label><input type="radio" name="added">${l}</label>`).join('')}</div>
+      <div class="facet"><h3>Source</h3><label><input type="checkbox" checked>flibusta_fb2_local</label><label><input type="checkbox">librusec_2025</label><label style="margin-top:6px"><input type="checkbox" checked>Hide copies</label></div>
+    </aside>
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div class="row between"><h1 style="font-size:22px">${S.q ? `Results for “${esc(S.q)}”` : 'All books'}</h1>
+        <div class="row"><button class="btn sm mob-only" data-act="facets">${icon('filter')}Filters</button>
+        <select id="sort" class="btn sm" aria-label="Sort"><option value="rel" ${S.sort === 'rel' ? 'selected' : ''}>Relevance</option><option value="title" ${S.sort === 'title' ? 'selected' : ''}>Title</option><option value="new" ${S.sort === 'new' ? 'selected' : ''}>Newest</option></select>
+        <button class="btn sm" data-act="layout">${S.layout === 'list' ? 'Covers' : 'List'}</button></div></div>
+      ${note}
+      ${chips ? `<div class="row">${chips}<a class="link" data-act="clearf">Clear all</a></div>` : ''}
+      <div class="tabs"><button class="${S.tab === 'books' ? 'on' : ''}" data-tab="books">Books <span class="num">${books.length}</span></button><button class="${S.tab === 'authors' ? 'on' : ''}" data-tab="authors">Authors <span class="num">${r.authors.length}</span></button><button class="${S.tab === 'series' ? 'on' : ''}" data-tab="series">Series <span class="num">${r.series.length}</span></button></div>
+      ${topAuthor && S.tab === 'books' ? `<div class="pin" data-author="${topAuthor.id}" style="cursor:pointer"><div class="mono-av">${topAuthor.name[0]}</div><div style="flex:1;min-width:0"><div class="bt">${esc(topAuthor.name)}</div><div class="sub num">Author · ${topAuthor.n} books in 3 languages</div></div><span class="link">Open author</span></div>` : ''}
+      ${body}
+      <div class="sub" style="font-size:12px">Power search works in the same box: <span class="kbd">author:стругацк</span> <span class="kbd">lang:ru</span> <span class="kbd">-genre:det</span> <span class="kbd">title:=Пикник на обочине</span></div>
+    </div></div></div>`;
+}
+
+function vAuthor() {
+  const a = AUTHORS.find(x => x.id === S.author) || AUTHORS[1];
+  const mine = BOOKS.filter(b => b.au.includes(a.id));
+  const bySer = {}; mine.forEach(b => (bySer[b.ser || 0] ||= []).push(b));
+  return `<div class="wrap"><div class="row" style="gap:18px"><div class="mono-av" style="width:72px;height:72px;font-size:28px">${a.name[0]}</div>
+    <div style="flex:1;min-width:0"><h1>${esc(a.name)}</h1><div class="sub num">${a.n} books · Russian, English · in 2 of your lists</div></div>
+    <div class="row"><button class="btn">${icon('plus')}Follow</button><button class="btn">Add all to list</button></div></div>
+    ${Object.entries(bySer).sort((x, y) => y[0] - x[0]).map(([sid, bs]) => {
+      const s = SERIES[sid - 1]; const read = bs.filter(b => b.prog === 100).length;
+      return `<section><div class="row between" style="margin-bottom:10px"><h2>${s ? esc(s.name) : 'Standalone books'}</h2>${s ? `<span class="sub num">${read} of ${s.n} read · ${s.n - bs.length} not in library</span>` : ''}</div>
+      <div class="shelf">${bs.sort((x, y) => x.no - y.no).map(b => `<div class="card" data-book="${b.uid}">${cover(b)}<div class="tt">${s ? `<span class="sub num">#${b.no}</span> ` : ''}${esc(b.title)}</div><div class="au num">${b.prog === 100 ? 'Read' : b.year}</div></div>`).join('')}</div></section>`;
+    }).join('')}</div>`;
+}
+
+function vLists() {
+  const L = LISTS.find(l => l.id === S.list) || LISTS[0];
+  return `<div class="wrap"><div class="split">
+    <div class="side">${LISTS.map(l => `<a class="${l.id === L.id ? 'on' : ''}" data-list="${l.id}">${icon('list')}${esc(l.name)}<span class="c num">${l.read.length}/${l.books.length}</span></a>`).join('')}
+      <a data-act="newlist">${icon('plus')}New list</a></div>
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <div class="row between"><div><h1>${esc(L.name)}</h1><div class="sub num">${L.books.length} books · ${L.read.length} read</div></div>
+        <div class="row"><button class="btn sm">Export</button><button class="btn sm">Rename</button><button class="btn sm danger">Delete</button></div></div>
+      <div class="sec" style="flex-direction:row;flex-wrap:wrap;gap:24px">
+        <label class="tog"><input type="checkbox" id="lopds" ${L.opds ? 'checked' : ''} data-lt="opds"><span>Show in OPDS<small>Visible in your OPDS catalog under Lists</small></span></label>
+        <label class="tog"><input type="checkbox" id="lkobo" ${L.kobo ? 'checked' : ''} data-lt="kobo"><span>Sync to Kobo<small>${L.kobo ? esc(L.kobo) + ' · next sync adds new books' : 'Kobo Libra 2 will get these books'}</small></span></label>
+      </div>
+      <div class="tbl-wrap"><table><thead><tr><th style="width:40px">Read</th><th>Book</th><th class="hide-m">File</th><th></th></tr></thead><tbody>
+        ${L.books.map(uid => { const b = bookByUid(uid); return `<tr><td><input type="checkbox" aria-label="Read" ${L.read.includes(uid) ? 'checked' : ''}></td>
+          <td class="click" data-book="${uid}" style="cursor:pointer"><div class="bt">${esc(b.title)}</div><div class="ser">${esc(bookAuthors(b))}</div></td>
+          <td class="hide-m num sub">${b.ext} · ${fmtKb(b.kb)}</td><td style="text-align:right"><button class="btn sm ghost" aria-label="Remove from list">${icon('x')}</button></td></tr>`; }).join('')}
+      </tbody></table></div>
+    </div></div></div>`;
+}
+
+const ME = [['account','Account'],['devices','Devices'],['delivery','Delivery'],['prefs','Preferences'],['data','Data']];
+function vMe() {
+  const sec = {
+    account: `<div class="sec"><h2>Profile</h2><div class="grid2"><div class="field"><label for="nm">Display name</label><input id="nm" value="Вера В."></div><div class="field"><label for="lg">Login</label><input id="lg" value="vera"></div></div><div><button class="btn pri" data-toast="Profile saved">Save</button></div></div>
+      <div class="sec"><h2>Password</h2><div class="grid2"><div class="field"><label for="p0">Current password</label><input id="p0" type="password"></div><div class="field"><label for="p1">New password</label><input id="p1" type="password"></div><div class="field"><label for="p2">Repeat new password</label><input id="p2" type="password"></div></div><div><button class="btn pri" data-toast="Password changed. Other sessions were signed out">Change password</button></div></div>
+      <div class="sec"><h2>Sessions</h2><div class="row between"><span>This browser · Firefox on Linux<br><span class="sub">Active now</span></span><span class="pill ok">Current</span></div><div class="row between"><span>Reader PWA · Android<br><span class="sub">Yesterday 22:14</span></span><button class="btn sm">Sign out</button></div></div>`,
+    devices: `<div class="sec"><div class="row between"><h2>OPDS catalog</h2><label class="tog"><input type="checkbox" id="opds" checked><span>Enabled for me</span></label></div>
+        <span class="sub">Add this address to KOReader, Moon+ Reader, FBReader or any OPDS app.</span>
+        <div class="row" style="flex-wrap:nowrap"><div class="code">https://books.home.lan/opds/u/vera</div><button class="btn sm" data-copy="https://books.home.lan/opds/u/vera">Copy</button></div>
+        <label class="tog"><input type="checkbox" id="opdsauth" checked><span>Require my login and password<small>Turn off only on a trusted home network</small></span></label>
+        <div class="sub">Lists shown in OPDS: <a class="link" data-go="lists">В отпуск, Перечитать</a></div></div>
+      <div class="sec"><div class="row between"><h2>Kobo</h2><button class="btn sm" data-act="addkobo">${icon('plus')}Add device</button></div>
+        <div class="device"><div class="row between"><div><b>Kobo Libra 2</b><div class="sub num">Last sync today 08:12 · 23 books on device</div></div><span class="pill ok">Synced</span></div>
+          <div class="sub">Syncs list: <a class="link" data-list="1" data-go="lists">В отпуск</a> (4 books)</div>
+          <div class="row"><button class="btn sm" data-toast="Kobo Libra 2 will refresh on next sync">Refresh books</button><button class="btn sm">Show setup line</button><button class="btn sm">New token</button><button class="btn sm danger">Remove</button></div></div>
+        <div id="koboSetup" hidden class="device"><b>Set up a new Kobo</b>
+          <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li>Connect the Kobo by USB and open <span class="kbd">.kobo/Kobo/Kobo eReader.conf</span></li>
+          <li>Under <span class="kbd">[OneStoreServices]</span> replace the line with:<div class="row" style="flex-wrap:nowrap;margin-top:6px"><div class="code">api_endpoint=https://books.home.lan/kobo/7f3c…e91a</div><button class="btn sm" data-copy="api_endpoint=https://books.home.lan/kobo/7f3c…e91a">Copy</button></div></li>
+          <li>Eject, then tap Sync on the Kobo. The device appears here.</li></ol></div></div>`,
+    delivery: `<div class="sec"><h2>Send to email</h2><div class="field"><label for="em">Address (Kindle or personal)</label><input id="em" value="vera_kindle@kindle.com"></div><div class="row"><button class="btn pri" data-toast="Saved">Save</button><button class="btn" data-toast="Test book sent to vera_kindle@kindle.com">Send test</button></div></div>
+      <div class="sec"><h2>Send to Telegram</h2><div class="field"><label for="tg">Your chat id</label><input id="tg" value="183402211"></div><span class="sub">Message the library bot once, then paste the id it replies with.</span><div class="row"><button class="btn pri" data-toast="Saved">Save</button><button class="btn" data-toast="Test message sent">Send test</button></div></div>`,
+    prefs: `<div class="sec"><h2>Interface</h2><div class="grid2"><div class="field"><label for="ul">Language</label><select id="ul"><option>Русский</option><option selected>English</option></select></div>
+        <div class="field"><label for="dv">Default results view</label><select id="dv"><option>List</option><option>Covers</option></select></div>
+        <div class="field"><label for="dn">Density</label><select id="dn"><option>Comfortable</option><option>Compact</option></select></div></div></div>
+      <div class="sec"><h2>Home shelves</h2>${['Continue reading','New in the library','From your lists','Unfinished series','New from authors you follow','Similar to what you read'].map((s, i) => `<label class="tog"><input type="checkbox" id="sh${i}" ${i < 4 ? 'checked' : ''}><span>${s}</span></label>`).join('')}</div>`,
+    data: `<div class="sec"><h2>Your data</h2><span class="sub">Lists, progress, bookmarks and reader settings in one JSON file.</span><div class="row"><button class="btn">Export</button><button class="btn">Import…</button></div></div>
+      <div class="sec"><h2>Reading history</h2><span class="sub">Removes progress for all books. Lists stay.</span><div><button class="btn danger">Clear reading history</button></div></div>`,
+  };
+  return `<div class="wrap"><h1>Account and devices</h1><div class="split"><div class="side">${ME.map(([k, l]) => `<a class="${S.me === k ? 'on' : ''}" data-me="${k}">${l}</a>`).join('')}</div><div style="min-width:0">${sec[S.me]}</div></div></div>`;
+}
+
+const ADM = [['overview','Overview'],['users','Users'],['library','Library'],['integrations','Integrations'],['storage','Storage'],['backups','Backups'],['log','Event log']];
+function vAdmin() {
+  const sec = {
+    overview: `<div class="stats">${[['412,806','Books'],['98,140','Authors'],['31,577','Series'],['4','Active users today'],['1,284','Added 3 Oct']].map(([v, l]) => `<div class="stat"><div class="v num">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+      <div class="sec"><h2>Health</h2>${[['','Search database','loaded · 1.9 GB · built 3 Oct 04:10'],['','Library sources','2 of 2 reachable'],['w','Converter (fb2cng)','not configured · epub and kepub only from source files'],['','Kobo sync','2 devices · last sync 08:12']].map(([w, a, b]) => `<div class="row"><span class="dot ${w}"></span><b style="min-width:170px">${a}</b><span class="sub">${b}</span></div>`).join('')}</div>
+      <div class="sec"><h2>Storage</h2>${[['Book cache','3.1 of 4 GB',78,1],['Cover cache','420 MB of 1 GB',41,0]].map(([l, v, p, w]) => `<div><div class="row between"><span>${l}</span><span class="sub num">${v}</span></div><div class="meter ${w ? 'w' : ''}" style="margin-top:6px"><i style="width:${p}%"></i></div></div>`).join('')}</div>`,
+    users: `<div class="row between"><span class="sub">Guests can browse the catalog. <a class="link">Change</a></span><button class="btn pri" data-act="newuser">${icon('plus')}New user</button></div>
+      <div id="newUser" class="sec" hidden><h2>New user</h2><div class="grid2"><div class="field"><label for="nu1">Name</label><input id="nu1"></div><div class="field"><label for="nu2">Login</label><input id="nu2"></div><div class="field"><label for="nu3">Role</label><select id="nu3"><option>Reader</option><option>Admin</option></select></div></div>
+        <label class="tog"><input type="checkbox" id="nu4" checked><span>Generate a temporary password<small>Shown once. The user changes it at first sign-in.</small></span></label>
+        <div class="row"><button class="btn pri" data-toast="User created. Temporary password: plum-otter-42">Create</button><button class="btn ghost" data-act="newuser">Cancel</button></div></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Role</th><th class="hide-m">Last active</th><th class="hide-m">OPDS</th><th class="hide-m">Kobo</th><th class="hide-m">Lists</th><th>Status</th><th></th></tr></thead><tbody>
+        ${USERS.map(u => `<tr><td><b>${esc(u.name)}</b><div class="sub">${esc(u.login)}</div></td><td>${u.role}</td><td class="hide-m sub">${u.last}</td><td class="hide-m">${u.opds ? 'On' : '—'}</td><td class="hide-m num">${u.kobo || '—'}</td><td class="hide-m num">${u.lists}</td>
+          <td><span class="pill ${u.status === 'active' ? 'ok' : u.status === 'disabled' ? 'warn' : ''}">${u.status}</span></td><td style="text-align:right;white-space:nowrap">${u.role === 'Guest' ? '' : '<button class="btn sm">Edit</button> <button class="btn sm">Reset password</button>'}</td></tr>`).join('')}
+      </tbody></table></div>`,
+    library: `<div class="row between"><h2>Sources</h2><div class="row"><button class="btn" data-toast="Reindex queued. Search stays available on the old index">Reindex now</button><button class="btn">${icon('plus')}Add source</button></div></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Source</th><th class="hide-m">Path</th><th>Books</th><th class="hide-m">Last scan</th><th>Status</th><th></th></tr></thead><tbody>
+        <tr><td><b>flibusta_fb2_local</b></td><td class="hide-m"><span class="kbd">/library/flibusta.inpx</span></td><td class="num">388,410</td><td class="hide-m sub">3 Oct 04:02</td><td><span class="pill ok">OK</span></td><td><button class="btn sm">Diagnose</button></td></tr>
+        <tr><td><b>librusec_2025</b></td><td class="hide-m"><span class="kbd">/library/lib.rus.ec.inpx</span></td><td class="num">24,396</td><td class="hide-m sub">3 Oct 04:08</td><td><span class="pill warn">14 missing archives</span></td><td><button class="btn sm">Diagnose</button></td></tr></tbody></table></div>
+      <div class="sec"><h2>Catalog filter</h2><span class="sub">Hide authors or books from everyone. 1,206 books are hidden by the current rules.</span><div><button class="btn">Edit rules</button></div></div>`,
+    integrations: [['Telegram bot','@home_library_bot · connected',1],['Email (SMTP)','smtp.fastmail.com:465 as library@…',1],['Audiobookshelf','not connected',0],['Converter (fb2cng)','not found in PATH',0],['Voice (Silero TTS)','container reachable · 3 voices',1]]
+      .map(([t, s, ok]) => `<div class="sec" style="flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b>${t}</b><div class="sub">${s}</div></div><div class="row"><span class="pill ${ok ? 'ok' : 'warn'}">${ok ? 'Working' : 'Off'}</span><button class="btn sm">${ok ? 'Test' : 'Set up'}</button></div></div>`).join(''),
+    storage: `<div class="sec"><h2>Cache limits</h2><div class="grid2"><div class="field"><label for="c1">Book cache, MB</label><input id="c1" value="4096"></div><div class="field"><label for="c2">Cover cache, MB</label><input id="c2" value="1024"></div><div class="field"><label for="c3">Clean up</label><select id="c3"><option>Weekly, Sunday 04:00</option><option>Daily</option></select></div></div><div class="row"><button class="btn pri" data-toast="Saved">Save</button><button class="btn">Clean book cache</button><button class="btn">Remove broken covers</button></div></div>`,
+    backups: `<div class="sec"><h2>Backups</h2><span class="sub">Users, lists, progress, Kobo devices and settings. The catalog is rebuilt from INPX and is not included.</span><div class="row"><button class="btn pri" data-toast="Backup created: 2026-10-10_1802.zip">Create backup</button><button class="btn">Restore…</button></div>
+      <div class="tbl-wrap"><table><tbody><tr><td class="num">2026-10-03 04:15</td><td class="sub">automatic · 2.4 MB</td><td style="text-align:right"><button class="btn sm">Download</button></td></tr><tr><td class="num">2026-09-26 04:15</td><td class="sub">automatic · 2.3 MB</td><td style="text-align:right"><button class="btn sm">Download</button></td></tr></tbody></table></div></div>`,
+    log: `<div class="tbl-wrap"><table><thead><tr><th>Time</th><th>Level</th><th>Event</th><th class="hide-m">User</th></tr></thead><tbody>${[['18:02','info','Kobo Libra 2 synced 4 books','vera'],['17:40','info','Book sent to Telegram: Пикник на обочине','andrey'],['16:11','warn','librusec_2025: 14 archives missing','system'],['04:10','info','Search index rebuilt in 6 min 12 s','system']].map(([t, l, e, u]) => `<tr><td class="num">${t}</td><td><span class="pill ${l === 'warn' ? 'warn' : ''}">${l}</span></td><td>${e}</td><td class="hide-m sub">${u}</td></tr>`).join('')}</tbody></table></div>`,
+  };
+  return `<div class="wrap"><div><div class="adminbar">${icon('shield')}Admin console</div><h1>${ADM.find(a => a[0] === S.admin)[1]}</h1></div>
+    <div class="split"><div class="side">${ADM.map(([k, l]) => `<a class="${S.admin === k ? 'on' : ''}" data-admin="${k}">${l}</a>`).join('')}<a data-go="home" class="sub" style="margin-top:8px">← Back to library</a></div><div style="min-width:0;display:flex;flex-direction:column;gap:16px">${sec[S.admin]}</div></div></div>`;
+}
+
+function vDiscover() {
+  const pick = [12, 14, 9, 15, 2, 11].map(bookByUid);
+  return `<div class="wrap"><div><h1>For you</h1><div class="sub">Built from your lists and what you finished. <a class="link">Tune your tastes</a></div></div>
+    <section><h2 style="margin-bottom:12px">Because you finished Пикник на обочине</h2><div class="shelf">${pick.slice(0, 3).map(b => `<div class="card" data-book="${b.uid}">${cover(b)}<div class="tt">${esc(b.title)}</div><div class="au">${esc(bookAuthors(b))}</div></div>`).join('')}</div></section>
+    <section><h2 style="margin-bottom:12px">Try something different</h2><div class="shelf">${pick.slice(3).map(b => `<div class="card" data-book="${b.uid}">${cover(b)}<div class="tt">${esc(b.title)}</div><div class="au">${esc(bookAuthors(b))}</div></div>`).join('')}</div></section></div>`;
+}
+
+function bookPanel() {
+  const b = bookByUid(S.book); if (!b) return '';
+  const inLists = LISTS.filter(l => l.books.includes(b.uid)).map(l => l.name);
+  const siblings = b.ser ? BOOKS.filter(x => x.ser === b.ser && x.uid !== b.uid) : BOOKS.filter(x => x.au[0] === b.au[0] && x.uid !== b.uid).slice(0, 4);
+  return `<div class="scrim" data-act="closebook"></div><aside class="panel" role="dialog" aria-label="${esc(b.title)}">
+    <div class="row between"><span class="sub">Book</span><button class="btn sm ghost" data-act="closebook" aria-label="Close">${icon('x')}</button></div>
+    <div class="bk">${cover(b)}<div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+      <h1 style="font-size:22px">${esc(b.title)}</h1>
+      <div>${b.au.map(id => `<a class="link" data-author="${id}">${esc(authorName(id))}</a>`).join(', ')}</div>
+      ${b.ser ? `<div class="sub">${esc(SERIES[b.ser-1].name)} · book ${b.no}</div>` : ''}
+      ${b.prog > 0 && b.prog < 100 ? `<div><div class="prog"><i style="width:${b.prog}%"></i></div><div class="sub num" style="font-size:12px;margin-top:4px">${b.prog}% · last read yesterday</div></div>` : ''}
+      <div class="row"><button class="btn pri" data-toast="Opens the reader at /read/${b.uid}">${icon('book')}${b.prog > 0 && b.prog < 100 ? `Continue · ${b.prog}%` : b.prog === 100 ? 'Read again' : 'Read'}</button></div>
+      <div class="row" style="position:relative"><button class="btn sm" data-pop="dl">${icon('dl')}Download ▾</button><button class="btn sm" data-pop="lists">${icon('plus')}Add to list</button><button class="btn sm" data-pop="send">${icon('send')}Send ▾</button></div>
+    </div></div>
+    ${inLists.length ? `<div class="sub">In your lists: ${inLists.map(esc).join(', ')}</div>` : ''}
+    <dl class="meta num"><dt>Genre</dt><dd><a class="link" data-genre="${b.g}">${GENRES[b.g]}</a></dd><dt>Language</dt><dd>${b.lang === 'ru' ? 'Russian' : 'English'}</dd><dt>Written</dt><dd>${b.year}</dd><dt>File</dt><dd>${b.ext} · ${fmtKb(b.kb)}</dd><dt>Added</dt><dd>${b.added}</dd><dt>Source</dt><dd>flibusta_fb2_local</dd><dt>Rating</dt><dd>${'★'.repeat(b.rate)}${'☆'.repeat(5 - b.rate)}</dd></dl>
+    <p class="annot" style="margin:0">Annotation from the FB2 file appears here, with the table of contents and the author note below it. These come from the existing book info dialog.</p>
+    ${siblings.length ? `<div><h2 style="margin-bottom:10px">${b.ser ? 'More in this series' : 'More by this author'}</h2><div class="shelf" style="grid-template-columns:repeat(auto-fill,minmax(90px,1fr))">${siblings.map(x => `<div class="card" data-book="${x.uid}">${cover(x)}<div class="au">${x.no ? '#' + x.no + ' ' : ''}${esc(x.title)}</div></div>`).join('')}</div></div>` : ''}
+    <div class="sub" style="font-size:12px;border-top:1px solid var(--line);padding-top:12px">Admin: <a class="link">Edit metadata</a> · <a class="link">Rebuild cover</a></div>
+  </aside>`;
+}
+function popover(kind, anchor) {
+  const b = bookByUid(S.book);
+  const html = kind === 'dl' ? ['fb2 (original)', 'epub', 'kepub (Kobo)', 'azw3'].map((f, i) => `<a data-toast="Downloading ${esc(b.title)}.${['fb2','epub','kepub.epub','azw3'][i]}">${f}<span class="m">${i ? 'converted' : fmtKb(b.kb)}</span></a>`).join('')
+    : kind === 'send' ? `<a data-toast="Queued for Kobo Libra 2">Kobo Libra 2<span class="m">next sync</span></a><a data-toast="Sent to vera_kindle@kindle.com">Email<span class="m">vera_kindle@…</span></a><a data-toast="Sent to Telegram">Telegram</a>`
+    : LISTS.map(l => `<label><input type="checkbox" ${l.books.includes(b.uid) ? 'checked' : ''} data-addlist="${l.id}">${esc(l.name)}<span class="m num">${l.books.length}</span></label>`).join('') + `<a data-act="newlist">${icon('plus')}New list…</a>`;
+  document.querySelectorAll('.pop').forEach(p => p.remove());
+  const p = document.createElement('div'); p.className = 'pop'; p.innerHTML = html;
+  anchor.parentElement.appendChild(p); p.style.left = anchor.offsetLeft + 'px'; p.style.top = (anchor.offsetTop + anchor.offsetHeight + 4) + 'px';
+}
+
+/* ---------- render + events ---------- */
+function render() {
+  renderNav();
+  const v = { home: vHome, search: vSearch, discover: vDiscover, lists: vLists, me: vMe, admin: vAdmin, author: vAuthor }[S.view];
+  $('#content').innerHTML = v();
+  $('#overlay').innerHTML = S.book ? bookPanel() : '';
+  try { localStorage.setItem('inpx-proto', JSON.stringify({ view: S.view, me: S.me, admin: S.admin })); } catch (e) {}
+}
+function suggest() {
+  const q = $('#q').value, box = $('#sugg');
+  if (!q.trim()) { box.hidden = true; return; }
+  const r = runSearch(q);
+  const g = (t, items) => items.length ? `<div class="g">${t}</div>${items.join('')}` : '';
+  box.innerHTML = (r.note ? `<div class="dym">${r.note.kind === 'typo' ? 'Did you mean' : 'Wrong layout? Did you mean'} <b data-q="${esc(r.note.to)}">${esc(r.note.to)}</b>?</div>` : '')
+    + g('Authors', r.authors.slice(0, 3).map(a => `<div class="it" data-author="${a.id}">${esc(a.name)}<span class="m num">${a.n} books</span></div>`))
+    + g('Series', r.series.slice(0, 3).map(s => `<div class="it">${esc(s.name)}<span class="m num">${s.n} books</span></div>`))
+    + g('Books', r.books.slice(0, 4).map(b => `<div class="it" data-book="${b.uid}"><span class="bt">${esc(b.title)}</span><span class="m">${esc(bookAuthors(b))} · ${b.ext}</span></div>`))
+    + `<div class="it hi" data-q="${esc(q)}">${icon('search')}Search everything for “${esc(q)}”<span class="m kbd">Enter</span></div>`;
+  box.hidden = false;
+}
+function go(view, extra = {}) { Object.assign(S, { view, book: null, menu: false }, extra); $('#sugg').hidden = true; render(); $('#content').scrollTop = 0; }
+function doSearch(q) { $('#q').value = q; S.q = q; S.tab = 'books'; go('search'); }
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-go],[data-book],[data-author],[data-q],[data-q-exact],[data-genre],[data-list],[data-me],[data-admin],[data-tab],[data-act],[data-toast],[data-copy],[data-pop],[data-theme-set],[data-unfacet]');
+  if (!e.target.closest('.omni')) $('#sugg').hidden = true;
+  if (!e.target.closest('.pop,[data-pop]')) document.querySelectorAll('.pop').forEach(p => p.remove());
+  if (!e.target.closest('#menu,#avatarBtn') && S.menu) { S.menu = false; renderNav(); }
+  if (!t) return;
+  const d = t.dataset;
+  if (d.themeSet) { if (d.themeSet === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = d.themeSet; renderNav(); return; }
+  if (d.toast && !d.go) { toast(d.toast); return; }
+  if (d.copy) { navigator.clipboard?.writeText(d.copy).then(() => toast('Copied'), () => toast('Select the text and copy it')); return; }
+  if (d.pop) { popover(d.pop, t); return; }
+  if (d.unfacet) { S.f[d.unfacet].delete(d.v); render(); return; }
+  if (d.tab) { S.tab = d.tab; render(); return; }
+  if (d.book) { S.book = +d.book; $('#sugg').hidden = true; render(); return; }
+  if (d.author) { go('author', { author: +d.author }); return; }
+  if (d.qExact) { doSearch(d.qExact); return; }
+  if (d.q) { doSearch(d.q); return; }
+  if (d.genre) { S.f.g = new Set([d.genre]); doSearch(''); return; }
+  if (d.me) { go('me', { me: d.me }); return; }
+  if (d.admin) { go('admin', { admin: d.admin }); return; }
+  if (d.list && d.list !== 'reading') { go('lists', { list: +d.list }); return; }
+  if (d.go) { go(d.go); return; }
+  const act = d.act;
+  if (act === 'closebook') { S.book = null; render(); }
+  if (act === 'layout') { S.layout = S.layout === 'list' ? 'grid' : 'list'; render(); }
+  if (act === 'facets') { S.facetsOpen = !S.facetsOpen; render(); }
+  if (act === 'clearf') { S.f = { lang: new Set(), g: new Set(), ext: new Set() }; render(); }
+  if (act === 'addkobo') { const k = $('#koboSetup'); k.hidden = !k.hidden; }
+  if (act === 'newuser') { const k = $('#newUser'); k.hidden = !k.hidden; }
+  if (act === 'newlist') toast('New list: type a name, press Enter');
+  if (act === 'signout') toast('Signed out. Goes to /login');
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.facet) { const s = S.f[t.dataset.facet]; t.checked ? s.add(t.value) : s.delete(t.value); render(); }
+  if (t.id === 'sort') { S.sort = t.value; render(); }
+  if (t.dataset.lt) { const L = LISTS.find(l => l.id === S.list); if (t.dataset.lt === 'opds') { L.opds = t.checked; toast(t.checked ? 'List is now in your OPDS catalog' : 'List removed from OPDS'); } else { L.kobo = t.checked ? 'Kobo Libra 2' : null; toast(t.checked ? 'Kobo Libra 2 will get these books on next sync' : 'Books will be removed from Kobo on next sync'); } render(); }
+  if (t.dataset.addlist) { const L = LISTS.find(l => l.id === +t.dataset.addlist); t.checked ? L.books.push(S.book) : L.books.splice(L.books.indexOf(S.book), 1); toast(`${t.checked ? 'Added to' : 'Removed from'} ${L.name}`); renderNav(); }
+});
+$('#q').addEventListener('input', suggest);
+$('#q').addEventListener('focus', suggest);
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') { doSearch($('#q').value); $('#q').blur(); } if (e.key === 'Escape') { $('#sugg').hidden = true; $('#q').blur(); } });
+$('#avatarBtn').addEventListener('click', () => { S.menu = !S.menu; renderNav(); });
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $('#q').focus(); }
+  if (e.key === 'Escape' && S.book) { S.book = null; render(); }
+});
+try { Object.assign(S, JSON.parse(localStorage.getItem('inpx-proto') || '{}')); } catch (e) {}
+if (S.view === 'author' || !S.view) S.view = 'home';
+render();
+</script>
