@@ -148,9 +148,6 @@
                         <h2 class="card-title">
                             {{ $t('Аннотация') }}
                         </h2>
-                        <q-btn v-if="bookInfo" flat dense no-caps color="primary" icon="la la-info-circle" @click="bookInfoDialogVisible = true">
-                            {{ admin ? $t('Подробнее и правка') : $t('Подробнее') }}
-                        </q-btn>
                     </div>
                     <div v-if="infoLoading" class="card-hint">
                         {{ $t('Загрузка...') }}
@@ -164,6 +161,8 @@
                         {{ infoError || $t('Аннотации нет.') }}
                     </div>
                 </section>
+
+                <BookDetails v-if="!infoLoading" :book="book" :book-info="bookInfo" @updated="onMetadataUpdated" />
 
                 <section v-if="related.length" class="book-section">
                     <div class="card-head">
@@ -189,7 +188,6 @@
         </div>
 
         <AddToListDialog v-if="book" v-model="readingListsDialogVisible" :book="book" @changed="loadLists" />
-        <BookInfoDialog v-if="bookInfo" v-model="bookInfoDialogVisible" :book-info="bookInfo" :genre-map="genreMap" initial-tab="fb2" @navigate="onInfoNavigate" />
     </div>
 </template>
 
@@ -199,11 +197,11 @@ import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 import BookCard from './BookCard.vue';
 import AddToListDialog from './AddToListDialog.vue';
-import BookInfoDialog from './BookInfoDialog.vue';
+import BookDetails from './BookDetails.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tMessage} from '../../share/i18n';
-import {isSignedIn, isAdmin} from '../../share/session';
+import {isSignedIn} from '../../share/session';
 import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 import {myLanguages, languageMatches, bookLang} from '../../share/languages';
@@ -213,7 +211,7 @@ const componentOptions = {
         BookCover,
         BookCard,
         AddToListDialog,
-        BookInfoDialog,
+        BookDetails,
     },
     watch: {
         '$route.params.uid'() {
@@ -239,7 +237,6 @@ class BookPage {
     annotation = [];
     genresReady = 0;
     readingListsDialogVisible = false;
-    bookInfoDialogVisible = false;
     loadedUid = '';
 
     created() {
@@ -265,22 +262,12 @@ class BookPage {
         return isSignedIn(this.config);
     }
 
-    get admin() {
-        return isAdmin(this.config);
-    }
-
     get authors() {
         return bookAuthors(this.book || {});
     }
 
     get genres() {
         return bookGenres(this.book || {});
-    }
-
-    get genreMap() {
-        //BookInfoDialog ждёт Map код -> название
-        void this.genresReady;
-        return new Map(this.genres.map(code => [code, genreName(code)]));
     }
 
     get formats() {
@@ -470,14 +457,9 @@ class BookPage {
             await this.loadStates([this.book]);
     }
 
-    onInfoNavigate(event) {
-        if (!event || !event.value)
-            return;
-        this.bookInfoDialogVisible = false;
-        if (event.type === 'author')
-            this.$router.push(this.authorLink(event.value));
-        else if (event.type === 'series')
-            this.$router.push(this.seriesLink(event.value));
+    onMetadataUpdated(fields) {
+        Object.assign(this.book, fields);
+        this.$root.setAppTitle(this.book.title);
     }
 }
 

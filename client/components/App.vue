@@ -697,6 +697,39 @@ body.body--dark pre {
     line-height: 1.45;
 }
 
+/* вкладки страниц: поиск, подробности книги */
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: -1px;
+    padding: 8px 12px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--app-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.tab.is-active {
+    border-bottom-color: var(--app-primary);
+    color: var(--app-text);
+    font-weight: 600;
+}
+
+.tab-count {
+    color: var(--app-muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
