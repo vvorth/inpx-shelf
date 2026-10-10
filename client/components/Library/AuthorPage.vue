@@ -12,6 +12,9 @@
                     <h1 class="page-title">
                         {{ name }}
                     </h1>
+                    <div v-if="aliases.length" class="author-aliases">
+                        {{ aliases.join(', ') }}
+                    </div>
                     <div v-if="!loading && books.length" class="card-hint num">
                         {{ summary }}
                         <template v-if="hiddenCount">
@@ -187,6 +190,7 @@ class AuthorPage {
     _options = componentOptions;
 
     books = [];
+    aliases = [];
     states = {};
     loading = false;
     error = '';
@@ -404,6 +408,13 @@ class AuthorPage {
         this.grouping = 'series';
         this.expandedGroups = {};
         this.openState = Object.assign({}, readSections()[name] || {});
+        this.aliases = [];
+        this.api.getAuthorAliases(name)
+            .then((result) => {
+                if (name === this.name)
+                    this.aliases = (result && result.aliases) || [];
+            })
+            .catch(() => {});
         try {
             const result = await this.api.getAuthorBooksByName(name);
             if (name !== this.name)
@@ -457,6 +468,12 @@ export default vueComponent(AuthorPage);
     font-family: var(--app-font-serif);
     font-size: 26px;
     font-weight: 600;
+}
+
+.author-aliases {
+    color: var(--app-muted);
+    font-family: var(--app-font-serif);
+    font-size: 16px;
 }
 
 .link-btn {

@@ -529,6 +529,18 @@ class Api {
         return await this.request(Object.assign({action: 'catalog-search'}, params), 60);
     }
 
+    async getAuthorAliases(author) {
+        return await this.request({action: 'get-author-aliases', author}, 20);
+    }
+
+    async adminAuthorNamesStatus() {
+        return await this.request({action: 'admin-author-names-status'}, 30);
+    }
+
+    async adminAuthorNamesUpdate() {
+        return await this.request({action: 'admin-author-names-update'}, 30);
+    }
+
     async catalogSuggest(q) {
         return await this.request({action: 'catalog-suggest', q}, 20);
     }

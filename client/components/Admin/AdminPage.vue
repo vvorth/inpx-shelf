@@ -242,6 +242,8 @@
                     </div>
                 </div>
 
+                        <AdminAuthorNames v-if="catalogSearchEnabled" />
+
                         <section v-if="discoveryEnabled" class="card">
                             <h2 class="card-title">{{ $t('Внешняя витрина') }}</h2>
                             <div class="card-hint">{{ externalDiscoverySummary }}</div>
@@ -480,6 +482,7 @@ import vueComponent from '../vueComponent.js';
 
 import DiscoverySourceDialog from '../Search/DiscoverySourceDialog/DiscoverySourceDialog.vue';
 import AdminUsers from './AdminUsers.vue';
+import AdminAuthorNames from './AdminAuthorNames.vue';
 import {t, getLocale} from '../../share/i18n';
 import {isAdmin} from '../../share/session';
 
@@ -487,6 +490,7 @@ const componentOptions = {
     components: {
         DiscoverySourceDialog,
         AdminUsers,
+        AdminAuthorNames,
     },
     watch: {
         settings() {
@@ -741,6 +745,10 @@ class AdminPage {
         this.isActive = false;
         this.stopAdminMetricsPolling();
         this.stopAdminIndexPolling();
+    }
+
+    get catalogSearchEnabled() {
+        return !!(this.config.catalogSearch || {}).enabled;
     }
 
     get sections() {

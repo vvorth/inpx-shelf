@@ -1137,7 +1137,7 @@ async function testCatalogIndexSearch() {
             book(6, 'Мастер и Маргарита', 'Булгаков Михаил Афанасьевич', {sourceId: 'second'}),
             book(7, 'Удалённая книга', 'Булгаков Михаил Афанасьевич', {del: 1}),
         ]);
-        assert.deepStrictEqual(index.finishBuild({inpxHash: 'hash'}), {books: 7, authors: 5, series: 1});
+        assert.deepStrictEqual(index.finishBuild({inpxHash: 'hash'}), {books: 7, authors: 5, series: 1, aliases: 0});
         assert.strictEqual(index.open(file).inpxHash, 'hash');
 
         const search = (q, extra = {}) => index.search(Object.assign({q}, extra));
@@ -1175,6 +1175,66 @@ async function testCatalogIndexSearch() {
         index.updateBook(file, {id: 2, title: 'Сердце собаки', author: 'Булгаков Михаил Афанасьевич', lang: 'ru', librate: 4});
         assert.deepStrictEqual(search('собаки').ids, [2]);
         assert.strictEqual(search('собачье').total, 0);
+        index.close();
+    });
+}
+
+async function testAuthorEnglishNames() {
+    const AuthorNames = require('../server/core/search/AuthorNames');
+    const lookup = AuthorNames.buildLookup([
+        ['Айзек Азимов', 'Isaac Asimov'],
+        ['Михаил Афанасьевич Булгаков', 'Mikhail Bulgakov'],
+        ['Джон Смит', 'John Smith'],
+        ['Джон Смит', 'John Smyth'],
+        ['Борис Акунин', 'Борис Акунин'],
+    ]);
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Азимов Айзек'), 'Isaac Asimov', 'word order must not matter');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Булгаков Михаил Афанасьевич'), 'Mikhail Bulgakov');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Азимов Айзек Юдович'), 'Isaac Asimov', 'a patronymic in the library is ignored');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Смит Джон'), '', 'namesakes with different English names are skipped');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Акунин Борис'), '', 'names without Latin letters are skipped');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Азимов'), '', 'a surname alone is not enough');
+
+    await withTempDir(async(dir) => {
+        const queries = [];
+        const names = new AuthorNames({dataDir: dir, version: 'test'}, async(query) => {
+            queries.push(query);
+            const offset = Number((query.match(/OFFSET (\d+)/) || [])[1]);
+            const bindings = (query.includes('wd:Q36180') && offset === 0
+                ? [{item: {value: 'Q1'}, ru: {value: 'Айзек Азимов'}, en: {value: 'Isaac Asimov'}}]
+                : []);
+            return {results: {bindings}};
+        });
+        assert.strictEqual((await names.info()).ready, false);
+        assert.strictEqual(await names.download(), 1);
+        assert.ok(queries.length >= 11, 'every occupation is queried');
+        const info = await names.info();
+        assert.strictEqual(info.ready, true);
+        assert.strictEqual(info.count, 1);
+        assert.deepStrictEqual((await names.readEntries()).entries, [['Айзек Азимов', 'Isaac Asimov']]);
+
+        const failing = new AuthorNames({dataDir: path.join(dir, 'other'), version: 'test'}, async() => {
+            throw new Error('HTTP 429');
+        });
+        failing.retryDelayMs = 1;
+        await assert.rejects(() => failing.download(), /HTTP 429/);
+
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const file = path.join(dir, 'catalog.sqlite');
+        const index = new CatalogIndex();
+        index.beginBuild(file, (await names.readEntries()).entries);
+        index.insertBooks([
+            {id: 1, _uid: 'u1', title: 'Основание', author: 'Азимов Айзек', series: '', serno: 0, genre: 'sf', lang: 'ru', ext: 'fb2', size: 1, date: '2020-01-01', librate: 0, del: 0, sourceId: 'main', keywords: ''},
+            {id: 2, _uid: 'u2', title: 'Пикник', author: 'Стругацкий Аркадий', series: '', serno: 0, genre: 'sf', lang: 'ru', ext: 'fb2', size: 1, date: '2020-01-01', librate: 0, del: 0, sourceId: 'main', keywords: ''},
+        ]);
+        assert.strictEqual(index.finishBuild({inpxHash: 'h'}).aliases, 1);
+        assert.strictEqual(index.open(file).aliases, '1');
+        assert.deepStrictEqual(index.search({q: 'asimov'}).ids, [1]);
+        assert.deepStrictEqual(index.search({q: 'isaac asimov основание'}).ids, [1]);
+        assert.deepStrictEqual(index.search({q: 'asimov'}).authors, [{name: 'Азимов Айзек', books: 1, alias: 'Isaac Asimov'}]);
+        assert.deepStrictEqual(index.suggest({q: 'asim'}).authors, [{name: 'Азимов Айзек', books: 1, alias: 'Isaac Asimov'}]);
+        assert.deepStrictEqual(index.authorAliases('Азимов Айзек'), ['Isaac Asimov']);
+        assert.deepStrictEqual(index.authorAliases('Стругацкий Аркадий'), []);
         index.close();
     });
 }
@@ -1859,6 +1919,7 @@ const tests = [
     testReaderHomeKeepsUnavailableProgressVisible,
     testBookPageRecordAndReaderStates,
     testCatalogIndexSearch,
+    testAuthorEnglishNames,
     testDiscoveryFeedbackAndEventsPersist,
     testCoverCacheRoutesAndCleaner,
     testCacheRotationUsesTargetWatermark,

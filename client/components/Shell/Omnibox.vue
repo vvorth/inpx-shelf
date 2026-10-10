@@ -122,7 +122,8 @@ class Omnibox {
         const groups = [];
         if (s.authors.length) {
             groups.push(make('authors', t('Авторы'), s.authors.map(item => ({
-                key: `a-${item.name}`, icon: 'la la-user', label: item.name, meta: t('Книг: {n}', {n: item.books}),
+                key: `a-${item.name}`, icon: 'la la-user', label: item.name,
+                meta: [item.alias, t('Книг: {n}', {n: item.books})].filter(Boolean).join(' · '),
                 to: `/author/${encodeURIComponent(item.name)}`,
             }))));
         }

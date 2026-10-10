@@ -5,8 +5,9 @@ const {DatabaseSync} = require('node:sqlite');
 
 const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = require('./textNorm');
 const {copyKey} = require('./copyKey');
+const {buildLookup, englishName} = require('./AuthorNames');
 
-const schemaVersion = '5';
+const schemaVersion = '6';
 const maxLimit = 200;
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
@@ -29,6 +30,7 @@ const schema = `
     CREATE TABLE book_genre(book_id INTEGER NOT NULL, genre TEXT NOT NULL);
     CREATE TABLE author(id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
     CREATE TABLE book_author(book_id INTEGER NOT NULL, author_id INTEGER NOT NULL);
+    CREATE TABLE author_alias(author_id INTEGER NOT NULL, alias TEXT NOT NULL);
     CREATE TABLE series(id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
     CREATE TABLE term(id INTEGER PRIMARY KEY, term TEXT NOT NULL, docs INTEGER NOT NULL);
     CREATE TABLE name(id INTEGER PRIMARY KEY, kind TEXT NOT NULL, ref INTEGER NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
@@ -45,6 +47,7 @@ const postBuildSchema = `
     CREATE INDEX name_kind_norm ON name(kind, name_norm);
     CREATE INDEX book_author_author ON book_author(author_id, book_id);
     CREATE INDEX author_norm ON author(name_norm);
+    CREATE INDEX author_alias_author ON author_alias(author_id);
     CREATE VIRTUAL TABLE term_tri USING fts5(term, content='term', content_rowid='id', tokenize='trigram');
     CREATE VIRTUAL TABLE name_tri USING fts5(name_norm, content='name', content_rowid='id', tokenize='trigram');
 `;
@@ -109,7 +112,8 @@ class CatalogIndex {
     }
 
     //---------- построение ----------
-    beginBuild(file) {
+    //aliasEntries - пары [русское имя, английское имя] из Wikidata (см. AuthorNames)
+    beginBuild(file, aliasEntries = []) {
         if (this.build)
             this.build.db.close();
 
@@ -120,6 +124,8 @@ class CatalogIndex {
         this.build = {
             db,
             authors: new Map(),
+            aliasLookup: buildLookup(aliasEntries),
+            aliases: new Map(),
             series: new Map(),
             count: 0,
             insertBook: db.prepare(`INSERT INTO book(id, uid, title_norm, author_norm, series_norm, serno, lang, ext, size, date, librate, del, source, copy_key)
@@ -152,7 +158,12 @@ class CatalogIndex {
             for (const genre of String(row.genre || '').split(',').map(value => value.trim()).filter(Boolean))
                 b.insertGenre.run(id, genre);
 
+            const authorAliases = [];
             for (const name of splitAuthors(author)) {
+                if (!b.aliases.has(name))
+                    b.aliases.set(name, englishName(b.aliasLookup, name));
+                if (b.aliases.get(name))
+                    authorAliases.push(b.aliases.get(name));
                 let rec = b.authors.get(name);
                 if (!rec) {
                     rec = {id: b.authors.size + 1, books: 0};
@@ -170,7 +181,8 @@ class CatalogIndex {
                 b.series.set(series, rec);
             }
 
-            b.insertFts.run(id, normalize(title), normalize(author), normalize(series), normalize(row.keywords));
+            //английские имена авторов ищутся наравне с именами из библиотеки
+            b.insertFts.run(id, normalize(title), normalize([author, ...authorAliases].join(' ')), normalize(series), normalize(row.keywords));
             b.count++;
         }
 
@@ -187,9 +199,15 @@ class CatalogIndex {
             const insertAuthor = db.prepare('INSERT INTO author(id, name, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertSeries = db.prepare('INSERT INTO series(id, name, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertName = db.prepare('INSERT INTO name(kind, ref, name_norm, books) VALUES (?, ?, ?, ?)');
+            const insertAlias = db.prepare('INSERT INTO author_alias(author_id, alias) VALUES (?, ?)');
             for (const [name, rec] of b.authors) {
                 insertAuthor.run(rec.id, name, normalize(name), rec.books);
                 insertName.run('author', rec.id, normalize(name), rec.books);
+                const alias = b.aliases.get(name);
+                if (alias) {
+                    insertAlias.run(rec.id, alias);
+                    insertName.run('alias', rec.id, normalize(alias), rec.books);
+                }
             }
             for (const [name, rec] of b.series) {
                 insertSeries.run(rec.id, name, normalize(name), rec.books);
@@ -219,7 +237,8 @@ class CatalogIndex {
             db.exec(`INSERT INTO name_tri(name_tri) VALUES ('rebuild')`);
 
             const insertMeta = db.prepare('INSERT INTO meta(key, value) VALUES (?, ?)');
-            const fullMeta = Object.assign({}, meta, {schemaVersion, books: String(b.count), builtAt: new Date().toISOString()});
+            const aliasCount = [...b.aliases.values()].filter(Boolean).length;
+            const fullMeta = Object.assign({}, meta, {schemaVersion, books: String(b.count), aliases: String(aliasCount), builtAt: new Date().toISOString()});
             for (const [key, value] of Object.entries(fullMeta))
                 insertMeta.run(key, String(value));
 
@@ -232,7 +251,7 @@ class CatalogIndex {
             this.build = null;
         }
 
-        return {books: b.count, authors: b.authors.size, series: b.series.size};
+        return {books: b.count, authors: b.authors.size, series: b.series.size, aliases: [...b.aliases.values()].filter(Boolean).length};
     }
 
     abortBuild() {
@@ -513,7 +532,7 @@ class CatalogIndex {
     //---------- поиск ----------
     search(request = {}) {
         if (!this.db)
-            throw new Error('catalog index is not ready');
+            throw new Error('catalog_index_not_ready');
         if (!this.columns)
             this.loadColumns();
 
@@ -652,32 +671,50 @@ class CatalogIndex {
 
         const long = words.filter(word => word.length >= 3);
         const short = words.filter(word => word.length < 3);
-        for (const kind of ['author', 'series']) {
+        //авторы ищутся и по именам из библиотеки, и по английским именам
+        for (const [field, kinds] of [['authors', ['author', 'alias']], ['series', ['series']]]) {
+            const kindIn = kinds.map(() => '?').join(',');
             let rows;
             if (long.length) {
                 const where = short.map(() => ' AND n.name_norm LIKE ?').join('');
                 rows = this.db.prepare(`SELECT n.ref AS id, n.books AS books FROM name_tri JOIN name n ON n.id = name_tri.rowid
-                    WHERE name_tri MATCH ? AND n.kind = ?${where} ORDER BY n.books DESC LIMIT ?`)
-                    .all(long.map(word => `"${word}"`).join(' AND '), kind, ...short.map(word => `%${word}%`), limit);
+                    WHERE name_tri MATCH ? AND n.kind IN (${kindIn})${where} ORDER BY n.books DESC LIMIT ?`)
+                    .all(long.map(word => `"${word}"`).join(' AND '), ...kinds, ...short.map(word => `%${word}%`), limit * 2);
             } else {
-                rows = this.db.prepare(`SELECT ref AS id, books FROM name WHERE kind = ? AND name_norm >= ? AND name_norm < ? ORDER BY books DESC LIMIT ?`)
-                    .all(kind, words[0], `${words[0]}￿`, limit);
+                rows = this.db.prepare(`SELECT ref AS id, books FROM name WHERE kind IN (${kindIn}) AND name_norm >= ? AND name_norm < ? ORDER BY books DESC LIMIT ?`)
+                    .all(...kinds, words[0], `${words[0]}￿`, limit * 2);
             }
 
-            const table = (kind === 'author' ? 'author' : 'series');
-            const select = this.db.prepare(`SELECT name, books FROM ${table} WHERE id = ?`);
-            result[kind === 'author' ? 'authors' : 'series'] = rows
-                .map(row => select.get(row.id))
-                .filter(row => row && row.books > 0)
-                .map(row => ({name: row.name, books: row.books}));
+            const ids = [...new Set(rows.map(row => row.id))].slice(0, limit);
+            if (field === 'authors') {
+                const select = this.db.prepare('SELECT name, books FROM author WHERE id = ?');
+                const aliasOf = this.db.prepare('SELECT alias FROM author_alias WHERE author_id = ?');
+                result.authors = ids
+                    .map(id => Object.assign({}, select.get(id), {alias: (aliasOf.get(id) || {}).alias || ''}))
+                    .filter(row => row.name && row.books > 0)
+                    .map(row => (row.alias ? {name: row.name, books: row.books, alias: row.alias} : {name: row.name, books: row.books}));
+            } else {
+                const select = this.db.prepare('SELECT name, books FROM series WHERE id = ?');
+                result.series = ids
+                    .map(id => select.get(id))
+                    .filter(row => row && row.books > 0)
+                    .map(row => ({name: row.name, books: row.books}));
+            }
         }
         return result;
+    }
+
+    authorAliases(name = '') {
+        if (!this.db)
+            return [];
+        return this.db.prepare('SELECT aa.alias AS alias FROM author a JOIN author_alias aa ON aa.author_id = a.id WHERE a.name = ?')
+            .all(String(name || '')).map(row => row.alias);
     }
 
     //Подсказки при наборе: авторы, серии и книги
     suggest(request = {}) {
         if (!this.db)
-            throw new Error('catalog index is not ready');
+            throw new Error('catalog_index_not_ready');
 
         const parsed = this.parseQuery(request.q);
         const text = this.resolveText(parsed);

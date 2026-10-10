@@ -1309,6 +1309,20 @@ export default {
     "Вид карточек в поиске по полям": "Card view in search by fields",
     "Скачать в другом формате": "Download in another format",
     "Конвертировать и скачать": "Convert and download",
+
+    //--- английские имена авторов
+    "Английские имена авторов": "English author names",
+    "Поиск найдёт «Азимов Айзек» по запросу «Isaac Asimov». Имена писателей на русском и английском скачиваются из Wikidata (несколько мегабайт) и сопоставляются с авторами библиотеки. Тёзки с разными английскими именами пропускаются.": "Search will find «Азимов Айзек» for “Isaac Asimov”. Writers' names in Russian and English are downloaded from Wikidata (a few megabytes) and matched to the library's authors. Namesakes with different English names are skipped.",
+    "Скачать и сопоставить": "Download and match",
+    "Скачиваю имена из Wikidata...": "Downloading names from Wikidata...",
+    "Перестраиваю поисковый индекс...": "Rebuilding the search index...",
+    "Не удалось скачать: {error}": "Download failed: {error}",
+    "Имён в таблице: {count}, обновлена {date}. Сопоставлено авторов библиотеки: {matched}.": "Names in the table: {count}, updated {date}. Library authors matched: {matched}.",
+    "Таблица ещё не скачана.": "The table hasn't been downloaded yet.",
+    "Поиск может находить авторов и по английским именам: «Isaac Asimov» найдёт Азимова. Для этого нужно скачать таблицу имён.": "Search can also find authors by their English names, so “Isaac Asimov” finds Азимов. Download the name table to turn this on.",
+    "Настроить": "Set up",
+    "Скрыть на неделю": "Hide for a week",
+    "Wikidata не вернула ни одного имени": "Wikidata returned no names",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

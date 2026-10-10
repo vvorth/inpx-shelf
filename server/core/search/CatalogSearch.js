@@ -3,6 +3,7 @@
 const fs = require('fs-extra');
 
 const log = new (require('../AppLogger'))().log;//singleton
+const AuthorNames = require('./AuthorNames');
 
 const chunkSize = 5000;
 
@@ -28,6 +29,8 @@ class CatalogSearch {
         this.meta = {};
         this.buildPromise = null;
         this.generation = 0;
+        this.inpxHash = '';
+        this.authorNames = new AuthorNames(config);
     }
 
     status() {
@@ -43,12 +46,15 @@ class CatalogSearch {
     }
 
     //Открыть готовый индекс или перестроить его для текущей БД. Без await: строится в фоне.
-    ensure(db, inpxHash) {
+    //keepReady: та же библиотека, меняются только имена авторов - старый индекс отвечает, пока строится новый
+    ensure(db, inpxHash, options = {}) {
         if (!this.enabled)
             return Promise.resolve(false);
 
         const generation = ++this.generation;
-        this.ready = false;
+        this.inpxHash = inpxHash;
+        if (!options.keepReady)
+            this.ready = false;
         this.buildPromise = this.ensureInner(db, inpxHash, generation)
             .catch((e) => {
                 log(LM_ERR, `Catalog index: ${e.message}`);
@@ -62,13 +68,14 @@ class CatalogSearch {
         if (await fs.pathExists(this.file)) {
             try {
                 const meta = await thread.call('open', this.file);
-                if (meta.inpxHash === inpxHash) {
+                const names = await this.authorNames.readEntries();
+                if (meta.inpxHash === inpxHash && String(meta.aliasesStamp || '') === names.updatedAt) {
                     this.meta = meta;
                     this.ready = (generation === this.generation);
                     log(`Catalog index ready: ${meta.books} books`);
                     return true;
                 }
-                log('Catalog index: library changed, rebuilding');
+                log(meta.inpxHash === inpxHash ? 'Catalog index: author names changed, rebuilding' : 'Catalog index: library changed, rebuilding');
             } catch (e) {
                 log(LM_WARN, `Catalog index: ${e.message}, rebuilding`);
             }
@@ -90,8 +97,9 @@ class CatalogSearch {
             const dbConfig = await this.worker.dbConfig();
             const total = Number((dbConfig.stats || {}).bookCountAll) || 0;
             const overrides = await this.worker.readingListStore.getMetadataOverrides();
+            const names = await this.authorNames.readEntries();
 
-            await thread.call('beginBuild', tmpFile);
+            await thread.call('beginBuild', tmpFile, names.entries);
             for (let from = 1; from <= total; from += chunkSize) {
                 if (generation !== this.generation || db !== this.worker.db)
                     throw new Error('build cancelled: database reloaded');
@@ -110,13 +118,13 @@ class CatalogSearch {
                 this.progress = Math.min(0.95, (from + chunkSize) / Math.max(1, total) * 0.95);
             }
 
-            const counts = await thread.call('finishBuild', {inpxHash});
+            const counts = await thread.call('finishBuild', {inpxHash, aliasesStamp: names.updatedAt, aliases: 0});
             await thread.call('close');
             await fs.move(tmpFile, this.file, {overwrite: true});
             this.meta = await thread.call('open', this.file);
             this.progress = 1;
             this.ready = (generation === this.generation);
-            log(`Catalog index built in ${((Date.now() - started) / 1000).toFixed(1)}s: ${counts.books} books, ${counts.authors} authors, ${counts.series} series`);
+            log(`Catalog index built in ${((Date.now() - started) / 1000).toFixed(1)}s: ${counts.books} books, ${counts.authors} authors, ${counts.series} series, ${counts.aliases} English author names`);
             return true;
         } catch (e) {
             await thread.call('abortBuild').catch(() => {});
@@ -125,6 +133,29 @@ class CatalogSearch {
         } finally {
             this.building = false;
         }
+    }
+
+    //Скачивание английских имён авторов (администратор); по окончании индекс перестраивается
+    startAuthorNamesDownload() {
+        return this.authorNames.start(async() => {
+            if (this.worker.db && this.enabled)
+                await this.ensure(this.worker.db, this.inpxHash, {keepReady: this.ready});
+        });
+    }
+
+    async authorNamesStatus() {
+        const info = await this.authorNames.info();
+        return Object.assign(info, {
+            job: this.authorNames.status(),
+            matched: Number(this.meta.aliases || 0),
+            indexBuilding: this.building,
+        });
+    }
+
+    async authorAliases(name = '') {
+        if (!this.ready)
+            return [];
+        return await this.getThread().call('authorAliases', name);
     }
 
     checkReady() {

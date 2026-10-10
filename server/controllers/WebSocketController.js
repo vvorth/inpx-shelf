@@ -190,6 +190,12 @@ class WebSocketController {
                     await this.updateBookMetadata(req, ws); break;
                 case 'get-book-link':
                     await this.getBookLink(req, ws); break;
+                case 'get-author-aliases':
+                    await this.getAuthorAliases(req, ws); break;
+                case 'admin-author-names-status':
+                    await this.adminAuthorNamesStatus(req, ws); break;
+                case 'admin-author-names-update':
+                    await this.adminAuthorNamesUpdate(req, ws); break;
                 case 'catalog-search':
                     await this.catalogSearch(req, ws); break;
                 case 'catalog-suggest':
@@ -319,6 +325,7 @@ class WebSocketController {
 
     isCsrfProtectedAction(action = '') {
         return new Set([
+            'admin-author-names-update',
             'logout',
             'login-user-profile',
             'logout-user-profile',
@@ -437,6 +444,10 @@ class WebSocketController {
         );
         config.dbConfig = await this.webWorker.dbConfig();
         config.catalogSearch = (this.webWorker.catalogSearch ? this.webWorker.catalogSearch.status() : {enabled: false, ready: false});
+        if (this.webWorker.catalogSearch && config.catalogSearch.enabled) {
+            const names = await this.webWorker.catalogSearch.authorNames.info();
+            config.catalogSearch.authorNames = {ready: names.ready, updatedAt: names.updatedAt};
+        }
         config.freeAccess = this.webAccess.freeAccess;
         const profiles = await this.webWorker.getUserProfiles(req.userId);
         const currentProfile = await this.webWorker.getCurrentUserProfile(req.userId, req.profileAccessToken);
@@ -694,6 +705,23 @@ class WebSocketController {
         const result = await this.webWorker.getBookLink(req.bookUid);
 
         this.send(result, req, ws);
+    }
+
+    async getAuthorAliases(req, ws) {
+        this.webWorker.checkMyState();
+        const aliases = await this.webWorker.catalogSearch.authorAliases(String(req.author || ''));
+        this.send({aliases}, req, ws);
+    }
+
+    async adminAuthorNamesStatus(req, ws) {
+        await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
+        this.send(await this.webWorker.catalogSearch.authorNamesStatus(), req, ws);
+    }
+
+    async adminAuthorNamesUpdate(req, ws) {
+        await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
+        this.webWorker.catalogSearch.startAuthorNamesDownload();
+        this.send(await this.webWorker.catalogSearch.authorNamesStatus(), req, ws);
     }
 
     async catalogSearch(req, ws) {

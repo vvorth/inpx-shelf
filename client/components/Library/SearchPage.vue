@@ -122,7 +122,7 @@
                             <span class="entity-avatar">{{ initials(item.name) }}</span>
                             <span class="entity-copy">
                                 <span class="entity-name">{{ item.name }}</span>
-                                <span class="entity-meta">{{ $t('Автор') }} · {{ $t('Книг: {n}', {n: item.books}) }}</span>
+                                <span class="entity-meta">{{ [item.alias || $t('Автор'), $t('Книг: {n}', {n: item.books})].join(' · ') }}</span>
                             </span>
                         </router-link>
                         <router-link v-for="item in result.series" :key="`s-${item.name}`" class="entity" :to="`/series/${encodeURIComponent(item.name)}`">

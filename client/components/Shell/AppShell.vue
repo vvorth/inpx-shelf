@@ -81,6 +81,16 @@
         </nav>
 
         <div class="shell-column">
+            <div v-if="!bare && showNamesBanner" class="shell-banner" role="status">
+                <q-icon name="la la-lightbulb" size="18px" />
+                <span class="shell-banner-text">{{ $t('Поиск может находить авторов и по английским именам: «Isaac Asimov» найдёт Азимова. Для этого нужно скачать таблицу имён.') }}</span>
+                <router-link to="/admin/library" @click="dismissNamesBanner">
+                    {{ $t('Настроить') }}
+                </router-link>
+                <button type="button" class="shell-banner-close" :aria-label="$t('Скрыть на неделю')" :title="$t('Скрыть на неделю')" @click="dismissNamesBanner">
+                    <q-icon name="la la-times" size="16px" />
+                </button>
+            </div>
             <header v-if="!bare" class="shell-top">
                 <Omnibox />
                 <LanguagePicker />
@@ -134,6 +144,8 @@ const discoveryIcons = {
     'popular': 'la la-fire',
     'bestsellers': 'la la-globe',
 };
+const namesBannerKey = 'inpx-web-author-names-banner';
+const weekMs = 7 * 24 * 3600 * 1000;
 const catalogRoutes = new Set(['/search', '/author', '/series', '/title', '/books', '/extended']);
 
 const componentOptions = {
@@ -170,8 +182,14 @@ class AppShell {
     };
 
     lastCatalogPath = '/search';
+    namesBannerDismissedAt = 0;
 
     created() {
+        try {
+            this.namesBannerDismissedAt = Number(localStorage.getItem(namesBannerKey) || 0) || 0;
+        } catch (e) {
+            this.namesBannerDismissedAt = 0;
+        }
         if (catalogRoutes.has(this.$route.path))
             this.lastCatalogPath = this.$route.fullPath;
     }
@@ -263,6 +281,22 @@ class AppShell {
         return this.settings.showNewReleaseAvailable !== false && newReleaseAvailable(this.config);
     }
 
+    //подсказка администратору: таблица английских имён авторов не скачана; не чаще раза в неделю
+    get showNamesBanner() {
+        const search = this.config.catalogSearch || {};
+        const names = search.authorNames;
+        return !!(this.admin && search.enabled && names && !names.ready && Date.now() - this.namesBannerDismissedAt > weekMs);
+    }
+
+    dismissNamesBanner() {
+        this.namesBannerDismissedAt = Date.now();
+        try {
+            localStorage.setItem(namesBannerKey, String(this.namesBannerDismissedAt));
+        } catch (e) {
+            //без localStorage подсказка вернётся после перезагрузки
+        }
+    }
+
     dismissRelease() {
         this.$store.commit('setSettings', {showNewReleaseAvailable: false});
     }
@@ -308,6 +342,37 @@ export default vueComponent(AppShell);
     min-width: 0;
     min-height: 0;
     height: 100%;
+}
+
+.shell-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 16px 6px 28px;
+    background: var(--app-accent-soft);
+    color: var(--app-text);
+    font-size: 13px;
+}
+
+.shell-banner-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.shell-banner-close {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--app-muted);
+    cursor: pointer;
+}
+
+.shell-banner-close:hover {
+    background: var(--app-surface);
 }
 
 .shell-top {
