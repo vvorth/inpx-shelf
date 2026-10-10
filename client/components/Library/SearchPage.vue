@@ -147,53 +147,7 @@
                         </q-btn>
                     </div>
 
-                    <div v-else-if="view === 'grid'" class="book-grid" :class="{'is-loading': loading}">
-                        <BookCard v-for="book in books" :key="book._uid" :book="book" :progress="stateOf(book).percent || 0" />
-                    </div>
-
-                    <ol v-else class="result-list" :class="{'is-loading': loading}">
-                        <li v-for="book in books" :key="book._uid" class="result-row">
-                            <router-link class="result-cover" :to="bookLink(book)">
-                                <BookCover :book="book" :progress="stateOf(book).percent || 0" small />
-                            </router-link>
-                            <div class="result-main">
-                                <router-link class="result-title" :to="bookLink(book)">
-                                    {{ book.title || $t('Без названия') }}
-                                </router-link>
-                                <div class="result-meta">
-                                    <template v-for="(name, index) in authorsOf(book)" :key="name">
-                                        <router-link :to="`/author/${encodeURIComponent(name)}`">
-                                            {{ name }}
-                                        </router-link><span v-if="index < authorsOf(book).length - 1">, </span>
-                                    </template>
-                                    <template v-if="book.series">
-                                        · <router-link :to="`/series/${encodeURIComponent(book.series)}`">
-                                            {{ book.series }}
-                                        </router-link><span v-if="book.serno"> #{{ book.serno }}</span>
-                                    </template>
-                                </div>
-                                <div class="result-meta result-meta--small num">
-                                    {{ fileLine(book) }}
-                                </div>
-                            </div>
-                            <div class="result-side">
-                                <span v-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
-                                <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
-                                <span v-else-if="Number(book.librate) > 0" class="result-rating" :title="$t('Оценка')">{{ '★'.repeat(Number(book.librate)) }}</span>
-                                <div class="result-actions">
-                                    <q-btn flat dense round icon="la la-book-open" :aria-label="$t('Читать')" @click="act(book, 'readBook')">
-                                        <q-tooltip>{{ $t('Читать') }}</q-tooltip>
-                                    </q-btn>
-                                    <q-btn flat dense round icon="la la-download" :aria-label="$t('Скачать')" @click="act(book, 'download')">
-                                        <q-tooltip>{{ $t('Скачать {ext}', {ext: String(book.ext || '').toUpperCase()}) }}</q-tooltip>
-                                    </q-btn>
-                                    <q-btn v-if="signedIn" flat dense round icon="la la-bookmark" :aria-label="$t('В список')" @click="openLists(book)">
-                                        <q-tooltip>{{ $t('В список') }}</q-tooltip>
-                                    </q-btn>
-                                </div>
-                            </div>
-                        </li>
-                    </ol>
+                    <BookCollection v-else :class="{'is-loading': loading}" :books="books" :states="states" :view="view" />
 
                     <nav v-if="pageCount > 1" class="pager" :aria-label="$t('Страницы')">
                         <q-btn flat dense no-caps icon="la la-angle-left" :disable="page <= 1" @click="setQuery({page: page > 2 ? String(page - 1) : undefined})">
@@ -220,21 +174,18 @@
                 </section>
             </div>
         </div>
-
-        <ReadingListsDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" />
     </div>
 </template>
 
 <script>
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
-import BookCover from './BookCover.vue';
-import BookCard from './BookCard.vue';
-import ReadingListsDialog from '../Search/ReadingListsDialog/ReadingListsDialog.vue';
+import BookCollection from './BookCollection.vue';
+import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tMessage} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
-import {runBookAction, bookAuthors, bookUid} from '../../share/bookActions';
+import {bookUid} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
 import {myLanguages, allLanguages, languageName} from '../../share/languages';
 
@@ -243,9 +194,7 @@ const facetVisible = 6;
 
 const componentOptions = {
     components: {
-        BookCover,
-        BookCard,
-        ReadingListsDialog,
+        BookCollection,
     },
     watch: {
         queryKey() {
@@ -270,8 +219,6 @@ class SearchPage {
     facetsOpen = false;
     expanded = {};
     genresReady = 0;
-    listsBook = null;
-    listsDialogVisible = false;
     requestSeq = 0;
     pollTimer = null;
     loadedKey = '';
@@ -361,7 +308,7 @@ class SearchPage {
     }
 
     get view() {
-        return String(this.query.view || this.settings.searchView || 'list');
+        return bookView(this.settings);
     }
 
     get page() {
@@ -405,10 +352,7 @@ class SearchPage {
     }
 
     get viewOptions() {
-        return [
-            {icon: 'la la-list', value: 'list', attrs: {'aria-label': t('Списком')}},
-            {icon: 'la la-th-large', value: 'grid', attrs: {'aria-label': t('Обложками')}},
-        ];
+        return bookViewOptions();
     }
 
     optionLabel(field, value) {
@@ -503,14 +447,11 @@ class SearchPage {
             query.q = this.q;
         if (this.query.sort)
             query.sort = this.query.sort;
-        if (this.query.view)
-            query.view = this.query.view;
         this.$router.replace({path: '/search', query});
     }
 
     setView(view) {
-        this.$store.commit('setSettings', {searchView: view});
-        this.setQuery({view});
+        this.$store.commit('setSettings', {bookView: view});
     }
 
     stateOf(book) {
@@ -519,21 +460,6 @@ class SearchPage {
 
     initials(name) {
         return initials(name);
-    }
-
-    authorsOf(book) {
-        return bookAuthors(book);
-    }
-
-    bookLink(book) {
-        return `/book/${encodeURIComponent(bookUid(book))}`;
-    }
-
-    fileLine(book) {
-        const size = Number(book.size || 0);
-        const sizeText = (size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : (size > 0 ? `${Math.max(1, Math.round(size / 1024))} KB` : ''));
-        const genre = String(book.genre || '').split(',').filter(Boolean).slice(0, 2).map(code => this.optionLabel('genre', code)).join(', ');
-        return [genre, book.lang, String(book.ext || '').toUpperCase(), sizeText, book.date].filter(Boolean).join(' · ');
     }
 
     async load() {
@@ -601,14 +527,6 @@ class SearchPage {
         }
     }
 
-    act(book, action) {
-        runBookAction(this, book, action);
-    }
-
-    openLists(book) {
-        this.listsBook = book;
-        this.listsDialogVisible = true;
-    }
 }
 
 export default vueComponent(SearchPage);
@@ -809,92 +727,23 @@ export default vueComponent(SearchPage);
     font-size: 12px;
 }
 
-.result-list {
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius);
-    background: var(--app-surface);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .is-loading {
     opacity: 0.6;
     transition: opacity 0.15s;
-}
-
-.result-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--app-border);
-}
-
-.result-row:last-child {
-    border-bottom: 0;
-}
-
-.result-cover {
-    width: 44px;
-    flex: none;
-}
-
-.result-main {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    min-width: 0;
-}
-
-.result-title {
-    color: var(--app-text) !important;
-    font-family: var(--app-font-serif);
-    font-size: 15px;
-    font-weight: 600;
-    text-decoration: none;
-}
-
-.result-title:hover {
-    color: var(--app-primary) !important;
-}
-
-.result-meta {
-    color: var(--app-muted);
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.result-meta--small {
-    font-size: 12px;
-}
-
-.result-side {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-    flex: none;
-}
-
-.result-rating {
-    color: var(--app-accent);
-    font-size: 12px;
-}
-
-.result-actions {
-    display: flex;
-    gap: 2px;
-}
-
-.book-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 18px;
 }
 
 .pager {
@@ -941,22 +790,5 @@ export default vueComponent(SearchPage);
         display: inline-flex;
     }
 
-    .result-row {
-        gap: 10px;
-        padding: 10px;
-    }
-
-    .result-cover {
-        width: 36px;
-    }
-
-    .result-actions {
-        display: none;
-    }
-
-    .book-grid {
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 12px;
-    }
 }
 </style>

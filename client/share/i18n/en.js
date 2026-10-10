@@ -1302,6 +1302,11 @@ export default {
     "Книг этой серии на ваших языках нет.": "This series has no books in your languages.",
     "Книги на других языках скрыты в поиске, у авторов, в сериях и на главной.": "Books in other languages are hidden in search, on author and series pages and on Home.",
     "Выбор сохранится в этом браузере. После входа языки хранятся в профиле.": "Your choice is saved in this browser. When you're signed in, languages are saved in your profile.",
+
+    //--- вид списков книг
+    "Карточками": "As cards",
+    "Вид списков книг": "Book list view",
+    "Вид карточек в поиске по полям": "Card view in search by fields",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

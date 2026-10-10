@@ -73,6 +73,15 @@
                             unelevated
                             toggle-color="primary"
                         />
+                        <q-btn-toggle
+                            :model-value="view"
+                            :options="viewOptions"
+                            dense
+                            no-caps
+                            unelevated
+                            toggle-color="primary"
+                            @update:model-value="$store.commit('setSettings', {bookView: $event})"
+                        />
                         <q-btn flat dense no-caps icon="la la-angle-double-down" @click="setAll(true)">
                             {{ $t('Развернуть все') }}
                         </q-btn>
@@ -101,16 +110,14 @@
                             {{ $t('Далее: {title}', {title: (nextUnread(group).serno ? `#${nextUnread(group).serno} ` : '') + nextUnread(group).title}) }}
                         </router-link>
                     </div>
-                    <div v-if="isOpen(group)" class="book-grid">
-                        <BookCard
-                            v-for="book in shownBooks(group)"
-                            :key="book._uid"
-                            :book="book"
-                            :progress="stateOf(book).percent || 0"
-                            :prefix="grouping === 'series' && book.serno ? `#${book.serno}` : ''"
-                            :meta="bookMeta(book)"
-                        />
-                    </div>
+                    <BookCollection
+                        v-if="isOpen(group)"
+                        :books="shownBooks(group)"
+                        :states="states"
+                        :view="view"
+                        :show-serno="grouping === 'series'"
+                        :cover-meta="bookMeta"
+                    />
                     <button v-if="isOpen(group) && group.books.length > shownBooks(group).length" type="button" class="link-btn group-more" @click="showAllIn(group)">
                         {{ $t('Показать все {n}', {n: group.books.length}) }}
                     </button>
@@ -123,7 +130,8 @@
 <script>
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
-import BookCard from './BookCard.vue';
+import BookCollection from './BookCollection.vue';
+import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tMessage} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
@@ -161,7 +169,7 @@ function writeSections(author, state) {
 
 const componentOptions = {
     components: {
-        BookCard,
+        BookCollection,
     },
     watch: {
         '$route.params.name'() {
@@ -205,6 +213,14 @@ class AuthorPage {
 
     get initials() {
         return initials(this.name);
+    }
+
+    get view() {
+        return bookView(this.$store.state.settings);
+    }
+
+    get viewOptions() {
+        return bookViewOptions();
     }
 
     get myLanguages() {
@@ -546,11 +562,6 @@ export default vueComponent(AuthorPage);
     font-size: 13px;
 }
 
-.book-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 18px;
-}
 
 @media (max-width: 899px) {
     .entity-avatar {
@@ -559,9 +570,5 @@ export default vueComponent(AuthorPage);
         font-size: 20px;
     }
 
-    .book-grid {
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 12px;
-    }
 }
 </style>

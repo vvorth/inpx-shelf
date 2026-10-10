@@ -26,13 +26,23 @@
                     @update:model-value="set('limit', $event)"
                 />
                 <q-select
+                    :model-value="bookViewValue"
+                    :options="bookViewSelectOptions"
+                    outlined
+                    dense
+                    emit-value
+                    map-options
+                    :label="$t('Вид списков книг')"
+                    @update:model-value="set('bookView', $event)"
+                />
+                <q-select
                     :model-value="settings.bookCardView === 'list' ? 'list' : 'cards'"
                     :options="bookCardViewOptions"
                     outlined
                     dense
                     emit-value
                     map-options
-                    :label="$t('Вид карточек')"
+                    :label="$t('Вид карточек в поиске по полям')"
                     @update:model-value="set('bookCardView', $event)"
                 />
             </div>
@@ -106,6 +116,7 @@ import vueComponent from '../vueComponent.js';
 
 import {t, uiLangOptions} from '../../share/i18n';
 import {externalDiscovery} from '../../share/discoveryRoutes';
+import {bookView} from '../../share/bookView';
 
 const toOptions = values => values.map(value => ({label: String(value), value}));
 
@@ -131,6 +142,18 @@ class MePreferences {
 
     get uiLangSelectOptions() {
         return uiLangOptions.map(option => (option.value ? option : {...option, label: t(option.label)}));
+    }
+
+    get bookViewValue() {
+        return bookView(this.settings);
+    }
+
+    get bookViewSelectOptions() {
+        return [
+            {label: t('Обложками'), value: 'covers'},
+            {label: t('Карточками'), value: 'cards'},
+            {label: t('Списком'), value: 'list'},
+        ];
     }
 
     get bookCardViewOptions() {
