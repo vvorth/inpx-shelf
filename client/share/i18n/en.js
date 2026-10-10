@@ -1276,6 +1276,32 @@ export default {
     "Другая раскладка:": "Other keyboard layout:",
     "Возможно, вы искали:": "Did you mean:",
     "Искать «{q}» везде": "Search everything for “{q}”",
+
+    //--- мои языки, страница автора
+    "ещё {n} на других языках": "{n} more in other languages",
+    "показать": "show",
+    "Все языки": "All languages",
+    "Мои языки": "My languages",
+    "Найти у автора": "Find in this author's books",
+    "Развернуть все": "Expand all",
+    "Свернуть все": "Collapse all",
+    "Ничего не найдено у этого автора.": "Nothing found for this author.",
+    "Нет книг на выбранных языках.": "No books in the selected languages.",
+    "Страница серии": "Series page",
+    "Далее: {title}": "Next: {title}",
+    "Показать все {n}": "Show all {n}",
+    "серий: {n}": "series: {n}",
+    "вне серий: {n}": "not in a series: {n}",
+    "прочитано: {n}": "read: {n}",
+    "По сериям": "By series",
+    "По дате": "By date",
+    "А–Я": "A–Z",
+    "Поступили в {year}": "Added in {year}",
+    "Показать на всех языках": "Show in all languages",
+    "Только мои языки": "Only my languages",
+    "Книг этой серии на ваших языках нет.": "This series has no books in your languages.",
+    "Книги на других языках скрыты в поиске, у авторов, в сериях и на главной.": "Books in other languages are hidden in search, on author and series pages and on Home.",
+    "Выбор сохранится в этом браузере. После входа языки хранятся в профиле.": "Your choice is saved in this browser. When you're signed in, languages are saved in your profile.",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

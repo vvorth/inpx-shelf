@@ -37,11 +37,11 @@
                 </div>
             </section>
 
-            <div v-if="shelvesLoading && !shelves.length" class="page-empty page-empty--inline">
+            <div v-if="shelvesLoading && !visibleShelves.length" class="page-empty page-empty--inline">
                 {{ $t('Собираю витрину...') }}
             </div>
 
-            <section v-for="shelf in shelves" :key="shelf.id" class="home-shelf">
+            <section v-for="shelf in visibleShelves" :key="shelf.id" class="home-shelf">
                 <div class="card-head">
                     <div>
                         <h2 class="card-title">
@@ -86,6 +86,7 @@ import {t, tMessage} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {externalDiscovery, isDiscoveryRouteEnabled} from '../../share/discoveryRoutes';
 import {bookUid} from '../../share/bookActions';
+import {myLanguages, languageMatches} from '../../share/languages';
 
 const shelfItemLimit = 12;
 
@@ -175,6 +176,14 @@ class HomePage {
         return parts.join(' · ');
     }
 
+    //полки показывают только книги на «Моих языках»
+    get visibleShelves() {
+        const languages = myLanguages(this.config, this.settings);
+        return this.shelves
+            .map(shelf => Object.assign({}, shelf, {items: shelf.items.filter(item => !item.lang || languageMatches(item, languages)).slice(0, shelfItemLimit)}))
+            .filter(shelf => shelf.items.length);
+    }
+
     get continueReading() {
         const rows = currentProfile(this.config).currentReading;
         return (Array.isArray(rows) ? rows : []).slice(0, shelfItemLimit).map(item => ({
@@ -222,7 +231,7 @@ class HomePage {
                 .filter(shelf => shelf && Array.isArray(shelf.items) && shelf.items.length)
                 .filter(shelf => !['continue-reading', 'hidden-books', 'external-error'].includes(shelf.id))
                 .filter(shelf => !String(shelf.id || '').startsWith('external'))
-                .map(shelf => Object.assign({}, shelf, {items: shelf.items.filter(item => bookUid(item)).slice(0, shelfItemLimit)}));
+                .map(shelf => Object.assign({}, shelf, {items: shelf.items.filter(item => bookUid(item))}));
             this.loadedAt = Date.now();
         } catch (e) {
             this.shelves = [];

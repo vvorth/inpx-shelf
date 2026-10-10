@@ -83,6 +83,7 @@
         <div class="shell-column">
             <header v-if="!bare" class="shell-top">
                 <Omnibox />
+                <LanguagePicker />
             </header>
             <main class="shell-main">
                 <slot></slot>
@@ -119,11 +120,13 @@
 import vueComponent from '../vueComponent.js';
 import ShellUserMenu from './ShellUserMenu.vue';
 import Omnibox from './Omnibox.vue';
+import LanguagePicker from './LanguagePicker.vue';
 
 import {t, tMessage} from '../../share/i18n';
 import {currentProfile, isSignedIn, isAdmin, initials} from '../../share/session';
 import {enabledDiscoveryRoutes, discoveryRouteLabel} from '../../share/discoveryRoutes';
 import {newReleaseAvailable} from '../../share/release';
+import {myLanguages, langDefaultFor} from '../../share/languages';
 
 const discoveryIcons = {
     'for-you': 'la la-magic',
@@ -137,8 +140,22 @@ const componentOptions = {
     components: {
         ShellUserMenu,
         Omnibox,
+        LanguagePicker,
     },
     watch: {
+        //поле «Язык» старого поиска по полям следует за «Моими языками»
+        langDefault: {
+            handler(value) {
+                if (this.$store.state.settings.langDefault !== value)
+                    this.$store.commit('setSettings', {langDefault: value});
+            },
+            immediate: true,
+        },
+        //серверные uiDefaults при первом входе могут перезаписать поле - возвращаем
+        '$store.state.settings.langDefault'(value) {
+            if (value !== this.langDefault)
+                this.$store.commit('setSettings', {langDefault: this.langDefault});
+        },
         '$route'(to) {
             if (catalogRoutes.has(to.path))
                 this.lastCatalogPath = to.fullPath;
@@ -200,6 +217,10 @@ class AppShell {
 
     get avatarText() {
         return initials(this.userName);
+    }
+
+    get langDefault() {
+        return langDefaultFor(myLanguages(this.config, this.settings));
     }
 
     get darkTheme() {

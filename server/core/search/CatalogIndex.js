@@ -6,7 +6,7 @@ const {DatabaseSync} = require('node:sqlite');
 const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = require('./textNorm');
 const {copyKey} = require('./copyKey');
 
-const schemaVersion = '4';
+const schemaVersion = '5';
 const maxLimit = 200;
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
@@ -145,7 +145,7 @@ class CatalogIndex {
             const series = String(row.series || '');
             b.insertBook.run(
                 id, String(row._uid), normalize(title), normalize(author), normalize(series),
-                Number(row.serno) || 0, String(row.lang || ''), String(row.ext || '').toLowerCase(), Number(row.size) || 0,
+                Number(row.serno) || 0, String(row.lang || '').trim().toLowerCase(), String(row.ext || '').toLowerCase(), Number(row.size) || 0,
                 String(row.date || ''), Number(row.librate) || 0, row.del ? 1 : 0, String(row.sourceId || ''), copyKey(row),
             );
 
@@ -706,7 +706,7 @@ class CatalogIndex {
             db.exec('BEGIN');
             db.prepare(`UPDATE book SET title_norm = ?, series_norm = ?, serno = ?, lang = ?, librate = ?
                 WHERE id = ?`).run(normalize(title), normalize(series), Number(row.serno) || 0,
-                String(row.lang || ''), Number(row.librate) || 0, id);
+                String(row.lang || '').trim().toLowerCase(), Number(row.librate) || 0, id);
             db.prepare('DELETE FROM book_fts WHERE rowid = ?').run(id);
             db.prepare('INSERT INTO book_fts(rowid, title, author, series, keywords) VALUES (?, ?, ?, ?, ?)')
                 .run(id, normalize(title), normalize(author), normalize(series), normalize(row.keywords));

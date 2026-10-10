@@ -18,9 +18,18 @@
                     </div>
                     <div v-if="books.length" class="card-hint num">
                         {{ summary }}
+                        <template v-if="hiddenCount">
+                            · {{ $t('ещё {n} на других языках', {n: hiddenCount}) }}
+                            <button type="button" class="link-btn" @click="allLanguages = true">
+                                {{ $t('показать') }}
+                            </button>
+                        </template>
+                        <button v-else-if="allLanguages" type="button" class="link-btn" @click="allLanguages = false">
+                            · {{ $t('Только мои языки') }}
+                        </button>
                     </div>
                 </div>
-                <div v-if="books.length" class="page-actions">
+                <div v-if="visibleBooks.length" class="page-actions">
                     <q-btn v-if="nextBook" color="primary" unelevated no-caps icon="la la-book-open" @click="openBook(nextBook)">
                         {{ readCount ? $t('Читать дальше: #{n}', {n: nextBook.serno || '?'}) : $t('Начать с первой') }}
                     </q-btn>
@@ -41,6 +50,12 @@
             </div>
             <div v-else-if="!books.length" class="page-empty page-empty--inline">
                 {{ $t('В библиотеке нет книг этой серии.') }}
+            </div>
+            <div v-else-if="!visibleBooks.length" class="page-empty">
+                <div>{{ $t('Книг этой серии на ваших языках нет.') }}</div>
+                <q-btn outline color="primary" no-caps @click="allLanguages = true">
+                    {{ $t('Показать на всех языках') }}
+                </q-btn>
             </div>
 
             <ol v-else class="series-list">
@@ -81,6 +96,7 @@ import ReadingListsDialog from '../Search/ReadingListsDialog/ReadingListsDialog.
 import {t, tMessage} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
 import {bookUid, bookAuthors} from '../../share/bookActions';
+import {myLanguages, languageMatches} from '../../share/languages';
 
 const componentOptions = {
     components: {
@@ -104,6 +120,7 @@ class SeriesPage {
     error = '';
     loadedName = '';
     readingListsDialogVisible = false;
+    allLanguages = false;
 
     created() {
         this.api = this.$root.api;
@@ -125,7 +142,7 @@ class SeriesPage {
 
     get authors() {
         const counts = new Map();
-        for (const book of this.books) {
+        for (const book of this.visibleBooks) {
             for (const author of bookAuthors(book))
                 counts.set(author, (counts.get(author) || 0) + 1);
         }
@@ -135,7 +152,7 @@ class SeriesPage {
     //книги по номеру; пропуски в нумерации показываются отдельными строками
     get rows() {
         const rows = [];
-        const numbered = this.books.filter(book => Number(book.serno) > 0);
+        const numbered = this.visibleBooks.filter(book => Number(book.serno) > 0);
         const max = numbered.reduce((acc, book) => Math.max(acc, Number(book.serno)), 0);
         const byNo = new Map();
         for (const book of numbered) {
@@ -155,17 +172,29 @@ class SeriesPage {
         } else {
             numbered.forEach((book, index) => rows.push({key: `n-${index}`, no: Number(book.serno), book}));
         }
-        this.books.filter(book => !(Number(book.serno) > 0))
+        this.visibleBooks.filter(book => !(Number(book.serno) > 0))
             .forEach((book, index) => rows.push({key: `x-${index}`, no: 0, book}));
         return rows;
     }
 
+    //книги на «Моих языках»; пропуски нумерации считаются только среди них
+    get visibleBooks() {
+        if (this.allLanguages)
+            return this.books;
+        const languages = myLanguages(this.$store.state.config, this.$store.state.settings);
+        return this.books.filter(book => languageMatches(book, languages));
+    }
+
+    get hiddenCount() {
+        return this.books.length - this.visibleBooks.length;
+    }
+
     get readCount() {
-        return this.books.filter(book => this.stateOf(book).read).length;
+        return this.visibleBooks.filter(book => this.stateOf(book).read).length;
     }
 
     get allRead() {
-        return this.books.length > 0 && this.readCount === this.books.length;
+        return this.visibleBooks.length > 0 && this.readCount === this.visibleBooks.length;
     }
 
     get nextBook() {
@@ -174,9 +203,9 @@ class SeriesPage {
 
     get summary() {
         const missing = this.rows.filter(row => !row.book).length;
-        const parts = [t('Книг: {n}', {n: this.books.length})];
+        const parts = [t('Книг: {n}', {n: this.visibleBooks.length})];
         if (this.readCount)
-            parts.push(t('{read} из {total} прочитано', {read: this.readCount, total: this.books.length}));
+            parts.push(t('{read} из {total} прочитано', {read: this.readCount, total: this.visibleBooks.length}));
         if (missing)
             parts.push(t('нет в библиотеке: {n}', {n: missing}));
         return parts.join(' · ');
@@ -205,6 +234,7 @@ class SeriesPage {
         this.error = '';
         this.books = [];
         this.states = {};
+        this.allLanguages = false;
         try {
             const result = await this.api.getSeriesBookList(name);
             if (name !== this.name)
@@ -247,6 +277,15 @@ export default vueComponent(SeriesPage);
 </script>
 
 <style scoped>
+.link-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--app-link);
+    font: inherit;
+    cursor: pointer;
+}
+
 .series-authors {
     margin-top: 4px;
     font-size: 16px;

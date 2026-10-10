@@ -3662,6 +3662,8 @@ class WebWorker {
                 readerPreferences: (profileAuthorized ? this.readingListStore.normalizeReaderPreferences(user.readerPreferences) : null),
                 currentReading: readingSummary.items,
                 currentReadingCount: readingSummary.count,
+                //«Мои языки» хранятся в языках вкуса витрин: один список для каталога и рекомендаций
+                libraryLanguages: (profileAuthorized ? this.readingListStore.normalizeDiscoveryPreferences(user.discoveryPreferences).taste.languages : []),
             },
         };
     }

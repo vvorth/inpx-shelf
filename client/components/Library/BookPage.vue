@@ -206,6 +206,7 @@ import {t, tMessage} from '../../share/i18n';
 import {isSignedIn, isAdmin} from '../../share/session';
 import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
+import {myLanguages, languageMatches, bookLang} from '../../share/languages';
 
 const componentOptions = {
     components: {
@@ -407,7 +408,10 @@ class BookPage {
             }
             if (book !== this.book)
                 return;
-            this.related = (books || []).filter(item => !item.del && bookUid(item) !== bookUid(book)).slice(0, 12);
+            //«Мои языки» плюс язык самой книги: у английской книги видна английская серия
+            const languages = myLanguages(this.$store.state.config, this.$store.state.settings);
+            const allowed = (item) => languages.all || languageMatches(item, languages) || bookLang(item) === bookLang(book);
+            this.related = (books || []).filter(item => !item.del && bookUid(item) !== bookUid(book) && allowed(item)).slice(0, 12);
             await this.loadStates([book, ...this.related]);
         } catch (e) {
             this.related = [];

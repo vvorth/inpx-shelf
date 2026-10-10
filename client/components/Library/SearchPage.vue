@@ -22,7 +22,7 @@
                         <h2 class="card-title">
                             {{ $t('Фильтры') }}
                         </h2>
-                        <button v-if="activeChips.length" type="button" class="link-btn" @click="clearFilters">
+                        <button v-if="customFilterCount" type="button" class="link-btn" @click="clearFilters">
                             {{ $t('Сбросить') }}
                         </button>
                     </div>
@@ -66,11 +66,17 @@
                             </h1>
                             <div class="card-hint num">
                                 {{ loading && !result ? $t('Ищу...') : $t('Найдено книг: {n}', {n: total.toLocaleString()}) }}
+                                <template v-if="hiddenByLanguage">
+                                    · {{ $t('ещё {n} на других языках', {n: hiddenByLanguage.toLocaleString()}) }}
+                                    <button type="button" class="link-btn" @click="showAllLanguages">
+                                        {{ $t('показать') }}
+                                    </button>
+                                </template>
                             </div>
                         </div>
                         <div class="results-tools">
                             <q-btn class="facets-toggle" outline dense no-caps icon="la la-filter" @click="facetsOpen = !facetsOpen">
-                                {{ $t('Фильтры') }}<span v-if="activeChips.length" class="num">&nbsp;· {{ activeChips.length }}</span>
+                                {{ $t('Фильтры') }}<span v-if="customFilterCount" class="num">&nbsp;· {{ customFilterCount }}</span>
                             </q-btn>
                             <q-select
                                 :model-value="sort"
@@ -133,7 +139,10 @@
                     </div>
                     <div v-else-if="result && !books.length" class="page-empty">
                         <div>{{ activeChips.length ? $t('Ничего не найдено с этими фильтрами.') : $t('Ничего не найдено.') }}</div>
-                        <q-btn v-if="activeChips.length" outline color="primary" no-caps @click="clearFilters">
+                        <q-btn v-if="hiddenByLanguage" outline color="primary" no-caps @click="showAllLanguages">
+                            {{ $t('Показать на всех языках') }}
+                        </q-btn>
+                        <q-btn v-else-if="customFilterCount" outline color="primary" no-caps @click="clearFilters">
                             {{ $t('Сбросить фильтры') }}
                         </q-btn>
                     </div>
@@ -223,10 +232,11 @@ import BookCover from './BookCover.vue';
 import BookCard from './BookCard.vue';
 import ReadingListsDialog from '../Search/ReadingListsDialog/ReadingListsDialog.vue';
 
-import {t, tMessage, getLang} from '../../share/i18n';
+import {t, tMessage} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
 import {runBookAction, bookAuthors, bookUid} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
+import {myLanguages, allLanguages, languageName} from '../../share/languages';
 
 const listFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const facetVisible = 6;
@@ -238,7 +248,7 @@ const componentOptions = {
         ReadingListsDialog,
     },
     watch: {
-        '$route.query'() {
+        queryKey() {
             if (this.$route.path === '/search')
                 this.load();
         },
@@ -297,8 +307,9 @@ class SearchPage {
         return this.$route.query || {};
     }
 
+    //ключ запроса учитывает «Мои языки»: их смена перезапускает поиск
     get queryKey() {
-        return JSON.stringify(this.query);
+        return JSON.stringify([this.query, this.filters.lang]);
     }
 
     get q() {
@@ -309,7 +320,36 @@ class SearchPage {
         const result = {added: String(this.query.added || '')};
         for (const field of listFields)
             result[field] = String(this.query[field] || '').split(',').map(value => value.trim()).filter(Boolean);
+        //без явного выбора язык берётся из «Моих языков»; lang=* - все языки
+        if (this.query.lang === undefined) {
+            const languages = myLanguages(this.config, this.settings);
+            result.lang = (languages.all ? [] : languages.list);
+        } else if (this.query.lang === allLanguages) {
+            result.lang = [];
+        }
         return result;
+    }
+
+    get langFromProfile() {
+        return this.query.lang === undefined && this.filters.lang.length > 0;
+    }
+
+    //сколько книг по запросу есть на других языках
+    get hiddenByLanguage() {
+        if (!this.langFromProfile || !this.result)
+            return 0;
+        const selected = new Set(this.filters.lang);
+        return ((this.result.facets && this.result.facets.lang) || [])
+            .filter(([code]) => !selected.has(String(code).toLowerCase()))
+            .reduce((sum, [, count]) => sum + count, 0);
+    }
+
+    get customFilterCount() {
+        return this.activeChips.filter(chip => !(chip.field === 'lang' && this.langFromProfile)).length;
+    }
+
+    showAllLanguages() {
+        this.setQuery({lang: allLanguages, page: undefined});
     }
 
     get hideCopies() {
@@ -371,26 +411,12 @@ class SearchPage {
         ];
     }
 
-    get langNames() {
-        try {
-            return new Intl.DisplayNames([getLang()], {type: 'language'});
-        } catch (e) {
-            return null;
-        }
-    }
-
     optionLabel(field, value) {
         void this.genresReady;
         if (field === 'genre')
             return genreName(value);
-        if (field === 'lang') {
-            try {
-                const name = this.langNames && this.langNames.of(value);
-                return name ? name[0].toUpperCase() + name.slice(1) : value;
-            } catch (e) {
-                return value;
-            }
-        }
+        if (field === 'lang')
+            return languageName(value);
         if (field === 'ext')
             return String(value).toUpperCase();
         if (field === 'librate')
@@ -466,7 +492,9 @@ class SearchPage {
             values.delete(value);
         else
             values.add(value);
-        this.setQuery({[field]: [...values].join(','), page: undefined});
+        //снятый последний язык означает «все языки», а не возврат к «Моим языкам»
+        const joined = [...values].join(',');
+        this.setQuery({[field]: (field === 'lang' && !joined ? allLanguages : joined), page: undefined});
     }
 
     clearFilters() {
