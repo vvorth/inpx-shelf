@@ -1118,31 +1118,6 @@ class WebWorker {
         return this.getDiscoveryConfig(requestOptions);
     }
 
-    async rememberDiscovery(key, loader, ttl = discoveryCacheTtl) {
-        const cached = this.discoveryCache.get(key);
-        if (cached && Date.now() - cached.time < ttl)
-            return _.cloneDeep(cached.value);
-
-        const value = await loader();
-        this.discoveryCache.set(key, {time: Date.now(), value: _.cloneDeep(value)});
-        return value;
-    }
-
-    getDiscoveryAgeLabel(dateValue = '') {
-        const time = Date.parse(String(dateValue || ''));
-        if (!Number.isFinite(time))
-            return '';
-
-        const diffDays = Math.max(0, Math.floor((Date.now() - time) / 86400000));
-        if (diffDays <= 0)
-            return 'Добавлена сегодня';
-        if (diffDays === 1)
-            return 'Добавлена 1 день назад';
-        if (diffDays < 5)
-            return `Добавлена ${diffDays} дня назад`;
-        return `Добавлена ${diffDays} дней назад`;
-    }
-
     getDiscoveryMatchLabel(kind = '') {
         switch (String(kind || '').trim()) {
             case 'exact':
@@ -1165,26 +1140,6 @@ class WebWorker {
     decorateDiscoveryBook(book = {}, options = {}) {
         const result = Object.assign({}, book);
         const reasons = [];
-        const mode = String(options.mode || '').trim();
-        const popularityInfo = (options.popularityInfo && typeof(options.popularityInfo) === 'object' ? options.popularityInfo : null);
-
-        if (mode === 'newest') {
-            const ageLabel = this.getDiscoveryAgeLabel(book.date);
-            if (ageLabel)
-                reasons.push(ageLabel);
-        } else if (mode === 'popular') {
-            if (popularityInfo) {
-                const hasReaderActivity = (
-                    popularityInfo.progressCount > 0
-                    || popularityInfo.listCount > 0
-                    || popularityInfo.finishedCount > 0
-                );
-                if (hasReaderActivity)
-                    reasons.push('Популярно у читателей');
-            }
-            if (book.librate)
-                reasons.push(`Оценка библиотеки ${book.librate}/5`);
-        }
 
         if (options.discoverySource) {
             const matchLabel = this.getDiscoveryMatchLabel(options.matchKind);
@@ -1253,247 +1208,6 @@ class WebWorker {
             }
             throw e;
         }
-    }
-
-    async buildDiscoveryPopularityMap() {
-        let data = null;
-        try {
-            data = await this.readingListStore.load();
-        } catch(e) {
-            return {};
-        }
-
-        const result = {};
-        const addScore = (bookUid, patch = {}) => {
-            const normalizedBookUid = this.readingListStore.normalizeBookUid(bookUid);
-            if (!normalizedBookUid)
-                return;
-
-            if (!result[normalizedBookUid]) {
-                result[normalizedBookUid] = {
-                    score: 0,
-                    progressCount: 0,
-                    listCount: 0,
-                    finishedCount: 0,
-                };
-            }
-
-            const target = result[normalizedBookUid];
-            target.score += Number(patch.score || 0);
-            target.progressCount += Number(patch.progressCount || 0);
-            target.listCount += Number(patch.listCount || 0);
-            target.finishedCount += Number(patch.finishedCount || 0);
-        };
-
-        for (const user of (Array.isArray(data.users) ? data.users : [])) {
-            const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {});
-            for (const [bookUid, progress] of Object.entries(progressMap)) {
-                const percent = Number(progress && progress.percent);
-                let score = 8;
-                if (percent >= 0.15)
-                    score += 8;
-                if (percent >= 0.5)
-                    score += 12;
-                if (percent >= 0.95)
-                    score += 18;
-
-                addScore(bookUid, {
-                    score,
-                    progressCount: 1,
-                    finishedCount: (percent >= 0.95 ? 1 : 0),
-                });
-            }
-        }
-
-        for (const list of (Array.isArray(data.lists) ? data.lists : [])) {
-            const entries = this.readingListStore.normalizeEntries(list.books);
-            for (const entry of entries) {
-                addScore(entry.bookUid, {
-                    score: (entry.read ? 14 : 6),
-                    listCount: 1,
-                    finishedCount: (entry.read ? 1 : 0),
-                });
-            }
-        }
-
-        return result;
-    }
-
-    async selectDiscoveryBooks(mode = 'newest', limit = 8, options = {}) {
-        const db = this.db;
-        const daysWindow = Math.max(0, parseInt(options.daysWindow, 10) || 0);
-        const excludedBookUids = Array.isArray(options.excludedBookUids) ? options.excludedBookUids.filter(Boolean) : [];
-        const popularityMap = (options.popularityMap && typeof(options.popularityMap) === 'object' ? options.popularityMap : {});
-        const rows = await db.select({
-            table: 'book',
-            rawResult: true,
-            where: `
-                const mode = ${db.esc(mode)};
-                const limit = ${db.esc(limit)};
-                const daysWindow = ${db.esc(daysWindow)};
-                const excludedBookUids = new Set(${db.esc(excludedBookUids)});
-                const popularityMap = ${db.esc(popularityMap)};
-                const dedupeKey = (row) => {
-                    const sourceKey = row.sourceId || '';
-                    if (row.libid)
-                        return 'libid:' + sourceKey + ':' + row.libid;
-
-                    const parts = [
-                        sourceKey,
-                        row.folder || '',
-                        row.file || '',
-                        row.ext || '',
-                        String(row.insno || 0),
-                    ];
-                    if (parts.some(Boolean))
-                        return 'file:' + parts.join('|');
-
-                    return [
-                        'meta',
-                        sourceKey,
-                        row.author || '',
-                        row.series || '',
-                        String(row.serno || 0),
-                        row.title || '',
-                        String(row.size || 0),
-                        row.ext || '',
-                    ].join('|');
-                };
-                const rowQuality = (row) => {
-                    let score = 0;
-                    if (!row.del)
-                        score += 1000;
-                    if (row.ext === 'fb2')
-                        score += 120;
-                    else if (row.ext === 'epub')
-                        score += 90;
-                    else if (row.ext === 'mobi')
-                        score += 70;
-                    else if (row.ext === 'pdf')
-                        score += 50;
-                    if (row.librate)
-                        score += row.librate * 10;
-                    if (row.size)
-                        score += Math.min(row.size, 50000000) / 1000000;
-                    return score;
-                };
-                const pickBetterRow = (current, next) => {
-                    const currentScore = rowQuality(current);
-                    const nextScore = rowQuality(next);
-                    if (nextScore !== currentScore)
-                        return (nextScore > currentScore ? next : current);
-                    return (next.id < current.id ? next : current);
-                };
-
-                const deduped = new Map();
-                for (const id of @all()) {
-                    const row = @unsafeRow(id);
-                    if (!row || row.del || !row.title)
-                        continue;
-                    if (excludedBookUids.has(row._uid))
-                        continue;
-                    if (mode === 'popular' && !((row.librate > 0) || (((popularityMap[row._uid] || {}).score) > 0)))
-                        continue;
-                    if (mode === 'newest' && !row.date)
-                        continue;
-                    if (mode === 'newest' && daysWindow > 0) {
-                        const age = Math.floor((Date.now() - Date.parse(row.date)) / 86400000);
-                        if (!(age >= 0 && age <= daysWindow))
-                            continue;
-                    }
-
-                    const key = dedupeKey(row);
-                    const existing = deduped.get(key);
-                    deduped.set(key, existing ? pickBetterRow(existing, row) : row);
-                }
-
-                const result = Array.from(deduped.values());
-                result.sort((a, b) => {
-                    if (mode === 'popular') {
-                        const popularityCmp = (((popularityMap[b._uid] || {}).score) || 0) - (((popularityMap[a._uid] || {}).score) || 0);
-                        if (popularityCmp)
-                            return popularityCmp;
-                        const rateCmp = (b.librate || 0) - (a.librate || 0);
-                        if (rateCmp)
-                            return rateCmp;
-                        const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-                        if (dateCmp)
-                            return dateCmp;
-                    } else {
-                        const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-                        if (dateCmp)
-                            return dateCmp;
-                        const rateCmp = (b.librate || 0) - (a.librate || 0);
-                        if (rateCmp)
-                            return rateCmp;
-                    }
-
-                    let cmp = (a.author || '').localeCompare(b.author || '', 'ru');
-                    if (cmp === 0)
-                        cmp = (a.title || '').localeCompare(b.title || '', 'ru');
-                    if (cmp === 0)
-                        cmp = a.id - b.id;
-                    return cmp;
-                });
-
-                const filtered = [];
-                const authorCounts = new Map();
-                const seriesCounts = new Map();
-
-                for (const row of result) {
-                    const authorKey = String(row.author || '').trim().toLowerCase();
-                    const seriesKey = String(row.series || '').trim().toLowerCase();
-                    if (authorKey && (authorCounts.get(authorKey) || 0) >= 2)
-                        continue;
-                    if (seriesKey && (seriesCounts.get(seriesKey) || 0) >= 2)
-                        continue;
-
-                    filtered.push(row);
-                    if (authorKey)
-                        authorCounts.set(authorKey, (authorCounts.get(authorKey) || 0) + 1);
-                    if (seriesKey)
-                        seriesCounts.set(seriesKey, (seriesCounts.get(seriesKey) || 0) + 1);
-                    if (filtered.length >= limit)
-                        break;
-                }
-
-                return filtered;
-            `
-        });
-
-        return ((rows[0] && rows[0].rawResult) ? rows[0].rawResult : []);
-    }
-
-    async buildLocalDiscoveryShelf(kind = 'newest', limit = 8, options = {}) {
-        const shelfConfig = {
-            newest: {
-                id: `newest-${options.daysWindow || 0}d`,
-                title: 'Новинки библиотеки',
-                subtitle: 'Последние поступления в индекс',
-                mode: 'newest',
-            },
-            popular: {
-                id: 'popular',
-                title: 'Популярное в библиотеке',
-                subtitle: 'Пилот по локальной оценке библиотеки',
-                mode: 'popular',
-            },
-        }[kind];
-
-        if (!shelfConfig)
-            return null;
-
-        const items = await this.selectDiscoveryBooks(shelfConfig.mode, limit);
-        if (!items.length)
-            return null;
-
-        return {
-            id: shelfConfig.id,
-            title: shelfConfig.title,
-            subtitle: shelfConfig.subtitle,
-            source: 'local',
-            items,
-        };
     }
 
     parseExternalFeedItemsFromNextData(html = '', sourceUrl = '', limit = 8) {
@@ -1974,125 +1688,6 @@ class WebWorker {
         return result;
     }
 
-    async buildExternalDiscoveryShelf(limit = 8) {
-        const discovery = this.getDiscoveryConfig();
-        if (discovery.externalSource === 'none')
-            return null;
-
-        if (discovery.externalSource !== 'web-page')
-            throw new Error(`Неизвестный источник витрины: ${discovery.externalSource}`);
-
-        const feed = await this.fetchExternalFeedItems(discovery.externalLimit, discovery.externalUrl);
-        const items = await this.matchExternalItemsToLocalBooks(feed.items || [], limit);
-        const sourceName = (discovery.externalName || 'Внешний источник');
-
-        return {
-            id: 'external-source',
-            title: sourceName,
-            subtitle: `Совпадений ${items.length} из ${feed.items.length}`,
-            source: 'external',
-            sourceName,
-            sourceUrl: feed.sourceUrl,
-            items,
-            emptyMessage: 'Совпадений с локальной библиотекой пока не нашлось.',
-        };
-    }
-
-    async getDiscoveryShelves(options = {}) {
-        this.checkMyState();
-
-        const discovery = this.getDiscoveryConfig();
-        if (!discovery.enabled)
-            return {shelves: []};
-
-        const newestLimit = Math.max(1, Math.min(parseInt(options.newestLimit, 10) || discovery.shelfLimit, 24));
-        const popularLimit = Math.max(1, Math.min(parseInt(options.popularLimit, 10) || discovery.shelfLimit, 24));
-        const externalShelfLimit = Math.max(1, Math.min(parseInt(options.externalLimit, 10) || discovery.shelfLimit, 120));
-
-        const dbConfig = await this.dbConfig();
-        const inpxHash = String(dbConfig.inpxHash || '').trim();
-        const shelves = [];
-
-        const newestShelf = await this.rememberDiscovery(
-            `discovery:${inpxHash}:newest:${newestLimit}`,
-            () => this.buildLocalDiscoveryShelf('newest', newestLimit),
-        );
-        if (newestShelf)
-            shelves.push(newestShelf);
-
-        const popularShelf = await this.rememberDiscovery(
-            `discovery:${inpxHash}:popular:${popularLimit}`,
-            () => this.buildLocalDiscoveryShelf('popular', popularLimit),
-        );
-        if (popularShelf)
-            shelves.push(popularShelf);
-
-        if (discovery.externalSource !== 'none') {
-            try {
-                const externalShelf = await this.rememberDiscovery(
-                    `discovery:${inpxHash}:external:${discovery.externalSource}:${discovery.externalLimit}:${externalShelfLimit}:${discovery.externalUrl}`,
-                    () => this.buildExternalDiscoveryShelf(externalShelfLimit),
-                );
-                if (externalShelf)
-                    shelves.push(externalShelf);
-            } catch (e) {
-                shelves.push({
-                    id: 'external-error',
-                    title: (discovery.externalName || 'Внешний источник'),
-                    subtitle: 'Внешний источник временно недоступен',
-                    source: 'external',
-                    sourceName: (discovery.externalName || 'Внешний источник'),
-                    sourceUrl: (discovery.externalUrl || ''),
-                    items: [],
-                    emptyMessage: e.message,
-                });
-            }
-        }
-
-        return {shelves};
-    }
-
-    async buildLocalDiscoveryShelfV2(kind = 'newest', limit = 8, options = {}) {
-        let shelfConfig = null;
-        if (kind === 'newest') {
-            const daysWindow = Math.max(0, parseInt(options.daysWindow, 10) || 0);
-            shelfConfig = {
-                id: `newest-${daysWindow}d`,
-                title: (daysWindow > 0 ? `Новинки за ${daysWindow} дней` : 'Последние поступления'),
-                subtitle: (daysWindow > 0 ? `Книги, добавленные за последние ${daysWindow} дней` : 'Самые свежие книги по дате в библиотеке'),
-                mode: 'newest',
-            };
-        } else if (kind === 'popular') {
-            shelfConfig = {
-                id: 'popular',
-                title: 'Популярное в библиотеке',
-                subtitle: 'Локальный рейтинг по чтению, спискам и оценкам',
-                mode: 'popular',
-            };
-        }
-
-        if (!shelfConfig)
-            return null;
-
-        const items = (await this.selectDiscoveryBooks(shelfConfig.mode, limit, options))
-            .map((book) => this.decorateDiscoveryBook(book, {
-                mode: shelfConfig.mode,
-                popularityInfo: ((options.popularityMap || {})[book._uid] || null),
-            }));
-        if (!items.length)
-            return null;
-
-        return {
-            id: shelfConfig.id,
-            title: shelfConfig.title,
-            subtitle: shelfConfig.subtitle,
-            source: 'local',
-            sourceName: 'Локальная библиотека',
-            updatedAt: Date.now(),
-            items,
-        };
-    }
-
     pickDiscoveryBookMatchV2(item, books = []) {
         const title = normalizeDiscoveryText(item.title || '');
         if (!title)
@@ -2292,62 +1887,24 @@ class WebWorker {
         if (!discovery.enabled)
             return {shelves: []};
 
-        const newestLimit = Math.max(1, Math.min(parseInt(options.newestLimit, 10) || discovery.shelfLimit, 24));
-        const popularLimit = Math.max(1, Math.min(parseInt(options.popularLimit, 10) || discovery.shelfLimit, 24));
         const externalShelfLimit = Math.max(1, Math.min(parseInt(options.externalLimit, 10) || discovery.shelfLimit, 120));
         const personalShelfLimit = Math.max(1, Math.min(parseInt(options.personalLimit, 10) || discovery.shelfLimit, 24));
         const personalSimilarLimit = Math.max(personalShelfLimit, Math.min(parseInt(options.personalSimilarLimit, 10) || Math.max(personalShelfLimit, 16), 96));
+        //главная просит только персональные полки, внешняя витрина - только свою
+        const section = String(options.section || '');
 
         const dbConfig = await this.dbConfig();
         const inpxHash = String(dbConfig.inpxHash || '').trim();
         const shelves = [];
-        const popularityMap = await this.buildDiscoveryPopularityMap();
-        const newestSeen = new Set();
 
-        for (const daysWindow of [7, 30, 90, 180, 365]) {
-            const newestShelf = await this.rememberDiscovery(
-                `discovery:${inpxHash}:newest:${daysWindow}:${newestLimit}`,
-                () => this.buildLocalDiscoveryShelfV2('newest', newestLimit, {
-                    daysWindow,
-                    excludedBookUids: Array.from(newestSeen),
-                }),
-            );
-            if (newestShelf) {
-                shelves.push(newestShelf);
-                for (const book of (Array.isArray(newestShelf.items) ? newestShelf.items : [])) {
-                    if (book && book._uid)
-                        newestSeen.add(book._uid);
-                }
+        if (section !== 'external') {
+            for (const shelf of await this.getPersonalDiscoveryShelvesV2(options.userId, options.profileAccessToken, personalShelfLimit, Object.assign({}, options, {personalSimilarLimit}))) {
+                if (shelf)
+                    shelves.push(shelf);
             }
         }
 
-        if (!shelves.some(shelf => shelf && /^newest-\d+d$/.test(String(shelf.id || '')))) {
-            shelves.push({
-                id: 'newest-0d',
-                title: 'Новинки не найдены',
-                subtitle: 'В индексе нет книг с датой поступления за последний год',
-                mode: 'newest',
-                source: 'local',
-                sourceName: 'Локальная библиотека',
-                updatedAt: Date.now(),
-                items: [],
-                emptyMessage: 'Нет книг с датой поступления за последний год. Обновите индекс или используйте раздел «Книги».',
-            });
-        }
-
-        const popularShelf = await this.rememberDiscovery(
-            `discovery:${inpxHash}:popular:v2:${popularLimit}`,
-            () => this.buildLocalDiscoveryShelfV2('popular', popularLimit, {popularityMap}),
-        );
-        if (popularShelf)
-            shelves.push(popularShelf);
-
-        for (const shelf of await this.getPersonalDiscoveryShelvesV2(options.userId, options.profileAccessToken, personalShelfLimit, Object.assign({}, options, {personalSimilarLimit}))) {
-            if (shelf)
-                shelves.push(shelf);
-        }
-
-        if (discovery.externalSource !== 'none') {
+        if (section !== 'personal' && discovery.externalSource !== 'none') {
             try {
                 const externalShelf = await this.rememberPersistedDiscovery(
                     `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${discovery.externalLimit}:${externalShelfLimit}:${discovery.externalUrl}:${discovery.externalBrowseUrl}:${discovery.externalBrowseName}:${discovery.externalTtlMinutes}`,

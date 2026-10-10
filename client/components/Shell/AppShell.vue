@@ -140,9 +140,6 @@ import {myLanguages, langDefaultFor} from '../../share/languages';
 import {refreshReadingLists} from '../../share/readingLists';
 
 const discoveryIcons = {
-    'for-you': 'la la-magic',
-    'newest': 'la la-calendar-plus',
-    'popular': 'la la-fire',
     'bestsellers': 'la la-globe',
 };
 const namesBannerKey = 'inpx-web-author-names-banner';

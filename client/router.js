@@ -2,7 +2,6 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 
 const Reader = () => import('./components/Reader/Reader.vue');
 const ReaderLab = () => import('./components/Reader/ReaderLab.vue');
-const HomePage = () => import('./components/Library/HomePage.vue');
 const SearchPage = () => import('./components/Library/SearchPage.vue');
 const DiscoveryPage = () => import('./components/Library/DiscoveryPage.vue');
 const BookPage = () => import('./components/Library/BookPage.vue');
@@ -14,7 +13,6 @@ const MePage = () => import('./components/Me/MePage.vue');
 const AdminPage = () => import('./components/Admin/AdminPage.vue');
 
 //bare: страница без меню приложения (читалка, вход)
-const discoveryPaths = ['/for-you', '/newest', '/popular', '/bestsellers'];
 
 //Старые адреса каталога (/author?author=..., /books?genre=...) ведут в новый поиск.
 //«=Имя» в старом поиске означало точное совпадение - такие ссылки открывают страницу автора или серии.
@@ -44,13 +42,15 @@ function legacyCatalog(to) {
 
 const routes = [
     //старые ссылки вида /#/?author=... открывали каталог
-    {path: '/', component: HomePage, meta: {section: 'home'}, beforeEnter: to => (Object.keys(to.query).length ? legacyCatalog(to) : true)},
+    //главная - персональные подборки (бывшая «Для вас»)
+    {path: '/', component: DiscoveryPage, meta: {section: 'home'}, beforeEnter: to => (Object.keys(to.query).length ? legacyCatalog(to) : true)},
+    ...['/for-you', '/newest', '/popular'].map(path => ({path, redirect: '/'})),
     ...['/author', '/series', '/title', '/books', '/extended'].map(path => ({path, redirect: legacyCatalog})),
     {path: '/search', component: SearchPage, meta: {section: 'library'}},
     {path: '/book/:uid', component: BookPage, meta: {section: 'library'}},
     {path: '/author/:name', component: AuthorPage, meta: {section: 'library'}},
     {path: '/series/:name', component: SeriesPage, meta: {section: 'library'}},
-    ...discoveryPaths.map(path => ({path, component: DiscoveryPage, meta: {section: 'library'}})),
+    {path: '/bestsellers', component: DiscoveryPage, meta: {section: 'library'}},
     {path: '/lists', component: ListsPage, meta: {section: 'lists'}},
     {path: '/me', redirect: '/me/account'},
     {path: '/me/:section', component: MePage, meta: {section: 'me'}},

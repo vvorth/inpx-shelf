@@ -55,14 +55,12 @@
                 {{ $t('Витрины') }}
             </h2>
             <div class="toggle-grid">
-                <q-toggle :model-value="settings.showDiscoveryNewest !== false" :label="$t('Показывать вкладку «Новинки»')" @update:model-value="set('showDiscoveryNewest', $event)" />
-                <q-toggle :model-value="settings.showDiscoveryPopular !== false" :label="$t('Показывать вкладку «Популярное»')" @update:model-value="set('showDiscoveryPopular', $event)" />
                 <q-toggle v-if="externalAvailable" :model-value="settings.showDiscoveryExternal !== false" :label="$t('Показывать вкладку внешнего источника')" @update:model-value="set('showDiscoveryExternal', $event)" />
                 <q-toggle :model-value="settings.showDiscoveryContinueReading !== false" :label="$t('Показывать полку «Продолжить чтение»')" @update:model-value="set('showDiscoveryContinueReading', $event)" />
                 <q-toggle :model-value="settings.showDiscoveryFromLists !== false" :label="$t('Показывать полку «Из ваших списков»')" @update:model-value="set('showDiscoveryFromLists', $event)" />
                 <q-toggle :model-value="settings.showDiscoveryUnfinishedSeries !== false" :label="$t('Показывать полку «Незаконченные серии»')" @update:model-value="set('showDiscoveryUnfinishedSeries', $event)" />
                 <q-toggle :model-value="settings.showDiscoverySimilar !== false" :label="$t('Показывать полку «Похоже на то, что вы читали»')" @update:model-value="set('showDiscoverySimilar', $event)" />
-                <q-toggle :model-value="settings.showDiscoveryUnreadOnly === true" :label="$t('Во вкладке «Для вас» показывать только непрочитанное')" @update:model-value="set('showDiscoveryUnreadOnly', $event)" />
+                <q-toggle :model-value="settings.showDiscoveryUnreadOnly === true" :label="$t('На главной показывать только непрочитанное')" @update:model-value="set('showDiscoveryUnreadOnly', $event)" />
             </div>
         </section>
         <div class="card-hint">

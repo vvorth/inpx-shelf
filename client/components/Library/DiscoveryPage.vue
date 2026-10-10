@@ -6,7 +6,7 @@
                     <h1 class="page-title">
                         {{ pageTitle }}
                     </h1>
-                    <div class="card-hint">
+                    <div class="card-hint num">
                         {{ pageSubtitle }}
                         <template v-if="hiddenByLanguage">
                             · {{ $t('ещё {n} на других языках', {n: hiddenByLanguage}) }}
@@ -17,16 +17,19 @@
                     </div>
                 </div>
                 <div class="page-actions">
+                    <q-btn v-if="kind === 'home'" color="primary" unelevated no-caps icon="la la-search" @click="$router.push('/search')">
+                        {{ $t('Открыть каталог') }}
+                    </q-btn>
                     <q-toggle
-                        v-if="kind === 'for-you'"
+                        v-if="kind === 'home' && signedIn"
                         :model-value="settings.showDiscoveryUnreadOnly === true"
                         :label="$t('Только непрочитанное')"
                         @update:model-value="setSetting('showDiscoveryUnreadOnly', $event)"
                     />
-                    <q-btn v-if="kind === 'for-you' && signedIn" flat no-caps icon="la la-sliders-h" @click="tasteOpen = !tasteOpen">
+                    <q-btn v-if="kind === 'home' && signedIn" flat no-caps icon="la la-sliders-h" @click="tasteOpen = !tasteOpen">
                         {{ $t('Настроить вкусы') }}
                     </q-btn>
-                    <q-btn flat no-caps icon="la la-sync" :loading="loading" @click="load(true)">
+                    <q-btn v-if="requestable" flat no-caps icon="la la-sync" :loading="loading" @click="load(true)">
                         {{ $t('Обновить') }}
                     </q-btn>
                     <q-btn-toggle
@@ -67,7 +70,22 @@
                 />
             </div>
 
-            <div v-if="loading && !shelves.length" class="page-empty page-empty--inline">
+            <section v-if="kind === 'home' && !signedIn" class="card">
+                <h2 class="card-title">
+                    {{ $t('Войдите, чтобы читать с того же места') }}
+                </h2>
+                <div class="card-hint">
+                    {{ $t('После входа здесь появятся книги, которые вы читаете, ваши списки и подборки по вашим вкусам.') }}
+                </div>
+                <div class="card-actions">
+                    <q-btn color="primary" unelevated no-caps @click="$router.push({path: '/login', query: {redirect: '/'}})">
+                        {{ $t('Войти') }}
+                    </q-btn>
+                </div>
+            </section>
+
+            <div v-else-if="!requestable" />
+            <div v-else-if="loading && !shelves.length" class="page-empty page-empty--inline">
                 <q-linear-progress indeterminate size="3px" color="primary" />
                 {{ $t('Собираю витрину...') }}
             </div>
@@ -132,14 +150,14 @@ import BookCollection from './BookCollection.vue';
 import TastePanel from './TastePanel.vue';
 
 import {t, tMessage, getLocale} from '../../share/i18n';
-import {isSignedIn} from '../../share/session';
+import {isSignedIn, currentProfile} from '../../share/session';
 import {bookUid} from '../../share/bookActions';
 import {bookView, bookViewOptions} from '../../share/bookView';
 import {myLanguages, languageMatches} from '../../share/languages';
 import {externalDiscovery, discoveryRouteLabel} from '../../share/discoveryRoutes';
 import {isExternalOnly, feedbackMessage} from '../../share/discovery';
 
-const kinds = ['for-you', 'newest', 'popular', 'bestsellers'];
+const kinds = ['home', 'bestsellers'];
 const shelfSettings = {
     'continue-reading': 'showDiscoveryContinueReading',
     'from-your-lists': 'showDiscoveryFromLists',
@@ -164,7 +182,7 @@ const componentOptions = {
     },
 };
 
-//Витрины: «Для вас», «Новинки», «Популярное» и внешний источник
+//Главная с персональными подборками и внешняя витрина
 class DiscoveryPage {
     _options = componentOptions;
 
@@ -190,7 +208,7 @@ class DiscoveryPage {
     }
 
     onEnter() {
-        this.$root.setAppTitle(this.pageTitle);
+        this.$root.setAppTitle(this.kind === 'home' ? (this.collectionName || t('Главная')) : this.pageTitle);
         if (this.requestKey !== this.loadedKey)
             this.load();
     }
@@ -200,7 +218,7 @@ class DiscoveryPage {
     }
 
     get kind() {
-        return String(this.$route.path || '').replace(/^\//, '');
+        return String(this.$route.path || '').replace(/^\//, '') || 'home';
     }
 
     get config() {
@@ -224,16 +242,53 @@ class DiscoveryPage {
     }
 
     get pageTitle() {
-        return discoveryRouteLabel(this.kind, this.config, this.settings);
+        return (this.kind === 'home' ? this.greeting : discoveryRouteLabel(this.kind, this.config, this.settings));
     }
 
     get pageSubtitle() {
-        return {
-            'for-you': t('Подборки по вашей библиотеке и профилю чтения'),
-            'newest': t('Последние поступления в библиотеку'),
-            'popular': t('Что читают и добавляют в списки чаще всего'),
-            'bestsellers': t('Подборка с внешнего сайта: книги, которых нет в библиотеке, открываются на сайте источника'),
-        }[this.kind] || '';
+        if (this.kind === 'home')
+            return this.statsLine;
+        return t('Подборка с внешнего сайта: книги, которых нет в библиотеке, открываются на сайте источника');
+    }
+
+    get collectionName() {
+        const info = (this.config.dbConfig && this.config.dbConfig.inpxInfo) || {};
+        return String(info.collection || '').split('\n')[0].trim();
+    }
+
+    get greeting() {
+        if (!this.signedIn)
+            return this.collectionName || t('Библиотека');
+        const name = tMessage(currentProfile(this.config).name) || '';
+        const hour = new Date().getHours();
+        if (hour < 5 || hour >= 22)
+            return t('Доброй ночи, {name}', {name});
+        if (hour < 12)
+            return t('Доброе утро, {name}', {name});
+        if (hour < 18)
+            return t('Добрый день, {name}', {name});
+        return t('Добрый вечер, {name}', {name});
+    }
+
+    get statsLine() {
+        const stats = (this.config.dbConfig && this.config.dbConfig.stats) || {};
+        const parts = [];
+        if (stats.bookCount)
+            parts.push(t('Книг: {n}', {n: Number(stats.bookCount).toLocaleString()}));
+        if (stats.authorCount)
+            parts.push(t('Авторов: {n}', {n: Number(stats.authorCount).toLocaleString()}));
+        if (stats.seriesCount)
+            parts.push(t('Серий: {n}', {n: Number(stats.seriesCount).toLocaleString()}));
+        if (this.signedIn && this.collectionName)
+            parts.unshift(this.collectionName);
+        return parts.join(' · ');
+    }
+
+    //персональные подборки есть только у вошедшего пользователя
+    get requestable() {
+        if ((this.config.discovery || {}).enabled === false)
+            return false;
+        return (this.kind !== 'home' || this.signedIn);
     }
 
     get external() {
@@ -254,17 +309,20 @@ class DiscoveryPage {
             return;
         const seq = ++this.requestSeq;
         this.loadedKey = this.requestKey;
+        if (!this.requestable) {
+            this.rawShelves = [];
+            return;
+        }
         this.loading = true;
         this.error = '';
         try {
             const external = this.external;
             const response = await this.api.getDiscoveryShelves({
+                section: (this.kind === 'home' ? 'personal' : 'external'),
                 forceRefresh: force === true,
                 personalLimit: 12,
                 personalSimilarLimit: this.similarLimit,
                 personalSimilarEnabled: this.settings.showDiscoverySimilar !== false,
-                newestLimit: 24,
-                popularLimit: 24,
                 externalLimit: Math.max(12, Math.min(120, parseInt(this.settings.discoveryExternalLimit, 10) || 24)),
                 externalSource: external.source,
                 externalName: external.name,
@@ -290,7 +348,7 @@ class DiscoveryPage {
     //полки текущей страницы, с отметками для отзывов и фильтром «Моих языков»
     get preparedShelves() {
         const shelves = this.rawShelves.filter(Boolean);
-        if (this.kind === 'for-you') {
+        if (this.kind === 'home') {
             const allowed = new Set(['hidden-books']);
             for (const [id, setting] of Object.entries(shelfSettings)) {
                 if (this.settings[setting] !== false)
@@ -310,10 +368,6 @@ class DiscoveryPage {
                 });
             });
         }
-        if (this.kind === 'newest')
-            return shelves.filter(shelf => /^newest-\d+d$/.test(String(shelf.id || '')));
-        if (this.kind === 'popular')
-            return shelves.filter(shelf => shelf.id === 'popular');
         if (this.kind === 'bestsellers') {
             return shelves.filter(shelf => shelf.source === 'external').map(shelf => Object.assign({}, shelf, {
                 items: (shelf.items || []).filter(book => String(book.discoveryItemKind || 'book').toLowerCase() !== 'genre'),
@@ -357,7 +411,7 @@ class DiscoveryPage {
     }
 
     get showTaste() {
-        return this.kind === 'for-you' && this.signedIn && (this.tasteOpen || this.tasteNeedsSetup);
+        return this.kind === 'home' && this.signedIn && (this.tasteOpen || this.tasteNeedsSetup);
     }
 
     get tasteKey() {
@@ -379,7 +433,7 @@ class DiscoveryPage {
     }
 
     hideSetting(shelf) {
-        return (this.kind === 'for-you' && shelfSettings[shelf.id]) || '';
+        return (this.kind === 'home' && shelfSettings[shelf.id]) || '';
     }
 
     canLoadMore(shelf) {
@@ -442,7 +496,7 @@ class DiscoveryPage {
     }
 
     recordImpressions() {
-        if (this.kind !== 'for-you' || !this.signedIn)
+        if (this.kind !== 'home' || !this.signedIn)
             return;
         const events = this.shelves
             .filter(shelf => shelf.id !== 'hidden-books')
@@ -502,7 +556,7 @@ class DiscoveryPage {
         this.tasteDismissed = true;
         try {
             await this.api.updateDiscoveryPreferences({tastePromptDismissedAt: new Date().toISOString()});
-            this.$root.notify.info(t('Вкусы можно настроить позже на странице «Для вас».'));
+            this.$root.notify.info(t('Вкусы можно настроить позже кнопкой «Настроить вкусы» на главной.'));
         } catch (e) {
             this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
         }

@@ -1,9 +1,9 @@
-//Какие витрины (Для вас, Новинки, Популярное, внешний источник) сейчас доступны.
-//Общая логика для меню приложения и для страницы каталога.
+//Внешняя витрина (подборка с сайта-источника) и её пункт в меню.
+//Персональные подборки показываются на главной.
 import {t} from './i18n';
-import {isAdmin, needsLogin} from './session';
+import {isAdmin} from './session';
 
-export const discoveryRouteOrder = ['for-you', 'newest', 'popular', 'bestsellers'];
+export const discoveryRouteOrder = ['bestsellers'];
 
 export function externalDiscovery(config = {}, settings = {}) {
     const discovery = config.discovery || {};
@@ -22,26 +22,12 @@ export function isDiscoveryRouteEnabled(route, config = {}, settings = {}) {
     if (!discoveryEnabled)
         return !discoveryRouteOrder.includes(route);
 
-    if (route === 'for-you') {
-        const userId = String(settings.currentUserId || config.currentUserId || '').trim();
-        return !!(userId && !needsLogin(config, settings));
-    }
-    if (route === 'newest')
-        return settings.showDiscoveryNewest !== false;
-    if (route === 'popular')
-        return settings.showDiscoveryPopular !== false;
     if (route === 'bestsellers')
         return externalDiscovery(config, settings).source !== 'none' && settings.showDiscoveryExternal !== false;
     return true;
 }
 
 export function discoveryRouteLabel(route, config = {}, settings = {}) {
-    if (route === 'for-you')
-        return t('Для вас');
-    if (route === 'newest')
-        return t('Новинки');
-    if (route === 'popular')
-        return t('Популярное');
     if (route === 'bestsellers')
         return externalDiscovery(config, settings).name || t('Внешний источник');
     return route;

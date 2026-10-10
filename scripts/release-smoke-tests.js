@@ -1590,7 +1590,7 @@ async function testConfiguredConverterPathsHavePriority() {
     assert.strictEqual(bookConverter.calibreCommandCandidates(configured)[0], configured.calibre);
 }
 
-async function testDiscoveryNewestAvoidsUnboundedFallback() {
+async function testDiscoveryShelvesBuildOnlyRequestedSection() {
     const WebWorker = require('../server/core/WebWorker');
     const worker = Object.create(WebWorker.prototype);
     worker.discoveryCache = new Map();
@@ -1598,22 +1598,28 @@ async function testDiscoveryNewestAvoidsUnboundedFallback() {
     worker.getDiscoveryConfigForRequest = async() => ({
         enabled: true,
         shelfLimit: 8,
-        externalSource: 'none',
+        externalSource: 'web-page',
+        externalTtlMinutes: 60,
     });
     worker.dbConfig = async() => ({inpxHash: 'test-hash'});
-    worker.buildDiscoveryPopularityMap = async() => ({});
-    worker.getPersonalDiscoveryShelvesV2 = async() => [];
-    const newestWindows = [];
-    worker.buildLocalDiscoveryShelfV2 = async(kind, limit, options = {}) => {
-        if (kind === 'newest')
-            newestWindows.push(parseInt(options.daysWindow, 10) || 0);
-        return null;
+    const calls = [];
+    worker.getPersonalDiscoveryShelvesV2 = async() => {
+        calls.push('personal');
+        return [{id: 'similar-books', items: []}];
+    };
+    worker.rememberPersistedDiscovery = async() => {
+        calls.push('external');
+        return {id: 'external', source: 'external', items: []};
     };
 
-    const result = await worker.getDiscoveryShelvesV2({newestLimit: 8, popularLimit: 8});
-    assert.deepStrictEqual(newestWindows, [7, 30, 90, 180, 365]);
-    assert.deepStrictEqual(result.shelves.map(shelf => shelf.id), ['newest-0d']);
-    assert.deepStrictEqual(result.shelves[0].items, []);
+    let result = await worker.getDiscoveryShelvesV2({section: 'personal'});
+    assert.deepStrictEqual(calls, ['personal']);
+    assert.deepStrictEqual(result.shelves.map(shelf => shelf.id), ['similar-books']);
+
+    calls.length = 0;
+    result = await worker.getDiscoveryShelvesV2({section: 'external'});
+    assert.deepStrictEqual(calls, ['external']);
+    assert.deepStrictEqual(result.shelves.map(shelf => shelf.id), ['external']);
 }
 
 async function testDiscoveryFeedbackAndEventsPersist() {
@@ -1744,13 +1750,6 @@ async function testPersonalDiscoveryUsesColdStartTaste() {
         worker.getPersonalDiscoveryGenreReason(['sf_fantasy'], profile),
         'Вы выбрали жанр: sf_fantasy'
     );
-
-    const popular = worker.decorateDiscoveryBook({librate: 4}, {
-        mode: 'popular',
-        popularityInfo: {progressCount: 2, listCount: 1, finishedCount: 3},
-    });
-    assert.strictEqual(popular.discoveryReason, 'Популярно у читателей · Оценка библиотеки 4/5');
-    assert.ok(!/В списках|В чтении|Прочитано/.test(popular.discoveryReason));
 }
 
 async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
@@ -1934,7 +1933,7 @@ const tests = [
     testExternalDiscoveryMultiSourceSearch,
     testExternalDiscoverySingleFetch,
     testConfiguredConverterPathsHavePriority,
-    testDiscoveryNewestAvoidsUnboundedFallback,
+    testDiscoveryShelvesBuildOnlyRequestedSection,
     testPersonalDiscoveryUsesColdStartTaste,
     testPersonalDiscoveryUsesEngagementTopicsAndDismissals,
     testPersonalDiscoveryDiversifiesAuthorsAndSeries,

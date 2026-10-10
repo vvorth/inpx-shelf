@@ -27,8 +27,6 @@ const state = {
         showNewReleaseAvailable: true,
         darkTheme: false,
         uiLang: '',
-        showDiscoveryNewest: true,
-        showDiscoveryPopular: true,
         showDiscoveryContinueReading: true,
         showDiscoveryFromLists: true,
         showDiscoveryUnfinishedSeries: true,
