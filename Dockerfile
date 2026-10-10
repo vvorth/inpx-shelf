@@ -17,8 +17,20 @@ RUN node -e "require('@yao-pkg/pkg-fetch').need({nodeRange:'node24',platform:'li
 
 FROM build-deps AS build
 
-COPY . .
-RUN npm run build:linux
+# Copy sources in order of how often they change relative to what they affect:
+# a server-only change reuses the client bundle layer.
+COPY build ./build
+COPY shared ./shared
+# Server modules the client bundle imports directly; keep in sync with client imports.
+COPY server/core/LockQueue.js server/core/WebSocketConnection.js ./server/core/
+COPY server/core/fb2 ./server/core/fb2
+COPY server/core/xml ./server/core/xml
+COPY client ./client
+RUN npm run build:client
+
+COPY README.md ./
+COPY server ./server
+RUN npm run pack:linux
 
 FROM ${NODE_IMAGE} AS webp-tools
 
@@ -48,7 +60,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && chmod +x /fb2cng-runtime/fbc \
     && rm -rf /tmp/fbc.zip /var/lib/apt/lists/*
 
-FROM ${RUNTIME_IMAGE} AS runtime-base
+# Runtime stages are split into "*-tools" layers (OS packages, external
+# converters) and thin final stages that only add the app binary on top.
+# A JS/TS change then only rebuilds the last COPY instead of re-running the
+# MuPDF/Calibre apt installs that would otherwise sit above the binary.
+FROM ${RUNTIME_IMAGE} AS base-tools
 
 ENV LD_LIBRARY_PATH=/usr/local/lib
 WORKDIR /app
@@ -61,11 +77,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 COPY --from=webp-tools /webp-runtime/bin/dwebp /usr/local/bin/dwebp
 COPY --from=webp-tools /webp-runtime/lib/ /usr/local/lib/
-COPY --from=build /app/dist/linux/inpx-web /usr/local/bin/inpx-web
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
-    && chmod +x /usr/local/bin/inpx-web \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 12380
@@ -73,7 +87,7 @@ VOLUME ["/usr/local/bin/.inpx-web", "/library"]
 
 ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
-FROM runtime-base AS runtime
+FROM base-tools AS conversion-tools
 
 ARG FB2CNG_VERSION
 
@@ -93,7 +107,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends mupdf-tools fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-FROM runtime AS runtime-calibre
+FROM conversion-tools AS calibre-tools
 
 LABEL org.opencontainers.image.title="inpx-web-calibre" \
       org.opencontainers.image.description="Full inpx-web image with fb2cng, MuPDF and Calibre fallback conversion" \
@@ -120,7 +134,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         /usr/lib/python3.11/test \
     && rm -rf /var/lib/apt/lists/*
 
-FROM runtime-base AS runtime-lite
+FROM conversion-tools AS runtime
+
+# --chmod avoids a follow-up chmod RUN that would duplicate the binary in a second layer.
+COPY --from=build --chmod=755 /app/dist/linux/inpx-web /usr/local/bin/inpx-web
+
+FROM calibre-tools AS runtime-calibre
+
+COPY --from=build --chmod=755 /app/dist/linux/inpx-web /usr/local/bin/inpx-web
+
+FROM base-tools AS runtime-lite
 
 LABEL org.opencontainers.image.title="inpx-web-lite" \
       org.opencontainers.image.description="Lighter inpx-web image without Calibre conversion support" \
@@ -128,5 +151,7 @@ LABEL org.opencontainers.image.title="inpx-web-lite" \
 
 ENV INPX_ENABLE_CONVERSION=false
 ENV INPX_CONVERSION_FORMATS=
+
+COPY --from=build --chmod=755 /app/dist/linux/inpx-web /usr/local/bin/inpx-web
 
 FROM runtime AS final
