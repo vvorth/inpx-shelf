@@ -17,20 +17,8 @@ RUN node -e "require('@yao-pkg/pkg-fetch').need({nodeRange:'node24',platform:'li
 
 FROM build-deps AS build
 
-# Copy sources in order of how often they change relative to what they affect:
-# a server-only change reuses the client bundle layer.
-COPY build ./build
-COPY shared ./shared
-# Server modules the client bundle imports directly; keep in sync with client imports.
-COPY server/core/LockQueue.js server/core/WebSocketConnection.js ./server/core/
-COPY server/core/fb2 ./server/core/fb2
-COPY server/core/xml ./server/core/xml
-COPY client ./client
-RUN npm run build:client
-
-COPY README.md ./
-COPY server ./server
-RUN npm run pack:linux
+COPY . .
+RUN npm run build:linux
 
 FROM ${NODE_IMAGE} AS webp-tools
 
