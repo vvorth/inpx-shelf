@@ -9,6 +9,8 @@ function plural(n, one, many) {
 const books = ({n}) => `${n} ${plural(n, 'book', 'books')}`;
 
 export default {
+    'Читаю файл книги: содержание, сведения FB2 и отзывы появятся через несколько секунд.': 'Reading the book file: contents, FB2 details and reviews will appear in a few seconds.',
+    'Фильтры относятся к книгам: выбор откроет вкладку «Книги».': 'Filters apply to books: choosing one opens the Books tab.',
     'Подробности': 'Details',
     'Изменить данные': 'Edit details',
     'О книге': 'About the book',

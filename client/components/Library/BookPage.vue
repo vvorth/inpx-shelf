@@ -162,7 +162,7 @@
                     </div>
                 </section>
 
-                <BookDetails v-if="!infoLoading" :book="book" :book-info="bookInfo" @updated="onMetadataUpdated" />
+                <BookDetails :book="book" :book-info="bookInfo" :loading="infoLoading" @updated="onMetadataUpdated" />
 
                 <section v-if="related.length" class="book-section">
                     <div class="card-head">

@@ -1,5 +1,5 @@
 <template>
-    <section v-if="tabs.length" class="book-section">
+    <section class="book-section">
         <div class="card-head">
             <h2 class="card-title">
                 {{ $t('Подробности') }}
@@ -14,6 +14,9 @@
                 {{ item.label }}<span v-if="item.count" class="tab-count num">{{ item.count }}</span>
             </button>
         </nav>
+        <div v-if="loading" class="card-hint">
+            {{ $t('Читаю файл книги: содержание, сведения FB2 и отзывы появятся через несколько секунд.') }}
+        </div>
 
         <div v-if="tab === 'about'" class="details-body">
             <blockquote v-if="epigraph.length" class="details-epigraph">
@@ -143,9 +146,11 @@ class BookDetails {
     _props = {
         book: {type: Object, required: true},
         bookInfo: {type: Object, default: null},
+        loading: Boolean,
     };
 
     tab = '';
+    picked = false;
     fb2 = [];
     contents = [];
     images = [];
@@ -220,6 +225,7 @@ class BookDetails {
 
     selectTab(name) {
         this.tab = name;
+        this.picked = true;
         if (name === 'author')
             this.loadAuthorInfo();
     }
@@ -293,8 +299,9 @@ class BookDetails {
             }
         }
 
-        if (!this.tabs.some(item => item.name === this.tab))
-            this.tab = this.tabs[0].name;
+        //пока файл книги не прочитан, открыта вкладка «Файл»: её данные уже есть
+        if (!this.picked || !this.tabs.some(item => item.name === this.tab))
+            this.tab = (this.bookInfo ? this.tabs[0].name : 'file');
     }
 
     async loadAuthorInfo() {

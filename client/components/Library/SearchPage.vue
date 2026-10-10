@@ -22,8 +22,8 @@
                 </div>
             </div>
 
-            <div v-else class="search-layout" :class="{'search-layout--names': tab !== 'books'}">
-                <aside v-if="tab === 'books'" class="facets" :class="{'facets--open': facetsOpen}">
+            <div v-else class="search-layout">
+                <aside class="facets" :class="{'facets--open': facetsOpen}">
                     <div class="facets-head">
                         <h2 class="card-title">
                             {{ $t('Фильтры') }}
@@ -31,6 +31,9 @@
                         <button v-if="customFilterCount" type="button" class="link-btn" @click="clearFilters">
                             {{ $t('Сбросить') }}
                         </button>
+                    </div>
+                    <div v-if="tab !== 'books'" class="card-hint">
+                        {{ $t('Фильтры относятся к книгам: выбор откроет вкладку «Книги».') }}
                     </div>
 
                     <div v-for="group in facetGroups" :key="group.field" class="facet">
@@ -293,7 +296,7 @@ class SearchPage {
 
     activated() {
         this.$root.setAppTitle(this.q ? t('Поиск: «{q}»', {q: this.q}) : t('Поиск'));
-        if (this.queryKey !== this.loadedKey)
+        if (this.queryKey !== this.loadedKey || this.notReady)
             this.load();
     }
 
@@ -529,11 +532,14 @@ class SearchPage {
 
     setQuery(patch) {
         const query = Object.assign({}, this.query, patch);
+        //фильтры и сортировка относятся к книгам
+        if (Object.keys(patch).some(key => !['tab', 'page'].includes(key)))
+            delete query.tab;
         for (const key of Object.keys(query)) {
             if (query[key] === undefined || query[key] === '')
                 delete query[key];
         }
-        this.$router.replace({path: '/search', query});
+        this.$router.push({path: '/search', query});
     }
 
     toggleFilter(field, value, single = false) {
@@ -557,7 +563,7 @@ class SearchPage {
             query.q = this.q;
         if (this.query.sort)
             query.sort = this.query.sort;
-        this.$router.replace({path: '/search', query});
+        this.$router.push({path: '/search', query});
     }
 
     setView(view) {
@@ -592,14 +598,14 @@ class SearchPage {
         if (!booksTab)
             this.loadNames(seq);
         try {
-            //на вкладках авторов и серий нужен только счётчик книг для подписи вкладки
+            //на вкладках авторов и серий книги не показываются: нужны счётчик и фильтры
             const result = await this.api.catalogSearch({
                 q: this.q,
                 filters: this.filters,
                 sort: this.sort,
                 offset: (booksTab ? (this.page - 1) * this.limit : 0),
                 limit: (booksTab ? this.limit : 1),
-                facets: booksTab,
+                facets: true,
                 hideCopies: this.hideCopies,
                 showDeleted: !!this.settings.showDeleted,
             });
@@ -623,17 +629,17 @@ class SearchPage {
         }
     }
 
-    //индекс ещё строится: обновляем статус, пока не будет готов
+    //индекс ещё строится: повторяем поиск, пока он не ответит. Статус для полосы прогресса
+    //запрашивается без ожидания: во время сборки get-config может отвечать долго
     schedulePoll() {
         clearTimeout(this.pollTimer);
-        this.pollTimer = setTimeout(async() => {
+        this.pollTimer = setTimeout(() => {
             if (this.$route.path !== '/search')
                 return;
-            await this.api.updateConfig({skipProfileLogin: true}).catch(() => {});
-            if ((this.config.catalogSearch || {}).ready)
-                this.load();
-            else
-                this.schedulePoll();
+            this.api.getConfig()
+                .then(config => this.$store.commit('setConfig', Object.assign({}, this.config, {catalogSearch: config.catalogSearch})))
+                .catch(() => {});
+            this.load();
         }, 5000);
     }
 
@@ -734,10 +740,6 @@ export default vueComponent(SearchPage);
     font: inherit;
     font-size: 13px;
     cursor: pointer;
-}
-
-.search-layout--names {
-    grid-template-columns: minmax(0, 1fr);
 }
 
 .index-progress {
