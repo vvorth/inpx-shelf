@@ -214,6 +214,13 @@ class ReadingListsDialog {
 
     created() {
         this.api = this.$root.api;
+
+        //диалог могут создать уже открытым (v-if вместе с v-model = true): watch на modelValue
+        //тогда не срабатывает, и без этой проверки окно молча не появляется
+        if (this.modelValue) {
+            this.dialogVisible = true;
+            this.init();// no await
+        }
     }
 
     get dialogTitle() {
