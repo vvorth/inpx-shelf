@@ -1323,6 +1323,20 @@ export default {
     "Настроить": "Set up",
     "Скрыть на неделю": "Hide for a week",
     "Wikidata не вернула ни одного имени": "Wikidata returned no names",
+
+    //--- добавление в список
+    "Списков пока нет. Создайте первый ниже.": "No lists yet. Create your first one below.",
+    "Добавлено: {n}": "Added: {n}",
+    "Уже в списке": "Already in the list",
+    "Добавить серию": "Add series",
+    "Добавить всю серию «{name}»": "Add the whole “{name}” series",
+    "Создать и добавить серию": "Create and add series",
+    "Все списки": "All lists",
+    "Готово": "Done",
+    "Серия в список": "Add series to a list",
+    "Добавить в список": "Add to list",
+    "В список «{list}» добавлено книг серии: {n}": "{n} books from the series added to “{list}”",
+    "Все книги серии уже в списке «{list}»": "All books from the series are already in “{list}”",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

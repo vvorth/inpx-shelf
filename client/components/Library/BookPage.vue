@@ -188,7 +188,7 @@
             </template>
         </div>
 
-        <ReadingListsDialog v-if="book" v-model="readingListsDialogVisible" :book="book" @update:model-value="onListsDialog" />
+        <AddToListDialog v-if="book" v-model="readingListsDialogVisible" :book="book" @update:model-value="onListsDialog" />
         <BookInfoDialog v-if="bookInfo" v-model="bookInfoDialogVisible" :book-info="bookInfo" :genre-map="genreMap" initial-tab="fb2" @navigate="onInfoNavigate" />
     </div>
 </template>
@@ -198,7 +198,7 @@
 import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 import BookCard from './BookCard.vue';
-import ReadingListsDialog from '../Search/ReadingListsDialog/ReadingListsDialog.vue';
+import AddToListDialog from './AddToListDialog.vue';
 import BookInfoDialog from '../Search/BookInfoDialog/BookInfoDialog.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
@@ -212,7 +212,7 @@ const componentOptions = {
     components: {
         BookCover,
         BookCard,
-        ReadingListsDialog,
+        AddToListDialog,
         BookInfoDialog,
     },
     watch: {

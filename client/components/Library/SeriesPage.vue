@@ -83,7 +83,7 @@
             </ol>
         </div>
 
-        <ReadingListsDialog v-if="books.length" v-model="readingListsDialogVisible" :book="books[0]" />
+        <AddToListDialog v-if="books.length" v-model="readingListsDialogVisible" :book="books[0]" :series="name" />
     </div>
 </template>
 
@@ -91,7 +91,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
-import ReadingListsDialog from '../Search/ReadingListsDialog/ReadingListsDialog.vue';
+import AddToListDialog from './AddToListDialog.vue';
 
 import {t, tMessage} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
@@ -101,7 +101,7 @@ import {myLanguages, languageMatches} from '../../share/languages';
 const componentOptions = {
     components: {
         BookCover,
-        ReadingListsDialog,
+        AddToListDialog,
     },
     watch: {
         '$route.params.name'() {

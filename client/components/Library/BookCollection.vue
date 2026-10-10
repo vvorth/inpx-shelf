@@ -83,7 +83,7 @@
             </li>
         </ol>
 
-        <ReadingListsDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" />
+        <AddToListDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" />
     </div>
 </template>
 
@@ -93,7 +93,7 @@ import vueComponent from '../vueComponent.js';
 import BookCard from './BookCard.vue';
 import BookCover from './BookCover.vue';
 import BookQuickActions from './BookQuickActions.vue';
-import ReadingListsDialog from '../Search/ReadingListsDialog/ReadingListsDialog.vue';
+import AddToListDialog from './AddToListDialog.vue';
 
 import {isSignedIn} from '../../share/session';
 import {bookAuthors, bookUid} from '../../share/bookActions';
@@ -104,7 +104,7 @@ const componentOptions = {
         BookCard,
         BookCover,
         BookQuickActions,
-        ReadingListsDialog,
+        AddToListDialog,
     },
 };
 

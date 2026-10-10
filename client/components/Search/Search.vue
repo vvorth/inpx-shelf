@@ -372,7 +372,7 @@
             :initial-tab="bookInfoDialogTab"
             @navigate="bookInfoNavigate"
         />
-        <ReadingListsDialog v-model="readingListsDialogVisible" :book="readingListsDialogBook" />
+        <AddToListDialog v-if="readingListsDialogBook" v-model="readingListsDialogVisible" :book="readingListsDialogBook" />
         <SelectExtSearchDialog v-model="selectExtSearchDialogVisible" v-model:ext-search="extSearch" />        
     </div>
 </template>
@@ -396,7 +396,7 @@ import SelectDateDialog from './SelectDateDialog/SelectDateDialog.vue';
 import SelectExtDialog from './SelectExtDialog/SelectExtDialog.vue';
 import BookInfoDialog from './BookInfoDialog/BookInfoDialog.vue';
 import SelectExtSearchDialog from './SelectExtSearchDialog/SelectExtSearchDialog.vue';
-import ReadingListsDialog from './ReadingListsDialog/ReadingListsDialog.vue';
+import AddToListDialog from '../Library/AddToListDialog.vue';
 
 import authorBooksStorage from './authorBooksStorage';
 import DivBtn from '../share/DivBtn.vue';
@@ -439,7 +439,7 @@ const componentOptions = {
         SelectDateDialog,
         SelectExtDialog,
         BookInfoDialog,
-        ReadingListsDialog,
+        AddToListDialog,
         SelectExtSearchDialog,
         Dialog,
         DivBtn
