@@ -1087,6 +1087,36 @@ async function testProfileReadingSummaryLeavesOutReadBooks() {
     assert.strictEqual(summary.count, 1);
 }
 
+async function testBookPageRecordAndReaderStates() {
+    const worker = makeWorker();
+    worker.getBookRecordByUid = async(uid) => (uid === 'book:1' ? {_uid: 'book:1', title: 'Старое название', author: 'Автор', ext: 'fb2', size: 10} : null);
+    worker.readingListStore = {getMetadataOverrides: async() => ({'book:1': {title: 'Новое название'}})};
+    worker.applyMetadataOverridesToRows = (rows, overrides) => rows.forEach(row => Object.assign(row, overrides[row._uid] || {}));
+    worker.applyPreparedBookSizesToRows = async() => {};
+
+    assert.strictEqual((await worker.getBook('book:1')).book.title, 'Новое название');
+    await assert.rejects(() => worker.getBook('missing'), /Книга не найдена/);
+
+    const user = {readerProgress: {a: {percent: 0.4}, b: {percent: 1}, c: {percent: 0.2, hidden: true}}};
+    assert.deepStrictEqual(worker.getUserBookStates(user, ['a', 'b', 'c', 'missing', '']).states, {
+        a: {percent: 0.4, read: false, hidden: false},
+        b: {percent: 1, read: true, hidden: false},
+        c: {percent: 0.2, read: false, hidden: true},
+    });
+    assert.deepStrictEqual(worker.getUserBookStates(null, ['a']).states, {});
+
+    worker.getEffectiveUser = async(userId) => ({
+        guest: {id: 'default', name: 'Без профиля', login: '', passwordHash: ''},
+        open: {id: 'open', name: 'Дети', passwordHash: ''},
+        locked: {id: 'locked', name: 'Вера', passwordHash: 'hash'},
+    })[userId];
+    worker.profileSessions.set('token', {userId: 'locked', createdAt: Date.now(), updatedAt: Date.now()});
+    assert.strictEqual(await worker.getAuthorizedUserOrNull('guest', ''), null);
+    assert.strictEqual((await worker.getAuthorizedUserOrNull('open', '')).id, 'open');
+    assert.strictEqual(await worker.getAuthorizedUserOrNull('locked', ''), null);
+    assert.strictEqual((await worker.getAuthorizedUserOrNull('locked', 'token')).id, 'locked');
+}
+
 async function testReaderHomeKeepsUnavailableProgressVisible() {
     const worker = makeWorker();
     worker.getBookRecordByUid = async(uid) => uid === 'available'
@@ -1765,6 +1795,7 @@ const tests = [
     testReaderProgressResetAndHiddenState,
     testProfileReadingSummaryLeavesOutReadBooks,
     testReaderHomeKeepsUnavailableProgressVisible,
+    testBookPageRecordAndReaderStates,
     testDiscoveryFeedbackAndEventsPersist,
     testCoverCacheRoutesAndCleaner,
     testCacheRotationUsesTargetWatermark,

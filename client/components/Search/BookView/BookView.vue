@@ -85,7 +85,7 @@
                     </div>
                 </div>
 
-                <div v-if="(mode == 'title' || mode == 'extended') && bookSeries" class="book-series clickable2" @click.stop.prevent="emit('seriesClick')">
+                <div v-if="(mode == 'title' || mode == 'extended') && bookSeries" class="book-series clickable2" @click.stop.prevent="openSeries">
                     {{ bookSeries }}
                 </div>
 
@@ -912,7 +912,11 @@ class BookView {
             return;
         }
 
-        this.emit('bookInfo');
+        const uid = this.getBookUid();
+        if (uid)
+            this.$router.push(`/book/${encodeURIComponent(uid)}`);
+        else
+            this.emit('bookInfo');
     }
 
     handleAuthorActivate() {
@@ -921,7 +925,16 @@ class BookView {
             return;
         }
 
-        this.emit('authorClick');
+        const author = String(this.book.author || '').split(',').map(name => name.trim()).filter(Boolean)[0];
+        if (author)
+            this.$router.push(`/author/${encodeURIComponent(author)}`);
+        else
+            this.emit('authorClick');
+    }
+
+    openSeries() {
+        if (this.book.series)
+            this.$router.push(`/series/${encodeURIComponent(this.book.series)}`);
     }
 
     openExternalSource() {

@@ -190,6 +190,10 @@ class WebSocketController {
                     await this.updateBookMetadata(req, ws); break;
                 case 'get-book-link':
                     await this.getBookLink(req, ws); break;
+                case 'get-book':
+                    await this.getBook(req, ws); break;
+                case 'get-book-states':
+                    await this.getBookStates(req, ws); break;
                 case 'get-book-info':
                     await this.getBookInfo(req, ws); break;
                 case 'get-reader-state':
@@ -501,7 +505,9 @@ class WebSocketController {
     }
 
     async getAuthorBookList(req, ws) {
-        const result = await this.webWorker.getAuthorBookList(req.authorId, undefined, req.query);
+        //без authorId автор ищется по точному имени (страница автора)
+        const author = (req.authorId ? undefined : String(req.author || '').trim());
+        const result = await this.webWorker.getAuthorBookList(req.authorId, author, req.query);
 
         this.send(result, req, ws);
     }
@@ -683,6 +689,20 @@ class WebSocketController {
         const result = await this.webWorker.getBookLink(req.bookUid);
 
         this.send(result, req, ws);
+    }
+
+    async getBook(req, ws) {
+        if (!utils.hasProp(req, 'bookUid'))
+            throw new Error('bookUid is empty');
+
+        const result = await this.webWorker.getBook(req.bookUid);
+        this.send(result, req, ws);
+    }
+
+    //Гостю и профилю без входа отвечаем пустым набором, а не need_profile_login: страницы каталога открыты всем
+    async getBookStates(req, ws) {
+        const user = await this.webWorker.getAuthorizedUserOrNull(req.userId, req.profileAccessToken);
+        this.send(this.webWorker.getUserBookStates(user, req.bookUids), req, ws);
     }
 
     async getBookInfo(req, ws) {

@@ -3326,6 +3326,44 @@ class WebWorker {
         return shelves;
     }
 
+    //Запись книги для страницы книги: с правками метаданных, без подготовки файла
+    async getBook(bookUid = '') {
+        this.checkMyState();
+
+        const book = await this.getBookRecordByUid(String(bookUid || '').trim());
+        if (!book)
+            throw new Error('Книга не найдена');
+
+        const result = {books: [Object.assign({}, book)]};
+        await this.applyMetadataOverridesToSearchResult(result);
+        return {book: result.books[0]};
+    }
+
+    //Прогресс текущего читателя по набору книг: {uid: {percent, read, hidden}}
+    getUserBookStates(user = null, bookUids = []) {
+        const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {});
+        const states = {};
+        for (const value of (Array.isArray(bookUids) ? bookUids : []).slice(0, 2000)) {
+            const bookUid = String(value || '').trim();
+            const progress = bookUid && progressMap[bookUid];
+            if (!progress)
+                continue;
+
+            const percent = Math.max(0, Math.min(1, Number(progress.percent || 0) || 0));
+            states[bookUid] = {percent, read: percent >= READ_PERCENT, hidden: progress.hidden === true};
+        }
+        return {states};
+    }
+
+    async getAuthorizedUserOrNull(userId = '', profileAccessToken = '') {
+        const user = await this.getEffectiveUser(userId, profileAccessToken);
+        if (!user || isAnonymousDefaultUser(user))
+            return null;
+        if (user.passwordHash && this.getProfileSessionUser(profileAccessToken) !== user.id)
+            return null;
+        return user;
+    }
+
     async getBookRecordByUid(bookUid) {
         const rows = await this.db.select({table: 'book', where: `@@hash('_uid', ${this.db.esc(bookUid)})`});
         return (rows.length ? rows[0] : null);

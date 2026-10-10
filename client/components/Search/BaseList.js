@@ -1,5 +1,4 @@
-﻿import axios from 'axios';
-import dayjs from 'dayjs';
+﻿import dayjs from 'dayjs';
 import _ from 'lodash';
 
 import authorBooksStorage from './authorBooksStorage';
@@ -7,7 +6,8 @@ import authorBooksStorage from './authorBooksStorage';
 import BookView from './BookView/BookView.vue';
 import LoadingMessage from './LoadingMessage/LoadingMessage.vue';
 import * as utils from '../../share/utils';
-import {t, tHtml} from '../../share/i18n';
+import {t} from '../../share/i18n';
+import {runBookAction, markBooksRead} from '../../share/bookActions';
 
 const showMoreCount = 100;//значение для "Показать еще"
 const maxItemCount = 500;//выше этого значения показываем "Загрузка"
@@ -221,49 +221,9 @@ export default class BaseList {
         }, 1000);
     }
 
-    downloadHref(href) {
-        window.location.href = href;
-    }
-
-    getDirectBookDownloadHref(book, format = '') {
-        const bookUid = this.getBookUid(book);
-        const root = String(this.config.rootPathStatic || '').replace(/\/$/, '');
-        const params = new URLSearchParams();
-        params.set('uid', bookUid);
-        if (format)
-            params.set('format', format);
-        else if (this.downloadAsZip)
-            params.set('zip', '1');
-
-        return `${window.location.origin}${root}/book/by-uid?${params.toString()}`;
-    }
-
-    async getErrorMessage(error) {
-        if (error.response && error.response.data) {
-            const responseData = error.response.data;
-            if (typeof(responseData) === 'string')
-                return responseData;
-
-            if (responseData && typeof(responseData.text) === 'function') {
-                try {
-                    return await responseData.text();
-                } catch(e) {
-                    // ignore
-                }
-            }
-        }
-
-        return error.message;
-    }
-
     async download(book, action, format = '') {
         if (this.downloadFlag)
             return;
-
-        if (format && this.config.conversionEnabled === false) {
-            this.$root.stdDialog.alert(t('Конвертация книг отключена в текущем образе.'), t('Информация'));
-            return;
-        }
 
         this.downloadFlag = true;
         (async() => {
@@ -273,94 +233,17 @@ export default class BaseList {
         })();
 
         try {
-            if (action == 'bookInfo' || action == 'authorInfo') {
-                const response = await this.api.getBookInfo(book._uid);
-                if (response.bookInfo && response.bookInfo.book && response.bookInfo.book.size > 0)
-                    book.size = response.bookInfo.book.size;
+            const bookInfo = await runBookAction(this, book, action, format, {
+                liberamaReady: !!this.list.liberamaReady,
+                submitUrl: (href) => this.$emit('listEvent', {action: 'submitUrl', data: href}),
+            });
+            if (bookInfo) {
                 this.$emit('listEvent', {
                     action: 'bookInfo',
-                    data: response.bookInfo,
+                    data: bookInfo,
                     tab: (action == 'authorInfo' ? 'author' : 'fb2'),
                 });
-                return;
             }
-
-            if (action == 'sendTelegram') {
-                await this.api.sendBookTelegram(book._uid, format);
-                this.$root.notify.success(`${t('Книга отправлена в Telegram')}${format ? ` (${format.toUpperCase()})` : ''}`);
-                return;
-            }
-
-            if (action == 'sendEmail') {
-                await this.api.sendBookEmail(book._uid, format);
-                this.$root.notify.success(`${t('Книга отправлена на email')}${format ? ` (${format.toUpperCase()})` : ''}`);
-                return;
-            }
-
-            if (action == 'download') {
-                this.downloadHref(this.getDirectBookDownloadHref(book, format));
-                return;
-            }
-
-            //подготовка
-            const response = await this.api.getBookLink(book._uid);
-            
-            const link = response.link;
-            let href = `${window.location.origin}${link}`;
-
-            //downloadAsZip
-            if (this.downloadAsZip && !format && (action == 'download' || action == 'copyLink')) {
-                href += '/zip';
-                //подожлем формирования zip-файла
-                await axios.head(href);
-            }
-
-            if (format) {
-                href += `/${format}`;
-            }
-
-            //action
-            if (action == 'copyLink') {
-                //копирование ссылки
-                if (await utils.copyTextToClipboard(href))
-                    this.$root.notify.success(t('Ссылка успешно скопирована'));
-                else
-                    this.$root.stdDialog.alert(tHtml('copyLinkFailed',
-`Копирование ссылки не удалось. Пожалуйста, попробуйте еще раз.
-<br><br>
-<b>Пояснение</b>: вероятно, браузер запретил копирование, т.к. прошло<br>
-слишком много времени с момента нажатия на кнопку (инициация<br>
-пользовательского события). Сейчас ссылка уже закеширована,<br>
-поэтому повторная попытка должна быть успешной.`), t('Ошибка'));
-            } else if (action == 'readBook') {
-                //читать
-                if (this.config.onlineReaderEnabled && String(book.ext || '').toLowerCase() === 'fb2') {
-                    this.$router.push({path: '/reader', query: {bookUid: book._uid}});
-                } else if (this.list.liberamaReady) {
-                    this.$emit('listEvent', {action: 'submitUrl', data: href});
-                } else {
-                    const bookReadLink = this.config.bookReadLink;
-                    if (!bookReadLink) {
-                        this.$root.stdDialog.alert(t('Встроенная читалка пока поддерживает только FB2.'), t('Информация'));
-                        return;
-                    }
-                    let url = bookReadLink;
-
-                    if (bookReadLink.indexOf('${DOWNLOAD_LINK}') >= 0) {
-                        url = bookReadLink.replace('${DOWNLOAD_LINK}', href);
-
-                    } else if (bookReadLink.indexOf('${DOWNLOAD_URI}') >= 0) {
-                        const hrefUrl = new URL(href);
-                        const urlWithoutHost = hrefUrl.pathname + hrefUrl.search + hrefUrl.hash;
-                        url = bookReadLink.replace('${DOWNLOAD_URI}', urlWithoutHost);
-                    }
-
-                    window.open(url, '_blank');
-                }
-            }
-        } catch(e) {
-            const message = await this.getErrorMessage(e);
-            this.$root.stdDialog.alert(message, t('Ошибка'));
         } finally {
             this.downloadFlag = false;
             this.loadingMessage2 = '';
@@ -372,19 +255,7 @@ export default class BaseList {
     }
 
     async markBooksRead(bookUids = [], read = true) {
-        const normalized = Array.from(new Set((Array.isArray(bookUids) ? bookUids : [bookUids])
-            .map((bookUid) => String(bookUid || '').trim())
-            .filter(Boolean)));
-        if (!normalized.length)
-            return;
-
-        try {
-            const result = await this.api.markReaderBooksRead(normalized, read);
-            const count = (result && result.changedBooks) || normalized.length;
-            this.$root.notify.success(read ? t('Помечено прочитанными: {n}', {n: count}) : t('Отметка снята: {n}', {n: count}));
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
-        }
+        await markBooksRead(this, bookUids, read);
     }
 
     bookEvent(event) {

@@ -410,7 +410,7 @@ import {t, tk, tHtml, tMessage, translateGenreTree} from '../../share/i18n';
 
 const maxLimit = 1000;
 const discoveryRoutes = new Set(['for-you', 'newest', 'popular', 'bestsellers']);
-const searchRoutePaths = new Set(['/', '/author', '/series', '/title', '/books', '/for-you', '/newest', '/popular', '/bestsellers', '/extended']);
+const searchRoutePaths = new Set(['/author', '/series', '/title', '/books', '/for-you', '/newest', '/popular', '/bestsellers', '/extended']);
 
 const route2component = {
     'for-you': {component: 'DiscoveryShelves', label: tk('Для вас')},

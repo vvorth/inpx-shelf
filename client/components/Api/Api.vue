@@ -405,6 +405,10 @@ class Api {
         return await this.request({action: 'get-author-book-list', authorId, query});
     }
 
+    async getAuthorBooksByName(author, query = {}) {
+        return await this.request({action: 'get-author-book-list', authorId: 0, author, query}, 60);
+    }
+
     async getAuthorSeriesList(authorId, query = {}) {
         return await this.request({action: 'get-author-series-list', authorId, query});
     }
@@ -519,6 +523,14 @@ class Api {
 
     async getBookLink(bookUid) {
         return await this.request({action: 'get-book-link', bookUid}, 120);
+    }
+
+    async getBook(bookUid) {
+        return await this.request({action: 'get-book', bookUid}, 60);
+    }
+
+    async getBookStates(bookUids = []) {
+        return await this.request({action: 'get-book-states', bookUids}, 60);
     }
 
     async getBookInfo(bookUid) {

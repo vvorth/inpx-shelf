@@ -1,12 +1,16 @@
 <template>
     <div class="app-shell" :class="{'app-shell--bare': bare}">
         <nav v-if="!bare" class="shell-rail" :aria-label="$t('Разделы')">
-            <router-link class="shell-brand" :to="catalogPath">
+            <router-link class="shell-brand" to="/">
                 <img class="shell-brand-logo" src="../Search/assets/logo.png" alt="" />
                 <span class="shell-brand-name">{{ collectionName || config.name || 'inpx-web' }}</span>
             </router-link>
 
             <div class="shell-nav">
+                <router-link class="shell-nav-item" :class="{'is-active': activeItem === 'home'}" to="/">
+                    <q-icon name="la la-home" size="20px" />
+                    <span>{{ $t('Главная') }}</span>
+                </router-link>
                 <router-link class="shell-nav-item" :class="{'is-active': activeItem === 'catalog'}" :to="catalogPath">
                     <q-icon name="la la-book" size="20px" />
                     <span>{{ $t('Каталог') }}</span>
@@ -81,13 +85,13 @@
         </main>
 
         <nav v-if="!bare" class="shell-tabbar" :aria-label="$t('Разделы')">
+            <router-link class="shell-tab" :class="{'is-active': activeItem === 'home' || discoveryActive}" to="/">
+                <q-icon name="la la-home" size="22px" />
+                <span>{{ $t('Главная') }}</span>
+            </router-link>
             <router-link class="shell-tab" :class="{'is-active': activeItem === 'catalog'}" :to="catalogPath">
                 <q-icon name="la la-book" size="22px" />
                 <span>{{ $t('Каталог') }}</span>
-            </router-link>
-            <router-link v-if="forYouEnabled" class="shell-tab" :class="{'is-active': discoveryActive}" to="/for-you">
-                <q-icon name="la la-magic" size="22px" />
-                <span>{{ $t('Для вас') }}</span>
             </router-link>
             <router-link class="shell-tab" :class="{'is-active': activeItem === 'lists'}" to="/lists">
                 <q-icon name="la la-bookmark" size="22px" />
@@ -112,7 +116,7 @@ import ShellUserMenu from './ShellUserMenu.vue';
 
 import {t, tMessage} from '../../share/i18n';
 import {currentProfile, isSignedIn, isAdmin, initials} from '../../share/session';
-import {enabledDiscoveryRoutes, discoveryRouteLabel, isDiscoveryRouteEnabled} from '../../share/discoveryRoutes';
+import {enabledDiscoveryRoutes, discoveryRouteLabel} from '../../share/discoveryRoutes';
 import {newReleaseAvailable} from '../../share/release';
 
 const discoveryIcons = {
@@ -121,7 +125,7 @@ const discoveryIcons = {
     'popular': 'la la-fire',
     'bestsellers': 'la la-globe',
 };
-const catalogRoutes = new Set(['/', '/author', '/series', '/title', '/books', '/extended']);
+const catalogRoutes = new Set(['/author', '/series', '/title', '/books', '/extended']);
 
 const componentOptions = {
     components: {
@@ -212,16 +216,14 @@ class AppShell {
         }));
     }
 
-    get forYouEnabled() {
-        return isDiscoveryRouteEnabled('for-you', this.config, this.settings);
-    }
-
     get discoveryActive() {
         return Object.keys(discoveryIcons).includes(this.activeItem);
     }
 
     get activeItem() {
         const path = this.$route.path;
+        if (path === '/')
+            return 'home';
         const section = this.$route.meta && this.$route.meta.section;
         if (section && section !== 'library')
             return section;
