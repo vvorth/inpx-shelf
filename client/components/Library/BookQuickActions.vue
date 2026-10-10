@@ -1,5 +1,10 @@
 <template>
-    <div class="quick-actions">
+    <div v-if="external" class="quick-actions">
+        <q-btn flat dense no-caps icon="la la-external-link-alt" type="a" :href="book.discoveryUrl" target="_blank" rel="noopener">
+            {{ $t('Открыть источник') }}
+        </q-btn>
+    </div>
+    <div v-else class="quick-actions">
         <q-btn flat dense round icon="la la-book-open" :aria-label="$t('Читать')" @click="act('readBook')">
             <q-tooltip>{{ $t('Читать') }}</q-tooltip>
         </q-btn>
@@ -30,9 +35,10 @@
 import vueComponent from '../vueComponent.js';
 
 import {runBookAction, conversionFormats} from '../../share/bookActions';
+import {isExternalOnly} from '../../share/discovery';
 
 const componentOptions = {
-    emits: ['lists'],
+    emits: ['lists', 'used'],
 };
 
 class BookQuickActions {
@@ -46,7 +52,12 @@ class BookQuickActions {
         return conversionFormats(this.$store.state.config, this.book);
     }
 
+    get external() {
+        return isExternalOnly(this.book);
+    }
+
     act(action, format = '') {
+        this.$emit('used', action === 'readBook' ? 'start' : 'download');
         runBookAction(this, this.book, action, format);
     }
 }

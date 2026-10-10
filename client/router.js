@@ -5,6 +5,7 @@ const Reader = () => import('./components/Reader/Reader.vue');
 const ReaderLab = () => import('./components/Reader/ReaderLab.vue');
 const HomePage = () => import('./components/Library/HomePage.vue');
 const SearchPage = () => import('./components/Library/SearchPage.vue');
+const DiscoveryPage = () => import('./components/Library/DiscoveryPage.vue');
 const BookPage = () => import('./components/Library/BookPage.vue');
 const AuthorPage = () => import('./components/Library/AuthorPage.vue');
 const SeriesPage = () => import('./components/Library/SeriesPage.vue');
@@ -14,7 +15,8 @@ const MePage = () => import('./components/Me/MePage.vue');
 const AdminPage = () => import('./components/Admin/AdminPage.vue');
 
 //bare: страница без меню приложения (читалка, вход)
-const searchPaths = ['/author', '/series', '/title', '/books', '/for-you', '/newest', '/popular', '/bestsellers', '/extended'];
+const searchPaths = ['/author', '/series', '/title', '/books', '/extended'];
+const discoveryPaths = ['/for-you', '/newest', '/popular', '/bestsellers'];
 
 const routes = [
     //старые ссылки вида /#/?author=... открывали каталог
@@ -23,6 +25,7 @@ const routes = [
     {path: '/book/:uid', component: BookPage, meta: {section: 'library'}},
     {path: '/author/:name', component: AuthorPage, meta: {section: 'library'}},
     {path: '/series/:name', component: SeriesPage, meta: {section: 'library'}},
+    ...discoveryPaths.map(path => ({path, component: DiscoveryPage, meta: {section: 'library'}})),
     ...searchPaths.map(path => ({path, component: Search, meta: {section: 'library'}})),
     {path: '/lists', component: ListsPage, meta: {section: 'lists'}},
     {path: '/me', redirect: '/me/account'},

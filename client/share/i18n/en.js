@@ -1344,6 +1344,17 @@ export default {
     "обновлено в «{list}»": "updated in “{list}”",
     "Обновляю списки...": "Updating lists...",
     "Проверяю, в каких списках уже есть книга. Отмечать можно сразу.": "Checking which lists already have this book. You can tick lists right away.",
+
+    //--- витрины
+    "Нет в библиотеке": "Not in the library",
+    "Отзыв о рекомендации": "Feedback on this pick",
+    "Последние поступления в библиотеку": "The latest additions to the library",
+    "Что читают и добавляют в списки чаще всего": "What readers open and add to lists most",
+    "Подборка с внешнего сайта: книги, которых нет в библиотеке, открываются на сайте источника": "Picks from an external site; books that aren't in the library open on the source site",
+    "Жанры и авторы уточняют рекомендации. Языки книг задаются кнопкой «Мои языки» рядом с поиском.": "Genres and authors refine your recommendations. Book languages are set with the “My languages” button next to search.",
+    "Больше похожих": "More like this",
+    "Уже читал(а)": "Already read",
+    "Не учитывать во вкусах": "Don't use for my taste",
 };
 
 //Сообщения с переменной частью (ошибки сервера и т.п.), см. tMessage() в ../i18n.js

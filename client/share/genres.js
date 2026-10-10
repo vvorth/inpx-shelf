@@ -31,3 +31,11 @@ export function genreName(code = '') {
 export function bookGenres(book = {}) {
     return String(book.genre || '').split(',').map(code => code.trim()).filter(Boolean);
 }
+
+//Все жанры библиотеки для выбора: [{value: код, label: название}] по алфавиту
+export function allGenres() {
+    return [...codeNames.keys()]
+        .map(code => ({value: code, label: genreName(code)}))
+        .filter(item => item.label && !/^\?+$/.test(item.label))
+        .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+}

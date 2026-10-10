@@ -1,11 +1,12 @@
 <template>
-    <router-link class="book-card" :to="bookLink(book)">
+    <component :is="external ? 'a' : 'router-link'" class="book-card" v-bind="linkAttrs" @click="$emit('open', book)">
         <BookCover :book="book" :progress="progress" />
         <span class="book-card-title">
             <span v-if="prefix" class="book-card-prefix">{{ prefix }}</span>{{ book.title || $t('Без названия') }}
         </span>
-        <span v-if="meta || author" class="book-card-meta">{{ meta || author }}</span>
-    </router-link>
+        <span v-if="external" class="book-card-meta book-card-external">{{ $t('Нет в библиотеке') }}</span>
+        <span v-else-if="meta || author" class="book-card-meta">{{ meta || author }}</span>
+    </component>
 </template>
 
 <script>
@@ -14,11 +15,13 @@ import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 
 import {bookAuthors, bookUid} from '../../share/bookActions';
+import {isExternalOnly} from '../../share/discovery';
 
 const componentOptions = {
     components: {
         BookCover,
     },
+    emits: ['open'],
 };
 
 class BookCard {
@@ -29,6 +32,17 @@ class BookCard {
         meta: {type: String, default: ''},
         prefix: {type: String, default: ''},
     };
+
+    //книга внешней витрины, которой нет в библиотеке, открывается на сайте источника
+    get external() {
+        return isExternalOnly(this.book);
+    }
+
+    get linkAttrs() {
+        return (this.external
+            ? {href: this.book.discoveryUrl || undefined, target: '_blank', rel: 'noopener'}
+            : {to: this.bookLink(this.book)});
+    }
 
     get author() {
         return bookAuthors(this.book).join(', ');
@@ -70,6 +84,10 @@ export default vueComponent(BookCard);
     margin-right: 4px;
     color: var(--app-muted);
     font-variant-numeric: tabular-nums;
+}
+
+.book-card-external {
+    color: var(--app-accent) !important;
 }
 
 .book-card-meta {

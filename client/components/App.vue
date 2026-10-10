@@ -800,6 +800,11 @@ body.body--dark pre {
     color: var(--app-primary);
 }
 
+.pill--warn {
+    background: rgba(154, 91, 0, 0.12);
+    color: var(--app-accent);
+}
+
 .num {
     font-variant-numeric: tabular-nums;
 }

@@ -3,31 +3,33 @@
         <div v-if="view === 'covers'" class="covers-grid">
             <BookCard
                 v-for="book in books"
-                :key="book._uid"
+                :key="keyOf(book)"
                 :book="book"
                 :progress="stateOf(book).percent || 0"
                 :prefix="showSerno && book.serno ? `#${book.serno}` : ''"
                 :meta="coverMeta ? coverMeta(book) : ''"
+                @open="$emit('interaction', {book, type: 'open'})"
             />
         </div>
 
         <div v-else-if="view === 'cards'" class="cards-grid">
-            <article v-for="book in books" :key="book._uid" class="wide-card">
-                <router-link class="wide-card-cover" :to="bookLink(book)">
+            <article v-for="book in books" :key="keyOf(book)" class="wide-card">
+                <component :is="linkTag(book)" class="wide-card-cover" v-bind="linkAttrs(book)" @click="opened(book)">
                     <BookCover :book="book" :progress="stateOf(book).percent || 0" />
-                </router-link>
+                </component>
                 <div class="wide-card-body">
-                    <router-link class="book-title-link wide-card-title" :to="bookLink(book)">
+                    <component :is="linkTag(book)" class="book-title-link wide-card-title" v-bind="linkAttrs(book)" @click="opened(book)">
                         <span v-if="showSerno && book.serno" class="serno num">#{{ book.serno }}</span>{{ book.title || $t('Без названия') }}
-                    </router-link>
+                    </component>
                     <div class="book-line">
                         <template v-for="(name, index) in authorsOf(book)" :key="name">
-                            <router-link :to="authorLink(name)">
+                            <span v-if="isExternal(book)">{{ name }}</span>
+                            <router-link v-else :to="authorLink(name)">
                                 {{ name }}
                             </router-link><span v-if="index < authorsOf(book).length - 1">, </span>
                         </template>
                     </div>
-                    <div v-if="book.series" class="book-line">
+                    <div v-if="book.series && !isExternal(book)" class="book-line">
                         <router-link :to="seriesLink(book.series)">
                             {{ book.series }}
                         </router-link><span v-if="book.serno" class="num"> · {{ $t('книга {n}', {n: book.serno}) }}</span>
@@ -35,55 +37,70 @@
                     <div v-if="genresOf(book)" class="book-line book-line--muted">
                         {{ genresOf(book) }}
                     </div>
-                    <div class="book-line book-line--muted num">
+                    <div v-if="!isExternal(book)" class="book-line book-line--muted num">
                         {{ fileLine(book) }}
                     </div>
+                    <div v-if="discovery && reasonOf(book)" class="reason" :class="{'reason--explore': book.discoveryExploration}">
+                        <q-icon :name="book.discoveryExploration ? 'la la-compass' : 'la la-lightbulb'" size="15px" />
+                        <span>{{ reasonOf(book) }}</span>
+                    </div>
                     <div class="wide-card-foot">
-                        <span v-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
+                        <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('Нет в библиотеке') }}</span>
+                        <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
                         <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('Прочитано {n}%', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
                         <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('Оценка')">{{ stars(book) }}</span>
                         <span class="foot-spacer" />
-                        <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" />
+                        <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
+                        <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
                     </div>
                 </div>
             </article>
         </div>
 
         <ol v-else class="rows">
-            <li v-for="book in books" :key="book._uid" class="row-item">
-                <router-link class="row-cover" :to="bookLink(book)">
+            <li v-for="book in books" :key="keyOf(book)" class="row-item">
+                <component :is="linkTag(book)" class="row-cover" v-bind="linkAttrs(book)" @click="opened(book)">
                     <BookCover :book="book" :progress="stateOf(book).percent || 0" small />
-                </router-link>
+                </component>
                 <div class="row-main">
-                    <router-link class="book-title-link row-title" :to="bookLink(book)">
+                    <component :is="linkTag(book)" class="book-title-link row-title" v-bind="linkAttrs(book)" @click="opened(book)">
                         <span v-if="showSerno && book.serno" class="serno num">#{{ book.serno }}</span>{{ book.title || $t('Без названия') }}
-                    </router-link>
+                    </component>
                     <div class="book-line">
                         <template v-for="(name, index) in authorsOf(book)" :key="name">
-                            <router-link :to="authorLink(name)">
+                            <span v-if="isExternal(book)">{{ name }}</span>
+                            <router-link v-else :to="authorLink(name)">
                                 {{ name }}
                             </router-link><span v-if="index < authorsOf(book).length - 1">, </span>
                         </template>
-                        <template v-if="book.series">
+                        <template v-if="book.series && !isExternal(book)">
                             · <router-link :to="seriesLink(book.series)">
                                 {{ book.series }}
                             </router-link><span v-if="book.serno"> #{{ book.serno }}</span>
                         </template>
                     </div>
                     <div class="book-line book-line--muted book-line--small num">
-                        {{ [genresOf(book), fileLine(book)].filter(Boolean).join(' · ') }}
+                        {{ [genresOf(book), isExternal(book) ? '' : fileLine(book)].filter(Boolean).join(' · ') }}
+                    </div>
+                    <div v-if="discovery && reasonOf(book)" class="reason reason--small" :class="{'reason--explore': book.discoveryExploration}">
+                        <q-icon :name="book.discoveryExploration ? 'la la-compass' : 'la la-lightbulb'" size="14px" />
+                        <span>{{ reasonOf(book) }}</span>
                     </div>
                 </div>
                 <div class="row-side">
-                    <span v-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
+                    <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('Нет в библиотеке') }}</span>
+                    <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
                     <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
                     <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('Оценка')">{{ stars(book) }}</span>
-                    <BookQuickActions class="row-actions" :book="book" :signed-in="signedIn" @lists="openLists(book)" />
+                    <div class="row-actions">
+                        <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
+                        <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
+                    </div>
                 </div>
             </li>
         </ol>
 
-        <AddToListDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" />
+        <AddToListDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" @changed="$emit('interaction', {book: listsBook, type: 'save'})" />
     </div>
 </template>
 
@@ -93,6 +110,8 @@ import vueComponent from '../vueComponent.js';
 import BookCard from './BookCard.vue';
 import BookCover from './BookCover.vue';
 import BookQuickActions from './BookQuickActions.vue';
+import BookFeedbackMenu from './BookFeedbackMenu.vue';
+import {isExternalOnly, discoveryReason} from '../../share/discovery';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {isSignedIn} from '../../share/session';
@@ -100,14 +119,18 @@ import {bookAuthors, bookUid} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 
 const componentOptions = {
+    emits: ['interaction', 'feedback', 'restore'],
     components: {
         BookCard,
         BookCover,
         BookQuickActions,
+        BookFeedbackMenu,
         AddToListDialog,
     },
 };
 
+//Список книг в одном из трёх видов. Используется везде, где показываются книги:
+//поиск, страница автора, витрины. События interaction/feedback/restore нужны витринам.
 class BookCollection {
     _options = componentOptions;
     _props = {
@@ -116,6 +139,8 @@ class BookCollection {
         view: {type: String, default: 'covers'},
         showSerno: Boolean,
         coverMeta: {type: Function, default: null},
+        //витрина: причины рекомендаций и отзывы на них
+        discovery: Boolean,
     };
 
     genresReady = 0;
@@ -128,6 +153,37 @@ class BookCollection {
 
     get signedIn() {
         return isSignedIn(this.$store.state.config);
+    }
+
+    keyOf(book) {
+        return book._uid || book.discoveryUrl || `${book.title}-${book.author}`;
+    }
+
+    isExternal(book) {
+        return isExternalOnly(book);
+    }
+
+    linkTag(book) {
+        return (this.isExternal(book) ? 'a' : 'router-link');
+    }
+
+    linkAttrs(book) {
+        return (this.isExternal(book)
+            ? {href: book.discoveryUrl || undefined, target: '_blank', rel: 'noopener'}
+            : {to: this.bookLink(book)});
+    }
+
+    opened(book) {
+        this.$emit('interaction', {book, type: 'open'});
+    }
+
+    reasonOf(book) {
+        void this.genresReady;
+        return discoveryReason(book);
+    }
+
+    feedbackFor(book) {
+        return !!(this.discovery && this.signedIn && (book.discoveryDismissible || book.discoveryRestoreable));
     }
 
     stateOf(book) {
@@ -267,6 +323,36 @@ export default vueComponent(BookCollection);
     flex: 1;
 }
 
+.reason {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 4px;
+    color: var(--app-primary);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.reason--explore {
+    color: var(--app-accent);
+}
+
+.reason--small {
+    margin-top: 2px;
+}
+
+.reason span {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.row-actions {
+    display: flex;
+    align-items: center;
+}
+
 .rating {
     color: var(--app-accent);
     font-size: 12px;
@@ -345,7 +431,7 @@ export default vueComponent(BookCollection);
         width: 36px;
     }
 
-    .row-actions {
+    .row-actions :deep(.quick-actions) {
         display: none;
     }
 }
