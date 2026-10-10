@@ -1175,6 +1175,18 @@ async function testCatalogIndexSearch() {
         assert.deepStrictEqual(index.listNames({kind: 'series', q: 'пол'}).items, [{name: 'Мир Полудня', books: 1}]);
         assert.strictEqual(index.listNames({kind: 'author', q: 'xyz'}).total, 0);
 
+        //«Похожие»: книги автора из вкуса и любимого жанра - в совпадениях, отвергнутый жанр и удалённые не попадают
+        const similar = index.similarCandidates({
+            preferredAuthors: {'булгаков михаил афанасьевич': 1},
+            preferredGenres: {sf: 1},
+            rejectedGenres: {dramaturgy: 2},
+            limit: 10,
+            now: Date.parse('2020-06-01'),
+        });
+        assert.deepStrictEqual(similar.affinity.map(item => item.id).sort(), [1, 2, 3, 6]);
+        assert.deepStrictEqual(similar.explore.map(item => item.id), [5]);
+        assert.ok(similar.affinity[0].score >= similar.affinity[3].score);
+
         const suggest = index.suggest({q: 'струг'});
         assert.deepStrictEqual(suggest.books.map(item => item.id), [3]);
         assert.strictEqual(suggest.authors.length, 2);
@@ -1622,6 +1634,41 @@ async function testDiscoveryShelvesBuildOnlyRequestedSection() {
     assert.deepStrictEqual(result.shelves.map(shelf => shelf.id), ['external']);
 }
 
+async function testPersonalDiscoveryCacheAndSingleFlight() {
+    const WebWorker = require('../server/core/WebWorker');
+    const worker = Object.create(WebWorker.prototype);
+    const user = {id: 'reader', readerProgress: {}, discoveryPreferences: {events: {a: {impressionCount: 1, openCount: 0}}}};
+    let lists = [{id: 'l1', books: ['a']}];
+    let builds = 0;
+    worker.getEffectiveUser = async() => user;
+    worker.getProfileSessionUser = () => user.id;
+    worker.readingListStore = {getLists: async() => lists};
+    worker.dbConfig = async() => ({inpxHash: 'h'});
+    worker.buildPersonalDiscoveryShelvesV2 = async() => {
+        builds++;
+        await new Promise(resolve => setTimeout(resolve, 20));
+        return [{id: 'similar-books', items: [{_uid: `b${builds}`}]}];
+    };
+
+    const [first, second] = await Promise.all([
+        worker.getPersonalDiscoveryShelvesV2('reader', '', 8, {}),
+        worker.getPersonalDiscoveryShelvesV2('reader', '', 8, {}),
+    ]);
+    assert.strictEqual(builds, 1);
+    assert.deepStrictEqual(first, second);
+
+    user.discoveryPreferences.events.a.impressionCount = 5;
+    await worker.getPersonalDiscoveryShelvesV2('reader', '', 8, {});
+    assert.strictEqual(builds, 1, 'impressions do not invalidate the cache');
+
+    lists = [{id: 'l1', books: ['a', 'b']}];
+    await worker.getPersonalDiscoveryShelvesV2('reader', '', 8, {});
+    assert.strictEqual(builds, 2, 'list change rebuilds');
+
+    await worker.getPersonalDiscoveryShelvesV2('reader', '', 8, {forceRefresh: true});
+    assert.strictEqual(builds, 3, 'forceRefresh rebuilds');
+}
+
 async function testDiscoveryFeedbackAndEventsPersist() {
     await withTempDir(async(dir) => {
         const ReadingListStore = require('../server/core/ReadingListStore');
@@ -1934,6 +1981,7 @@ const tests = [
     testExternalDiscoverySingleFetch,
     testConfiguredConverterPathsHavePriority,
     testDiscoveryShelvesBuildOnlyRequestedSection,
+    testPersonalDiscoveryCacheAndSingleFlight,
     testPersonalDiscoveryUsesColdStartTaste,
     testPersonalDiscoveryUsesEngagementTopicsAndDismissals,
     testPersonalDiscoveryDiversifiesAuthorsAndSeries,

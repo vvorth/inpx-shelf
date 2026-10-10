@@ -48,6 +48,7 @@ const stateToText = {
 
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
+const personalDiscoveryCacheTtl = 10*60*1000;
 const externalDiscoveryCacheVersion = 'v4';
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
@@ -1189,8 +1190,16 @@ class WebWorker {
             return _.cloneDeep(persisted.value);
         }
 
+        //параллельный одинаковый запрос ждёт уже идущую загрузку
+        if (!this.discoveryPending)
+            this.discoveryPending = new Map();
+        if (this.discoveryPending.has(key))
+            return _.cloneDeep(await this.discoveryPending.get(key));
+
+        const loading = loader();
+        this.discoveryPending.set(key, loading);
         try {
-            const value = await loader();
+            const value = await loading;
             const time = Date.now();
             this.discoveryCache.set(key, {time, value: _.cloneDeep(value)});
             diskCache[key] = {time, value: _.cloneDeep(value)};
@@ -1207,6 +1216,8 @@ class WebWorker {
                 return value;
             }
             throw e;
+        } finally {
+            this.discoveryPending.delete(key);
         }
     }
 
@@ -2565,6 +2576,30 @@ class WebWorker {
             : `\u041f\u043e\u0445\u043e\u0436\u0438\u0435 \u0436\u0430\u043d\u0440\u044b: ${matchedGenres.slice(0, 2).join(', ')}`;
     }
 
+    //Кандидаты «Похожих» из индекса каталога: лучшие id по оценке, затем записи книг из основной БД.
+    //null - индекс недоступен, вызывающий использует проход по основной БД.
+    async similarCandidatesFromIndex(profile, weights, limit) {
+        const catalog = this.catalogSearch;
+        if (!catalog || !catalog.ready)
+            return null;
+        try {
+            const known = profile.knownBookUids;
+            const result = await catalog.similarCandidates(Object.assign({}, weights, {limit: limit + known.size, now: Date.now()}));
+            const pick = async(list, explore) => {
+                const scores = new Map(list.map(item => [item.id, item.score]));
+                const books = await catalog.loadBooks(list.map(item => item.id));
+                return books
+                    .filter(book => book && !book.del && book.title && book._uid && !known.has(book._uid))
+                    .slice(0, limit)
+                    .map(book => Object.assign({}, book, {_similarityScore: scores.get(book.id), _discoveryExplore: explore}));
+            };
+            return (await pick(result.affinity, false)).concat(await pick(result.explore, true));
+        } catch (e) {
+            log(LM_WARN, `Similar books from catalog index: ${e.message}`);
+            return null;
+        }
+    }
+
     async buildSimilarBooksShelfV2(user = null, limit = 8, context = null) {
         if (!user || !user.id) {
             return {
@@ -2612,108 +2647,117 @@ class WebWorker {
             .split('')
             .reduce((sum, char) => ((sum * 31) + char.charCodeAt(0)) % 9973, Math.floor(Date.now() / 86400000));
 
-        const rows = await this.db.select({
-            table: 'book',
-            rawResult: true,
-            where: `
-                const knownBookUids = new Set(${this.db.esc(Array.from(profile.knownBookUids))});
-                const preferredAuthors = ${this.db.esc(preferredAuthors)};
-                const preferredSeries = ${this.db.esc(preferredSeries)};
-                const preferredGenres = ${this.db.esc(preferredGenres)};
-                const preferredKeywords = ${this.db.esc(preferredKeywords)};
-                const preferredLanguages = ${this.db.esc(preferredLanguages)};
-                const rejectedAuthors = ${this.db.esc(rejectedAuthors)};
-                const rejectedSeries = ${this.db.esc(rejectedSeries)};
-                const rejectedGenres = ${this.db.esc(rejectedGenres)};
-                const rejectedKeywords = ${this.db.esc(rejectedKeywords)};
-                const limit = ${this.db.esc(Math.max(probeLimit * 16 + 64, 192))};
-                const rotationSeed = ${this.db.esc(rotationSeed)};
+        const candidateLimit = Math.max(probeLimit * 16 + 64, 192);
+        //индекс каталога считает оценки по колонкам в своём потоке и не занимает основную БД;
+        //пока он строится, работает проход по основной БД
+        let candidates = await this.similarCandidatesFromIndex(profile, {
+            preferredAuthors, preferredSeries, preferredGenres, preferredKeywords, preferredLanguages,
+            rejectedAuthors, rejectedSeries, rejectedGenres, rejectedKeywords, rotationSeed,
+        }, candidateLimit);
+        if (!candidates) {
+            const rows = await this.db.select({
+                table: 'book',
+                rawResult: true,
+                where: `
+                    const knownBookUids = new Set(${this.db.esc(Array.from(profile.knownBookUids))});
+                    const preferredAuthors = ${this.db.esc(preferredAuthors)};
+                    const preferredSeries = ${this.db.esc(preferredSeries)};
+                    const preferredGenres = ${this.db.esc(preferredGenres)};
+                    const preferredKeywords = ${this.db.esc(preferredKeywords)};
+                    const preferredLanguages = ${this.db.esc(preferredLanguages)};
+                    const rejectedAuthors = ${this.db.esc(rejectedAuthors)};
+                    const rejectedSeries = ${this.db.esc(rejectedSeries)};
+                    const rejectedGenres = ${this.db.esc(rejectedGenres)};
+                    const rejectedKeywords = ${this.db.esc(rejectedKeywords)};
+                    const limit = ${this.db.esc(candidateLimit)};
+                    const rotationSeed = ${this.db.esc(rotationSeed)};
 
-                const result = [];
-                const explorationResult = [];
-                for (const id of @all()) {
-                    const row = @unsafeRow(id);
-                    if (!row || row.del || !row.title || !row._uid || knownBookUids.has(row._uid))
-                        continue;
-
-                    let score = 0;
-                    const authorKey = String(row.author || '').trim().toLowerCase();
-                    const seriesKey = String(row.series || '').trim().toLowerCase();
-                    const genreKeys = String(row.genre || '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
-                    const keywordKeys = String(row.keywords || '').split(/[,;|]/).map(item => item.trim().toLowerCase()).filter(item => item.length >= 3);
-                    const languageKey = String(row.lang || '').trim().toLowerCase();
-
-                    if (authorKey && preferredAuthors[authorKey])
-                        score += preferredAuthors[authorKey] * 32;
-                    if (seriesKey && preferredSeries[seriesKey])
-                        score += preferredSeries[seriesKey] * 36;
-                    for (const genreKey of genreKeys) {
-                        if (preferredGenres[genreKey])
-                            score += preferredGenres[genreKey] * 26;
-                    }
-                    for (const keywordKey of keywordKeys) {
-                        if (preferredKeywords[keywordKey])
-                            score += preferredKeywords[keywordKey] * 20;
-                    }
-
-                    const discoveryExplore = !score;
-                    if (discoveryExplore)
-                        score = 22;
-
-                    if (languageKey && preferredLanguages[languageKey])
-                        score += Math.min(8, preferredLanguages[languageKey] * 2);
-                    if (authorKey && rejectedAuthors[authorKey])
-                        score -= rejectedAuthors[authorKey] * 28;
-                    if (seriesKey && rejectedSeries[seriesKey])
-                        score -= rejectedSeries[seriesKey] * 24;
-                    for (const genreKey of genreKeys) {
-                        if (rejectedGenres[genreKey])
-                            score -= rejectedGenres[genreKey] * 18;
-                    }
-                    for (const keywordKey of keywordKeys) {
-                        if (rejectedKeywords[keywordKey])
-                            score -= rejectedKeywords[keywordKey] * 12;
-                    }
-                    if (score <= 0)
-                        continue;
-
-                    if (row.librate)
-                        score += Math.max(0, Math.min(5, Number(row.librate) || 0)) * 4;
-                    if (row.date) {
-                        const bookTime = Date.parse(row.date);
-                        if (Number.isFinite(bookTime)) {
-                            const ageDays = Math.max(0, Math.floor((Date.now() - bookTime) / 86400000));
-                            score += Math.max(0, 12 - (Math.min(ageDays, 365) * 12 / 365));
+                    //держим только лучшие кандидаты: иначе на большой библиотеке почти каждая книга
+                    //попадает в «новое для разнообразия» и копия всей таблицы не помещается в память
+                    const byScore = (a, b) => (b.score - a.score) || (a.row.id - b.row.id);
+                    const keepTop = (list) => {
+                        if (list.length >= limit * 2) {
+                            list.sort(byScore);
+                            list.length = limit;
                         }
+                    };
+                    const result = [];
+                    const explorationResult = [];
+                    for (const id of @all()) {
+                        const row = @unsafeRow(id);
+                        if (!row || row.del || !row.title || !row._uid || knownBookUids.has(row._uid))
+                            continue;
+
+                        let score = 0;
+                        const authorKey = String(row.author || '').trim().toLowerCase();
+                        const seriesKey = String(row.series || '').trim().toLowerCase();
+                        const genreKeys = String(row.genre || '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+                        const keywordKeys = String(row.keywords || '').split(/[,;|]/).map(item => item.trim().toLowerCase()).filter(item => item.length >= 3);
+                        const languageKey = String(row.lang || '').trim().toLowerCase();
+
+                        if (authorKey && preferredAuthors[authorKey])
+                            score += preferredAuthors[authorKey] * 32;
+                        if (seriesKey && preferredSeries[seriesKey])
+                            score += preferredSeries[seriesKey] * 36;
+                        for (const genreKey of genreKeys) {
+                            if (preferredGenres[genreKey])
+                                score += preferredGenres[genreKey] * 26;
+                        }
+                        for (const keywordKey of keywordKeys) {
+                            if (preferredKeywords[keywordKey])
+                                score += preferredKeywords[keywordKey] * 20;
+                        }
+
+                        const discoveryExplore = !score;
+                        if (discoveryExplore)
+                            score = 22;
+
+                        if (languageKey && preferredLanguages[languageKey])
+                            score += Math.min(8, preferredLanguages[languageKey] * 2);
+                        if (authorKey && rejectedAuthors[authorKey])
+                            score -= rejectedAuthors[authorKey] * 28;
+                        if (seriesKey && rejectedSeries[seriesKey])
+                            score -= rejectedSeries[seriesKey] * 24;
+                        for (const genreKey of genreKeys) {
+                            if (rejectedGenres[genreKey])
+                                score -= rejectedGenres[genreKey] * 18;
+                        }
+                        for (const keywordKey of keywordKeys) {
+                            if (rejectedKeywords[keywordKey])
+                                score -= rejectedKeywords[keywordKey] * 12;
+                        }
+                        if (score <= 0)
+                            continue;
+
+                        if (row.librate)
+                            score += Math.max(0, Math.min(5, Number(row.librate) || 0)) * 4;
+                        if (row.date) {
+                            const bookTime = Date.parse(row.date);
+                            if (Number.isFinite(bookTime)) {
+                                const ageDays = Math.max(0, Math.floor((Date.now() - bookTime) / 86400000));
+                                score += Math.max(0, 12 - (Math.min(ageDays, 365) * 12 / 365));
+                            }
+                        }
+
+                        const stableHash = String(row._uid || row.id || '')
+                            .split('')
+                            .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + rotationSeed) % 9973, rotationSeed);
+                        score += (stableHash / 9973) * 8;
+
+                        const target = (discoveryExplore ? explorationResult : result);
+                        target.push({row, score});
+                        keepTop(target);
                     }
 
-                    const stableHash = String(row._uid || row.id || '')
-                        .split('')
-                        .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + rotationSeed) % 9973, rotationSeed);
-                    score += (stableHash / 9973) * 8;
+                    const finish = (list, explore) => list.sort(byScore).slice(0, limit)
+                        .map(item => Object.assign({}, item.row, {_similarityScore: item.score, _discoveryExplore: explore}));
+                    return finish(result, false).concat(finish(explorationResult, true));
+                `
+            });
+            candidates = ((rows[0] && rows[0].rawResult) ? rows[0].rawResult : []);
+        }
 
-                    const target = (discoveryExplore ? explorationResult : result);
-                    target.push(Object.assign({}, row, {_similarityScore: score, _discoveryExplore: discoveryExplore}));
-                }
-
-                result.sort((a, b) => {
-                    const scoreCmp = Number(b._similarityScore || 0) - Number(a._similarityScore || 0);
-                    if (scoreCmp)
-                        return scoreCmp;
-                    return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
-                });
-                explorationResult.sort((a, b) => {
-                    const scoreCmp = Number(b._similarityScore || 0) - Number(a._similarityScore || 0);
-                    if (scoreCmp)
-                        return scoreCmp;
-                    return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
-                });
-
-                return result.slice(0, limit).concat(explorationResult.slice(0, limit));
-            `
-        });
-
-        const rawItems = ((rows[0] && rows[0].rawResult) ? rows[0].rawResult : [])
+        const rawItems = candidates
             .map(book => Object.assign({}, book, {
                 _similarityScore: (book._discoveryExplore
                     ? this.scorePersonalDiscoveryExplorationCandidate(book, profile, rotationSeed)
@@ -2856,6 +2900,24 @@ class WebWorker {
         };
     }
 
+    //Подпись данных, от которых зависят персональные полки. Показы (impression) не входят:
+    //они пишутся при каждом открытии главной и сбрасывали бы кеш; их влияние обновится по TTL
+    personalDiscoverySignature(user, lists, extra = {}) {
+        const preferences = (user && user.discoveryPreferences) || {};
+        const events = {};
+        for (const [uid, event] of Object.entries(preferences.events || {}))
+            events[uid] = [event.openCount || 0, event.startCount || 0];
+        return crypto.createHash('md5').update(JSON.stringify([
+            extra,
+            (lists || []).map(list => [list.id, list.books]),
+            user.readerProgress || {},
+            preferences.hiddenBooks || [],
+            preferences.feedback || {},
+            preferences.taste || {},
+            events,
+        ])).digest('hex');
+    }
+
     async getPersonalDiscoveryShelvesV2(userId = '', profileAccessToken = '', limit = 8, options = {}) {
         const normalizedUserId = String(userId || '').trim();
         if (!normalizedUserId)
@@ -2869,6 +2931,39 @@ class WebWorker {
             return [];
 
         const lists = await this.readingListStore.getLists(user.id, {});
+        const similarEnabled = !!(options && options.personalSimilarEnabled !== false);
+        const similarLimit = Math.max(limit, Math.min(parseInt(options && options.personalSimilarLimit, 10) || Math.max(limit, 16), 96));
+        const inpxHash = String((await this.dbConfig()).inpxHash || '');
+        const signature = this.personalDiscoverySignature(user, lists, {limit, similarEnabled, similarLimit, inpxHash});
+
+        //кеш на пользователя и одно построение за раз: одинаковые запросы ждут уже идущее
+        if (!this.personalDiscoveryCache)
+            this.personalDiscoveryCache = new Map();
+        const cached = this.personalDiscoveryCache.get(user.id);
+        if (cached && cached.signature === signature) {
+            if (cached.pending)
+                return _.cloneDeep(await cached.pending);
+            if (!(options && options.forceRefresh === true) && Date.now() - cached.time < personalDiscoveryCacheTtl)
+                return _.cloneDeep(cached.value);
+        }
+
+        const entry = {signature, time: 0, value: null, pending: null};
+        entry.pending = this.buildPersonalDiscoveryShelvesV2(user, lists, limit, similarEnabled, similarLimit);
+        this.personalDiscoveryCache.set(user.id, entry);
+        try {
+            entry.value = await entry.pending;
+            entry.time = Date.now();
+            return _.cloneDeep(entry.value);
+        } catch (e) {
+            if (this.personalDiscoveryCache.get(user.id) === entry)
+                this.personalDiscoveryCache.delete(user.id);
+            throw e;
+        } finally {
+            entry.pending = null;
+        }
+    }
+
+    async buildPersonalDiscoveryShelvesV2(user, lists, limit, similarEnabled, similarLimit) {
         const context = {
             lists,
             progressMap: (user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}),
@@ -2881,10 +2976,8 @@ class WebWorker {
             await this.buildUnfinishedSeriesShelfV2(user, limit, context),
         ];
 
-        if (options && options.personalSimilarEnabled !== false) {
-            const similarLimit = Math.max(limit, Math.min(parseInt(options.personalSimilarLimit, 10) || Math.max(limit, 16), 96));
+        if (similarEnabled)
             shelves.push(await this.buildSimilarBooksShelfV2(user, similarLimit, context));
-        }
 
         shelves.push(await this.buildHiddenDiscoveryShelfV2(user, limit, context));
 

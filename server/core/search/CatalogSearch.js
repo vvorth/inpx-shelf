@@ -73,6 +73,7 @@ class CatalogSearch {
                     this.meta = meta;
                     this.ready = (generation === this.generation);
                     log(`Catalog index ready: ${meta.books} books`);
+                    thread.call('warmUp').catch(() => {});
                     return true;
                 }
                 log(meta.inpxHash === inpxHash ? 'Catalog index: author names changed, rebuilding' : 'Catalog index: library changed, rebuilding');
@@ -125,6 +126,7 @@ class CatalogSearch {
             this.progress = 1;
             this.ready = (generation === this.generation);
             log(`Catalog index built in ${((Date.now() - started) / 1000).toFixed(1)}s: ${counts.books} books, ${counts.authors} authors, ${counts.series} series, ${counts.aliases} English author names`);
+            thread.call('warmUp').catch(() => {});
             return true;
         } catch (e) {
             await thread.call('abortBuild').catch(() => {});
@@ -174,6 +176,12 @@ class CatalogSearch {
         const books = await this.loadBooks(result.ids);
         delete result.ids;
         return Object.assign(result, {books});
+    }
+
+    //Кандидаты для полки «Похоже на то, что вы читали»: id и оценки из индекса
+    async similarCandidates(request = {}) {
+        this.checkReady();
+        return await this.getThread().call('similarCandidates', request);
     }
 
     async suggest(request = {}) {

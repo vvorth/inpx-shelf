@@ -529,6 +529,141 @@ class CatalogIndex {
         return result;
     }
 
+    //колонки загружаются сразу после открытия, а не первым поиском или первой витриной
+    warmUp() {
+        if (this.db && !this.columns)
+            this.loadColumns();
+        return true;
+    }
+
+    //---------- «Похоже на то, что вы читали» ----------
+    //Оценка всех книг по весам вкуса из колонок в памяти. Возвращает лучшие id отдельно для книг
+    //с совпадениями (affinity) и для «нового для разнообразия» (explore). Формула та же, что была
+    //у прохода по основной БД: автор ×32, серия ×36, жанр ×26, тема ×20, язык, отказы, оценка, свежесть.
+    similarCandidates(request = {}) {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        if (!this.columns)
+            this.loadColumns();
+        const c = this.columns;
+        const limit = Math.max(1, Math.min(Number(request.limit) || 192, 2000));
+        const rotationSeed = Number(request.rotationSeed) || 0;
+        const now = Number(request.now) || Date.now();
+
+        //книги авторов и серий из вкуса - по индексам SQLite; у книги нескольких авторов берётся больший вес
+        const findAuthor = this.db.prepare('SELECT id FROM author WHERE name_norm = ?');
+        const authorBooks = this.db.prepare('SELECT book_id AS id FROM book_author WHERE author_id = ?');
+        const seriesBooks = this.db.prepare('SELECT id FROM book WHERE series_norm = ?');
+        const addMax = (map, id, weight) => map.set(id, Math.max(map.get(id) || 0, weight));
+        const authorWeights = (weights = {}) => {
+            const map = new Map();
+            for (const [key, weight] of Object.entries(weights || {}).slice(0, 200)) {
+                for (const name of splitAuthors(key)) {
+                    const author = findAuthor.get(normalize(name));
+                    if (author) {
+                        for (const row of authorBooks.iterate(author.id))
+                            addMax(map, row.id, Number(weight) || 0);
+                    }
+                }
+            }
+            return map;
+        };
+        const seriesWeights = (weights = {}) => {
+            const map = new Map();
+            for (const [key, weight] of Object.entries(weights || {}).slice(0, 200)) {
+                const name = normalize(key);
+                if (name) {
+                    for (const row of seriesBooks.iterate(name))
+                        addMax(map, row.id, Number(weight) || 0);
+                }
+            }
+            return map;
+        };
+        const dictWeights = (field, weights = {}) => {
+            const result = new Float64Array(c.dicts[field].length);
+            const lower = new Map(Object.entries(weights || {}).map(([key, weight]) => [String(key).toLowerCase(), Number(weight) || 0]));
+            c.dicts[field].forEach((value, code) => {
+                result[code] = lower.get(String(value).toLowerCase()) || 0;
+            });
+            return result;
+        };
+        const keywordScores = (weights = {}, factor = 1) => {
+            const scores = new Map();
+            const query = this.db.prepare('SELECT rowid AS id FROM book_fts WHERE book_fts MATCH ?');
+            for (const [key, weight] of Object.entries(weights || {}).slice(0, 40)) {
+                const phrase = normalize(key);
+                if (!phrase)
+                    continue;
+                for (const row of query.iterate(`keywords : "${phrase.replace(/"/g, '')}"`))
+                    scores.set(row.id, (scores.get(row.id) || 0) + (Number(weight) || 0) * factor);
+            }
+            return scores;
+        };
+
+        const preferredAuthors = authorWeights(request.preferredAuthors);
+        const preferredSeries = seriesWeights(request.preferredSeries);
+        const rejectedAuthors = authorWeights(request.rejectedAuthors);
+        const rejectedSeries = seriesWeights(request.rejectedSeries);
+        const preferredGenres = dictWeights('genre', request.preferredGenres);
+        const rejectedGenres = dictWeights('genre', request.rejectedGenres);
+        const preferredLanguages = dictWeights('lang', request.preferredLanguages);
+        const keywordPlus = keywordScores(request.preferredKeywords, 20);
+        const keywordMinus = keywordScores(request.rejectedKeywords, 12);
+
+        const yearMs = 365 * 86400000;
+        const byScore = (a, b) => (b.score - a.score) || (a.id - b.id);
+        const keepTop = (list) => {
+            if (list.length >= limit * 2) {
+                list.sort(byScore);
+                list.length = limit;
+            }
+        };
+        const affinity = [];
+        const explore = [];
+        for (let id = 1; id <= c.maxId; id++) {
+            const flags = c.flags[id];
+            if (!(flags & 1) || (flags & 2))
+                continue;
+
+            let score = (preferredAuthors.get(id) || 0) * 32
+                + (preferredSeries.get(id) || 0) * 36
+                + (keywordPlus.get(id) || 0);
+            let genrePenalty = 0;
+            for (let i = c.genreStart[id]; i < c.genreStart[id + 1]; i++) {
+                score += preferredGenres[c.genreList[i]] * 26;
+                genrePenalty += rejectedGenres[c.genreList[i]] * 18;
+            }
+
+            const isExplore = !score;
+            if (isExplore)
+                score = 22;
+            score += Math.min(8, preferredLanguages[c.lang[id]] * 2);
+            score -= (rejectedAuthors.get(id) || 0) * 28
+                + (rejectedSeries.get(id) || 0) * 24
+                + genrePenalty
+                + (keywordMinus.get(id) || 0);
+            if (score <= 0)
+                continue;
+
+            score += Math.min(5, c.librate[id]) * 4;
+            const date = c.date[id];
+            if (date) {
+                const time = Date.UTC(Math.floor(date / 10000), Math.floor(date / 100) % 100 - 1, date % 100);
+                const age = Math.max(0, Math.min(yearMs, now - time));
+                score += 12 - age * 12 / yearMs;
+            }
+            //поворот выдачи раз в сутки: стабильный в течение дня
+            score += (((Math.imul(id, 2654435761) >>> 0) + rotationSeed) % 9973) / 9973 * 8;
+
+            const target = (isExplore ? explore : affinity);
+            target.push({id, score});
+            keepTop(target);
+        }
+
+        const finish = list => list.sort(byScore).slice(0, limit);
+        return {affinity: finish(affinity), explore: finish(explore)};
+    }
+
     //---------- поиск ----------
     search(request = {}) {
         if (!this.db)
