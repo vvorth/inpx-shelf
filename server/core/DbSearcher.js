@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 //const _ = require('lodash');
 const utils = require('./utils');
+const {copyKey} = require('./search/copyKey');
 
 const maxLimit = 1000;
 
@@ -556,37 +557,8 @@ class DbSearcher {
         return tableIds;
     }
 
-    normalizeCopyKeyPart(value) {
-        return String(value || '')
-            .trim()
-            .toLowerCase()
-            .replace(/\s+/g, ' ');
-    }
-
-    authorCopyKey(value) {
-        return this.normalizeCopyKeyPart(value)
-            .split(/[;,\n]/)
-            .map(author => author.trim().split(/\s+/).slice(0, 2).join(' '))
-            .filter(Boolean)
-            .join('|');
-    }
-
     copyKey(book = {}) {
-        const title = this.normalizeCopyKeyPart(book.title);
-        const author = this.authorCopyKey(book.author);
-
-        if (title && author)
-            return `copy:${author}|${title}`;
-        if (title)
-            return `copy-title:${title}`;
-
-        return [
-            'fallback',
-            book.author || '',
-            book.series || '',
-            String(book.serno || 0),
-            book.title || '',
-        ].map(value => this.normalizeCopyKeyPart(value)).join('|');
+        return copyKey(book);
     }
 
     filterRestoredRows(rows, query = {}) {

@@ -84,6 +84,8 @@ module.exports = {
     bookCacheSize: defaultBookCacheSize,
     coverCacheSize: defaultCoverCacheSize,
     queryCacheEnabled: true,
+    //индекс каталога на SQLite: поиск с опечатками, раскладкой и счётчиками фильтров
+    catalogSearch: process.env.INPX_CATALOG_SEARCH !== 'false',
     queryCacheMemSize: 50,
     queryCacheDiskSize: 500,
     cacheCleanInterval: numberFromEnv('INPX_CACHE_CLEAN_INTERVAL_MINUTES', 24*60),//minutes

@@ -11,6 +11,7 @@ const WorkerState = require('./WorkerState');//singleton
 const { JembaDb, JembaDbThread } = require('jembadb');
 const DbCreator = require('./DbCreator');
 const DbSearcher = require('./DbSearcher');
+const CatalogSearch = require('./search/CatalogSearch');
 const InpxHashCreator = require('./InpxHashCreator');
 const RemoteLib = require('./RemoteLib');//singleton
 const FileDownloader = require('./FileDownloader');
@@ -634,6 +635,7 @@ class WebWorker {
         if (!instance) {
             this.config = config;
             this.workerState = new WorkerState();
+            this.catalogSearch = new CatalogSearch(config, this);
 
             this.remoteLib = null;
             if (config.remoteLib) {
@@ -734,6 +736,8 @@ class WebWorker {
     }
 
     async closeDb() {
+        if (this.catalogSearch)
+            await this.catalogSearch.close();
         if (this.db) {
             await this.db.unlock();
             this.db = null;
@@ -867,6 +871,10 @@ class WebWorker {
 
             log('Searcher DB ready');
             this.logServerStats();
+
+            //индекс каталога строится в фоне; до готовности работает старый поиск
+            if (this.catalogSearch)
+                this.catalogSearch.ensure(db, String((await this.dbConfig()).inpxHash || ''));//no await
         } catch (e) {
             log(LM_FATAL, e.message);            
             asyncExit.exit(1);
@@ -4561,6 +4569,12 @@ class WebWorker {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
         const override = await this.readingListStore.updateMetadataOverride(bookUid, patch);
+
+        const book = await this.getBookRecordByUid(bookUid);
+        if (book && this.catalogSearch) {
+            this.applyMetadataOverrideToBook(book, await this.readingListStore.getMetadataOverrides());
+            await this.catalogSearch.updateBook(book);
+        }
         return {bookUid, override};
     }
 

@@ -1117,6 +1117,68 @@ async function testBookPageRecordAndReaderStates() {
     assert.strictEqual((await worker.getAuthorizedUserOrNull('locked', 'token')).id, 'locked');
 }
 
+async function testCatalogIndexSearch() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const file = path.join(dir, 'catalog.sqlite');
+        const book = (id, title, author, extra = {}) => Object.assign({
+            id, _uid: `u${id}`, title, author, series: '', serno: 0, genre: 'prose_classic', lang: 'ru', ext: 'fb2',
+            size: 1000, date: '2020-01-01', librate: 4, del: 0, sourceId: 'main', keywords: '',
+        }, extra);
+
+        const index = new CatalogIndex();
+        index.beginBuild(file);
+        index.insertBooks([
+            book(1, 'Мастер и Маргарита', 'Булгаков Михаил Афанасьевич', {date: '2020-03-01'}),
+            book(2, 'Собачье сердце', 'Булгаков Михаил Афанасьевич', {date: '2020-02-01'}),
+            book(3, 'Трудно быть богом', 'Стругацкий Аркадий Натанович,Стругацкий Борис Натанович', {series: 'Мир Полудня', serno: 3, genre: 'sf_social,sf'}),
+            book(4, 'Ёлка у Ивановых', 'Введенский Александр', {genre: 'dramaturgy'}),
+            book(5, 'A Wizard of Earthsea', 'Le Guin Ursula', {lang: 'en', ext: 'epub', genre: 'sf_fantasy'}),
+            book(6, 'Мастер и Маргарита', 'Булгаков Михаил Афанасьевич', {sourceId: 'second'}),
+            book(7, 'Удалённая книга', 'Булгаков Михаил Афанасьевич', {del: 1}),
+        ]);
+        assert.deepStrictEqual(index.finishBuild({inpxHash: 'hash'}), {books: 7, authors: 5, series: 1});
+        assert.strictEqual(index.open(file).inpxHash, 'hash');
+
+        const search = (q, extra = {}) => index.search(Object.assign({q}, extra));
+        assert.deepStrictEqual(search('булгаков').ids.sort(), [1, 2, 6]);
+        const typo = search('булгоков');
+        assert.strictEqual(typo.corrected, 'булгаков');
+        assert.strictEqual(typo.total, 3);
+        assert.deepStrictEqual(typo.authors, [{name: 'Булгаков Михаил Афанасьевич', books: 3}]);
+        const layout = search('vfcnth');
+        assert.strictEqual(layout.layout, true);
+        assert.deepStrictEqual(layout.ids.sort(), [1, 6]);
+        assert.deepStrictEqual(search('елка').ids, [4], 'ё and е must match');
+        assert.deepStrictEqual(search('гацк').authors.map(item => item.name), ['Стругацкий Аркадий Натанович', 'Стругацкий Борис Натанович']);
+        assert.deepStrictEqual(search('мир полудня').series.map(item => item.name), ['Мир Полудня']);
+        assert.deepStrictEqual(search('author:стругацк').ids, [3]);
+        assert.deepStrictEqual(search('title:="мастер и маргарита"').ids.sort(), [1, 6]);
+        assert.deepStrictEqual(search('lang:en').ids, [5]);
+        assert.strictEqual(search('булгаков -genre:prose_classic').total, 0);
+        assert.deepStrictEqual(search('мастер', {hideCopies: true}).ids, [1]);
+        assert.deepStrictEqual(search('мастер', {hideCopies: true, filters: {source: ['second']}}).ids, [6]);
+        assert.strictEqual(search('булгаков', {showDeleted: true}).total, 4);
+        assert.deepStrictEqual(search('', {filters: {genre: ['sf']}}).ids, [3]);
+        assert.deepStrictEqual(search('', {sort: 'date', limit: 2}).ids, [1, 2]);
+        assert.deepStrictEqual(search('', {sort: 'date', limit: 2, offset: 1}).ids, [2, 6], 'equal dates: newer id first');
+
+        //счётчик фильтра считается без его собственного условия
+        const facets = search('', {filters: {lang: ['en']}}).facets;
+        assert.deepStrictEqual(facets.lang, [['ru', 5], ['en', 1]]);
+        assert.deepStrictEqual(facets.ext, [['epub', 1]]);
+
+        const suggest = index.suggest({q: 'струг'});
+        assert.deepStrictEqual(suggest.books.map(item => item.id), [3]);
+        assert.strictEqual(suggest.authors.length, 2);
+
+        index.updateBook(file, {id: 2, title: 'Сердце собаки', author: 'Булгаков Михаил Афанасьевич', lang: 'ru', librate: 4});
+        assert.deepStrictEqual(search('собаки').ids, [2]);
+        assert.strictEqual(search('собачье').total, 0);
+        index.close();
+    });
+}
+
 async function testReaderHomeKeepsUnavailableProgressVisible() {
     const worker = makeWorker();
     worker.getBookRecordByUid = async(uid) => uid === 'available'
@@ -1796,6 +1858,7 @@ const tests = [
     testProfileReadingSummaryLeavesOutReadBooks,
     testReaderHomeKeepsUnavailableProgressVisible,
     testBookPageRecordAndReaderStates,
+    testCatalogIndexSearch,
     testDiscoveryFeedbackAndEventsPersist,
     testCoverCacheRoutesAndCleaner,
     testCacheRotationUsesTargetWatermark,

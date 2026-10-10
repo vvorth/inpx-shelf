@@ -337,8 +337,17 @@ entity_tri USING fts5(kind UNINDEXED, ref UNINDEXED, name, tokenize='trigram rem
    trigrams) from the small author and series name tables, re-rank in JS by
    Damerau-Levenshtein / trigram similarity, and show "Did you mean …".
 6. **Boost:** exact > prefix > fuzzy, then by book count (authors) or rating and recency (books).
-7. **Facet counts:** `GROUP BY` over the matched id set (a temp table) for lang, ext,
-   genre and source. That is fast with indexes at INPX scale.
+7. **Filters, facet counts and sorting** run over compact columns kept in memory (language,
+   format, source, rating, date, genres, deleted and copy flags, about 20 MB for 700k books)
+   and sort orders computed at build time. One pass over the candidates gives the total, the
+   page and every facet count. Each facet is counted without its own filter, so choosing
+   "English" still shows how many Russian books match. SQL `GROUP BY` was tried first and took
+   1–12 s per query at this size.
+
+As built (phase 3), on synthetic data at the target size (700k books, 189k authors, 30k series):
+build 43 s, file 319 MB, loading 2.8 s. Browsing everything with all facet counts takes 34 ms.
+A language filter over 110k books takes 29 ms. A word search takes 1–9 ms, a typo-corrected
+search 15 ms, and a two-letter prefix with 53k hits 165 ms. Suggestions take 15–20 ms.
 
 Measured on synthetic data at the target size (**700k books, 200k authors**), in memory, on the
 current machine with Node 24.21:

@@ -48,6 +48,7 @@ const propsToSave = [
     'bookCacheSize',
     'coverCacheSize',
     'queryCacheEnabled',
+    'catalogSearch',
     'queryCacheMemSize',
     'queryCacheDiskSize',
     'cacheCleanInterval',

@@ -190,6 +190,10 @@ class WebSocketController {
                     await this.updateBookMetadata(req, ws); break;
                 case 'get-book-link':
                     await this.getBookLink(req, ws); break;
+                case 'catalog-search':
+                    await this.catalogSearch(req, ws); break;
+                case 'catalog-suggest':
+                    await this.catalogSuggest(req, ws); break;
                 case 'get-book':
                     await this.getBook(req, ws); break;
                 case 'get-book-states':
@@ -432,6 +436,7 @@ class WebSocketController {
             await this.webWorker.getSharedDiscoveryConfig(),
         );
         config.dbConfig = await this.webWorker.dbConfig();
+        config.catalogSearch = (this.webWorker.catalogSearch ? this.webWorker.catalogSearch.status() : {enabled: false, ready: false});
         config.freeAccess = this.webAccess.freeAccess;
         const profiles = await this.webWorker.getUserProfiles(req.userId);
         const currentProfile = await this.webWorker.getCurrentUserProfile(req.userId, req.profileAccessToken);
@@ -688,6 +693,27 @@ class WebSocketController {
 
         const result = await this.webWorker.getBookLink(req.bookUid);
 
+        this.send(result, req, ws);
+    }
+
+    async catalogSearch(req, ws) {
+        this.webWorker.checkMyState();
+        const result = await this.webWorker.catalogSearch.search({
+            q: String(req.q || ''),
+            filters: req.filters || {},
+            sort: req.sort,
+            offset: req.offset,
+            limit: req.limit,
+            hideCopies: req.hideCopies === true,
+            showDeleted: req.showDeleted === true,
+            facets: req.facets !== false,
+        });
+        this.send(result, req, ws);
+    }
+
+    async catalogSuggest(req, ws) {
+        this.webWorker.checkMyState();
+        const result = await this.webWorker.catalogSearch.suggest({q: String(req.q || '')});
         this.send(result, req, ws);
     }
 
