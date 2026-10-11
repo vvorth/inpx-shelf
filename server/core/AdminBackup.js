@@ -6,6 +6,7 @@ const yazl = require('yazl');
 
 const utils = require('./utils');
 const ConfigManager = require('../config');
+const log = new (require('./AppLogger'))().log;//singleton
 
 // Admin settings export/import and full backups. Mixed into WebWorker.prototype: `this` is the worker.
 module.exports = {
@@ -258,6 +259,10 @@ module.exports = {
                 }
                 const restored = Object.keys(content);
                 this.addAdminEvent('warn', 'settings', 'Восстановлен полный бэкап: ' + restored.join(', '));
+                //правки метаданных из бэкапа попадают в поиск и связи авторов при пересборке БД библиотеки;
+                //прежняя БД отвечает, пока строится новая
+                if (archive['reading-lists.json'] && this.catalogSearch && this.catalogSearch.ready)
+                    this.recreateDb().catch(e => log(LM_ERR, `Library DB rebuild after restore: ${e.message}`));//no await
                 return {
                     success: true, restored, restartRecommended: true,
                     message: 'Полный бэкап восстановлен. Перезапустите приложение для применения всех настроек. При смене библиотек выполните переиндексацию.',
