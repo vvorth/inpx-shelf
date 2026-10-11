@@ -1,6 +1,8 @@
 inpx-shelf
 ==========
 
+> Проект основан на [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (форк [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). Подробнее — в [NOTICE.md](./NOTICE.md).
+
 Текущая версия — **1.0.0-beta.1**, [история изменений](./CHANGELOG.md). Версии inpx-shelf нумеруются заново с 1.0.0 по SemVer: мажорная версия меняется, только если обновление требует действий от пользователя (конфиг, данные, OPDS, Kobo, переменные окружения).
 
 <a id="ключевые-отличия" />

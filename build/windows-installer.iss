@@ -57,6 +57,7 @@ Source: "{#SourceDir}\inpx-shelf.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\readme.html"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourceDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RepoRoot}\LICENSE.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\NOTICE.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [INI]
 Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://127.0.0.1:12380"

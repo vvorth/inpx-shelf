@@ -227,6 +227,7 @@ Lite keeps catalog, reader, profiles, OPDS, 7z support and cover extraction, but
 
 ## Links
 
+- Notice: inpx-shelf is derived from [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web), see <https://github.com/vvorth/inpx-shelf/blob/main/NOTICE.md>
 - GitHub: <https://github.com/vvorth/inpx-shelf>
 - Releases: <https://github.com/vvorth/inpx-shelf/releases>
 - Issues: <https://github.com/vvorth/inpx-shelf/issues>
