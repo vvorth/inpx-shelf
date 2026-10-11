@@ -8,7 +8,7 @@ on:
       tag:
         description: Git tag to build and publish
         required: true
-        default: v1.7.9-rc.8
+        default: v1.0.0-beta.1
 
 permissions:
   contents: read
@@ -55,10 +55,10 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const version = require('./package.json').version;
-          if (process.env.RELEASE_TAG !== `v${version}` || !/^\d+\.\d+\.\d+(?:-rc\.\d+)?$/.test(version)) {
+          if (process.env.RELEASE_TAG !== `v${version}` || !/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(version)) {
             throw new Error('Tag and package version must match');
           }
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=aceasket/inpx-web-7z:${version}${process.env.SUFFIX}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=vvorth/inpx-shelf:${version}${process.env.SUFFIX}\n`);
           NODE
       - name: Build image
         env:

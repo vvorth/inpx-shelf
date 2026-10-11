@@ -81,7 +81,7 @@ class AuthorNames {
             headers: {
                 'Accept': 'application/sparql-results+json',
                 //правила Wikidata Query Service требуют понятный User-Agent
-                'User-Agent': `inpx-web/${version} (https://github.com/AceAsket/inpx-web; author name aliases)`,
+                'User-Agent': `inpx-shelf/${version} (https://github.com/vvorth/inpx-shelf; author name aliases)`,
             },
             timeout: 120 * 1000,
             responseType: 'json',

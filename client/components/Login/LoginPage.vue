@@ -5,7 +5,7 @@
                 <img src="../Shell/assets/logo.png" alt="" />
                 <div>
                     <div class="login-title">
-                        {{ collectionName || config.name || 'inpx-web' }}
+                        {{ collectionName || config.name || 'inpx-shelf' }}
                     </div>
                     <div class="login-subtitle">
                         {{ $t('Вход в профиль') }}

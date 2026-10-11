@@ -15,7 +15,7 @@ async function fixture(options, test) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-access-'));
     const config = Object.assign({dataDir: dir, rootPathStatic: '', bookPathStatic: '/book', libDir: dir, bookDir: path.join(dir, 'books'),
         publicDir: path.join(dir, 'public'), publicFilesDir: path.join(dir, 'public-files'), tempDir: path.join(dir, 'tmp'),
-        librarySources: [], name: 'inpx-web', version: 'test', webConfigParams: ['name'], opds: {enabled: true}}, options);
+        librarySources: [], name: 'inpx-shelf', version: 'test', webConfigParams: ['name'], opds: {enabled: true}}, options);
     const worker = Object.create(Worker.prototype);
     worker.config = config;
     worker.checkMyState = () => {};

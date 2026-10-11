@@ -20,7 +20,7 @@ function Get-EnvOrDefault {
 
 function Get-GitHubHeaders {
   $headers = @{
-    'User-Agent' = 'inpx-web-release-builder'
+    'User-Agent' = 'inpx-shelf-release-builder'
     'X-GitHub-Api-Version' = '2022-11-28'
   }
 
@@ -85,7 +85,7 @@ if (-not $sevenZipBootstrapAsset) {
 
 $sevenZipArchive = Join-Path $env:TEMP $sevenZipAsset.name
 $sevenZipBootstrap = Join-Path $env:TEMP '7zr-bootstrap.exe'
-$sevenZipExtract = Join-Path $env:TEMP 'inpx-web-7zip-extra'
+$sevenZipExtract = Join-Path $env:TEMP 'inpx-shelf-7zip-extra'
 Reset-Directory $sevenZipExtract
 
 Download-File $sevenZipAsset.browser_download_url $sevenZipArchive
@@ -99,7 +99,7 @@ $sevenZipTool = Join-Path $binDir '7za.exe'
 Copy-Item $sevenZipSource.FullName -Destination $sevenZipTool -Force
 
 $jxlArchive = Join-Path $env:TEMP 'jxl-x64-windows-static.zip'
-$jxlExtract = Join-Path $env:TEMP 'inpx-web-jxl-x64-windows-static'
+$jxlExtract = Join-Path $env:TEMP 'inpx-shelf-jxl-x64-windows-static'
 Reset-Directory $jxlExtract
 Download-File $windowsJxlUrl $jxlArchive
 & $sevenZipTool x $jxlArchive "-o$jxlExtract" -y
@@ -110,7 +110,7 @@ Get-ChildItem -Path $jxlExtract -Recurse -File |
   }
 
 $webpArchive = Join-Path $env:TEMP 'libwebp-windows-x64.zip'
-$webpExtract = Join-Path $env:TEMP 'inpx-web-libwebp-windows-x64'
+$webpExtract = Join-Path $env:TEMP 'inpx-shelf-libwebp-windows-x64'
 Reset-Directory $webpExtract
 Download-File $windowsWebpUrl $webpArchive
 & $sevenZipTool x $webpArchive "-o$webpExtract" -y
@@ -129,7 +129,7 @@ if (-not $fb2cngAsset) {
 }
 
 $fbcArchive = Join-Path $env:TEMP $fb2cngAsset.name
-$fbcExtract = Join-Path $env:TEMP 'inpx-web-fb2cng-win'
+$fbcExtract = Join-Path $env:TEMP 'inpx-shelf-fb2cng-win'
 Reset-Directory $fbcExtract
 Download-File $fb2cngAsset.browser_download_url $fbcArchive
 & $sevenZipTool x $fbcArchive "-o$fbcExtract" -y

@@ -319,7 +319,7 @@ function isAnonymousDefaultUser(user = {}) {
 }
 
 function isRcReleaseTag(value = '') {
-    return /-rc(?:[.\-]?\d+)?$/i.test(normalizeVersionTag(value));
+    return /-(?:alpha|beta|rc)(?:[.\-]?\d+)?$/i.test(normalizeVersionTag(value));
 }
 
 function resolveReleaseChannel(config = {}) {

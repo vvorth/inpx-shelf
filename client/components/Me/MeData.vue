@@ -55,7 +55,7 @@ class MeData {
             const login = String(profile.login || profile.id || 'profile')
                 .replace(/[^a-z0-9._-]+/gi, '-')
                 .replace(/^-+|-+$/g, '') || 'profile';
-            this.downloadJson(data, `inpx-web-profile-${login}-${stamp}.json`);
+            this.downloadJson(data, `inpx-shelf-profile-${login}-${stamp}.json`);
             this.$root.notify.success(t('Бэкап профиля скачан'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('Ошибка'));

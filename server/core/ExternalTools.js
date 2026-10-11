@@ -127,7 +127,7 @@ function dwebpCommandCandidates(extraDirs = [], converterPaths = null) {
 
 function missingSevenZipMessage() {
     if (process.platform === 'win32') {
-        return `Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7-Zip или положите 7za.exe/7z.exe в каталог bin рядом с inpx-web.exe. Ссылка: ${SEVEN_ZIP_DOWNLOAD_URL}`;
+        return `Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7-Zip или положите 7za.exe/7z.exe в каталог bin рядом с inpx-shelf.exe. Ссылка: ${SEVEN_ZIP_DOWNLOAD_URL}`;
     }
 
     return `Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7z/7za через пакетный менеджер вашей системы. Ссылка: ${SEVEN_ZIP_DOWNLOAD_URL}`;
@@ -135,7 +135,7 @@ function missingSevenZipMessage() {
 
 function missingDjxlMessage() {
     if (process.platform === 'win32') {
-        return `Не найден djxl для декодирования JXL-обложек. Установите libjxl или положите djxl.exe и его DLL в каталог bin рядом с inpx-web.exe. Ссылка: ${DJXL_DOWNLOAD_URL}`;
+        return `Не найден djxl для декодирования JXL-обложек. Установите libjxl или положите djxl.exe и его DLL в каталог bin рядом с inpx-shelf.exe. Ссылка: ${DJXL_DOWNLOAD_URL}`;
     }
 
     return `Не найден djxl для декодирования JXL-обложек. Установите libjxl-tools или аналогичный пакет вашей системы. Ссылка: ${DJXL_DOWNLOAD_URL}`;
@@ -143,7 +143,7 @@ function missingDjxlMessage() {
 
 function missingDwebpMessage() {
     if (process.platform === 'win32') {
-        return `Не найден dwebp для декодирования WebP-обложек. Установите libwebp или положите dwebp.exe и его DLL в каталог bin рядом с inpx-web.exe. Ссылка: ${DWEBP_DOWNLOAD_URL}`;
+        return `Не найден dwebp для декодирования WebP-обложек. Установите libwebp или положите dwebp.exe и его DLL в каталог bin рядом с inpx-shelf.exe. Ссылка: ${DWEBP_DOWNLOAD_URL}`;
     }
 
     return `Не найден dwebp для декодирования WebP-обложек. Установите webp/libwebp-tools или аналогичный пакет вашей системы. Ссылка: ${DWEBP_DOWNLOAD_URL}`;

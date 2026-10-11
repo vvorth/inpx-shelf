@@ -1111,7 +1111,7 @@ class KoboService {
     }
 
     // ------------------------------------------------------------------ collection edits on the device
-    // Collections are read-only from the device: inpx-web lists are never changed from here. A bound
+    // Collections are read-only from the device: inpx-shelf lists are never changed from here. A bound
     // list's collection that was renamed or deleted on the device is sent again as the list defines
     // it; a book removed from it stays out of it. Collections made on the device stay there.
     boundListId(device, tagId) {
@@ -1358,7 +1358,7 @@ class KoboService {
         res.status(response.status).send(Buffer.from(await response.arrayBuffer()));
     }
 
-    // Requests inpx-web does not answer itself go to the Kobo Store when the device
+    // Requests inpx-shelf does not answer itself go to the Kobo Store when the device
     // opted in (purchased books, store pages); otherwise they get `fallback`.
     async storeOr(req, res, device, token, fallback) {
         if (!device.storeProxy)

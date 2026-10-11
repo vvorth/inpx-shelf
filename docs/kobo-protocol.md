@@ -2,12 +2,12 @@
 
 What a Kobo e-reader expects from a sync server, as learned from Calibre-Web's implementation
 (`cps/kobo.py`, `cps/kobo_auth.py`, `cps/services/SyncToken.py` in
-[janeczku/calibre-web](https://github.com/janeczku/calibre-web)). inpx-web's implementation in
+[janeczku/calibre-web](https://github.com/janeczku/calibre-web)). inpx-shelf's implementation in
 `server/core/kobo/` follows this protocol. The design, decisions and phase status are in
 [kobo-sync-integration.md](./kobo-sync-integration.md).
 
 Sections 1–9 describe the protocol (what any server must do). Section 10 summarises how Calibre-Web
-built it. Section 11 lists its quirks and how inpx-web handles each one.
+built it. Section 11 lists its quirks and how inpx-shelf handles each one.
 
 ## 1. How a Kobo finds the server
 
@@ -50,7 +50,7 @@ keep working (§9).
 | `GET <DownloadUrls[].Url>` | The book file. KEPUB is named `*.kepub.epub` |
 | `/v1/user/*`, `/v1/products/*`, `/v1/analytics/*`, `/v1/deals`, `/v1/affiliate`, `/v1/assets`, … | Not needed for a library: answer `{}` (or proxy them). `v1/user/loyalty/benefits` → `{Benefits:{}}`; `v1/analytics/gettests` → `{Result:"Success", TestKey:<x-kobo-userkey header>, Tests:{}}` |
 
-The resource list from Kobo points most calls at `https://storeapi.kobo.com/…`. inpx-web rewrites
+The resource list from Kobo points most calls at `https://storeapi.kobo.com/…`. inpx-shelf rewrites
 every such URL to the device's `/kobo/<token>` base, so nothing leaves the server unless the device
 opted into store proxying.
 
@@ -60,7 +60,7 @@ The device calls `GET v1/library/sync` repeatedly. The server answers with a **J
 change items and two headers:
 
 * `x-kobo-synctoken`: an opaque cursor. The device sends it back on the next sync unchanged. A
-  server can put anything in it (Calibre-Web: base64 JSON of timestamps; inpx-web: base64 JSON of
+  server can put anything in it (Calibre-Web: base64 JSON of timestamps; inpx-shelf: base64 JSON of
   device id and a generation counter). A token containing `.` is a **real Kobo Store token**: it
   shows up on the first sync after `api_endpoint` is changed, and must be kept for store proxying.
   No token, or a token the server doesn't recognise, means the device should get a full sync.
@@ -139,7 +139,7 @@ The Kobo tracks four timestamped objects per book:
 ## 8. File formats and KEPUB
 
 * KEPUB is an EPUB with Kobo span markup; the device reads it with its native engine (better
-  progress tracking, statistics). Calibre-Web converts EPUB → KEPUB with `kepubify`; inpx-web
+  progress tracking, statistics). Calibre-Web converts EPUB → KEPUB with `kepubify`; inpx-shelf
   converts FB2 → KEPUB with fb2cng and sends EPUB sources as plain EPUB.
 * Serve KEPUB with a `*.kepub.epub` file name and `Content-Type: application/epub+zip`.
 
@@ -212,9 +212,9 @@ How changes propagate:
 * **Force full sync** deletes the user's `kobo_synced_books` rows.
 * **Reading state:** a SQLAlchemy `before_flush` listener bumps `KoboReadingState.last_modified` when a child row changes, so a "mark as read" in the web UI reaches the device as `ChangedReadingState`. `StatusInfo` is stored in `book_read_link`, the table behind the web UI's read flag.
 
-## 11. Calibre-Web's quirks, and how inpx-web handles them
+## 11. Calibre-Web's quirks, and how inpx-shelf handles them
 
-| # | Calibre-Web quirk | inpx-web |
+| # | Calibre-Web quirk | inpx-shelf |
 |---|---|---|
 | 1 | Removing a book from a sync shelf doesn't remove it from the device; only collection membership changes | The bound lists are the source of truth: a book leaving every list is removed, unless the device's "keep books on the device" option is on |
 | 2 | Change detection relies on edit hooks; changes made outside Calibre-Web (desktop Calibre) aren't noticed | The sync diffs the bound lists against what the device was told on every request; file changes are detected by conversion fingerprint and size, metadata changes (including admin edits) by a hash of the record's fields |

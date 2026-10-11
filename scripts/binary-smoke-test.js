@@ -57,7 +57,7 @@ async function checkWebSocket(url) {
                 const response = JSON.parse(raw);
                 if (response._rok) return;
                 assert.ok(!response.error, response.error);
-                assert.match(response.message, /inpx-web/);
+                assert.match(response.message, /inpx-shelf/);
                 finish();
             } catch (error) {
                 finish(error);
@@ -86,7 +86,7 @@ async function main() {
             args = ['run', '--rm', '--name', containerName,
                 '-p', `127.0.0.1:${port}:12380`, '--tmpfs', '/data',
                 '--mount', `type=bind,source=${library},target=/library,readonly`, imageName,
-                'sh', '-c', 'cp /library/config.json /data/config.json && exec inpx-web --data-dir=/data --config=/data/config.json --lib-dir=/library --host=0.0.0.0 --port=12380'];
+                'sh', '-c', 'cp /library/config.json /data/config.json && exec inpx-shelf --data-dir=/data --config=/data/config.json --lib-dir=/library --host=0.0.0.0 --port=12380'];
         } else {
             command = path.resolve(target);
             args = [`--data-dir=${path.join(dir, 'data')}`, `--lib-dir=${library}`,

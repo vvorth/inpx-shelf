@@ -105,7 +105,7 @@ async function testKoboSyncListsAndDownloads() {
         const {Resources: resources} = await init.json();
         assert.strictEqual(resources.library_sync, `${endpoint}/v1/library/sync`);
         assert.ok(resources.image_url_template.startsWith(`${endpoint}/{ImageId}/`));
-        assert.ok(!JSON.stringify(resources).includes('storeapi.kobo.com'), 'store calls must not leave inpx-web');
+        assert.ok(!JSON.stringify(resources).includes('storeapi.kobo.com'), 'store calls must not leave inpx-shelf');
 
         const first = await sync({fresh: true});
         const fb2Uuid = kobo.uuidv5('main:101');

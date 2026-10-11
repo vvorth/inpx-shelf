@@ -7,6 +7,15 @@ const {withFileTransaction, writeFileAtomic} = require('../core/FilePersistence'
 
 const branchFilename = __dirname + '/application_env';
 
+const upstreamReleaseLinks = [
+    'https://github.com/bookpauk/inpx-web/releases/latest',
+    'https://github.com/AceAsket/inpx-web/releases/latest',
+];
+const upstreamCheckReleaseLinks = [
+    'https://api.github.com/repos/bookpauk/inpx-web/releases/latest',
+    'https://api.github.com/repos/AceAsket/inpx-web/releases/latest',
+];
+
 const propsToSave = [
     'dataDir',
     'wsMessageLimitMb',
@@ -91,7 +100,7 @@ function normalizeVersion(value = '') {
 }
 
 function isRcVersion(value = '') {
-    return /-rc(?:[.\-]?\d+)?$/i.test(normalizeVersion(value));
+    return /-(?:alpha|beta|rc)(?:[.\-]?\d+)?$/i.test(normalizeVersion(value));
 }
 
 function resolveUpdateChannel(config = {}) {
@@ -119,12 +128,26 @@ async function resolveInstallMode(config = {}) {
 
 let instance = null;
 
+// Installs from before the rename to inpx-shelf keep their data under the inpx-web name.
+const legacyName = 'inpx-web';
+
+function preferLegacyDir(dirPath, legacyPath) {
+    if (!fs.pathExistsSync(dirPath) && fs.pathExistsSync(legacyPath))
+        return legacyPath;
+
+    return dirPath;
+}
+
+function resolveDefaultDataDir(config = {}) {
+    return preferLegacyDir(`${config.execDir}/.${config.name}`, `${config.execDir}/.${legacyName}`);
+}
+
 function resolveFallbackDataDir(config = {}) {
     const appDataDir = process.env.LOCALAPPDATA || process.env.APPDATA;
     if (appDataDir)
-        return path.join(appDataDir, config.name);
+        return preferLegacyDir(path.join(appDataDir, config.name), path.join(appDataDir, legacyName));
 
-    return path.join(os.homedir(), `.${config.name}`);
+    return preferLegacyDir(path.join(os.homedir(), `.${config.name}`), path.join(os.homedir(), `.${legacyName}`));
 }
 
 async function ensureWritableDir(dirPath) {
@@ -160,7 +183,7 @@ class ConfigManager {
 
         this.branchConfigFile = __dirname + `/${this.branch}.js`;
         const config = require(this.branchConfigFile);
-        const defaultExecDataDir = `${config.execDir}/.${config.name}`;
+        const defaultExecDataDir = resolveDefaultDataDir(config);
         const canUseWindowsFallback = !defaultDataDir && !configFile && process.pkg && process.platform === 'win32';
 
         if (!defaultDataDir)
@@ -225,13 +248,14 @@ class ConfigManager {
                 const config = secretResult.config;
                 let needsSave = false;
 
-                if (!config.latestReleaseLink || config.latestReleaseLink === 'https://github.com/bookpauk/inpx-web/releases/latest') {
-                    config.latestReleaseLink = 'https://github.com/AceAsket/inpx-web/releases/latest';
+                // Configs saved by bookpauk/inpx-web or AceAsket/inpx-web point their update check at those projects.
+                if (!config.latestReleaseLink || upstreamReleaseLinks.includes(config.latestReleaseLink)) {
+                    config.latestReleaseLink = this._config.latestReleaseLink;
                     needsSave = true;
                 }
 
-                if (!config.checkReleaseLink || config.checkReleaseLink === 'https://api.github.com/repos/bookpauk/inpx-web/releases/latest') {
-                    config.checkReleaseLink = 'https://api.github.com/repos/AceAsket/inpx-web/releases/latest';
+                if (!config.checkReleaseLink || upstreamCheckReleaseLinks.includes(config.checkReleaseLink)) {
+                    config.checkReleaseLink = this._config.checkReleaseLink;
                     needsSave = true;
                 }
 

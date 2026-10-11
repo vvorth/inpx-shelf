@@ -47,7 +47,7 @@ async function read(payload, config, folder) {
             result[entry.name] = Buffer.concat(chunks);
         }
         if (!result['backup-info.json'] || (!result['config.json'] && !result['reading-lists.json']))
-            throw new Error('Файл не похож на полный бэкап inpx-web');
+            throw new Error('Файл не похож на полный бэкап inpx-shelf');
         for (const [name, data] of Object.entries(result)) {
             if (!name.endsWith('.json'))
                 continue;

@@ -1762,7 +1762,7 @@ class AdminPage {
         try {
             const result = await this.api.exportAdminSettings();
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            this.downloadJsonFile(`inpx-web-settings-${stamp}.json`, result);
+            this.downloadJsonFile(`inpx-shelf-settings-${stamp}.json`, result);
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
         } finally {

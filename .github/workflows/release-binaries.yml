@@ -105,7 +105,7 @@ jobs:
 
       - name: Test packaged application
         shell: bash
-        run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-web${{ matrix.target == 'win' && '.exe' || '' }}
+        run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-shelf${{ matrix.target == 'win' && '.exe' || '' }}
 
       - name: Install Inno Setup
         if: matrix.target == 'win'
@@ -165,7 +165,7 @@ jobs:
           }
           $outDir = Join-Path $PWD "dist/release"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          $archiveName = "inpx-web-$version-${{ matrix.target }}.zip"
+          $archiveName = "inpx-shelf-$version-${{ matrix.target }}.zip"
           $archivePath = Join-Path $outDir $archiveName
           if (Test-Path $archivePath) {
             Remove-Item $archivePath -Force
@@ -237,7 +237,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name, '-rc') }}
+          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name, '-') }}
           body_path: release-notes.md
           files: |
             release-assets/**/*.zip

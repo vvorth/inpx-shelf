@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const sessionLifetime = require('./SessionLifetime');
 
+// Cookie names keep the pre-rename inpx-web prefix so existing sessions survive the update.
 const sessionCookieName = 'inpx_web_session';
 const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;

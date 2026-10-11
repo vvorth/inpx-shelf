@@ -18,7 +18,7 @@ function makeWorker(config = {}) {
     const WebWorker = require('../server/core/WebWorker');
     const worker = Object.create(WebWorker.prototype);
     worker.config = Object.assign({
-        name: 'inpx-web',
+        name: 'inpx-shelf',
         version: 'test',
         librarySources: [],
         opds: {},
@@ -60,6 +60,7 @@ async function testConfigSecretsSurviveRestart() {
         {cli: true},
         {},
         {explicit: true, saved: true, plaintext: true},
+        {legacy: true},
     ];
     const childScript = `
         const assert = require('assert');
@@ -78,6 +79,7 @@ async function testConfigSecretsSurviveRestart() {
             await manager.load();
             assert.strictEqual(path.resolve(manager.config.dataDir), options.expectedDir);
             assert.strictEqual(manager.config.opds.user, 'user1');
+            assert.strictEqual(manager.config.checkReleaseLink, 'https://api.github.com/repos/vvorth/inpx-shelf/releases/latest');
             if (phase === 'save') {
                 assert.strictEqual(manager.config.opds.password, options.initialPassword);
                 manager.config = {
@@ -100,11 +102,14 @@ async function testConfigSecretsSurviveRestart() {
         await withTempDir(async(dir) => {
             const execDir = path.join(dir, 'app');
             const cliDir = scenario.cli ? path.join(dir, 'cli-data') : undefined;
-            const defaultDir = cliDir || path.join(execDir, '.inpx-web');
+            // Installs from before the rename keep using their .inpx-web directory.
+            const defaultDir = cliDir || path.join(execDir, scenario.legacy ? '.inpx-web' : '.inpx-shelf');
             const expectedDir = scenario.saved ? path.join(dir, 'saved-data') : defaultDir;
             const configFile = scenario.explicit ? path.join(dir, 'config.json') : path.join(defaultDir, 'config.json');
             const initialPassword = scenario.plaintext ? 'old-plaintext-password' : '';
             const initialConfig = {opds: {enabled: true, user: 'user1', password: initialPassword}};
+            if (scenario.legacy)
+                initialConfig.checkReleaseLink = 'https://api.github.com/repos/AceAsket/inpx-web/releases/latest';
             if (scenario.saved || scenario.empty)
                 initialConfig.dataDir = scenario.saved ? expectedDir : '';
             await fs.outputJson(configFile, initialConfig);
@@ -825,7 +830,7 @@ async function testAdminBackupArchiveAndDownload() {
         await fs.writeFile(path.join(dataDir, 'db', 'index.json'), '{}');
 
         const worker = makeWorker({
-            name: 'inpx-web',
+            name: 'inpx-shelf',
             version: '1.6.7-test',
             bookDir,
             bookPathStatic: '/book',
@@ -835,7 +840,7 @@ async function testAdminBackupArchiveAndDownload() {
 
         const result = await worker.createAdminBackup('admin', 'token');
         assert.strictEqual(result.success, true);
-        assert.match(result.fileName, /^inpx-web-backup-.+\.zip$/);
+        assert.match(result.fileName, /^inpx-shelf-backup-.+\.zip$/);
         assert.strictEqual(result.link, `/admin-backups/${encodeURIComponent(result.fileName)}`);
         assert.strictEqual(await fs.pathExists(path.join(dataDir, 'backups', result.fileName)), true);
 

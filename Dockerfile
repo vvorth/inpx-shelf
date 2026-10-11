@@ -71,6 +71,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 12380
+# The data path keeps its pre-rename name so existing volumes and compose files keep working.
 VOLUME ["/usr/local/bin/.inpx-web", "/library"]
 
 ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
@@ -79,9 +80,9 @@ FROM base-tools AS conversion-tools
 
 ARG FB2CNG_VERSION
 
-LABEL org.opencontainers.image.title="inpx-web" \
-      org.opencontainers.image.description="Dockerized inpx-web fork with fb2cng and MuPDF conversion" \
-      org.opencontainers.image.source="https://github.com/AceAsket/inpx-web"
+LABEL org.opencontainers.image.title="inpx-shelf" \
+      org.opencontainers.image.description="Dockerized inpx-shelf with fb2cng and MuPDF conversion" \
+      org.opencontainers.image.source="https://github.com/vvorth/inpx-shelf"
 
 ENV INPX_ENABLE_CONVERSION=true
 ENV INPX_CONVERSION_FORMATS=epub,epub3,kepub,kfx,azw8,pdf
@@ -97,9 +98,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 FROM conversion-tools AS calibre-tools
 
-LABEL org.opencontainers.image.title="inpx-web-calibre" \
-      org.opencontainers.image.description="Full inpx-web image with fb2cng, MuPDF and Calibre fallback conversion" \
-      org.opencontainers.image.source="https://github.com/AceAsket/inpx-web"
+LABEL org.opencontainers.image.title="inpx-shelf-calibre" \
+      org.opencontainers.image.description="Full inpx-shelf image with fb2cng, MuPDF and Calibre fallback conversion" \
+      org.opencontainers.image.source="https://github.com/vvorth/inpx-shelf"
 
 ENV QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox
 ENV INPX_CONVERSION_FORMATS=epub,epub3,kepub,kfx,azw8,pdf
@@ -125,21 +126,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 FROM conversion-tools AS runtime
 
 # --chmod avoids a follow-up chmod RUN that would duplicate the binary in a second layer.
-COPY --from=build --chmod=755 /app/dist/linux/inpx-web /usr/local/bin/inpx-web
+COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
 
 FROM calibre-tools AS runtime-calibre
 
-COPY --from=build --chmod=755 /app/dist/linux/inpx-web /usr/local/bin/inpx-web
+COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
 
 FROM base-tools AS runtime-lite
 
-LABEL org.opencontainers.image.title="inpx-web-lite" \
-      org.opencontainers.image.description="Lighter inpx-web image without Calibre conversion support" \
-      org.opencontainers.image.source="https://github.com/AceAsket/inpx-web"
+LABEL org.opencontainers.image.title="inpx-shelf-lite" \
+      org.opencontainers.image.description="Lighter inpx-shelf image without Calibre conversion support" \
+      org.opencontainers.image.source="https://github.com/vvorth/inpx-shelf"
 
 ENV INPX_ENABLE_CONVERSION=false
 ENV INPX_CONVERSION_FORMATS=
 
-COPY --from=build --chmod=755 /app/dist/linux/inpx-web /usr/local/bin/inpx-web
+COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
 
 FROM runtime AS final

@@ -19,29 +19,29 @@
 #endif
 
 [Setup]
-AppId={{6C431F21-C954-4300-A296-3374C1C21A86}
-AppName=inpx-web
+AppId={{F0BA6FB7-CB7B-4358-839F-CB92DC65E93B}
+AppName=inpx-shelf
 AppVersion={#AppVersion}
-AppPublisher=AceAsket
-AppPublisherURL=https://github.com/AceAsket/inpx-web
-AppSupportURL=https://github.com/AceAsket/inpx-web/issues
-AppUpdatesURL=https://github.com/AceAsket/inpx-web/releases/latest
-DefaultDirName={localappdata}\Programs\inpx-web
-DefaultGroupName=inpx-web
+AppPublisher=vvorth
+AppPublisherURL=https://github.com/vvorth/inpx-shelf
+AppSupportURL=https://github.com/vvorth/inpx-shelf/issues
+AppUpdatesURL=https://github.com/vvorth/inpx-shelf/releases/latest
+DefaultDirName={localappdata}\Programs\inpx-shelf
+DefaultGroupName=inpx-shelf
 AllowNoIcons=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
-OutputBaseFilename=inpx-web-{#AppVersion}-win-setup
+OutputBaseFilename=inpx-shelf-{#AppVersion}-win-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#RepoRoot}\client\assets\favicon.ico
 LicenseFile={#RepoRoot}\LICENSE.md
-UninstallDisplayIcon={app}\inpx-web.exe
+UninstallDisplayIcon={app}\inpx-shelf.exe
 VersionInfoVersion={#AppVersionInfo}
-VersionInfoCompany=AceAsket
-VersionInfoDescription=inpx-web Windows installer
-VersionInfoProductName=inpx-web
+VersionInfoCompany=vvorth
+VersionInfoDescription=inpx-shelf Windows installer
+VersionInfoProductName=inpx-shelf
 VersionInfoProductVersion={#AppVersionInfo}
 VersionInfoProductTextVersion={#AppVersion}
 
@@ -53,25 +53,25 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\inpx-web.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\inpx-shelf.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\readme.html"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourceDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RepoRoot}\LICENSE.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [INI]
-Filename: "{app}\inpx-web.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://127.0.0.1:12380"
-Filename: "{app}\inpx-web.url"; Section: "InternetShortcut"; Key: "IconFile"; String: "{app}\inpx-web.exe"
-Filename: "{app}\inpx-web.url"; Section: "InternetShortcut"; Key: "IconIndex"; String: "0"
+Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://127.0.0.1:12380"
+Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "IconFile"; String: "{app}\inpx-shelf.exe"
+Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "IconIndex"; String: "0"
 
 [Icons]
-Name: "{group}\inpx-web"; Filename: "{app}\inpx-web.exe"; Parameters: "--data-dir=""{localappdata}\inpx-web"""; WorkingDir: "{app}"
-Name: "{group}\Open web interface"; Filename: "{app}\inpx-web.url"; WorkingDir: "{app}"
+Name: "{group}\inpx-shelf"; Filename: "{app}\inpx-shelf.exe"; Parameters: "--data-dir=""{localappdata}\inpx-shelf"""; WorkingDir: "{app}"
+Name: "{group}\Open web interface"; Filename: "{app}\inpx-shelf.url"; WorkingDir: "{app}"
 Name: "{group}\README"; Filename: "{app}\readme.html"; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\readme.html'))
-Name: "{group}\Uninstall inpx-web"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\inpx-web"; Filename: "{app}\inpx-web.exe"; Parameters: "--data-dir=""{localappdata}\inpx-web"""; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\Uninstall inpx-shelf"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\inpx-shelf"; Filename: "{app}\inpx-shelf.exe"; Parameters: "--data-dir=""{localappdata}\inpx-shelf"""; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\inpx-web.exe"; Parameters: "--data-dir=""{localappdata}\inpx-web"""; Description: "{cm:LaunchProgram,inpx-web}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\inpx-shelf.exe"; Parameters: "--data-dir=""{localappdata}\inpx-shelf"""; Description: "{cm:LaunchProgram,inpx-shelf}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: files; Name: "{app}\inpx-web.url"
+Type: files; Name: "{app}\inpx-shelf.url"

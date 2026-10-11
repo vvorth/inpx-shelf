@@ -3,7 +3,7 @@
         <nav v-if="!bare" class="shell-rail" :aria-label="$t('Разделы')">
             <router-link class="shell-brand" to="/">
                 <img class="shell-brand-logo" src="./assets/logo.png" alt="" />
-                <span class="shell-brand-name">{{ collectionName || config.name || 'inpx-web' }}</span>
+                <span class="shell-brand-name">{{ collectionName || config.name || 'inpx-shelf' }}</span>
             </router-link>
 
             <div class="shell-nav">

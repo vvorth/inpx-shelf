@@ -1,7 +1,7 @@
 services:
-  inpx-web:
+  inpx-shelf:
     build: .
-    container_name: inpx-web
+    container_name: inpx-shelf
     restart: unless-stopped
     ports:
       - "12380:12380"

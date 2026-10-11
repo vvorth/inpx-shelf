@@ -40,8 +40,8 @@ jobs:
       - run: npm run test:release
       - run: npm run test:tts
       - run: npm run build:${{ matrix.target }}
-      - run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-web${{ matrix.extension }}
+      - run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-shelf${{ matrix.extension }}
       - if: matrix.target == 'linux'
-        run: docker build --target runtime-lite -t inpx-web:ci .
+        run: docker build --target runtime-lite -t inpx-shelf:ci .
       - if: matrix.target == 'linux'
-        run: node scripts/binary-smoke-test.js --image inpx-web:ci
+        run: node scripts/binary-smoke-test.js --image inpx-shelf:ci

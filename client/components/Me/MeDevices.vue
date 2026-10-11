@@ -104,7 +104,7 @@
                 </div>
                 <q-checkbox v-model="device.draft.storeProxy" dense :label="$t('Подключать магазин Kobo')" />
                 <div class="card-hint">
-                    {{ $t('Для купленных в магазине Kobo книг: вход, покупки и их прогресс передаются на серверы Kobo. Если выключено, устройство общается только с inpx-web.') }}
+                    {{ $t('Для купленных в магазине Kobo книг: вход, покупки и их прогресс передаются на серверы Kobo. Если выключено, устройство общается только с inpx-shelf.') }}
                 </div>
                 <div class="card-actions">
                     <q-btn color="primary" unelevated dense no-caps icon="la la-save" @click="saveKoboDevice(device)">

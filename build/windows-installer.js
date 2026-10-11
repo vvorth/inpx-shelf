@@ -48,7 +48,7 @@ function findCompiler() {
 }
 
 function ensureInputFiles() {
-    const exeFile = path.join(sourceDir, 'inpx-web.exe');
+    const exeFile = path.join(sourceDir, 'inpx-shelf.exe');
     if (!fs.existsSync(exeFile))
         throw new Error(`Windows build output is missing: ${exeFile}. Run "npm run build:win" first.`);
 }
@@ -80,7 +80,7 @@ function main() {
     if (result.status !== 0)
         process.exit(result.status || 1);
 
-    const installerFile = path.join(outputDir, `inpx-web-${pckg.version}-win-setup.exe`);
+    const installerFile = path.join(outputDir, `inpx-shelf-${pckg.version}-win-setup.exe`);
     console.log(`Windows installer: ${installerFile}`);
 }
 

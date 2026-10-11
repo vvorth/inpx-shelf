@@ -1,7 +1,7 @@
 services:
-  inpx-web:
-    image: aceasket/inpx-web-7z:latest
-    container_name: inpx-web
+  inpx-shelf:
+    image: vvorth/inpx-shelf:1.0.0-beta.1
+    container_name: inpx-shelf
     restart: unless-stopped
     ports:
       - "12380:12380"
@@ -29,7 +29,7 @@ services:
       EMAIL_FROM: "user@example.com"
       EMAIL_TO: "reader@example.com"
     volumes:
-      - /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web
+      - /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web
       # Left side is a host path, right side is a path inside the container.
       # INPX=/library/... and LIBDIR=/library must point to this mounted path.
       - /mnt/user/books/my-library:/library:ro

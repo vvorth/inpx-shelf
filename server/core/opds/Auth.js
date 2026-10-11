@@ -44,7 +44,7 @@ module.exports = function opdsAuth(config, verifyPassword, security) {
             if (attempted)
                 security.recordLoginAttempt(req, authorized, 'opds');
             if (!authorized) {
-                res.set('WWW-Authenticate', 'Basic realm="inpx-web OPDS", charset="UTF-8"');
+                res.set('WWW-Authenticate', 'Basic realm="inpx-shelf OPDS", charset="UTF-8"');
                 res.set('Cache-Control', 'no-store');
                 return res.status(401).send('Authentication required');
             }

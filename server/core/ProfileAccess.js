@@ -133,7 +133,7 @@ class ProfileAccess {
                 if (!identity && this.loginRequired)
                     identity = await this.basicIdentity(req);
                 if (!identity && this.loginRequired) {
-                    res.set('WWW-Authenticate', 'Basic realm="inpx-web OPDS", charset="UTF-8"');
+                    res.set('WWW-Authenticate', 'Basic realm="inpx-shelf OPDS", charset="UTF-8"');
                     throw denied('Authentication required');
                 }
                 if (identity && identity.user && (identity.bound || this.loginRequired)) {

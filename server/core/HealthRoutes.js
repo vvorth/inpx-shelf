@@ -63,6 +63,7 @@ async function buildMetrics(config, webWorker, security = null, webSocketControl
         : {clients: 0, users: 0, anonymousClients: 0};
     const lines = [];
 
+    // Metric names keep the pre-rename inpx_web_ prefix so existing dashboards and alerts keep working.
     addMetric(lines, 'inpx_web_build_info', 'Application build information.', 'gauge', [{
         labels: {version: config.version || '', branch: config.branch || ''},
         value: 1,

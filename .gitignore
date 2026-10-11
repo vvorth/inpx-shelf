@@ -1,5 +1,6 @@
 /node_modules
 /server/.inpx-web*
+/server/.inpx-shelf*
 /dist
 dev*.sh
 /.local-data

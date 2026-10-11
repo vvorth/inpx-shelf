@@ -161,7 +161,7 @@ module.exports = {
 
         const createdAt = new Date();
         const stamp = createdAt.toISOString().replace(/[:.]/g, '-');
-        const fileName = `inpx-web-backup-${stamp}-${utils.randomHexString(4)}.zip`;
+        const fileName = `inpx-shelf-backup-${stamp}-${utils.randomHexString(4)}.zip`;
         const outFile = path.join(backupDir, fileName);
         const zipFile = new yazl.ZipFile();
         const output = fs.createWriteStream(outFile);

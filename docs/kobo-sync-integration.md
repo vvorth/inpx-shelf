@@ -1,13 +1,13 @@
-# Kobo Sync for inpx-web: integration research
+# Kobo Sync for inpx-shelf: integration research
 
-**Goal:** a Kobo e-reader syncs **only the books in a chosen inpx-web reading list**, using
+**Goal:** a Kobo e-reader syncs **only the books in a chosen inpx-shelf reading list**, using
 the Kobo's built-in sync (no USB, no sideloading), modelled on Calibre-Web's Kobo sync.
 
 **Related files:**
 
 * [`docs/kobo-protocol.md`](./kobo-protocol.md): the Kobo sync protocol (endpoints, sync exchange,
   payloads, reading state, collections, store proxying), Calibre-Web's reference implementation and
-  how inpx-web handles its quirks.
+  how inpx-shelf handles its quirks.
 * [`README.md`](../README.md), section «Синхронизация с Kobo»: setup and behaviour from the user's side.
 * [`server/core/kobo/`](../server/core/kobo/) and [`scripts/kobo-sync-tests.js`](../scripts/kobo-sync-tests.js):
   the code and the tests, which show the expected behaviour.
@@ -22,20 +22,20 @@ the Kobo's built-in sync (no USB, no sideloading), modelled on Calibre-Web's Kob
 
 | | Option | Verdict |
 |---|---|---|
-| A | **Separate bridge service that reads an inpx-web OPDS reading-list URL** (the original idea) | Works as a read-only MVP, but it fights OPDS at every step: N+1 crawling, fake `updated` timestamps, no KEPUB link in the feed, no way to write "finished" back. Making it robust needs inpx-web changes anyway. |
-| B | **Calibre-Web as the Kobo server, fed by inpx-web** (import list → calibre library → kobo shelf) | Quickest way to a working device because all of Calibre-Web's Kobo code is reused, but it adds a second library, duplicate files, read status kept in the wrong app, and Calibre-Web's shelf-removal gap. Good stopgap only. |
-| C | **Native `kobo` module inside inpx-web, scoped to reading lists bound to a device** | **Recommended.** It sits next to the data it needs (lists, conversion, covers, read flags), and it allows real two-way read status and removal from the device. About the size of the existing OPDS module. |
+| A | **Separate bridge service that reads an inpx-shelf OPDS reading-list URL** (the original idea) | Works as a read-only MVP, but it fights OPDS at every step: N+1 crawling, fake `updated` timestamps, no KEPUB link in the feed, no way to write "finished" back. Making it robust needs inpx-shelf changes anyway. |
+| B | **Calibre-Web as the Kobo server, fed by inpx-shelf** (import list → calibre library → kobo shelf) | Quickest way to a working device because all of Calibre-Web's Kobo code is reused, but it adds a second library, duplicate files, read status kept in the wrong app, and Calibre-Web's shelf-removal gap. Good stopgap only. |
+| C | **Native `kobo` module inside inpx-shelf, scoped to reading lists bound to a device** | **Recommended.** It sits next to the data it needs (lists, conversion, covers, read flags), and it allows real two-way read status and removal from the device. About the size of the existing OPDS module. |
 
 The core of the "better logic" (it applies to A and C):
 
 1. **Bind a device to one or more reading lists**, not to the whole library. The list is the
    single source of truth: *in the list ⇒ on the Kobo; out of the list ⇒ removed from the Kobo.*
-2. **Diff snapshots instead of timestamps.** inpx-web list entries have no `addedAt`, and
+2. **Diff snapshots instead of timestamps.** inpx-shelf list entries have no `addedAt`, and
    OPDS `updated` is always "now", so Calibre-Web's timestamp cursors don't fit. Keep a per-device
    set of books already sent and compute `added = list − sent` and `removed = sent − list` on every sync.
    Lists are small, so this is cheap and naturally correct for removals, which Calibre-Web's shelf mode
    doesn't handle.
-3. **Two-way "read":** *Finished* on the Kobo sets the entry's `read` flag in the inpx-web list,
+3. **Two-way "read":** *Finished* on the Kobo sets the entry's `read` flag in the inpx-shelf list,
    and ticking "read" in the web UI sends `ChangedReadingState` to the Kobo. Optionally, books
    finished more than N days ago drop off the device automatically, so the list works as a **reading queue**.
 4. **Each bound list appears as a Kobo collection** (`Tag`) on the device.
@@ -47,7 +47,7 @@ The core of the "better logic" (it applies to A and C):
 
 ---
 
-## 1. What inpx-web already has (relevant facts)
+## 1. What inpx-shelf already has (relevant facts)
 
 | Area | Facts (source) |
 |---|---|
@@ -63,7 +63,7 @@ The core of the "better logic" (it applies to A and C):
 
 ### What a Kobo needs vs. what's available
 
-| Kobo needs | inpx-web today | Gap |
+| Kobo needs | inpx-shelf today | Gap |
 |---|---|---|
 | Stable UUID per book | `_uid` (not a UUID, not stable across re-index) | Derive UUIDv5 and keep a map |
 | Book set + changes | List of `bookUid`s, no timestamps | Snapshot diff per device |
@@ -79,7 +79,7 @@ The core of the "better logic" (it applies to A and C):
 ## 2. Option A: separate bridge reading an OPDS URL
 
 **How it would work.** A small service (in Python, port Calibre-Web's `kobo.py` + `SyncToken.py`)
-is configured with an inpx-web base URL, profile, list id and Basic-auth credentials. On each
+is configured with an inpx-shelf base URL, profile, list id and Basic-auth credentials. On each
 `/v1/library/sync`:
 
 1. `GET /opds/reading-lists/list?id=L&user=P`, collecting entry `<id>`s (= `_uid`s).
@@ -90,7 +90,7 @@ is configured with an inpx-web base URL, profile, list id and Basic-auth credent
 4. Emit entitlements. Removed uids get `IsRemoved:true`.
 5. Serve downloads and covers from the bridge cache, and store reading state in the bridge DB.
 
-**Pros:** zero changes to inpx-web; easy to drop or replace; could in principle work with
+**Pros:** zero changes to inpx-shelf; easy to drop or replace; could in principle work with
 other OPDS servers (but step 3 is inpx-specific).
 
 **Cons and blockers:**
@@ -98,25 +98,25 @@ other OPDS servers (but step 3 is inpx-specific).
 * **N+1 crawling.** The list feed is navigation-only, so one request is needed per book, and for FB2 the `/opds/book` page prepares the book and parses it (slow on first hit).
 * **Titles are decorated and localized** (`✓ 3. Title (fb2)`, `Серия: …`), so metadata has to come from the per-book page and be scraped from HTML content.
 * **No useful timestamps** (`updated` = now) and no `addedAt`, so diffing is the only option (fine, but it means bookkeeping in the bridge).
-* **Read-only.** OPDS can't set the `read` flag back, so finishing a book on the Kobo never reaches inpx-web. There's no other HTTP API (writes go over WebSocket with profile sessions).
+* **Read-only.** OPDS can't set the `read` flag back, so finishing a book on the Kobo never reaches inpx-shelf. There's no other HTTP API (writes go over WebSocket with profile sessions).
 * A **second file cache**: the bridge has to hold KEPUBs to know `Size` and to stay fast.
 * Auth on `/book/*` accepts Basic credentials only when `allowAnonymousAccess=false`, otherwise it's open. The bridge needs to handle both.
 * Two services, two configs, two places to back up.
 
-**Making A decent requires small inpx-web changes anyway:**
+**Making A decent requires small inpx-shelf changes anyway:**
 
 1. An **acquisition** feed for lists (`/opds/reading-lists/list?…&kind=acquisition` or `.json`)
    with full entries: clean title, authors, series/serno, lang, `dc:identifier` (uid + libid),
    annotation, cover link, **direct `kepub`/`epub` acquisition links**, and list entry `read`.
 2. A token-authenticated write endpoint to set `read` on a list entry.
 
-Once those exist, about 70% of the work is already inside inpx-web, which is the argument for Option C.
+Once those exist, about 70% of the work is already inside inpx-shelf, which is the argument for Option C.
 
-## 3. Option B: Calibre-Web as the Kobo server, inpx-web as the source
+## 3. Option B: Calibre-Web as the Kobo server, inpx-shelf as the source
 
-Add a scheduled task to Calibre-Web: "mirror an inpx-web OPDS list into shelf X":
+Add a scheduled task to Calibre-Web: "mirror an inpx-shelf OPDS list into shelf X":
 
-* Poll the list feed; for each new uid, download `format=epub` (fb2cng) from inpx-web, add it to
+* Poll the list feed; for each new uid, download `format=epub` (fb2cng) from inpx-shelf, add it to
   the Calibre library through `uploader`, and put it on a shelf with `kobo_sync=1`.
 * For uids gone from the list, archive the book (`change_archived_books(..., True)`) so the Kobo
   removes it. This is needed because Calibre-Web doesn't remove books from the device when they leave a shelf
@@ -125,11 +125,11 @@ Add a scheduled task to Calibre-Web: "mirror an inpx-web OPDS list into shelf X"
 **Pros:** all of the Kobo protocol is already done and tested (state, tags, store proxy, KEPUB through kepubify).
 **Cons:** you run Calibre-Web plus a Calibre library just as a sync cache, with duplicate files and
 metadata reduced to what's embedded in the converted EPUB. Read status ends up in Calibre-Web,
-not inpx-web, unless you also build a write-back. Two apps to keep in sync forever.
+not inpx-shelf, unless you also build a write-back. Two apps to keep in sync forever.
 
 It's a reasonable **weekend stopgap** if you want a Kobo syncing today. It's not the long-term design.
 
-## 4. Option C (recommended): native Kobo module in inpx-web
+## 4. Option C (recommended): native Kobo module in inpx-shelf
 
 ### 4.1 User-facing model
 
@@ -260,7 +260,7 @@ KEPUB conversion in the background, respecting the existing conversion queue lim
 
 ### 4.7 Metadata mapping (inpx record → `BookMetadata`)
 
-| Kobo | inpx-web |
+| Kobo | inpx-shelf |
 |---|---|
 | `Title` | `title` (metadata overrides applied via `applyMetadataOverridesToSearchResult`) |
 | `Contributors` / `ContributorRoles` | `author.split(',')` |
@@ -312,12 +312,12 @@ and the matching §6 update.
 
 **Decisions**
 
-1. **Collections stay read-only from the device.** inpx-web lists remain the only source of truth for list
+1. **Collections stay read-only from the device.** inpx-shelf lists remain the only source of truth for list
    membership and names. No change made on the Kobo ever adds, removes, renames, deletes or creates a reading list.
    * **A book removed from a bound collection on the Kobo stays out of that collection.** The device keeps the book,
      and the list is not edited. The device row remembers the suppression per list (for example
      `collectionRemoved: [listId, …]`), `tagFor` leaves the book out of that list's `Items`, and later syncs never
-     put it back. The suppression for a list is cleared when the book leaves that list in inpx-web, so adding it
+     put it back. The suppression for a list is cleared when the book leaves that list in inpx-shelf, so adding it
      again later puts it back in the collection.
    * **Adding a book to a bound collection on the device:** accept it (`201`/`200`) and change nothing. The next
      `ChangedTag` that the list's own changes produce brings the device back in line with the list.
@@ -391,7 +391,7 @@ validated with `npm run test:release` and the matching §6 update, with tests in
      `IsGreyscale` is ignored, because the device converts covers itself.
    * Resizing runs one at a time per process, and a cover that fails to decode or resize is served at its original
      size and type, as it is today. A missing or broken cover never fails the request beyond today's `404`.
-2. **No KEPUB for EPUB sources.** The libraries inpx-web hosts are FB2, so `kepubify` would go unused. EPUB
+2. **No KEPUB for EPUB sources.** The libraries inpx-shelf hosts are FB2, so `kepubify` would go unused. EPUB
    sources keep being sent as they are (`EPUB3`/`EPUB`).
 3. **No per-device format preferences.** The server-wide settings decide the format, as today.
 
@@ -453,7 +453,7 @@ How Phase 1 differs from the plan above:
 * **Store proxy (per device):** store `Resources` are used for `v1/initialization`; `auth/device|refresh` are
   relayed; store sync results are merged into our final page, with the store's own token carried inside ours;
   unknown books' metadata, state, delete and other store calls are forwarded (GET → `307`, other methods are
-  relayed server-side); unknown covers go to `cdn.kobo.com`. With the toggle off, nothing leaves inpx-web: every
+  relayed server-side); unknown covers go to `cdn.kobo.com`. With the toggle off, nothing leaves inpx-shelf: every
   `storeapi.kobo.com` resource URL is rewritten to the device's `/kobo/<token>` base and answered locally.
 * **File changes:** Kobo downloads use the same conversion and cache as the web format buttons
   (`WebWorker.getPreparedBookFile` → `BookConverter.prepareConvertedFile`, with `INPX_FB2CNG_CONFIG`). Each
@@ -515,7 +515,7 @@ How Phase 1 differs from the plan above:
   * Removing books from a bound collection (`…/items/delete`) records the list in the book row's
     `collectionRemoved`; `tagFor` leaves those books out of that list's collection (orphans too), so they stay on
     the device but outside the collection. At the start of each sync, a row drops the lists the book is no longer in,
-    so taking it off the list in inpx-web and adding it again puts it back. Adding books to a bound collection
+    so taking it off the list in inpx-shelf and adding it again puts it back. Adding books to a bound collection
     (`…/items`, `201`) only lifts that suppression; anything else it added isn't stored and disappears from the
     collection with the next `ChangedTag` the list's own changes produce.
   * Renaming (`PUT`) a bound collection clears its stored signature and deleting (`DELETE`) drops its tag row, so

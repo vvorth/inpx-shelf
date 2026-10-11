@@ -17,9 +17,9 @@ Required:
 
 Optional:
   --app-root PATH        Where to copy the project and compose files
-                         Default: /opt/inpx-web
+                         Default: /opt/inpx-shelf
   --data-dir PATH        Persistent app data directory
-                         Default: /opt/inpx-web-data
+                         Default: /opt/inpx-shelf-data
   --port PORT            Published HTTP port
                          Default: 12380
   --cover-cache-size-mb N
@@ -32,7 +32,7 @@ Optional:
   --lite                 Build the runtime-lite Docker target
   --skip-build           Do not rebuild image, only (re)start compose stack
   --project-name NAME    Docker compose project name
-                         Default: inpx-web
+                         Default: inpx-shelf
   --help                 Show this help
 
 Examples:
@@ -49,7 +49,7 @@ Examples:
   sudo ./scripts/proxmox-lxc-install.sh \
     --library-dir /srv/library \
     --inpx-file my-library.inpx \
-    --data-dir /srv/inpx-web-data \
+    --data-dir /srv/inpx-shelf-data \
     --port 18080 \
     --lite
 
@@ -61,11 +61,11 @@ EOF
 }
 
 log() {
-    printf '[inpx-web] %s\n' "$*"
+    printf '[inpx-shelf] %s\n' "$*"
 }
 
 fail() {
-    printf '[inpx-web] ERROR: %s\n' "$*" >&2
+    printf '[inpx-shelf] ERROR: %s\n' "$*" >&2
     exit 1
 }
 
@@ -83,10 +83,10 @@ detect_repo_root() {
 }
 
 parse_args() {
-    APP_ROOT="/opt/inpx-web"
-    DATA_DIR="/opt/inpx-web-data"
+    APP_ROOT="/opt/inpx-shelf"
+    DATA_DIR="/opt/inpx-shelf-data"
     PORT="12380"
-    PROJECT_NAME="inpx-web"
+    PROJECT_NAME="inpx-shelf"
     LIBRARY_DIR=""
     INPX_FILE=""
     COVER_CACHE_SIZE_MB="512"
@@ -292,7 +292,7 @@ EOF
 check_lxc_docker_prereqs() {
     if ! docker info >/dev/null 2>&1; then
         cat >&2 <<'EOF'
-[inpx-web] ERROR: Docker daemon is not usable inside this LXC.
+[inpx-shelf] ERROR: Docker daemon is not usable inside this LXC.
 Make sure the Proxmox container has nesting enabled and keyctl available, for example:
   pct set <CTID> -features nesting=1,keyctl=1
 Then restart the container and rerun this script.
@@ -317,7 +317,7 @@ write_compose_file() {
     local data_volume library_volume library_sources_json
     cat > "${compose_path}" <<EOF
 services:
-  inpx-web:
+  inpx-shelf:
     build:
       context: .
       target: ${DOCKER_TARGET}
@@ -385,7 +385,7 @@ print_summary() {
     host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
     cat <<EOF
 
-[inpx-web] Done.
+[inpx-shelf] Done.
   App root:    ${APP_ROOT}
   Data dir:    ${DATA_DIR}
   Library dir: ${LIBRARY_DIR}

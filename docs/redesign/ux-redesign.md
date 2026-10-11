@@ -1,6 +1,6 @@
-# inpx-web: UI/UX redesign
+# inpx-shelf: UI/UX redesign
 
-**Goal:** turn inpx-web from "a search form with dialogs bolted on" into a home library
+**Goal:** turn inpx-shelf from "a search form with dialogs bolted on" into a home library
 product: one search box that finds things, real pages for books, authors and series, a
 personal area for each reader, and an admin console that is separate from all of that.
 

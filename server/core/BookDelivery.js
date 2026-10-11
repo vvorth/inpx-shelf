@@ -110,7 +110,7 @@ module.exports = {
         const subject = [book.author, book.title].filter(Boolean).join(' - ') || downFileName;
         try {
             await transporter.sendMail({
-                from: this.config.emailFrom || this.config.smtpUser || 'inpx-web@localhost',
+                from: this.config.emailFrom || this.config.smtpUser || 'inpx-shelf@localhost',
                 to: emailTo,
                 subject: `Книга: ${subject}`,
                 text: `Во вложении книга "${book.title || downFileName}".`,

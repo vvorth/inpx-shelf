@@ -34,6 +34,8 @@ import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tMessage} from '../../share/i18n';
 
+// localStorage keys, cache names and build-reload keys keep the pre-rename inpx-web- prefix:
+// renaming them would sign users out and drop their saved preferences.
 const profileSessionStorageKey = 'inpx-web-profile-session';
 const profileLoginHistoryStorageKey = 'inpx-web-profile-login-history';
 const stepBound = [

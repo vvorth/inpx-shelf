@@ -12,7 +12,7 @@ docker compose -f docker-compose.yml -f docker-compose.silero.yml --profile tts 
 docker compose -f docker-compose.yml -f docker-compose.silero.yml --profile tts up -d --no-build
 ```
 
-Для стенда RC8 опубликованы образы `aceasket/inpx-web-7z:1.7.9-rc.8` и `aceasket/inpx-web-7z:1.7.9-rc.8-silero` для Linux x64. Возьмите `docker-compose.silero.yml` из тега `v1.7.9-rc.8`; основной Compose-файл с вашими путями и портами сохраняется. Для сборки из исходников замените `--no-build` на `--build` и пропустите `pull`.
+Для 1.0.0-beta.1 опубликованы образы `vvorth/inpx-shelf:1.0.0-beta.1` и `vvorth/inpx-shelf:1.0.0-beta.1-silero` для Linux x64. Возьмите `docker-compose.silero.yml` из тега `v1.0.0-beta.1`; основной Compose-файл с вашими путями и портами сохраняется. Для сборки из исходников замените `--no-build` на `--build` и пропустите `pull`.
 
 При первой озвучке сервис скачает официальную модель `v5_5_ru` в постоянный том `silero-models`. Для первого запуска нужен доступ к `models.silero.ai`; последующие запуски используют локальную модель. Контейнер по умолчанию использует до 4 CPU и 4 ГБ RAM. `/health` проверяет доступность HTTP-сервиса; модель загружается при первом запросе синтеза.
 
@@ -21,7 +21,7 @@ docker compose -f docker-compose.yml -f docker-compose.silero.yml --profile tts 
 Для существующего контейнера INPX Web на Unraid загрузите сервис отдельно:
 
 ```sh
-docker pull aceasket/inpx-web-7z:1.7.9-rc.8-silero
+docker pull vvorth/inpx-shelf:1.0.0-beta.1-silero
 ```
 
 Подключите оба контейнера к одной пользовательской Docker-сети, запустите Silero с именем `silero`, портом `8000` внутри сети и постоянным томом `/models`. В **новой сборке** INPX Web задайте `INPX_TTS_ENABLED=true` и `INPX_TTS_URL=http://silero:8000`. При использовании разных хостов укажите адрес и доступный порт вашего Silero. После изменения переменных пересоздайте контейнер INPX Web.
@@ -31,30 +31,30 @@ docker pull aceasket/inpx-web-7z:1.7.9-rc.8-silero
 Для нового сервиса Silero создайте сеть и запустите контейнер. Порт сервиса остаётся внутри сети; модель хранится в `/mnt/user/appdata/inpx-silero`.
 
 ```sh
-docker pull aceasket/inpx-web-7z:1.7.9-rc.8-silero &&
+docker pull vvorth/inpx-shelf:1.0.0-beta.1-silero &&
 (docker network inspect inpx-tts >/dev/null 2>&1 || docker network create inpx-tts) &&
 docker run -d --name silero --restart unless-stopped --network inpx-tts \
   --cpus=4 --memory=4g \
   -e SILERO_MODEL=v5_5_ru -e SILERO_THREADS=4 -e SILERO_STRESS_ENABLED=true \
   -v /mnt/user/appdata/inpx-silero:/models \
-  aceasket/inpx-web-7z:1.7.9-rc.8-silero
+  vvorth/inpx-shelf:1.0.0-beta.1-silero
 ```
 
-Затем замените существующий `inpx-web`, сохранив переменные запуска, включая токен Audiobookshelf. Команда ниже использует пути стенда `/mnt/user/appdata/inpx-web` и `/mnt/user/Torrents`.
+Затем замените существующий `inpx-shelf`, сохранив переменные запуска, включая токен Audiobookshelf. Команда ниже использует пути стенда `/mnt/user/appdata/inpx-shelf` и `/mnt/user/Torrents`.
 
 ```sh
 inpx_env_file=$(mktemp) &&
-docker pull aceasket/inpx-web-7z:1.7.9-rc.8 &&
-docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' inpx-web > "$inpx_env_file" &&
-docker stop inpx-web && docker rm inpx-web &&
-docker run -d --name inpx-web --restart unless-stopped --network inpx-tts \
+docker pull vvorth/inpx-shelf:1.0.0-beta.1 &&
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' inpx-shelf > "$inpx_env_file" &&
+docker stop inpx-shelf && docker rm inpx-shelf &&
+docker run -d --name inpx-shelf --restart unless-stopped --network inpx-tts \
   -p 12380:12380 --env-file "$inpx_env_file" \
   -e INPX_ABS_ENABLED=true \
   -e INPX_TTS_ENABLED=true -e INPX_TTS_URL=http://silero:8000 \
   -e INPX_TTS_MODEL=v5_5_ru \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/Torrents:/library:ro \
-  aceasket/inpx-web-7z:1.7.9-rc.8 &&
+  vvorth/inpx-shelf:1.0.0-beta.1 &&
 rm -f "$inpx_env_file"
 ```
 
@@ -62,22 +62,22 @@ rm -f "$inpx_env_file"
 
 ### Обновление существующего Silero на стенде
 
-Для перехода с RC6 или более ранних версий обновите также работающий `silero`, сохранив его переменные и модель. Сеть и пути — из приведённого выше запуска стенда. После этой команды выполните блок замены `inpx-web` выше.
+Для перехода с RC6 или более ранних версий обновите также работающий `silero`, сохранив его переменные и модель. Сеть и пути — из приведённого выше запуска стенда. После этой команды выполните блок замены `inpx-shelf` выше.
 
 ```sh
 silero_env_file=$(mktemp) &&
-docker pull aceasket/inpx-web-7z:1.7.9-rc.8-silero &&
+docker pull vvorth/inpx-shelf:1.0.0-beta.1-silero &&
 docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' silero > "$silero_env_file" &&
 docker stop silero && docker rm silero &&
 docker run -d --name silero --restart unless-stopped --network inpx-tts \
   --cpus=4 --memory=4g --env-file "$silero_env_file" \
   -e SILERO_MODEL=v5_5_ru -e SILERO_THREADS=4 -e SILERO_STRESS_ENABLED=true \
   -v /mnt/user/appdata/inpx-silero:/models \
-  aceasket/inpx-web-7z:1.7.9-rc.8-silero &&
+  vvorth/inpx-shelf:1.0.0-beta.1-silero &&
 rm -f "$silero_env_file"
 ```
 
-При переходе с RC7 на RC8 для нового дизайна панели достаточно обновить основной контейнер `inpx-web`. Контейнер Silero из RC7 совместим; новый образ Silero опубликован под тегом RC8 для одинаковых версий в Compose.
+При переходе с RC7 на RC8 для нового дизайна панели достаточно обновить основной контейнер `inpx-shelf`. Контейнер Silero из RC7 совместим; новый образ Silero опубликован под тегом RC8 для одинаковых версий в Compose.
 
 ## Использование
 

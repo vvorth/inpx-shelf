@@ -123,7 +123,7 @@ function init(app, config, worker, security) {
         res.set('Cache-Control', 'no-store');
         const denied = authorizationError(req, config);
         const info = {
-            provider: 'inpx-web', version: config.version || '',
+            provider: 'inpx-shelf', version: config.version || '',
             description: 'Провайдер метаданных Audiobookshelf. Укажите этот базовый адрес в настройках custom provider; ABS сам добавляет /search.',
             search: `${root}/search`, cover: `${root}/cover`, authorizationRequired: true,
             configuration: {enabled: !!config.absEnabled, tokenConfigured: !!config.absToken},
@@ -141,7 +141,7 @@ function init(app, config, worker, security) {
             troubleshooting: {
                 400: 'Проверьте query и author: строки до 200 символов, хотя бы одна непустая.',
                 401: 'Передайте INPX_ABS_TOKEN в заголовке Authorization. В браузере заголовок обычно отсутствует.',
-                403: 'Проверьте общую авторизацию inpx-web и правила reverse proxy.',
+                403: 'Проверьте общую авторизацию inpx-shelf и правила reverse proxy.',
                 404: 'Включите провайдер: INPX_ABS_ENABLED=true.',
                 429: 'Дождитесь завершения активных поисков и повторите запрос.',
                 503: 'Проверьте INPX_ABS_TOKEN, готовность индекса и доступность библиотеки.',

@@ -1,7 +1,7 @@
 services:
-  inpx-web:
-    image: aceasket/inpx-web-7z:latest
-    container_name: inpx-web
+  inpx-shelf:
+    image: vvorth/inpx-shelf:1.0.0-beta.1
+    container_name: inpx-shelf
     restart: unless-stopped
     ports:
       - "12380:12380"
@@ -18,8 +18,8 @@ services:
       # Optional custom fb2cng YAML. Mount its whole directory read-only below.
       # INPX_FB2CNG_CONFIG: /config/fb2cng/config.yaml
     volumes:
-      - /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web
+      - /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web
       # Left side is a host path, right side is a path inside the container.
       # INPX=/library/... and LIBDIR=/library must point to this mounted path.
       - /mnt/user/books/my-library:/library:ro
-      # - /mnt/user/appdata/inpx-web-fb2cng:/config/fb2cng:ro
+      # - /mnt/user/appdata/inpx-shelf-fb2cng:/config/fb2cng:ro

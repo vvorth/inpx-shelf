@@ -18,7 +18,7 @@ class OpensearchPage extends BasePage {
 /*
 <?xml version="1.0" encoding="utf-8"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
-  <ShortName>inpx-web</ShortName>
+  <ShortName>inpx-shelf</ShortName>
   <Description>Поиск по каталогу</Description>
   <InputEncoding>UTF-8</InputEncoding>
   <OutputEncoding>UTF-8</OutputEncoding>
@@ -27,7 +27,7 @@ class OpensearchPage extends BasePage {
 */        
         xmlObject['OpenSearchDescription'] = {
             '*ATTRS': {xmlns: 'http://a9.com/-/spec/opensearch/1.1/'},
-            ShortName: 'inpx-web',
+            ShortName: 'inpx-shelf',
             Description: t('Поиск по каталогу'),
             InputEncoding: 'UTF-8',
             OutputEncoding: 'UTF-8',

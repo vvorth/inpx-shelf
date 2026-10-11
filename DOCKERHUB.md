@@ -1,8 +1,10 @@
-# inpx-web-7z
+# inpx-shelf
 
 Self-hosted web catalog and FB2 reader for large `.inpx`, `.zip`, `.7z` and `fLibrary` book collections.
 
-This image is built from the [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) fork and is aimed at Docker, Unraid, Proxmox LXC and home-server setups.
+This image is built from [`vvorth/inpx-shelf`](https://github.com/vvorth/inpx-shelf), a project grown out of [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) (itself a fork of [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web)). It is aimed at Docker, Unraid, Proxmox LXC and home-server setups.
+
+The data path inside the container is still `/usr/local/bin/.inpx-web`, so an existing inpx-web volume can be mounted as is.
 
 ## What Is Included
 
@@ -20,10 +22,8 @@ This image is built from the [`AceAsket/inpx-web`](https://github.com/AceAsket/i
 
 | Tag | Purpose |
 | --- | --- |
-| `latest` | Current stable full image with fb2cng, MuPDF, 7z, JXL and WebP tools. |
-| `1.7.2` | Pinned stable release. Recommended for reproducible deployments. |
-| `lite` | Smaller image without book conversion tools. Catalog, reader, OPDS, covers and 7z support remain available. |
-| `1.7.2-lite` | Pinned lite release. |
+| `1.0.0-beta.1` | Full image with fb2cng, MuPDF, 7z, JXL and WebP tools. Each release is published under its version. |
+| `1.0.0-beta.1-silero` | Optional Silero text-to-speech service for the reader, see `docker-compose.silero.yml`. |
 
 The default image does not include Calibre. Calibre is available only when building the `runtime-calibre` target from the repository Dockerfile.
 
@@ -33,7 +33,7 @@ Single library source:
 
 ```sh
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e DATA_DIR=/usr/local/bin/.inpx-web \
@@ -41,9 +41,9 @@ docker run -d \
   -e LIBDIR=/library \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
   -e INPX_COVER_CACHE_SIZE_MB=512 \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  aceasket/inpx-web-7z:latest
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 Open:
@@ -60,7 +60,7 @@ Use `INPX_LIBRARY_SOURCES` when several libraries are mounted at once:
 
 ```sh
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e DATA_DIR=/usr/local/bin/.inpx-web \
@@ -71,9 +71,9 @@ docker run -d \
     {"id":"flibusta-rus-ec","name":"Flibusta lib.rus.ec","inpx":"/library/fb2.flibusta.lib.rus.ec.7z/fb2.flibusta.lib.rus.ec.7z.inpx","libDir":"/library/fb2.flibusta.lib.rus.ec.7z"},
     {"id":"flibusta-net","name":"Fb2.Flibusta.Net","inpx":"/library/fb2.Flibusta.Net/flibusta_fb2_local.inpx","libDir":"/library/fb2.Flibusta.Net"}
   ]' \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/Torrents:/library:ro \
-  aceasket/inpx-web-7z:latest
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 For one source in JSON, do not leave a trailing comma before `]`.
@@ -82,9 +82,9 @@ For one source in JSON, do not leave a trailing comma before `]`.
 
 ```yaml
 services:
-  inpx-web:
-    image: aceasket/inpx-web-7z:latest
-    container_name: inpx-web
+  inpx-shelf:
+    image: vvorth/inpx-shelf:1.0.0-beta.1
+    container_name: inpx-shelf
     restart: unless-stopped
     ports:
       - "12380:12380"
@@ -95,7 +95,7 @@ services:
       CACHE_DIR: /usr/local/bin/.inpx-web/cache
       INPX_COVER_CACHE_SIZE_MB: "512"
     volumes:
-      - /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web
+      - /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web
       - /mnt/user/books/my-library:/library:ro
 ```
 
@@ -158,7 +158,7 @@ Example:
 
 ```sh
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e DATA_DIR=/usr/local/bin/.inpx-web \
@@ -166,9 +166,9 @@ docker run -d \
   -e LIBDIR=/library \
   -e INPX_METRICS_ENABLED=true \
   -e INPX_METRICS_PATH=/metrics \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  aceasket/inpx-web-7z:latest
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 ## Reverse Proxy Auth
@@ -208,24 +208,25 @@ Telegram and SMTP can be configured either from the admin UI or through environm
 
 ## Lite Image
 
-Use `aceasket/inpx-web-7z:lite` or a pinned lite tag when conversion is not needed:
+When conversion is not needed, build the `runtime-lite` target from the repository Dockerfile:
 
 ```sh
+docker build --target runtime-lite -t inpx-shelf:lite .
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e INPX=/library/my-library.inpx \
   -e LIBDIR=/library \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  aceasket/inpx-web-7z:lite
+  inpx-shelf:lite
 ```
 
 Lite keeps catalog, reader, profiles, OPDS, 7z support and cover extraction, but disables conversion formats.
 
 ## Links
 
-- GitHub: <https://github.com/AceAsket/inpx-web>
-- Releases: <https://github.com/AceAsket/inpx-web/releases>
-- Issues: <https://github.com/AceAsket/inpx-web/issues>
+- GitHub: <https://github.com/vvorth/inpx-shelf>
+- Releases: <https://github.com/vvorth/inpx-shelf/releases>
+- Issues: <https://github.com/vvorth/inpx-shelf/issues>

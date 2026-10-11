@@ -1,15 +1,17 @@
-inpx-web-7z
-===========
+inpx-shelf
+==========
 
-Ветка `develop` содержит **1.7.9-rc.8**: [предварительный релиз](https://github.com/AceAsket/inpx-web/releases/tag/v1.7.9-rc.8), [история изменений](./CHANGELOG.md). Стабильная версия — [1.7.8](https://github.com/AceAsket/inpx-web/releases/tag/v1.7.8). Основные Docker-примеры используют стабильный образ; примеры сборки из исходников — тег `v1.7.9-rc.8`.
+Текущая версия — **1.0.0-beta.1**, [история изменений](./CHANGELOG.md). Версии inpx-shelf нумеруются заново с 1.0.0 по SemVer: мажорная версия меняется, только если обновление требует действий от пользователя (конфиг, данные, OPDS, Kobo, переменные окружения).
 
 <a id="ключевые-отличия" />
 
-## Что это за форк
+## Что это за проект
 
-Форк [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web) для self-hosted библиотек с упором на большие `.7z` / `.zip` / `fLibrary` коллекции, Docker-развёртывание и обновлённую встроенную FB2-читалку. README ниже в первую очередь описывает сценарий `Docker / сервер`, но также покрывает standalone-бинарники и запуск из исходников через Node.js.
+inpx-shelf — веб-каталог для self-hosted INPX-библиотек (Флибуста, Либрусек и др.). Проект вырос из [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) 1.7.9-rc.8, форка [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web), и развивается отдельно: новый интерфейс каталога, персональные полки, синхронизация с Kobo. История изменений inpx-web до разделения — в [docs/CHANGELOG-inpx-web.md](./docs/CHANGELOG-inpx-web.md).
 
-Ключевое в этом форке:
+Каталог рассчитан на self-hosted библиотеки с упором на большие `.7z` / `.zip` / `fLibrary` коллекции, Docker-развёртывание и обновлённую встроенную FB2-читалку. README ниже в первую очередь описывает сценарий `Docker / сервер`, но также покрывает standalone-бинарники и запуск из исходников через Node.js.
+
+Ключевое в inpx-shelf:
 
 * запуск в Docker и Proxmox LXC, работа с большими `.7z` / `.zip` / `fLibrary` коллекциями и конвертацией через fb2cng, MuPDF и опционально Calibre
 * персональные подборки на главной (`Продолжить чтение`, `Из ваших списков`, `Незаконченные серии`, `Похоже на то, что вы читали`) с действиями `Обновить`, `Неинтересно`, `Вернуть` и вкладка внешнего источника
@@ -32,7 +34,7 @@ inpx-web-7z
 
 ## Быстрая навигация
 
-* [Что это за форк](#ключевые-отличия)
+* [Что это за проект](#ключевые-отличия)
 * [Какой сценарий выбрать](#какой-сценарий-выбрать)
 * [Сборка Docker-контейнера](#сборка-docker-контейнера)
 * [Быстрый старт через docker run](#быстрый-старт-через-docker-run)
@@ -62,7 +64,9 @@ inpx-web-7z
 
 ## Сборка Docker-контейнера
 
-Для этого форка основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/aceasket/inpx-web-7z). Тег `aceasket/inpx-web-7z:1.7.8` фиксирует текущий стабильный релиз; `latest` обновляется при выпуске следующей стабильной версии. Опубликованный образ 1.7.8 рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
+Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий, например `vvorth/inpx-shelf:1.0.0-beta.1`. Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
+
+Образ можно запустить на данных inpx-web: путь данных в контейнере остался `/usr/local/bin/.inpx-web`, поэтому существующий volume подключается без изменений.
 
 Готовые YAML-примеры:
 
@@ -75,32 +79,32 @@ inpx-web-7z
 Для самостоятельной сборки сначала получите исходники релиза:
 
 ```sh
-git clone --branch v1.7.9-rc.8 --single-branch https://github.com/AceAsket/inpx-web.git
-cd inpx-web
+git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-shelf.git
+cd inpx-shelf
 ```
 
 Собрать основной образ с конвертацией через fb2cng и MuPDF можно так:
 
 ```sh
-docker build -t inpx-web-7z:latest .
+docker build -t inpx-shelf:latest .
 ```
 
 Полный образ с Calibre fallback для максимальной совместимости можно собрать отдельно:
 
 ```sh
-docker build --target runtime-calibre -t inpx-web-7z:calibre .
+docker build --target runtime-calibre -t inpx-shelf:calibre .
 ```
 
 Облегчённый вариант без конвертации в `epub` / `epub3` / `kepub` / `kfx` / `azw8` / `pdf`:
 
 ```sh
-docker build --target runtime-lite -t inpx-web-7z:lite .
+docker build --target runtime-lite -t inpx-shelf:lite .
 ```
 
 Если нужно пересобрать все слои заново без кэша:
 
 ```sh
-docker build --no-cache -t inpx-web-7z:latest .
+docker build --no-cache -t inpx-shelf:latest .
 ```
 
 Важно:
@@ -125,13 +129,13 @@ docker compose up -d
 
 ```sh
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   -p 12380:12380 \
   -e INPX_FB2CNG_CONFIG=/config/fb2cng/config.yaml \
   -v /path/on/host/fb2cng:/config/fb2cng:ro \
   -v /path/on/host/library:/library:ro \
   -v /path/on/host/data:/usr/local/bin/.inpx-web \
-  aceasket/inpx-web-7z:1.7.8
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 При первом обращении к конвертации приложение проверяет, что файл существует, читается и принимается командой `fbc --config PATH dumpconfig`. Ошибочный путь или YAML возвращает явную ошибку вместо незаметного запуска с настройками по умолчанию. Кэш учитывает логический формат (`epub` и `epub3` раздельно), содержимое и расположение YAML, версию встроенного fb2cng и настроенные пути конвертеров.
@@ -154,10 +158,10 @@ docker run -d \
 Для обновления сначала скачайте новый образ, затем пересоздайте контейнер. Повторите свою исходную команду `docker run`, заменив только тег образа: сохраните все переменные окружения, порты и тома, включая `INPX_LIBRARY_SOURCES`, настройки авторизации и отправки книг. Ниже пример для одной библиотеки; замените пути на свои. Команды соединены через `&&`, чтобы не удалять работающий контейнер при ошибке скачивания образа.
 
 ```sh
-docker pull aceasket/inpx-web-7z:1.7.8 &&
-docker rm -f inpx-web &&
+docker pull vvorth/inpx-shelf:1.0.0-beta.1 &&
+docker rm -f inpx-shelf &&
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e INPX=/library/my-library.inpx \
@@ -165,9 +169,9 @@ docker run -d \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
   -e INPX_BOOK_CACHE_SIZE_MB=2048 \
   -e INPX_COVER_CACHE_SIZE_MB=512 \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  aceasket/inpx-web-7z:1.7.8
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 При локальной сборке используйте имя своего образа. Если сервис запущен через Compose, сохраните настройки в YAML, укажите нужный тег в `image` и выполните `docker compose pull && docker compose up -d`.
@@ -178,7 +182,7 @@ docker run -d \
 
 ```sh
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e INPX=/library/my-library.inpx \
@@ -186,9 +190,9 @@ docker run -d \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
   -e INPX_BOOK_CACHE_SIZE_MB=2048 \
   -e INPX_COVER_CACHE_SIZE_MB=512 \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  aceasket/inpx-web-7z:1.7.8
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 Важно:
@@ -203,11 +207,11 @@ docker run -d \
 
 ## Авторизация и мониторинг
 
-Этот раздел нужен для публикации сервиса через SWAG/nginx, Authelia/Authentik, CrowdSec и Prometheus. Базовая рекомендация: не открывайте `inpx-web` напрямую в интернет, а держите его за reverse proxy с HTTPS и внешней авторизацией.
+Этот раздел нужен для публикации сервиса через SWAG/nginx, Authelia/Authentik, CrowdSec и Prometheus. Базовая рекомендация: не открывайте `inpx-shelf` напрямую в интернет, а держите его за reverse proxy с HTTPS и внешней авторизацией.
 
 ### Авторизация за reverse proxy
 
-Если сервис публикуется через SWAG, Authelia/Authentik и CrowdSec, не открывайте порт `12380` напрямую в интернет. Лучше держать `inpx-web` во внутренней Docker-сети или публиковать порт только на localhost:
+Если сервис публикуется через SWAG, Authelia/Authentik и CrowdSec, не открывайте порт `12380` напрямую в интернет. Лучше держать `inpx-shelf` во внутренней Docker-сети или публиковать порт только на localhost:
 
 ```sh
 -p 127.0.0.1:12380:12380
@@ -440,7 +444,7 @@ OPDS-клиенты и скачивание книг поддерживают Ba
 
 ```sh
 docker run -d \
-  --name=inpx-web \
+  --name=inpx-shelf \
   --restart unless-stopped \
   -p 12380:12380 \
   -e INPX=/library/my-library.inpx \
@@ -456,9 +460,9 @@ docker run -d \
   -e SMTP_USER=user@example.com \
   -e SMTP_PASS=<smtp_password> \
   -e EMAIL_FROM=user@example.com \
-  -v /mnt/user/appdata/inpx-web:/usr/local/bin/.inpx-web \
+  -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  aceasket/inpx-web-7z:1.7.8
+  vvorth/inpx-shelf:1.0.0-beta.1
 ```
 
 Переменные для Telegram:
@@ -605,20 +609,20 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 
 ## Синхронизация с Kobo
 
-Электронная книга Kobo может синхронизироваться с inpx-web вместо магазина Kobo — по Wi-Fi, без USB и ручного копирования. На устройство попадают только книги из выбранных списков чтения: книга в списке — книга на Kobo.
+Электронная книга Kobo может синхронизироваться с inpx-shelf вместо магазина Kobo — по Wi-Fi, без USB и ручного копирования. На устройство попадают только книги из выбранных списков чтения: книга в списке — книга на Kobo.
 
 * FB2 конвертируется в KEPUB через fb2cng, EPUB отдаётся как есть; остальные форматы пропускаются. Книга появляется на Kobo только после того, как файл готов, поэтому первая синхронизация большого списка может занять несколько заходов. Конвертация начинается в фоне сразу, когда книгу добавляют в привязанный к устройству список или привязывают список к устройству, так что к следующей синхронизации файл обычно уже готов
 * конвертация общая с кнопками форматов в веб-интерфейсе: тот же конфиг `INPX_FB2CNG_CONFIG` и тот же кэш. После изменения конфига или версии fb2cng, отключения KEPUB или пересоздания файла после очистки кэша книга заново объявляется на Kobo с новым размером при следующей синхронизации
 * обложки отдаются на Kobo в формате JPEG и уменьшенными до размера, который запрашивает устройство; уменьшенные копии хранятся в кэше обложек и подчиняются его лимиту
-* Kobo показывает авторов из данных синхронизации, а не из самого файла, поэтому inpx-web берёт их из сконвертированного файла: порядок имени задаётся шаблоном `creator_name_template` в конфиге fb2cng, так же как в файле, скачанном через веб-интерфейс. Если в файле авторов нет, используются данные INPX («Фамилия Имя Отчество»). Книги, уже отправленные на Kobo, получают имена из файла при следующей синхронизации, без повторного скачивания
+* Kobo показывает авторов из данных синхронизации, а не из самого файла, поэтому inpx-shelf берёт их из сконвертированного файла: порядок имени задаётся шаблоном `creator_name_template` в конфиге fb2cng, так же как в файле, скачанном через веб-интерфейс. Если в файле авторов нет, используются данные INPX («Фамилия Имя Отчество»). Книги, уже отправленные на Kobo, получают имена из файла при следующей синхронизации, без повторного скачивания
 * правка названия, автора или серии книги администратором передаётся на Kobo при следующей синхронизации, без повторного скачивания; автор, исправленный администратором, важнее автора из файла
-* к одному устройству можно привязать несколько списков; каждый список появляется на Kobo как коллекция. Коллекции привязанных списков на Kobo только для чтения: списки в inpx-web с устройства не меняются. Если на Kobo переименовать или удалить такую коллекцию, при следующей синхронизации она вернётся в виде списка. Книга, убранная из коллекции на Kobo, остаётся на устройстве и больше не возвращается в эту коллекцию, пока её не уберут из списка в inpx-web и не добавят снова (или пока её не вернут в коллекцию на самом Kobo). Коллекции, созданные на Kobo, остаются только на устройстве
-* книга, дочитанная на Kobo, отмечается прочитанной в inpx-web; отметка «прочитано» в веб-интерфейсе передаётся на Kobo
+* к одному устройству можно привязать несколько списков; каждый список появляется на Kobo как коллекция. Коллекции привязанных списков на Kobo только для чтения: списки в inpx-shelf с устройства не меняются. Если на Kobo переименовать или удалить такую коллекцию, при следующей синхронизации она вернётся в виде списка. Книга, убранная из коллекции на Kobo, остаётся на устройстве и больше не возвращается в эту коллекцию, пока её не уберут из списка в inpx-shelf и не добавят снова (или пока её не вернут в коллекцию на самом Kobo). Коллекции, созданные на Kobo, остаются только на устройстве
+* книга, дочитанная на Kobo, отмечается прочитанной в inpx-shelf; отметка «прочитано» в веб-интерфейсе передаётся на Kobo
 * процент прочитанного на Kobo попадает в «Продолжить чтение» веб-читалки, если он новее позиции в веб-читалке. Точная страница при этом не переносится: читалка откроет книгу на том же проценте. Обратно, из веб-читалки на Kobo, процент не передаётся
 * книга, убранная из всех привязанных списков, удаляется с Kobo при следующей синхронизации. Опция устройства «Оставлять книги на устройстве после удаления из списка» отключает удаление
 * если после обновления INPX у книги в списке сменился идентификатор, синхронизация находит её по `libid` и обновляет запись в списке вместе с прогрессом и закладками; Kobo при этом ничего не скачивает заново. Пока книга не найдена (например, во время переиндексации), она не удаляется с устройства
 * книга, удалённая на самом Kobo, больше не отправляется на это устройство, пока её не уберут из списка и не добавят снова. Отметку «прочитано» и прогресс чтения удаление не меняет. С опцией устройства «Возвращать книги, удалённые на устройстве» такая книга загружается снова при следующей синхронизации вместе с сохранённым прогрессом
-* опция устройства «Подключать магазин Kobo» пропускает вход, покупки магазина и их прогресс на серверы Kobo. По умолчанию выключена: устройство общается только с inpx-web
+* опция устройства «Подключать магазин Kobo» пропускает вход, покупки магазина и их прогресс на серверы Kobo. По умолчанию выключена: устройство общается только с inpx-shelf
 
 Включение (по умолчанию выключено):
 
@@ -630,7 +634,7 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 | Переменная окружения | Назначение | По умолчанию |
 | --- | --- | --- |
 | `INPX_KOBO_ENABLED` | Включить синхронизацию с Kobo | `false` |
-| `INPX_KOBO_PUBLIC_URL` | Адрес inpx-web, по которому Kobo достаёт до сервера, включая префикс пути при наличии | из HTTP-запроса; proxy-заголовки учитываются только от доверенного proxy |
+| `INPX_KOBO_PUBLIC_URL` | Адрес inpx-shelf, по которому Kobo достаёт до сервера, включая префикс пути при наличии | из HTTP-запроса; proxy-заголовки учитываются только от доверенного proxy |
 
 Подключение устройства:
 
@@ -648,7 +652,7 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 
 Начиная с **1.7.9-rc.1**, сервер поддерживает нативный [Custom metadata provider Audiobookshelf](https://audiobookshelf.org/docs/documentation/community/community-providers/). Он позволяет подбирать метаданные для аудиокниги по электронным книгам в INPX-библиотеке, включая самостоятельно озвученные книги.
 
-Провайдер выключен по умолчанию. Для проверки используйте образ `aceasket/inpx-web-7z:1.7.9-rc.8` и добавьте к своей команде запуска:
+Провайдер выключен по умолчанию. Для проверки используйте образ `vvorth/inpx-shelf:1.0.0-beta.1` и добавьте к своей команде запуска:
 
 ```sh
 -e INPX_ABS_ENABLED=true \
@@ -661,10 +665,10 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 | --- | --- | --- |
 | `INPX_ABS_ENABLED` | Включить провайдер | `false` |
 | `INPX_ABS_TOKEN` | Токен для поля Authorization в ABS | пусто |
-| `INPX_ABS_PUBLIC_URL` | Адрес inpx-web, доступный серверу ABS, включая префикс пути при наличии | из HTTP-запроса; proxy-заголовки учитываются только от доверенного proxy |
+| `INPX_ABS_PUBLIC_URL` | Адрес inpx-shelf, доступный серверу ABS, включая префикс пути при наличии | из HTTP-запроса; proxy-заголовки учитываются только от доверенного proxy |
 | `INPX_ABS_MAX_RESULTS` | Число совпадений; допустимо от 1 до 20 | `10` |
 
-В Audiobookshelf откройте `Settings` → `Item Metadata Tools`, добавьте custom provider с адресом `http://<ваш_хост>:12380/api/audiobookshelf` и укажите тот же токен в поле Authorization. ABS обращается к `/search?query=...&author=...`; если inpx-web опубликован под `/inpx`, адрес провайдера будет `https://<ваш_хост>/inpx/api/audiobookshelf`.
+В Audiobookshelf откройте `Settings` → `Item Metadata Tools`, добавьте custom provider с адресом `http://<ваш_хост>:12380/api/audiobookshelf` и укажите тот же токен в поле Authorization. ABS обращается к `/search?query=...&author=...`; если inpx-shelf опубликован под `/inpx`, адрес провайдера будет `https://<ваш_хост>/inpx/api/audiobookshelf`.
 
 Ответ имеет формат `{"matches": [...]}` и содержит название, автора, обложку, жанры, язык, серию и её номер. Аннотация, издательство, год и ISBN добавляются при наличии в FB2/EPUB. Рассказчик и длительность аудио не заполняются, поскольку электронная библиотека этих данных не содержит. Можно искать только по автору, передав пустой `query`.
 
@@ -674,7 +678,7 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 
 В **1.7.9-rc.2** исправлено ожидание медленных архивов: дополнительные поля собираются не дольше 3 секунд, после чего найденные книги возвращаются с доступными данными. Завершённые фоновые чтения пополняют кэш для следующих запросов. Поиск в индексе ограничен 8 секундами, чтобы укладываться в 10-секундный таймаут ABS. Переполнение очереди дополнительных метаданных не скрывает найденные книги.
 
-Начиная с **1.7.9-rc.2**, базовый адрес `/api/audiobookshelf` отвечает JSON со справкой: включён ли провайдер, задан ли токен, какие параметры принимает поиск, пример curl и подсказки по HTTP-ошибкам. Без заголовка Authorization ответ имеет статус 401 и поясняет, как передать токен; сам токен в ответ не попадает. С верным токеном дополнительно выводятся счётчики активных поисков, чтений архивов, очереди и кэша. Общая авторизация inpx-web и reverse proxy продолжает действовать. В RC1 на базовом адресе выводится `Cannot GET`; поиск проверяется по `/search`.
+Начиная с **1.7.9-rc.2**, базовый адрес `/api/audiobookshelf` отвечает JSON со справкой: включён ли провайдер, задан ли токен, какие параметры принимает поиск, пример curl и подсказки по HTTP-ошибкам. Без заголовка Authorization ответ имеет статус 401 и поясняет, как передать токен; сам токен в ответ не попадает. С верным токеном дополнительно выводятся счётчики активных поисков, чтений архивов, очереди и кэша. Общая авторизация inpx-shelf и reverse proxy продолжает действовать. В RC1 на базовом адресе выводится `Cannot GET`; поиск проверяется по `/search`.
 
 Пример прямой проверки поиска:
 
@@ -801,9 +805,9 @@ http://127.0.0.1:12380/#/reader-lab?sample=night-watch.fb2&debugReader=1&debugRe
 
 Что важно для standalone-запуска:
 
-* рабочие данные приложения хранятся в каталоге `.inpx-web`
+* рабочие данные приложения хранятся в каталоге `.inpx-shelf`; если рядом с программой уже есть каталог `.inpx-shelf` от inpx-shelf, а `.inpx-shelf` нет, используется он
 * по умолчанию standalone пытается создать этот каталог рядом с исполняемым файлом
-* для Windows, если рядом с `.exe` запись недоступна, приложение автоматически переключается на `%LOCALAPPDATA%\\inpx-web`
+* для Windows, если рядом с `.exe` запись недоступна, приложение автоматически переключается на `%LOCALAPPDATA%\\inpx-shelf`
 * standalone-архивы включают `fbc` из fb2cng для конвертации `fb2` в `epub`, `epub3`, `kepub`, `kfx` и `azw8`; Windows-архив также включает утилиты для обложек (`7za`, `djxl`, `dwebp`)
 * если библиотека лежит на сетевом или внешнем диске, а запись туда ограничена, лучше сразу указать `--data-dir`
 
@@ -823,15 +827,15 @@ http://127.0.0.1:12380/#/reader-lab?sample=night-watch.fb2&debugReader=1&debugRe
 Сборка на машине с архитектурой целевой платформы предпочтительна; CI использует отдельный ARM64 runner. Для кросс-сборки linux-arm64 на x64 потребуется [QEMU](https://wiki.debian.org/QemuUserEmulation). Linux-бинарники используют glibc; для Alpine используйте Docker-образ на Debian.
 
 ```sh
-git clone --branch v1.7.9-rc.8 --single-branch https://github.com/AceAsket/inpx-web.git
-cd inpx-web
+git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-shelf.git
+cd inpx-shelf
 npm ci
 npm run release:linux
 ```
 
 Это пример сборки Linux x64; для упаковки архива нужна утилита `zip`. Для Linux ARM64 используйте `npm run build:linux-arm64 && node build/release.js linux-arm64`, для Windows — `npm run release:win`, для macOS Intel — `npm run release:macos`. Команда `npm run release` собирает все четыре платформы. Результат сборки будет доступен в каталоге `dist/release`.
 
-Для Windows дополнительно можно собрать полноценный установщик `.exe`. Он устанавливает приложение в профиль пользователя, добавляет ярлыки в меню «Пуск», опциональный ярлык на рабочий стол, отдельный ярлык `Open web interface` на `http://127.0.0.1:12380` и стандартный uninstaller. Инсталлятор не регистрирует Windows-службу: `inpx-web` запускается как обычный локальный сервер. Ярлыки запускают приложение с рабочими данными в `%LOCALAPPDATA%\inpx-web`.
+Для Windows дополнительно можно собрать полноценный установщик `.exe`. Он устанавливает приложение в профиль пользователя, добавляет ярлыки в меню «Пуск», опциональный ярлык на рабочий стол, отдельный ярлык `Open web interface` на `http://127.0.0.1:12380` и стандартный uninstaller. Инсталлятор не регистрирует Windows-службу: `inpx-shelf` запускается как обычный локальный сервер. Ярлыки запускают приложение с рабочими данными в `%LOCALAPPDATA%\inpx-shelf`.
 
 Требуется Inno Setup 6: `ISCC.exe` должен быть доступен в `PATH`, либо путь к нему можно задать через `INNO_SETUP_COMPILER`.
 
@@ -841,7 +845,7 @@ npm run build:win-tools
 npm run build:win-installer
 ```
 
-Готовый файл будет создан как `dist\release\inpx-web-<version>-win-setup.exe`.
+Готовый файл будет создан как `dist\release\inpx-shelf-<version>-win-setup.exe`.
 
 <a id="native_run" />
 
@@ -859,19 +863,19 @@ npm run build:win-installer
 Примеры для готового Windows-бинарника:
 
 ```bat
-inpx-web.exe
+inpx-shelf.exe
 ```
 
 Если `.inpx` и библиотека лежат не рядом с `.exe`:
 
 ```bat
-inpx-web.exe --lib-dir="Z:\Books" --inpx="Z:\Books\library.inpx"
+inpx-shelf.exe --lib-dir="Z:\Books" --inpx="Z:\Books\library.inpx"
 ```
 
 Если библиотека находится на сетевом/внешнем диске и вы не хотите хранить рабочие данные рядом с ней:
 
 ```bat
-inpx-web.exe --data-dir="%LOCALAPPDATA%\inpx-web" --lib-dir="Z:\Books" --inpx="Z:\Books\library.inpx"
+inpx-shelf.exe --data-dir="%LOCALAPPDATA%\inpx-shelf" --lib-dir="Z:\Books" --inpx="Z:\Books\library.inpx"
 ```
 
 Ниже пример для Ubuntu с Node.js 24 из [репозитория NodeSource](https://github.com/nodesource/distributions/blob/master/DEV_README.md). Для других Linux-систем установите Node.js 24 или новее подходящим для системы способом.
@@ -886,8 +890,8 @@ sudo apt install -y nodejs
 node --version
 
 # подготовка
-git clone --branch v1.7.9-rc.8 --single-branch https://github.com/AceAsket/inpx-web.git
-cd inpx-web
+git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-shelf.git
+cd inpx-shelf
 npm ci
 npm run build:client
 node build/prepkg.js linux
@@ -895,8 +899,8 @@ node build/prepkg.js linux
 # удалим файл development-среды, чтобы запускался в production-режиме
 rm -f ./server/config/application_env
 
-# запуск inpx-web, тут же будет создан каталог .inpx-web
-node server --data-dir=.inpx-web --lib-dir=/path/to/library --inpx=/path/to/library/library.inpx
+# запуск inpx-shelf, тут же будет создан каталог .inpx-shelf
+node server --data-dir=.inpx-shelf --lib-dir=/path/to/library --inpx=/path/to/library/library.inpx
 ```
 
 Замените `/path/to/library` на свой каталог. Для конвертации при запуске из исходников нужны установленные fb2cng (`fbc`) и MuPDF (`mutool`); для JPEG XL/WebP — `djxl` и `dwebp`. Готовый основной Docker-образ включает эти инструменты.
@@ -904,16 +908,16 @@ node server --data-dir=.inpx-web --lib-dir=/path/to/library --inpx=/path/to/libr
 <a id="cli" />
 
 ### Параметры командной строки
-Запустите `inpx-web --help`, чтобы увидеть список опций:
+Запустите `inpx-shelf --help`, чтобы увидеть список опций:
 ```console
-Usage: inpx-web [options]
+Usage: inpx-shelf [options]
 
 Options:
   --help               Показать опции командной строки
   --host=<ip>          Задать имя хоста для веб сервера, по умолчанию: 0.0.0.0
   --port=<port>        Задать порт для веб сервера, по умолчанию: 12380
   --config=<filepath>  Задать файл конфигурации, по умолчанию: <dataDir>/config.json
-  --data-dir=<dirpath> (или --app-dir) Задать рабочую директорию, по умолчанию: <execDir>/.inpx-web
+  --data-dir=<dirpath> (или --app-dir) Задать рабочую директорию, по умолчанию: <execDir>/.inpx-shelf
   --lib-dir=<dirpath>  Задать директорию библиотеки (с zip- или 7z-архивами), по умолчанию: там же, где лежит файл приложения
   --inpx=<filepath>    Задать путь к файлу .inpx, по умолчанию: тот, что найдется в директории библиотеки
   --library-sources=<json> Задать несколько INPX-источников, JSON-массив или строка "name|inpx|libDir;..."
@@ -932,14 +936,14 @@ Options:
 ```js
 {
     // рабочая директория приложения, аналог параметра командной строки --data-dir (или --app-dir)
-    // пустая строка: использовать значение по умолчанию - <execDir>/.inpx-web
+    // пустая строка: использовать значение по умолчанию - <execDir>/.inpx-shelf
     // где execDir - директория файла приложения
     "dataDir": "",
 
     // директория для хранения временных файлов
     // пустая строка: использовать значение по умолчанию - <dataDir>/tmp
     // специальное значение "${OS}" указывается для использования системного каталога:
-    // "${OS}" => "<os_temporary_dir>/inpx-web"
+    // "${OS}" => "<os_temporary_dir>/inpx-shelf"
     "tempDir": "",
 
     // директория для хранения логов
@@ -1102,9 +1106,9 @@ Options:
     "remoteLib": false,
 
     // настройки веб-сервера
-    // парамертр root указывает путь для кореневой страницы inpx-web
+    // парамертр root указывает путь для кореневой страницы inpx-shelf
     // например для "root": "/library", веб-интерфейс будет доступен по адресу http://127.0.0.1:12380/library
-    // root необходим при настройке reverse-proxy и встраивании inpx-web в уже существующий сервер
+    // root необходим при настройке reverse-proxy и встраивании inpx-shelf в уже существующий сервер
     "server": {
         "host": "0.0.0.0",
         "port": "12380",
@@ -1125,11 +1129,11 @@ Options:
     },
 
     // страница для скачивания свежего релиза
-    "latestReleaseLink": "https://github.com/AceAsket/inpx-web/releases/latest",
+    "latestReleaseLink": "https://github.com/vvorth/inpx-shelf/releases/latest",
 
     // api для проверки новой версии, 
     // пустая строка - отключить проверку выхода новых версий
-    "checkReleaseLink": "https://api.github.com/repos/AceAsket/inpx-web/releases/latest",
+    "checkReleaseLink": "https://api.github.com/repos/vvorth/inpx-shelf/releases/latest",
 
     // канал обновлений: auto, stable или rc
     "updateChannel": "auto",
@@ -1331,8 +1335,8 @@ sudo service nginx reload
 Для разработки получите ветку `develop` и установите зависимости под Node.js 24 или новее:
 
 ```sh
-git clone --branch develop --single-branch https://github.com/AceAsket/inpx-web.git
-cd inpx-web
+git clone --branch develop --single-branch https://github.com/vvorth/inpx-shelf.git
+cd inpx-shelf
 npm ci
 npm run dev
 ```
@@ -1365,7 +1369,7 @@ npm run dev
 
 - `npm run build:client` - быстрая проверка клиентской сборки после UI-правок.
 - `npm run test:release` - проверки перед релизом: авторизация, бэкапы, конвертация, EPUB, дополнительные материалы библиотеки, кэш, каталог и читалка.
-- `node server --data-dir=.inpx-web --lib-dir=/path/to/library --inpx=/path/to/file.inpx` - локальный запуск сервера без Docker.
+- `node server --data-dir=.inpx-shelf --lib-dir=/path/to/library --inpx=/path/to/file.inpx` - локальный запуск сервера без Docker.
 - `/#/reader` - отдельный старт читалки и PWA-режим INPX Reader.
 - `/#/reader-lab` - отладочный экран читалки.
 - `/health`, `/ready`, `/api/index-status` - проверки состояния контейнера и индекса.
@@ -1408,7 +1412,7 @@ sudo ./scripts/proxmox-lxc-install.sh \
 * устанавливает Docker Engine и Docker Compose plugin внутри Debian/Ubuntu LXC
 * копирует текущий репозиторий в рабочий каталог контейнера
 * создаёт `docker-compose.proxmox.yml` с постоянным каталогом данных, кэшем обложек и, при необходимости, несколькими источниками через `INPX_LIBRARY_SOURCES`
-* собирает образ проекта и поднимает `inpx-web`
+* собирает образ проекта и поднимает `inpx-shelf`
 
 Перед запуском включите для LXC поддержку Docker:
 
@@ -1420,8 +1424,8 @@ pct set <CTID> -features nesting=1,keyctl=1
 
 Основные опции скрипта:
 
-* `--app-root` — каталог, в который будет скопирован проект; по умолчанию `/opt/inpx-web`
-* `--data-dir` — постоянный каталог данных; по умолчанию `/opt/inpx-web-data`
+* `--app-root` — каталог, в который будет скопирован проект; по умолчанию `/opt/inpx-shelf`
+* `--data-dir` — постоянный каталог данных; по умолчанию `/opt/inpx-shelf-data`
 * `--port` — внешний HTTP-порт; по умолчанию `12380`
 * `--source 'id|Название|/путь/к/библиотеке|file.inpx'` — добавить источник; можно указать несколько раз
 * `--cover-cache-size-mb` — лимит кэша обложек; по умолчанию `512`
@@ -1442,5 +1446,5 @@ pct set <CTID> -features nesting=1,keyctl=1
 
 ### Обратная связь
 
-По вопросам этого форка используйте Issues в репозитории:
-https://github.com/AceAsket/inpx-web/issues
+По вопросам inpx-shelf используйте Issues в репозитории:
+https://github.com/vvorth/inpx-shelf/issues

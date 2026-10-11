@@ -4,7 +4,7 @@ set -e
 if [ "$#" -gt 0 ]; then
     case "$1" in
         -*)
-            exec inpx-web "$@"
+            exec inpx-shelf "$@"
             ;;
         *)
             exec "$@"
@@ -23,7 +23,7 @@ INPX_VALUE="${INPX:-}"
 HOST_VALUE="${HOST:-0.0.0.0}"
 PORT_VALUE="${PORT:-12380}"
 
-set -- inpx-web \
+set -- inpx-shelf \
     "--host=$HOST_VALUE" \
     "--port=$PORT_VALUE" \
     "--data-dir=$DATA_DIR_VALUE" \
