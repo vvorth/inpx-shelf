@@ -84,6 +84,10 @@ async function testRegExpSearchRefusesBacktrackingPatterns() {
             for (const title of ['~.*.*hope', '~(.*.*)*q', '~(a|a)+q', '~(k)\\1'])
                 assert.throws(() => index.findBooks({title}), /слишком сложное/, title);
             assert.throws(() => index.findBooks({author: 'huh', title: '~.{0,99}.{0,99}q'}), /слишком сложное/);
+            // optional characters before a fixed run backtrack exponentially (1 s per title at 20)
+            assert.throws(() => index.findBooks({title: `~^${'.?'.repeat(20)}.{20}\\x00`}), /слишком сложное/);
+            assert.deepStrictEqual(index.findBooks({title: '~^(?:keeping) my hopes?$'}).ids, [1], 'One "?" and a group prefix stay allowed');
+            assert.deepStrictEqual(index.findBooks({title: '~^keeping.*?hope$'}).ids, [1], 'A lazy quantifier counts once');
         } finally {
             index.close();
         }

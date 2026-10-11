@@ -241,9 +241,12 @@ function cutString(data, len = 500) {
 // Allow at most one variable quantifier (*, +, {n,m}), no repeated groups and no back-references.
 function checkSearchRegExp(pattern = '') {
     const value = String(pattern);
-    const variable = (value.replace(/\\./g, '').match(/[*+]|\{\d*,\d*\}/g) || []).length;
+    // "?" is a quantifier too: ".?" repeated before ".{n}" backtracks exponentially.
+    // Group prefixes "(?:" and lazy modifiers ("*?") add no choice and are not counted.
+    const quantifiers = value.replace(/\\./g, '').replace(/\(\?/g, '(').replace(/([*+?}])\?/g, '$1');
+    const variable = (quantifiers.match(/[*+?]|\{\d*,\d*\}/g) || []).length;
     if (value.length > 100 || variable > 1 || /\)[*+?{]/.test(value) || /\\[1-9]|\\k</.test(value))
-        throw new Error('Регулярное выражение слишком сложное: не больше 100 символов и одного "*" или "+", без повторяемых групп');
+        throw new Error('Регулярное выражение слишком сложное: не больше 100 символов и одного "*", "+" или "?", без повторяемых групп');
     return new RegExp(value, 'i');
 }
 
