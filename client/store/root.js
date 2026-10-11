@@ -36,7 +36,7 @@ const state = {
         compactDiscoveryCards: false,
         discoveryNewestLimit: 8,
         discoveryPopularLimit: 8,
-        discoveryExternalLimit: 12,
+        discoveryExternalLimit: 24,
         discoveryExternalSource: '',
         discoveryExternalName: '',
         discoveryExternalTtlMinutes: 1440,

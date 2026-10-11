@@ -323,7 +323,8 @@ class DiscoveryPage {
                 personalLimit: 12,
                 personalSimilarLimit: this.similarLimit,
                 personalSimilarEnabled: this.settings.showDiscoverySimilar !== false,
-                externalLimit: Math.max(12, Math.min(120, parseInt(this.settings.discoveryExternalLimit, 10) || 24)),
+                //первую страницу (24) сервер готовит заранее
+                externalLimit: Math.max(24, Math.min(120, parseInt(this.settings.discoveryExternalLimit, 10) || 24)),
                 externalSource: external.source,
                 externalName: external.name,
                 externalTtlMinutes: Math.max(1440, parseInt(this.settings.discoveryExternalTtlMinutes || (this.config.discovery || {}).externalTtlMinutes, 10) || 1440),
@@ -475,7 +476,7 @@ class DiscoveryPage {
                 this.$root.notify.info(t('search.noNewRecommendationsYet'));
             }
         } else {
-            const current = parseInt(this.settings.discoveryExternalLimit, 10) || 24;
+            const current = Math.max(24, parseInt(this.settings.discoveryExternalLimit, 10) || 24);
             this.setSetting('discoveryExternalLimit', Math.min(120, current + 24));
         }
     }

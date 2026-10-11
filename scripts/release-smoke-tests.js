@@ -1570,49 +1570,67 @@ async function testWikidataAwardsShelf() {
                 work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q25217632'},
                 titleRu: literal('Пятое время года'), titleEn: literal('The Fifth Season'),//i18n-ignore: тестовые данные
                 authorRu: literal('Нора Джемисин'), authorEn: literal('N. K. Jemisin'),//i18n-ignore: тестовые данные
+                awards: literal('Q255032 Q266012'),
             },
-            {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q100540380'}, titleEn: literal('Network Effect'), authorEn: literal('Martha Wells')},
-            {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q123300220'}, authorEn: literal('Emily Tesh')},
+            {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q100540380'}, titleEn: literal('Network Effect'), authorEn: literal('Martha Wells'), awards: literal('Q266012')},
+            {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q123300220'}, authorEn: literal('Emily Tesh'), awards: literal('Q255032')},
         ]}}};
     };
-
-    try {
-        const worker = makeWorker();
+    const makeAwardsWorker = () => {
+        const worker = makeWorker({discovery: {externalSource: 'wikidata-awards', externalName: 'Example'}});
         worker.discoveryCache = new Map();
+        worker.discoveryDiskCache = {};
+        worker.saveDiscoveryDiskCache = async() => {};
+        worker.getSharedDiscoveryConfig = async() => ({});
+        worker.dbConfig = async() => ({inpxHash: 'test-hash'});
         //в библиотеке книга только под английским названием
         worker.bookSearch = async(query) => ({
             found: (query.title.includes('Fifth Season') ? [{_uid: 'local-1', title: 'The Fifth Season', author: 'Jemisin N. K.'}] : []),
         });
+        return worker;
+    };
 
-        const shelf = await worker.buildExternalDiscoveryShelfV2(8, {
-            externalSource: 'wikidata-awards',
-            externalName: 'Example',
-            externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032',
-        });
-        assert.match(queries[0], /VALUES \?award \{ wd:Q255032 \}/);
-        assert.strictEqual(shelf.sourceUrl, 'https://www.wikidata.org/wiki/Q255032');
-        assert.strictEqual(shelf.genreOptions.length, 8);
-        assert.deepStrictEqual(shelf.items.map(book => book._uid.split(':')[0]), ['local-1', 'external']);
-        assert.strictEqual(shelf.items[0].discoveryUrl, 'https://www.wikidata.org/wiki/Q25217632');
-        assert.strictEqual(shelf.items[1].title, 'Network Effect');
-        assert.strictEqual(shelf.items[1].discoveryMissingLocal, true);
-        assert.strictEqual(shelf.discoveryHasMore, false);
+    try {
+        const worker = makeAwardsWorker();
+        const hugo = await worker.buildExternalDiscoveryShelfV2(8, worker.getDiscoveryConfig({externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032'}));
+        assert.match(queries[0], /wd:Q255032 wd:Q266012/);
+        assert.strictEqual(hugo.sourceUrl, 'https://www.wikidata.org/wiki/Q255032');
+        assert.strictEqual(hugo.genreOptions.length, 8);
+        assert.deepStrictEqual(hugo.items.map(book => book._uid), ['local-1']);
+        assert.strictEqual(hugo.items[0].discoveryUrl, 'https://www.wikidata.org/wiki/Q25217632');
+        assert.strictEqual(hugo.discoveryHasMore, false);
 
+        //другая премия и все премии берутся из уже загруженного списка
+        const nebula = await worker.buildExternalDiscoveryShelfV2(8, worker.getDiscoveryConfig({externalBrowseUrl: 'https://www.wikidata.org/wiki/Q266012'}));
+        assert.deepStrictEqual(nebula.items.map(book => book.title), ['The Fifth Season', 'Network Effect']);
+        assert.strictEqual(nebula.items[1].discoveryMissingLocal, true);
         //ссылка на жанр прежней веб-витрины не выбирает премию
-        const all = await worker.buildExternalDiscoveryShelfV2(1, {
-            externalSource: 'web-page',
-            externalBrowseUrl: 'https://www.litres.ru/genre/fantastika/',
-        });
-        assert.match(queries[1], /wd:Q255032 wd:Q266012/);
+        const all = await worker.buildExternalDiscoveryShelfV2(1, worker.getDiscoveryConfig({externalBrowseUrl: 'https://www.litres.ru/genre/fantastika/'}));
         assert.strictEqual(all.sourceUrl, '');
         assert.strictEqual(all.items.length, 1);
         assert.strictEqual(all.discoveryHasMore, true);
+        assert.strictEqual(queries.length, 1);
+
+        //все премии готовятся заранее, повторный прогрев берёт их из кеша
+        const searches = [];
+        const bookSearch = worker.bookSearch;
+        worker.bookSearch = async(query) => {
+            searches.push(query.title);
+            return bookSearch(query);
+        };
+        await worker.warmExternalDiscoveryShelves();
+        assert.strictEqual(Array.from(worker.discoveryCache.keys()).filter(key => key.startsWith('discovery:test-hash:external:')).length, 9);
+        const warmSearches = searches.length;
+        await worker.warmExternalDiscoveryShelves();
+        assert.strictEqual(searches.length, warmSearches);
+        assert.strictEqual(queries.length, 1);
 
         axios.get = async() => {
             throw new Error('HTTP 429');
         };
+        const failing = makeAwardsWorker();
         await assert.rejects(
-            () => worker.buildExternalDiscoveryShelfV2(8, {externalSource: 'wikidata-awards', externalName: 'Example'}),
+            () => failing.buildExternalDiscoveryShelfV2(8, failing.getDiscoveryConfig()),
             /Example.+HTTP 429/
         );
     } finally {
@@ -1650,6 +1668,7 @@ async function testDiscoveryShelvesBuildOnlyRequestedSection() {
         externalTtlMinutes: 60,
     });
     worker.dbConfig = async() => ({inpxHash: 'test-hash'});
+    worker.warmExternalDiscoveryShelves = async() => {};
     const calls = [];
     worker.getPersonalDiscoveryShelvesV2 = async() => {
         calls.push('personal');

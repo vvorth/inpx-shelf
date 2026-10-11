@@ -49,7 +49,7 @@ const stateToText = {
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
 const personalDiscoveryCacheTtl = 10*60*1000;
-const externalDiscoveryCacheVersion = 'v5';
+const externalDiscoveryCacheVersion = 'v6';
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
 const bookInfoVersion = 'fb2-encoding-v8';
@@ -356,17 +356,21 @@ const wikidataAwards = [
     {id: 'Q187300', label: 'discovery.award.goncourt'},
 ];
 const wikidataEntityUrl = 'https://www.wikidata.org/wiki/';
+//столько книг клиент просит на первой странице вкладки (DiscoveryPage), такие полки готовятся заранее
+const externalShelfPageSize = 24;
+const externalWarmInterval = 60*60*1000;
 
 function findWikidataAward(url = '') {
     return wikidataAwards.find(award => wikidataEntityUrl + award.id === String(url || '').trim()) || null;
 }
 
-function buildWikidataAwardsQuery(awardIds = []) {
-    const values = awardIds.map(id => `wd:${id}`).join(' ');
+function buildWikidataAwardsQuery() {
+    const values = wikidataAwards.map(award => `wd:${award.id}`).join(' ');
     const label = (subject, name, lang) => `OPTIONAL { ${subject} rdfs:label ?${name} FILTER(LANG(?${name}) = "${lang}") }`;
     return `SELECT ?work (SAMPLE(?ru) AS ?titleRu) (SAMPLE(?en) AS ?titleEn)
         (GROUP_CONCAT(DISTINCT ?authorRuLabel; separator=", ") AS ?authorRu)
         (GROUP_CONCAT(DISTINCT ?authorEnLabel; separator=", ") AS ?authorEn)
+        (GROUP_CONCAT(DISTINCT STRAFTER(STR(?award), "/entity/"); separator=" ") AS ?awards)
         (MAX(YEAR(?date)) AS ?year)
     WHERE {
         VALUES ?award { ${values} }
@@ -396,6 +400,7 @@ function parseWikidataAwardWinners(data = {}) {
             author: (titleRu ? authorRu || authorEn : authorEn || authorRu),
             url: value(binding, 'work').replace(/^https?:\/\/www\.wikidata\.org\/entity\//, wikidataEntityUrl),
             alternates: (titleRu && titleEn && titleEn !== titleRu ? [{title: titleEn, author: authorEn || authorRu}] : []),
+            awards: value(binding, 'awards').split(' ').filter(Boolean),
         });
     }
     return result;
@@ -554,6 +559,7 @@ class WebWorker {
             this.periodicCleanDir();//no await
             this.periodicCheckInpx();//no await
             this.periodicCheckNewRelease();//no await
+            this.periodicWarmExternalDiscovery();//no await
 
             instance = this;
         }
@@ -1117,10 +1123,9 @@ class WebWorker {
     }
 
     async fetchWikidataAwardWinners(discovery = {}) {
-        const award = findWikidataAward(discovery.externalBrowseUrl);
         try {
             const response = await axios.get('https://query.wikidata.org/sparql', {
-                params: {query: buildWikidataAwardsQuery(award ? [award.id] : wikidataAwards.map(item => item.id))},
+                params: {query: buildWikidataAwardsQuery()},
                 timeout: 60000,
                 headers: {
                     //Викиданные требуют User-Agent с контактом
@@ -1131,7 +1136,7 @@ class WebWorker {
             const items = parseWikidataAwardWinners(response.data);
             if (!items.length)
                 throw new Error(t('errors.externalReadFailed'));
-            return {award, items};
+            return {items};
         } catch (e) {
             const details = String(e && e.message || '').trim();
             const suffix = details ? `: ${details}` : '';
@@ -1139,13 +1144,26 @@ class WebWorker {
         }
     }
 
-    async buildExternalDiscoveryShelfV2(limit = 8, options = {}) {
-        const discovery = this.getDiscoveryConfig(options);
+    //лауреаты всех премий загружаются одним запросом раз в период обновления витрины
+    async getWikidataAwardWinners(discovery = {}, forceRefresh = false) {
+        return this.rememberPersistedDiscovery(
+            `wikidata-awards:${externalDiscoveryCacheVersion}`,
+            () => this.fetchWikidataAwardWinners(discovery),
+            discovery.externalTtlMinutes * 60 * 1000,
+            {forceRefresh},
+        );
+    }
+
+    async buildExternalDiscoveryShelfV2(limit = 8, discovery = {}, forceRefresh = false) {
         if (discovery.externalSource === 'none')
             return null;
 
-        const {award, items: winners} = await this.fetchWikidataAwardWinners(discovery);
-        const matched = await this.matchExternalItemsToLocalBooksV2(winners, limit);
+        const award = findWikidataAward(discovery.externalBrowseUrl);
+        const {items: winners} = await this.getWikidataAwardWinners(discovery, forceRefresh);
+        const matched = await this.matchExternalItemsToLocalBooksV2(
+            (award ? winners.filter(item => (item.awards || []).includes(award.id)) : winners),
+            limit,
+        );
         const sourceName = (discovery.externalName || msg('discovery.externalSource'));
         const items = matched.items
             .map((book) => this.decorateDiscoveryBook(book, {
@@ -1170,6 +1188,37 @@ class WebWorker {
             items,
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
+    }
+
+    async rememberExternalDiscoveryShelf(inpxHash = '', discovery = {}, limit = externalShelfPageSize, forceRefresh = false) {
+        return this.rememberPersistedDiscovery(
+            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${limit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}`,
+            () => this.buildExternalDiscoveryShelfV2(limit, discovery, forceRefresh),
+            discovery.externalTtlMinutes * 60 * 1000,
+            {forceRefresh},
+        );
+    }
+
+    //готовит первую страницу всех премий заранее, чтобы выбор премии открывался сразу;
+    //готовые и свежие полки берутся из кеша, поэтому повторный вызов ничего не делает
+    async warmExternalDiscoveryShelves() {
+        if (this.externalDiscoveryWarming)
+            return;
+        this.externalDiscoveryWarming = true;
+        try {
+            await this.getSharedDiscoveryConfig();
+            const shared = this.getDiscoveryConfig();
+            if (!shared.enabled || shared.externalSource === 'none')
+                return;
+
+            const inpxHash = String((await this.dbConfig()).inpxHash || '').trim();
+            for (const browseUrl of ['', ...wikidataAwards.map(award => wikidataEntityUrl + award.id)])
+                await this.rememberExternalDiscoveryShelf(inpxHash, this.getDiscoveryConfig({externalBrowseUrl: browseUrl}));
+        } catch (e) {
+            log(LM_ERR, `warmExternalDiscoveryShelves: ${e.message}`);
+        } finally {
+            this.externalDiscoveryWarming = false;
+        }
     }
 
     async getDiscoveryShelvesV2(options = {}) {
@@ -1198,14 +1247,10 @@ class WebWorker {
 
         if (section !== 'personal' && discovery.externalSource !== 'none') {
             try {
-                const externalShelf = await this.rememberPersistedDiscovery(
-                    `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${externalShelfLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}`,
-                    () => this.buildExternalDiscoveryShelfV2(externalShelfLimit, options),
-                    discovery.externalTtlMinutes * 60 * 1000,
-                    {forceRefresh: options.forceRefresh === true},
-                );
+                const externalShelf = await this.rememberExternalDiscoveryShelf(inpxHash, discovery, externalShelfLimit, options.forceRefresh === true);
                 if (externalShelf)
                     shelves.push(externalShelf);
+                this.warmExternalDiscoveryShelves();//no await
             } catch (e) {
                 shelves.push({
                     id: 'external-error',
@@ -5019,6 +5064,16 @@ class WebWorker {
             }
 
             await utils.sleep(inpxCheckInterval*60*1000);
+        }
+    }
+
+    async periodicWarmExternalDiscovery() {
+        while (1) {// eslint-disable-line no-constant-condition
+            while (this.myState != ssNormal)
+                await utils.sleep(1000);
+
+            await this.warmExternalDiscoveryShelves();
+            await utils.sleep(externalWarmInterval);
         }
     }
 
