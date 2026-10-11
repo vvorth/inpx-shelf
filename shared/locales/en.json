@@ -217,9 +217,7 @@
         "words": "Words"
     },
     "bookQuickActions": {
-        "convertAndDownload": "Convert and download",
-        "download": "Download {ext}",
-        "downloadInAnotherFormat": "Download in another format"
+        "download": "Download {ext}"
     },
     "common": {
         "aboutAuthor": "About the author",

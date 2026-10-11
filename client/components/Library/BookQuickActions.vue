@@ -8,21 +8,21 @@
         <q-btn flat dense round icon="la la-book-open" :aria-label="$t('common.readBook')" @click="act('readBook')">
             <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
         </q-btn>
-        <q-btn flat dense round icon="la la-download" :aria-label="$t('common.download')" @click="act('download')">
-            <q-tooltip>{{ $t('bookQuickActions.download', {ext: String(book.ext || '').toUpperCase()}) }}</q-tooltip>
-        </q-btn>
-        <q-btn v-if="formats.length" flat dense round icon="la la-file-export" :aria-label="$t('bookQuickActions.downloadInAnotherFormat')">
-            <q-tooltip>{{ $t('bookQuickActions.downloadInAnotherFormat') }}</q-tooltip>
+        <q-btn v-if="formats.length" flat dense round icon="la la-download" :aria-label="$t('common.download')">
+            <q-tooltip>{{ $t('common.download') }}</q-tooltip>
             <q-menu anchor="bottom right" self="top right">
                 <div class="format-menu">
-                    <div class="format-menu-title">
-                        {{ $t('bookQuickActions.convertAndDownload') }}
-                    </div>
+                    <button v-close-popup type="button" class="format-item" @click="act('download')">
+                        {{ originalLabel }}
+                    </button>
                     <button v-for="format in formats" :key="format" v-close-popup type="button" class="format-item" @click="act('download', format)">
-                        {{ format.toUpperCase() }}
+                        {{ format.toUpperCase() }}<span class="format-item-meta">{{ $t('book.converted') }}</span>
                     </button>
                 </div>
             </q-menu>
+        </q-btn>
+        <q-btn v-else flat dense round icon="la la-download" :aria-label="$t('common.download')" @click="act('download')">
+            <q-tooltip>{{ $t('bookQuickActions.download', {ext: originalLabel}) }}</q-tooltip>
         </q-btn>
         <q-btn v-if="signedIn" flat dense round icon="la la-bookmark" :aria-label="$t('book.list')" @click="$emit('lists')">
             <q-tooltip>{{ $t('book.list') }}</q-tooltip>
@@ -52,6 +52,11 @@ class BookQuickActions {
         return conversionFormats(this.$store.state.config, this.book);
     }
 
+    get originalLabel() {
+        const ext = String(this.book.ext || '').toUpperCase();
+        return this.$store.state.settings.downloadAsZip ? `${ext} (zip)` : ext;
+    }
+
     get external() {
         return isExternalOnly(this.book);
     }
@@ -74,13 +79,10 @@ export default vueComponent(BookQuickActions);
     padding: 6px 0;
 }
 
-.format-menu-title {
-    padding: 4px 14px 6px;
-    color: var(--app-muted);
-    font-size: 12px;
-}
-
 .format-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 7px 14px;
     border: 0;
     background: none;
@@ -92,6 +94,12 @@ export default vueComponent(BookQuickActions);
 
 .format-item:hover {
     background: var(--app-surface-3);
+}
+
+.format-item-meta {
+    margin-left: auto;
+    color: var(--app-muted);
+    font-size: 12px;
 }
 
 .quick-actions {

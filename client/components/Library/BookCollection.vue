@@ -49,9 +49,10 @@
                         <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('bookCollection.read', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
                         <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
-                        <span class="foot-spacer" />
-                        <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
-                        <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
+                        <div class="foot-actions">
+                            <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
+                            <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
+                        </div>
                     </div>
                 </div>
             </article>
@@ -202,7 +203,7 @@ class BookCollection {
     fileLine(book) {
         const size = Number(book.size || 0);
         const sizeText = (size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : (size > 0 ? `${Math.max(1, Math.round(size / 1024))} KB` : ''));
-        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText, book.date].filter(Boolean).join(' · ');
+        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText].filter(Boolean).join(' · ');
     }
 
     stars(book) {
@@ -311,16 +312,20 @@ export default vueComponent(BookCollection);
     font-size: 12px;
 }
 
+/* в узкой карточке кнопки переносятся под метку, а не вылезают за край */
 .wide-card-foot {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 4px 8px;
     margin-top: auto;
     padding-top: 6px;
 }
 
-.foot-spacer {
-    flex: 1;
+.foot-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
 }
 
 .reason {

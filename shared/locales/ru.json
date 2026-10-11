@@ -219,9 +219,7 @@
         "words": "Слов"
     },
     "bookQuickActions": {
-        "convertAndDownload": "Конвертировать и скачать",
-        "download": "Скачать {ext}",
-        "downloadInAnotherFormat": "Скачать в другом формате"
+        "download": "Скачать {ext}"
     },
     "common": {
         "aboutAuthor": "Об авторе",
