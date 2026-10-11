@@ -3,13 +3,13 @@
         <template #header>
             <div class="row items-center" style="font-size: 110%">
                 <q-icon class="q-mr-sm text-primary" name="la la-satellite-dish" size="28px" />
-                {{ $t('Внешний источник') }}
+                {{ $t('common.externalSource') }}
             </div>
         </template>
 
         <div class="q-mx-md column" style="min-width: 320px; max-width: 720px; font-size: 110%;">
             <div class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('Тип источника') }}</div>
+                <div class="q-mr-sm dialog-label">{{ $t('discoverySource.sourceType') }}</div>
                 <q-select
                     v-model="discoveryExternalSource"
                     :options="externalSourceOptions"
@@ -23,19 +23,19 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('Название') }}</div>
+                <div class="q-mr-sm dialog-label">{{ $t('common.title') }}</div>
                 <q-input
                     v-model="discoveryExternalName"
                     class="bg-white col"
                     outlined
                     dense
                     clearable
-                    :placeholder="$t('Например: Партнёрская витрина')"
+                    :placeholder="$t('discoverySource.examplePartnerShowcase')"
                 />
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('URL витрины') }}</div>
+                <div class="q-mr-sm dialog-label">{{ $t('discoverySource.showcaseUrl') }}</div>
                 <q-input
                     v-model="discoveryExternalUrl"
                     class="bg-white col"
@@ -47,7 +47,7 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('Лимит') }}</div>
+                <div class="q-mr-sm dialog-label">{{ $t('common.limit') }}</div>
                 <q-select
                     v-model="discoveryExternalLimit"
                     :options="discoveryLimitOptions"
@@ -61,7 +61,7 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('Обновление') }}</div>
+                <div class="q-mr-sm dialog-label">{{ $t('discoverySource.refreshInterval') }}</div>
                 <q-select
                     v-model="discoveryExternalTtlMinutes"
                     :options="discoveryTtlOptions"
@@ -75,7 +75,7 @@
             </div>
 
             <div v-if="externalDiscoveryEnabled" class="q-mt-md text-grey-7" style="font-size: 85%;">
-                {{ $t('Если удалить источник, вкладка и витрина исчезнут, пока администратор не настроит новый источник.') }}
+                {{ $t('discoverySource.ifDeleteSourceTab') }}
             </div>
         </div>
 
@@ -89,7 +89,7 @@
                 no-caps
                 @click="removeSource"
             >
-                {{ $t('Удалить источник') }}
+                {{ $t('discoverySource.deleteSource') }}
             </q-btn>
             <q-space />
             <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
@@ -186,9 +186,9 @@ class DiscoverySourceDialog {
 
     get discoveryTtlOptions() {
         return [
-            {label: t('24 часа'), value: 1440},
-            {label: t('3 дня'), value: 4320},
-            {label: t('7 дней'), value: 10080},
+            {label: t('discoverySource.n24Hours'), value: 1440},
+            {label: t('discoverySource.n3Days'), value: 4320},
+            {label: t('discoverySource.n7Days'), value: 10080},
         ];
     }
 
@@ -212,8 +212,8 @@ class DiscoverySourceDialog {
 
     get externalSourceOptions() {
         return [
-            {label: t('Нет'), value: 'none'},
-            {label: t('Веб-витрина'), value: 'web-page'},
+            {label: t('common.no'), value: 'none'},
+            {label: t('discoverySource.webShowcase'), value: 'web-page'},
         ];
     }
 
@@ -252,7 +252,7 @@ class DiscoverySourceDialog {
             this.loadSettings();
             this.dialogVisible = false;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 }

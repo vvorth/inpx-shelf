@@ -31,7 +31,7 @@ class RootPage extends BasePage {
             const collection = dbConfig.inpxInfo.collection.split('\n');
             this.title = collection[0].trim();
             if (!this.title)
-                this.title = 'Неизвестная коллекция';
+                this.title = 'opds.unknownCollection';
         }
 
         const resultEntry = [

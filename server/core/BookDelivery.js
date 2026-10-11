@@ -3,6 +3,8 @@ const axios = require('axios');
 const FormData = require('form-data');
 const nodemailer = require('nodemailer');
 
+const {t, msg} = require('./i18n');
+
 // Sending books to Telegram and email, and checking those integrations. Mixed into
 // WebWorker.prototype: `this` is the worker.
 
@@ -34,45 +36,45 @@ module.exports = {
         const normalizedKind = String(kind || '').trim().toLowerCase();
         if (normalizedKind === 'smtp') {
             if (!this.config.smtpHost)
-                throw new Error('SMTP host не указан');
+                throw new Error(t('errors.smtpHostMissing'));
 
             const transporter = nodemailer.createTransport(this.buildSmtpTransportOptions());
             await transporter.verify();
-            return {success: true, message: 'SMTP подключение проверено'};
+            return {success: true, message: t('admin.smtpVerified')};
         }
 
         if (normalizedKind === 'telegram') {
             if (!this.config.telegramBotToken)
-                throw new Error('Telegram bot token не указан');
+                throw new Error(t('errors.telegramTokenMissing'));
 
             const response = await axios.get(`https://api.telegram.org/bot${this.config.telegramBotToken}/getMe`, {
                 timeout: 15000,
             });
 
             if (!response.data || response.data.ok !== true)
-                throw new Error('Telegram API не принял токен');
+                throw new Error(t('errors.telegramTokenRejected'));
 
             return {
                 success: true,
-                message: `Telegram бот доступен: ${((response.data.result || {}).username || (response.data.result || {}).first_name || 'ok')}`,
+                message: t('admin.telegramBotAvailable', {name: ((response.data.result || {}).username || (response.data.result || {}).first_name || 'ok')}),
             };
         }
 
-        throw new Error('Неизвестный тип проверки');
+        throw new Error(t('errors.unknownTestType'));
     },
 
     async sendBookToTelegram(bookUid, format = '', userId = '') {
         const {currentUser} = await this.readingListStore.getUsers(userId);
         const chatId = String((currentUser && currentUser.telegramChatId) || '').trim();
         if (!this.config.telegramShareEnabled)
-            throw new Error('Отправка в Telegram отключена в настройках');
+            throw new Error(t('errors.telegramDisabled'));
         if (!this.config.telegramBotToken)
-            throw new Error('Telegram bot token не указан');
+            throw new Error(t('errors.telegramTokenMissing'));
         if (!chatId)
-            throw new Error('Telegram chat id не указан в текущем профиле пользователя');
+            throw new Error(t('errors.telegramChatIdMissing'));
 
         const {book, rawFile, downFileName} = await this.getPreparedBookFile(bookUid, format);
-        this.addAdminEvent('info', 'delivery', `Отправка книги в Telegram: ${book.title || downFileName}`);
+        this.addAdminEvent('info', 'delivery', msg('admin.deliveryTelegramSending', {title: book.title || downFileName}));
         const url = `https://api.telegram.org/bot${this.config.telegramBotToken}/sendDocument`;
         const form = new FormData();
 
@@ -88,9 +90,9 @@ module.exports = {
         });
 
         if (!response.data || response.data.ok !== true)
-            throw new Error('Telegram API не принял файл');
+            throw new Error(t('errors.telegramFileRejected'));
 
-        this.addAdminEvent('info', 'delivery', `Книга отправлена в Telegram: ${book.title || downFileName}`);
+        this.addAdminEvent('info', 'delivery', msg('admin.deliveryTelegramSent', {title: book.title || downFileName}));
         return {success: true};
     },
 
@@ -98,10 +100,10 @@ module.exports = {
         const {currentUser} = await this.readingListStore.getUsers(userId);
         const emailTo = String((currentUser && currentUser.emailTo) || this.config.emailTo || '').trim();
         if (!this.config.emailShareEnabled || !this.config.smtpHost || !emailTo)
-            throw new Error('Отправка на email не настроена');
+            throw new Error(t('errors.emailNotConfigured'));
 
         const {book, rawFile, downFileName} = await this.getPreparedBookFile(bookUid, format);
-        this.addAdminEvent('info', 'delivery', `Отправка книги на email: ${book.title || downFileName}`, {
+        this.addAdminEvent('info', 'delivery', msg('admin.deliveryEmailSending', {title: book.title || downFileName}), {
             to: emailTo,
             format: format || book.ext || '',
         });
@@ -112,8 +114,8 @@ module.exports = {
             await transporter.sendMail({
                 from: this.config.emailFrom || this.config.smtpUser || 'inpx-shelf@localhost',
                 to: emailTo,
-                subject: `Книга: ${subject}`,
-                text: `Во вложении книга "${book.title || downFileName}".`,
+                subject: t('delivery.emailSubject', {subject}),
+                text: t('delivery.emailText', {title: book.title || downFileName}),
                 attachments: [
                     {
                         filename: downFileName,
@@ -124,8 +126,7 @@ module.exports = {
         } catch (err) {
             const response = String((err && (err.response || err.message)) || 'SMTP error');
             const code = (err && (err.responseCode || err.code)) || '';
-            const message = `Email не отправлен: ${response}`;
-            this.addAdminEvent('error', 'delivery', message, {
+            this.addAdminEvent('error', 'delivery', msg('errors.emailNotSent', {details: response}), {
                 to: emailTo,
                 code,
                 command: err && err.command,
@@ -137,10 +138,10 @@ module.exports = {
                     command: item.command,
                 })) : undefined,
             });
-            throw new Error(message);
+            throw new Error(t('errors.emailNotSent', {details: response}));
         }
 
-        this.addAdminEvent('info', 'delivery', `Книга отправлена на email: ${book.title || downFileName}`);
+        this.addAdminEvent('info', 'delivery', msg('admin.deliveryEmailSent', {title: book.title || downFileName}));
         return {success: true};
     },
 };

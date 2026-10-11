@@ -4,45 +4,45 @@
             <div class="card-head">
                 <div>
                     <h2 class="card-title">
-                        {{ $t('Пользователи') }}
+                        {{ $t('admin.users') }}
                     </h2>
                     <div class="card-hint">
                         {{ config.profileLoginRequired
-                            ? $t('Гостевой доступ выключен: каталог открыт только после входа.')
-                            : $t('Гостевой доступ включён: каталог можно смотреть без входа.') }}
-                        {{ $t('Меняется переменной INPX_ALLOW_ANONYMOUS_ACCESS.') }}
+                            ? $t('adminUsers.guestAccessIsOff')
+                            : $t('adminUsers.guestAccessIsOn') }}
+                        {{ $t('adminUsers.setItWithThe') }}
                     </div>
                 </div>
                 <q-btn color="primary" unelevated no-caps icon="la la-user-plus" @click="toggleCreate">
-                    {{ $t('Новый пользователь') }}
+                    {{ $t('adminUsers.newUser') }}
                 </q-btn>
             </div>
 
             <form v-if="createVisible" class="user-form" @submit.prevent="createUser">
                 <div class="form-grid">
-                    <q-input v-model="draft.name" outlined dense :label="$t('Имя')" />
-                    <q-input v-model="draft.login" outlined dense :label="$t('Логин')" />
-                    <q-input v-model="draft.password" outlined dense :label="$t('Временный пароль')">
+                    <q-input v-model="draft.name" outlined dense :label="$t('profiles.name')" />
+                    <q-input v-model="draft.login" outlined dense :label="$t('common.login')" />
+                    <q-input v-model="draft.password" outlined dense :label="$t('adminUsers.temporaryPassword')">
                         <template #append>
                             <q-icon name="la la-dice" class="cursor-pointer" @click="draft.password = generatePassword()">
-                                <q-tooltip>{{ $t('Сгенерировать') }}</q-tooltip>
+                                <q-tooltip>{{ $t('adminUsers.generate') }}</q-tooltip>
                             </q-icon>
                         </template>
                     </q-input>
-                    <q-input v-model="draft.emailTo" outlined dense :label="$t('Email для отправки')" />
-                    <q-input v-model="draft.telegramChatId" outlined dense :label="$t('Личный Telegram chat id')" />
+                    <q-input v-model="draft.emailTo" outlined dense :label="$t('profiles.emailTo')" />
+                    <q-input v-model="draft.telegramChatId" outlined dense :label="$t('profiles.personalTelegramChatId')" />
                 </div>
-                <q-toggle v-model="draft.opdsEnabled" :label="$t('Показывать профиль в OPDS')" />
-                <q-toggle v-model="draft.opdsAuthEnabled" :disable="!draft.login || !draft.password" :label="$t('Требовать пароль для OPDS')" />
+                <q-toggle v-model="draft.opdsEnabled" :label="$t('profiles.showProfileInOpds')" />
+                <q-toggle v-model="draft.opdsAuthEnabled" :disable="!draft.login || !draft.password" :label="$t('profiles.requireOpdsAuth')" />
                 <div class="card-hint">
-                    {{ $t('Сообщите пользователю логин и пароль. Пароль он сможет сменить в своём профиле.') }}
+                    {{ $t('adminUsers.giveTheUserTheir') }}
                 </div>
                 <div class="card-actions">
                     <q-btn type="submit" color="primary" unelevated no-caps :disable="!draft.name">
-                        {{ $t('Создать') }}
+                        {{ $t('common.create') }}
                     </q-btn>
                     <q-btn flat no-caps @click="createVisible = false">
-                        {{ $t('Отмена') }}
+                        {{ $t('common.cancel') }}
                     </q-btn>
                 </div>
             </form>
@@ -52,13 +52,13 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>{{ $t('Имя') }}</th>
-                        <th>{{ $t('Роль') }}</th>
+                        <th>{{ $t('profiles.name') }}</th>
+                        <th>{{ $t('adminUsers.role') }}</th>
                         <th class="hide-narrow">
                             OPDS
                         </th>
                         <th class="hide-narrow">
-                            {{ $t('Читает') }}
+                            {{ $t('adminUsers.reading') }}
                         </th>
                         <th />
                     </tr>
@@ -69,15 +69,15 @@
                             <td>
                                 <div class="user-name">
                                     {{ $tm(user.name) }}
-                                    <span v-if="user.id === currentUserId" class="pill pill--accent">{{ $t('Это вы') }}</span>
+                                    <span v-if="user.id === currentUserId" class="pill pill--accent">{{ $t('adminUsers.you') }}</span>
                                 </div>
                                 <div class="card-hint">
-                                    {{ user.login || $t('без логина') }}{{ user.requiresLogin ? '' : ` · ${$t('без пароля')}` }}
+                                    {{ user.login || $t('adminUsers.noLogin') }}{{ user.requiresLogin ? '' : ` · ${$t('reader.profileOpenShort')}` }}
                                 </div>
                             </td>
                             <td>{{ roleLabel(user) }}</td>
                             <td class="hide-narrow">
-                                {{ user.anonymousProfile || user.isAdmin ? '—' : (user.opdsEnabled === false ? $t('выкл.') : (user.opdsAuthEnabled ? $t('с паролем') : $t('вкл.'))) }}
+                                {{ user.anonymousProfile || user.isAdmin ? '—' : (user.opdsEnabled === false ? $t('adminUsers.off') : (user.opdsAuthEnabled ? $t('adminUsers.withPassword') : $t('adminUsers.on'))) }}
                             </td>
                             <td class="hide-narrow num">
                                 {{ user.currentReadingCount || 0 }}
@@ -85,15 +85,15 @@
                             <td class="col-actions">
                                 <template v-if="!user.anonymousProfile && user.id !== currentUserId">
                                     <q-btn flat dense no-caps icon="la la-pen" @click="toggleEdit(user)">
-                                        {{ $t('Изменить') }}
+                                        {{ $t('adminUsers.edit') }}
                                     </q-btn>
                                     <q-btn v-if="!user.isAdmin" flat dense no-caps icon="la la-key" @click="resetPassword(user)">
-                                        {{ $t('Сбросить пароль') }}
+                                        {{ $t('adminUsers.resetPassword') }}
                                     </q-btn>
-                                    <q-btn v-if="!user.isAdmin" flat dense round color="negative" icon="la la-trash" :aria-label="$t('Удалить')" @click="deleteUser(user)" />
+                                    <q-btn v-if="!user.isAdmin" flat dense round color="negative" icon="la la-trash" :aria-label="$t('profiles.delete')" @click="deleteUser(user)" />
                                 </template>
                                 <router-link v-else-if="user.id === currentUserId" to="/me/account">
-                                    {{ $t('Мой профиль') }}
+                                    {{ $t('adminUsers.myProfile') }}
                                 </router-link>
                             </td>
                         </tr>
@@ -101,19 +101,19 @@
                             <td colspan="5">
                                 <form class="user-form" @submit.prevent="saveEdit(user)">
                                     <div class="form-grid">
-                                        <q-input v-model="edit.name" outlined dense :label="$t('Имя')" />
-                                        <q-input v-model="edit.login" outlined dense :label="$t('Логин')" />
+                                        <q-input v-model="edit.name" outlined dense :label="$t('profiles.name')" />
+                                        <q-input v-model="edit.login" outlined dense :label="$t('common.login')" />
                                     </div>
                                     <template v-if="!user.isAdmin">
-                                        <q-toggle v-model="edit.opdsEnabled" :label="$t('Показывать профиль в OPDS')" />
-                                        <q-toggle v-model="edit.opdsAuthEnabled" :disable="!edit.login || !user.requiresLogin" :label="$t('Требовать пароль для OPDS')" />
+                                        <q-toggle v-model="edit.opdsEnabled" :label="$t('profiles.showProfileInOpds')" />
+                                        <q-toggle v-model="edit.opdsAuthEnabled" :disable="!edit.login || !user.requiresLogin" :label="$t('profiles.requireOpdsAuth')" />
                                     </template>
                                     <div class="card-actions">
                                         <q-btn type="submit" color="primary" unelevated dense no-caps>
-                                            {{ $t('Сохранить') }}
+                                            {{ $t('common.save') }}
                                         </q-btn>
                                         <q-btn flat dense no-caps @click="editId = ''">
-                                            {{ $t('Отмена') }}
+                                            {{ $t('common.cancel') }}
                                         </q-btn>
                                     </div>
                                 </form>
@@ -130,7 +130,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {currentProfile} from '../../share/session';
 
 const passwordWords = ['amber', 'birch', 'cedar', 'delta', 'ember', 'fjord', 'grove', 'heron', 'iris', 'juniper', 'koala', 'lumen', 'maple', 'nova', 'otter', 'plum', 'quartz', 'raven', 'sage', 'tulip'];
@@ -163,8 +163,8 @@ class AdminUsers {
 
     roleLabel(user) {
         if (user.anonymousProfile)
-            return t('Гость');
-        return user.isAdmin ? t('Администратор') : t('Читатель');
+            return t('adminUsers.guest');
+        return user.isAdmin ? t('profiles.defaultAdminName') : t('adminUsers.reader');
     }
 
     generatePassword() {
@@ -189,11 +189,11 @@ class AdminUsers {
             this.draft = emptyDraft();
             await this.api.updateConfig();
             if (login && password)
-                await this.$root.stdDialog.alert(t('Пользователь создан. Логин: {login}, пароль: {password}', {login, password}), t('Новый пользователь'));
+                await this.$root.stdDialog.alert(t('adminUsers.userCreatedLoginPassword', {login, password}), t('adminUsers.newUser'));
             else
-                this.$root.notify.success(t('Пользователь создан'));
+                this.$root.notify.success(t('adminUsers.userCreated'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -204,7 +204,7 @@ class AdminUsers {
         }
         this.editId = user.id;
         this.edit = {
-            name: tMessage(user.name) || '',
+            name: tm(user.name) || '',
             login: user.login || '',
             opdsEnabled: user.opdsEnabled !== false,
             opdsAuthEnabled: user.opdsAuthEnabled === true,
@@ -223,17 +223,17 @@ class AdminUsers {
             await this.api.updateUserProfile(user.id, patch);
             this.editId = '';
             await this.api.updateConfig();
-            this.$root.notify.success(t('Профиль сохранён'));
+            this.$root.notify.success(t('profiles.profileSaved'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async resetPassword(user) {
         const prompt = await this.$root.stdDialog.password(
-            t('Введите новый пароль для профиля «{name}»:', {name: tMessage(user.name)}),
-            t('Сброс пароля'),
-            {inputValidator: (value) => (String(value || '') ? true : t('Пароль не должен быть пустым'))},
+            t('profiles.resetPasswordPrompt', {name: tm(user.name)}),
+            t('profiles.resetPasswordTitle'),
+            {inputValidator: (value) => (String(value || '') ? true : t('common.passwordRequired'))},
         );
         if (!prompt || prompt === false)
             return;
@@ -241,16 +241,16 @@ class AdminUsers {
         try {
             await this.api.updateUserProfile(user.id, {password: String(prompt.value || '')});
             await this.api.updateConfig();
-            this.$root.notify.success(t('Пароль профиля «{name}» обновлён', {name: tMessage(user.name)}));
+            this.$root.notify.success(t('profiles.resetPasswordSuccess', {name: tm(user.name)}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async deleteUser(user) {
         const confirmed = await this.$root.stdDialog.confirm(
-            t('Удалить профиль «{name}» вместе со всеми его списками?', {name: tMessage(user.name)}),
-            t('Удаление профиля'),
+            t('profiles.deleteProfileConfirm', {name: tm(user.name)}),
+            t('profiles.deleteProfileTitle'),
         );
         if (!confirmed)
             return;
@@ -259,7 +259,7 @@ class AdminUsers {
             await this.api.deleteUserProfile(user.id);
             await this.api.updateConfig();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 }

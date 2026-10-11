@@ -1,5 +1,6 @@
 const {AsyncLocalStorage} = require('async_hooks');
 const {spawn} = require('child_process');
+const {t} = require('./i18n');
 
 const context = new AsyncLocalStorage();
 const defaults = {concurrency: 2, queueLimit: 16, timeoutMs: 120000, queueTimeoutMs: 120000, stderrBytes: 65536};
@@ -34,14 +35,14 @@ class ConversionRuntime {
 
     run(task) {
         if (this.active >= this.limits.concurrency && this.queue.length >= this.limits.queueLimit)
-            return Promise.reject(failure('INPX_CONVERSION_QUEUE_FULL', 'Очередь конвертации заполнена. Повторите позже.'));
+            return Promise.reject(failure('INPX_CONVERSION_QUEUE_FULL', t('errors.conversionQueueFull')));
         return new Promise((resolve, reject) => {
             const entry = {task, resolve, reject};
             entry.timer = setTimeout(() => {
                 const index = this.queue.indexOf(entry);
                 if (index < 0) return;
                 this.queue.splice(index, 1);
-                reject(failure('INPX_CONVERSION_QUEUE_TIMEOUT', 'Истекло время ожидания конвертации в очереди.'));
+                reject(failure('INPX_CONVERSION_QUEUE_TIMEOUT', t('errors.conversionQueueTimeout')));
             }, this.limits.queueTimeoutMs);
             this.queue.push(entry);
             this.drain();
@@ -78,7 +79,7 @@ function killTree(child) {
 
 async function runProcess(command, args, options = {}) {
     const scope = context.getStore() || {...defaults, deadline: Date.now() + defaults.timeoutMs};
-    const timeoutError = () => failure('INPX_CONVERSION_TIMEOUT', 'Превышено время конвертации. Попробуйте другую книгу или формат.');
+    const timeoutError = () => failure('INPX_CONVERSION_TIMEOUT', t('errors.conversionTimeout'));
     if (scope.deadline <= Date.now())
         throw timeoutError();
     return new Promise((resolve, reject) => {

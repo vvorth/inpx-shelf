@@ -3,13 +3,13 @@
         <q-dialog v-model="busyDialogVisible" no-route-dismiss no-esc-dismiss no-backdrop-dismiss>
             <div class="busy-card" role="status" aria-live="polite">
                 <div class="busy-eyebrow">
-                    {{ $t('Библиотека обновляется') }}
+                    {{ $t('api.theLibraryIsUpdating') }}
                 </div>
                 <div class="busy-title">
-                    {{ mainMessage || $t('Сервер готовит базу книг') }}
+                    {{ mainMessage || $t('api.theServerIsPreparing') }}
                 </div>
                 <div class="busy-hint">
-                    {{ $t('Сервер читает INPX и строит базу для поиска. Приложение откроется само, когда всё будет готово.') }}
+                    {{ $t('api.theServerIsReading') }}
                 </div>
                 <q-linear-progress rounded size="8px" :value="progress" :indeterminate="!progress" color="primary" />
                 <div class="busy-meta">
@@ -32,7 +32,7 @@ import * as utils from '../../share/utils';
 import * as cryptoUtils from '../../share/cryptoUtils';
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
-import {t, tMessage} from '../../share/i18n';
+import {t, tm, getLang} from '../../share/i18n';
 
 // localStorage keys, cache names and build-reload keys keep the pre-rename inpx-web- prefix:
 // renaming them would sign users out and drop their saved preferences.
@@ -218,7 +218,7 @@ class Api {
                 this.writeStoredProfileSession(rememberedUserId, '');
             }
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -234,8 +234,8 @@ class Api {
         }
 
         try {
-            const result = await this.$root.stdDialog.password(t('Введите пароль:'), t('Доступ ограничен'), {
-                inputValidator: (str) => (str ? true : t('Пароль не должен быть пустым')),
+            const result = await this.$root.stdDialog.password(t('api.enterPassword'), t('api.accessRestricted'), {
+                inputValidator: (str) => (str ? true : t('common.passwordRequired')),
                 userName: 'access',
                 noEscDismiss: true,
                 noBackdropDismiss: true,
@@ -270,7 +270,7 @@ class Api {
         this.busyDialogVisible = true;
         try {
             while (1) {// eslint-disable-line
-                const params = {action: 'get-worker-state', workerId: 'server_state'};
+                const params = {action: 'get-worker-state', workerId: 'server_state', uiLang: getLang()};
                 if (this.accessToken)
                     params.accessToken = this.accessToken;
                 if (this.currentUserId)
@@ -281,11 +281,11 @@ class Api {
                 const server = await wsc.message(await wsc.send(params));
 
                 if (server.state != 'normal') {
-                    this.mainMessage = tMessage(server.serverMessage);
+                    this.mainMessage = tm(server.serverMessage);
                     if (server.job == 'load inpx') {
-                        this.jobMessage = `${tMessage(server.jobMessage)} (${server.recsLoaded}): ${server.fileName}`;
+                        this.jobMessage = `${tm(server.jobMessage)} (${server.recsLoaded}): ${server.fileName}`;
                     } else {
-                        this.jobMessage = tMessage(server.jobMessage);
+                        this.jobMessage = tm(server.jobMessage);
                     }
 
                     //this.jsonMessage = server;
@@ -323,6 +323,7 @@ class Api {
                     params.profileAccessToken = profileAccessToken;
                 if (csrfToken)
                     params.csrfToken = csrfToken;
+                params.uiLang = getLang();
 
                 const response = await wsc.message(await wsc.send(params), timeoutSecs);
 
@@ -359,7 +360,7 @@ class Api {
                 errCount = 0;
             } catch(e) {
                 errCount++;
-                if (e.message !== 'WebSocket не отвечает' || errCount > 10) {
+                if (e.message !== 'errors.wsNoResponse' || errCount > 10) {
                     errCount = 0;
                     throw e;
                 }
@@ -730,7 +731,7 @@ class Api {
             return;
 
         this.loginPageRequest = null;
-        request.reject(new Error(t('Вход в профиль отменён')));
+        request.reject(new Error(t('common.profileLoginCancelled')));
     }
 
     async completeProfileLogin(result) {
@@ -804,8 +805,8 @@ class Api {
         let login = prefillLogin || current.login || '';
         while (!result) {
             const loginPrompt = await this.$root.stdDialog.profileLogin(
-                t('Введите логин и пароль профиля:'),
-                t('Вход в профиль'),
+                t('api.enterProfileLoginPassword'),
+                t('api.profileLogin'),
                 Object.assign({}, dialogOpts, {
                     login,
                     noCancel: opts.required === true,
@@ -814,14 +815,14 @@ class Api {
                 }),
             );
             if (!loginPrompt || loginPrompt === false)
-                throw new Error(t('Вход в профиль отменён'));
+                throw new Error(t('common.profileLoginCancelled'));
             login = String(loginPrompt.login || '').trim();
             try {
                 result = await this.loginUserProfile(login, String(loginPrompt.password || ''));
             } catch (error) {
                 if (!opts.required)
                     throw error;
-                await this.$root.stdDialog.alert(error.message, t('Ошибка входа'));
+                await this.$root.stdDialog.alert(error.message, t('api.loginError'));
             }
         }
         return await this.completeProfileLogin(result);

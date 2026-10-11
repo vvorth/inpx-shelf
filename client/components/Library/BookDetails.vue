@@ -2,20 +2,20 @@
     <section class="book-section">
         <div class="card-head">
             <h2 class="card-title">
-                {{ $t('Подробности') }}
+                {{ $t('bookDetails.details') }}
             </h2>
             <q-btn v-if="canEdit" flat dense no-caps color="primary" icon="la la-edit" @click="openEditor">
-                {{ $t('Изменить данные') }}
+                {{ $t('bookDetails.editDetails') }}
             </q-btn>
         </div>
 
-        <nav class="tabs" :aria-label="$t('Подробности')">
+        <nav class="tabs" :aria-label="$t('bookDetails.details')">
             <button v-for="item in tabs" :key="item.name" type="button" class="tab" :class="{'is-active': tab === item.name}" @click="selectTab(item.name)">
                 {{ item.label }}<span v-if="item.count" class="tab-count num">{{ item.count }}</span>
             </button>
         </nav>
         <div v-if="loading" class="card-hint">
-            {{ $t('Читаю файл книги: содержание, сведения FB2 и отзывы появятся через несколько секунд.') }}
+            {{ $t('bookDetails.readingTheBookFile') }}
         </div>
 
         <div v-if="tab === 'about'" class="details-body">
@@ -56,14 +56,14 @@
 
         <div v-else-if="tab === 'author'" class="details-body">
             <div v-if="authorInfoLoading" class="card-hint">
-                {{ $t('Загрузка информации об авторе...') }}
+                {{ $t('common.loadingAuthorInformation') }}
             </div>
             <div v-else-if="authorInfo" class="details-author">
                 <img v-if="authorInfo.photo" :src="authorInfo.photo" class="details-author-photo" alt="" />
                 <div class="details-prose" v-html="authorInfoHtml" />
             </div>
             <div v-else class="card-hint">
-                {{ $t('Информация об авторе не найдена.') }}
+                {{ $t('bookInfo.noAuthorInformationFound') }}
             </div>
         </div>
 
@@ -97,21 +97,21 @@
         <q-dialog v-model="editorVisible">
             <div class="details-editor">
                 <h2 class="card-title">
-                    {{ $t('Редактирование метаданных') }}
+                    {{ $t('bookInfo.editMetadata') }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('Сохраняется локальное переопределение поверх INPX. Исходный архив книги не меняется.') }}
+                    {{ $t('bookInfo.localOverrideSavedTop') }}
                 </div>
-                <q-input v-model="form.title" outlined dense :label="$t('Название')" />
-                <q-input v-model="form.author" outlined dense :label="$t('Авторы')" />
-                <q-input v-model="form.series" outlined dense :label="$t('Серия')" />
-                <q-input v-model.number="form.serno" outlined dense type="number" :label="$t('Номер в серии')" />
+                <q-input v-model="form.title" outlined dense :label="$t('common.title')" />
+                <q-input v-model="form.author" outlined dense :label="$t('common.authors')" />
+                <q-input v-model="form.series" outlined dense :label="$t('common.series')" />
+                <q-input v-model.number="form.serno" outlined dense type="number" :label="$t('bookInfo.numberSeries')" />
                 <div class="card-actions details-editor-actions">
                     <q-btn flat no-caps @click="editorVisible = false">
-                        {{ $t('Отмена') }}
+                        {{ $t('common.cancel') }}
                     </q-btn>
                     <q-btn color="primary" unelevated no-caps :loading="saving" @click="save">
-                        {{ $t('Сохранить') }}
+                        {{ $t('common.save') }}
                     </q-btn>
                 </div>
             </div>
@@ -193,29 +193,29 @@ class BookDetails {
         const int = value => Number(value || 0).toLocaleString(getLocale());
         const rows = [];
         if (stats.letters)
-            rows.push({label: t('Букв'), value: int(stats.letters)});
+            rows.push({label: t('bookInfo.letters'), value: int(stats.letters)});
         if (stats.words)
-            rows.push({label: t('Слов'), value: int(stats.words)});
+            rows.push({label: t('bookInfo.words'), value: int(stats.words)});
         if (stats.pages)
-            rows.push({label: t('Страниц'), value: String(stats.pages).replace('.', ',')});
+            rows.push({label: t('bookInfo.pages'), value: String(stats.pages).replace('.', ',')});
         if (stats.images)
-            rows.push({label: t('Изображений'), value: int(stats.images)});
+            rows.push({label: t('bookInfo.images'), value: int(stats.images)});
         return rows;
     }
 
     get tabs() {
         const tabs = [];
         if (this.fb2.length || this.statRows.length || this.epigraph.length)
-            tabs.push({name: 'about', label: t('О книге')});
+            tabs.push({name: 'about', label: t('bookDetails.aboutTheBook')});
         if (this.contents.length)
-            tabs.push({name: 'contents', label: t('Содержание')});
+            tabs.push({name: 'contents', label: t('common.contents')});
         if (this.book.author)
-            tabs.push({name: 'author', label: t('Об авторе')});
+            tabs.push({name: 'author', label: t('common.aboutAuthor')});
         if (this.reviews.length)
-            tabs.push({name: 'reviews', label: t('Отзывы'), count: this.reviews.length});
+            tabs.push({name: 'reviews', label: t('bookDetails.reviews'), count: this.reviews.length});
         if (this.images.length)
-            tabs.push({name: 'images', label: t('Иллюстрации'), count: this.images.length});
-        tabs.push({name: 'file', label: t('Файл')});
+            tabs.push({name: 'images', label: t('bookInfo.illustrations'), count: this.images.length});
+        tabs.push({name: 'file', label: t('opds.file')});
         return tabs;
     }
 
@@ -249,19 +249,19 @@ class BookDetails {
     get inpx() {
         const book = this.book;
         const groups = [
-            {name: 'file', label: t('Информация о файле'), value: [
-                {name: 'folder', label: t('Архив'), value: escapeHtml(book.folder || '')},
-                {name: 'file', label: t('Файл в архиве'), value: (book.file ? escapeHtml(`${book.file}.${book.ext}`) : '')},
-                {name: 'size', label: t('Размер'), value: (book.size ? `${this.formatSize(book.size)} (${Number(book.size).toLocaleString(getLocale())} Bytes)` : '')},
-                {name: 'date', label: t('Добавлен'), value: (book.date ? escapeHtml(utils.sqlDateFormat(book.date)) : '')},
-                {name: 'del', label: t('Удален'), value: (book.del ? t('Да') : '')},
+            {name: 'file', label: t('bookInfo.fileInformation'), value: [
+                {name: 'folder', label: t('bookInfo.archive'), value: escapeHtml(book.folder || '')},
+                {name: 'file', label: t('bookInfo.fileArchive'), value: (book.file ? escapeHtml(`${book.file}.${book.ext}`) : '')},
+                {name: 'size', label: t('common.size'), value: (book.size ? `${this.formatSize(book.size)} (${Number(book.size).toLocaleString(getLocale())} Bytes)` : '')},
+                {name: 'date', label: t('bookInfo.added'), value: (book.date ? escapeHtml(utils.sqlDateFormat(book.date)) : '')},
+                {name: 'del', label: t('bookInfo.deleted'), value: (book.del ? t('common.yes') : '')},
                 {name: 'libid', label: 'LibId', value: escapeHtml(String(book.libid || ''))},
                 {name: 'insno', label: 'InsideNo', value: escapeHtml(String(book.insno || ''))},
             ]},
-            {name: 'title', label: t('Общая информация'), value: [
-                {name: 'genre', label: t('Жанр'), value: this.genreNames(book.genre)},
-                {name: 'lang', label: t('Язык книги'), value: escapeHtml(book.lang || '')},
-                {name: 'keywords', label: t('Ключевые слова'), value: this.keywordLinks(book.keywords)},
+            {name: 'title', label: t('bookInfo.generalInformation'), value: [
+                {name: 'genre', label: t('common.genre'), value: this.genreNames(book.genre)},
+                {name: 'lang', label: t('bookInfo.bookLanguage'), value: escapeHtml(book.lang || '')},
+                {name: 'keywords', label: t('common.keywords'), value: this.keywordLinks(book.keywords)},
             ]},
         ];
         return groups
@@ -405,9 +405,9 @@ class BookDetails {
                 metadataOverridden: true,
             });
             this.editorVisible = false;
-            this.$root.notify.success(t('Метаданные сохранены'));
+            this.$root.notify.success(t('bookInfo.metadataSaved'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.saving = false;
         }

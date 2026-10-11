@@ -2,9 +2,9 @@
     <component :is="external ? 'a' : 'router-link'" class="book-card" v-bind="linkAttrs" @click="$emit('open', book)">
         <BookCover :book="book" :progress="progress" />
         <span class="book-card-title">
-            <span v-if="prefix" class="book-card-prefix">{{ prefix }}</span>{{ book.title || $t('Без названия') }}
+            <span v-if="prefix" class="book-card-prefix">{{ prefix }}</span>{{ book.title || $t('common.untitled') }}
         </span>
-        <span v-if="external" class="book-card-meta book-card-external">{{ $t('Нет в библиотеке') }}</span>
+        <span v-if="external" class="book-card-meta book-card-external">{{ $t('bookCard.notInTheLibrary') }}</span>
         <span v-else-if="meta || author" class="book-card-meta">{{ meta || author }}</span>
     </component>
 </template>

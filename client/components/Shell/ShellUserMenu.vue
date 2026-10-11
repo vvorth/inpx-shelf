@@ -2,36 +2,36 @@
     <div class="user-menu">
         <template v-if="signedIn">
             <router-link v-close-popup class="user-menu-item" to="/me/account">
-                <q-icon name="la la-user" size="18px" />{{ $t('Аккаунт') }}
+                <q-icon name="la la-user" size="18px" />{{ $t('me.account') }}
             </router-link>
             <router-link v-close-popup class="user-menu-item" to="/me/devices">
-                <q-icon name="la la-tablet" size="18px" />{{ $t('Устройства: OPDS и Kobo') }}
+                <q-icon name="la la-tablet" size="18px" />{{ $t('shellUserMenu.devicesOpdsAndKobo') }}
             </router-link>
             <router-link v-close-popup class="user-menu-item" to="/me/preferences">
-                <q-icon name="la la-sliders-h" size="18px" />{{ $t('Настройки интерфейса') }}
+                <q-icon name="la la-sliders-h" size="18px" />{{ $t('shellUserMenu.interfaceSettings') }}
             </router-link>
             <router-link v-if="admin" v-close-popup class="user-menu-item" to="/admin">
-                <q-icon name="la la-shield-alt" size="18px" />{{ $t('Администрирование') }}
+                <q-icon name="la la-shield-alt" size="18px" />{{ $t('settings.admin.title') }}
             </router-link>
         </template>
         <router-link v-else v-close-popup class="user-menu-item" to="/me/preferences">
-            <q-icon name="la la-sliders-h" size="18px" />{{ $t('Настройки интерфейса') }}
+            <q-icon name="la la-sliders-h" size="18px" />{{ $t('shellUserMenu.interfaceSettings') }}
         </router-link>
 
         <button v-close-popup type="button" class="user-menu-item" @click="$emit('toggle-theme')">
-            <q-icon :name="darkTheme ? 'la la-sun' : 'la la-moon'" size="18px" />{{ darkTheme ? $t('Светлая тема') : $t('Тёмная тема') }}
+            <q-icon :name="darkTheme ? 'la la-sun' : 'la la-moon'" size="18px" />{{ darkTheme ? $t('shellUserMenu.lightTheme') : $t('mePreferences.darkTheme') }}
         </button>
 
         <div class="user-menu-sep" />
 
         <button v-if="!signedIn" v-close-popup type="button" class="user-menu-item" @click="$emit('sign-in')">
-            <q-icon name="la la-sign-in-alt" size="18px" />{{ $t('Войти') }}
+            <q-icon name="la la-sign-in-alt" size="18px" />{{ $t('profiles.loginAction') }}
         </button>
         <button v-else-if="!sso" v-close-popup type="button" class="user-menu-item" @click="$emit('sign-out')">
-            <q-icon name="la la-sign-out-alt" size="18px" />{{ $t('Выйти из профиля') }}
+            <q-icon name="la la-sign-out-alt" size="18px" />{{ $t('profiles.logout') }}
         </button>
         <button v-if="accessLocked" v-close-popup type="button" class="user-menu-item" @click="$emit('leave-library')">
-            <q-icon name="la la-lock" size="18px" />{{ $t('Закрыть доступ к библиотеке') }}
+            <q-icon name="la la-lock" size="18px" />{{ $t('shellUserMenu.lockTheLibrary') }}
         </button>
     </div>
 </template>

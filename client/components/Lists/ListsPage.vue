@@ -3,23 +3,23 @@
         <div class="page-body">
             <header class="page-head">
                 <h1 class="page-title">
-                    {{ $t('Списки чтения') }}
+                    {{ $t('common.readingLists') }}
                 </h1>
                 <div v-if="canUseLists" class="page-actions">
                     <q-btn flat dense no-caps icon="la la-file-export" @click="exportLists">
-                        {{ $t('Экспорт') }}
+                        {{ $t('readingLists.export') }}
                     </q-btn>
                     <q-btn flat dense no-caps icon="la la-file-import" @click="openImport">
-                        {{ $t('Импорт') }}
+                        {{ $t('readingLists.import') }}
                     </q-btn>
                     <input ref="importInput" type="file" accept="application/json,.json" style="display: none" @change="onImportSelected">
                 </div>
             </header>
 
             <div v-if="!canUseLists" class="page-empty">
-                <div>{{ $t('Войдите в профиль, чтобы вести списки чтения и сохранять прогресс.') }}</div>
+                <div>{{ $t('lists.signInToKeep') }}</div>
                 <q-btn color="primary" unelevated no-caps @click="signIn">
-                    {{ $t('Войти') }}
+                    {{ $t('profiles.loginAction') }}
                 </q-btn>
             </div>
 
@@ -32,7 +32,7 @@
                         @click="select(readingNowId)"
                     >
                         <q-icon name="la la-book-reader" size="18px" />
-                        <span class="lists-side-name">{{ $t('Читаю сейчас') }}</span>
+                        <span class="lists-side-name">{{ $t('lists.readingNow') }}</span>
                         <span class="lists-side-count">{{ readingNow.length }}</span>
                     </button>
                     <button
@@ -49,8 +49,8 @@
                     </button>
 
                     <form class="lists-create" @submit.prevent="createList">
-                        <q-input v-model="newListName" dense outlined :label="$t('Новый список')" class="col" />
-                        <q-btn type="submit" flat dense round icon="la la-plus" color="primary" :disable="!String(newListName || '').trim()" :aria-label="$t('Создать')" />
+                        <q-input v-model="newListName" dense outlined :label="$t('readingLists.newList')" class="col" />
+                        <q-btn type="submit" flat dense round icon="la la-plus" color="primary" :disable="!String(newListName || '').trim()" :aria-label="$t('common.create')" />
                     </form>
                 </aside>
 
@@ -59,15 +59,15 @@
                         <div class="lists-main-head">
                             <div>
                                 <h2 class="lists-main-title">
-                                    {{ $t('Читаю сейчас') }}
+                                    {{ $t('lists.readingNow') }}
                                 </h2>
                                 <div class="lists-main-sub">
-                                    {{ $t('Книги с сохранённым прогрессом. Убранная книга вернётся, если открыть её снова.') }}
+                                    {{ $t('lists.booksWithSavedProgress') }}
                                 </div>
                             </div>
                         </div>
                         <div v-if="!readingNow.length" class="page-empty page-empty--inline">
-                            {{ $t('Пока нет книг в процессе чтения.') }}
+                            {{ $t('lists.noBooksInProgress') }}
                         </div>
                         <div v-else class="table-wrap">
                             <table class="data-table">
@@ -89,9 +89,9 @@
                                         </td>
                                         <td class="col-actions">
                                             <q-btn flat dense no-caps color="primary" icon="la la-book-open" @click="openReader(book.bookUid)">
-                                                {{ $t('Читать') }}
+                                                {{ $t('common.readBook') }}
                                             </q-btn>
-                                            <q-btn flat dense round icon="la la-times" :aria-label="$t('Убрать')" @click="hideReading(book)" />
+                                            <q-btn flat dense round icon="la la-times" :aria-label="$t('profiles.remove')" @click="hideReading(book)" />
                                         </td>
                                     </tr>
                                 </tbody>
@@ -106,15 +106,15 @@
                                     {{ selectedList.name }}
                                 </h2>
                                 <div class="lists-main-sub">
-                                    {{ $t('{read} / {total} книг прочитано', {read: selectedList.readCount || 0, total: selectedList.bookCount || 0}) }}
+                                    {{ $t('lists.booksRead', {read: selectedList.readCount || 0, total: selectedList.bookCount || 0}) }}
                                 </div>
                             </div>
                             <div class="page-actions">
                                 <q-btn flat dense no-caps icon="la la-pen" @click="renameList(selectedList)">
-                                    {{ $t('Переименовать') }}
+                                    {{ $t('profiles.rename') }}
                                 </q-btn>
                                 <q-btn flat dense no-caps icon="la la-trash" color="negative" @click="deleteList(selectedList)">
-                                    {{ $t('Удалить') }}
+                                    {{ $t('profiles.delete') }}
                                 </q-btn>
                             </div>
                         </div>
@@ -122,34 +122,34 @@
                         <div class="lists-toggles">
                             <q-toggle
                                 :model-value="selectedList.visibility === 'opds'"
-                                :label="$t('Показывать в OPDS')"
+                                :label="$t('lists.showInOpds')"
                                 @update:model-value="setOpds(selectedList, $event)"
                             />
                             <q-toggle
                                 v-for="device in koboDevices"
                                 :key="device.id"
                                 :model-value="(device.listIds || []).includes(selectedList.id)"
-                                :label="$t('Синхронизировать с {name}', {name: device.name})"
+                                :label="$t('lists.syncTo', {name: device.name})"
                                 @update:model-value="setKoboSync(device, selectedList, $event)"
                             />
                         </div>
 
                         <div v-if="booksLoading" class="page-empty page-empty--inline">
-                            {{ $t('Загружаю книги...') }}
+                            {{ $t('readingLists.loadingBooks') }}
                         </div>
                         <div v-else-if="!books.length" class="page-empty page-empty--inline">
-                            {{ $t('Список пуст. Добавляйте книги из каталога кнопкой «В список».') }}
+                            {{ $t('lists.thisListIsEmpty') }}
                         </div>
                         <div v-else class="table-wrap">
                             <table class="data-table">
                                 <thead>
                                     <tr>
                                         <th class="col-check">
-                                            {{ $t('Прочитано') }}
+                                            {{ $t('common.read') }}
                                         </th>
-                                        <th>{{ $t('Книга') }}</th>
+                                        <th>{{ $t('opds.book') }}</th>
                                         <th class="hide-narrow">
-                                            {{ $t('Файл') }}
+                                            {{ $t('opds.file') }}
                                         </th>
                                         <th />
                                     </tr>
@@ -157,11 +157,11 @@
                                 <tbody>
                                     <tr v-for="book in books" :key="book.bookUid">
                                         <td class="col-check">
-                                            <q-checkbox :model-value="book.read" dense :aria-label="$t('Прочитано')" @update:model-value="toggleRead(book, $event)" />
+                                            <q-checkbox :model-value="book.read" dense :aria-label="$t('common.read')" @update:model-value="toggleRead(book, $event)" />
                                         </td>
                                         <td>
                                             <router-link class="book-title" :to="bookLink(book.bookUid)">
-                                                {{ book.title || $t('Без названия') }}
+                                                {{ book.title || $t('common.untitled') }}
                                             </router-link>
                                             <div class="book-meta">
                                                 {{ bookMeta(book) }}
@@ -172,9 +172,9 @@
                                         </td>
                                         <td class="col-actions">
                                             <q-btn flat dense no-caps color="primary" icon="la la-book-open" @click="openReader(book.bookUid)">
-                                                {{ $t('Читать') }}
+                                                {{ $t('common.readBook') }}
                                             </q-btn>
-                                            <q-btn flat dense round icon="la la-times" :aria-label="$t('Убрать из списка')" @click="removeBook(book)" />
+                                            <q-btn flat dense round icon="la la-times" :aria-label="$t('lists.removeFromList')" @click="removeBook(book)" />
                                         </td>
                                     </tr>
                                 </tbody>
@@ -224,7 +224,7 @@ class ListsPage {
 
     activated() {
         this.isActive = true;
-        this.$root.setAppTitle(t('Списки чтения'));
+        this.$root.setAppTitle(t('common.readingLists'));
         this.load();
     }
 
@@ -269,7 +269,7 @@ class ListsPage {
             if (this.selectedList)
                 await this.loadBooks();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
 
         if (this.config.koboEnabled) {
@@ -310,7 +310,7 @@ class ListsPage {
                 read: !!(book._readingListRead || book.read),
             }));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.booksLoading = false;
         }
@@ -342,8 +342,8 @@ class ListsPage {
 
     async hideReading(book) {
         const confirmed = await this.$root.stdDialog.confirm(
-            t('Скрыть книгу «{title}»? Её можно будет вернуть из главного экрана читалки.', {title: book.title || ''}),
-            t('Текущее чтение'),
+            t('profiles.removeReadingConfirm', {title: book.title || ''}),
+            t('profiles.currentReadingTitle'),
         );
         if (!confirmed)
             return;
@@ -355,9 +355,9 @@ class ListsPage {
                 sectionId: String(book.sectionId || '').trim(),
             });
             await this.api.updateConfig();
-            this.$root.notify.success(t('Книга перемещена в «Скрыто»'));
+            this.$root.notify.success(t('profiles.removeReadingSuccess'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -373,14 +373,14 @@ class ListsPage {
             if (response && response.list)
                 await this.select(response.list.id);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async renameList(item) {
-        const response = await this.$root.stdDialog.prompt(t('Введите новое название списка:'), t('Переименовать список'), {
+        const response = await this.$root.stdDialog.prompt(t('common.enterNewListName'), t('common.renameList'), {
             inputValue: item.name,
-            inputValidator: (value) => (String(value || '').trim() ? true : t('Название не должно быть пустым')),
+            inputValidator: (value) => (String(value || '').trim() ? true : t('common.nameRequired')),
         });
         if (!response || response === false)
             return;
@@ -389,12 +389,12 @@ class ListsPage {
             await this.api.renameReadingList(item.id, response.value);
             await this.load();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async deleteList(item) {
-        const confirmed = await this.$root.stdDialog.confirm(t('Удалить список «{name}»?', {name: item.name}), t('Удаление списка'));
+        const confirmed = await this.$root.stdDialog.confirm(t('common.deleteListConfirm', {name: item.name}), t('common.deleteListTitle'));
         if (!confirmed)
             return;
 
@@ -402,9 +402,9 @@ class ListsPage {
             await this.api.deleteReadingList(item.id);
             this.selectedId = readingNowId;
             await this.load();
-            this.$root.notify.success(t('Список удалён'));
+            this.$root.notify.success(t('profiles.deleteListSuccess'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -414,7 +414,7 @@ class ListsPage {
             await this.api.setReadingListVisibility(item.id, visibility);
             item.visibility = visibility;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -435,10 +435,10 @@ class ListsPage {
             });
             device.listIds = [...listIds];
             this.$root.notify.success(enabled
-                ? t('«{name}» получит книги списка при следующей синхронизации', {name: device.name})
-                : t('Список больше не синхронизируется с «{name}»', {name: device.name}));
+                ? t('lists.willGetThisList', {name: device.name})
+                : t('lists.thisListNoLonger', {name: device.name}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -450,15 +450,15 @@ class ListsPage {
                 list.readCount = Math.max(0, (Number(list.readCount || 0) || 0) + (read ? 1 : -1));
             book.read = !!read;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async removeBook(book) {
         const list = this.selectedList;
         const confirmed = await this.$root.stdDialog.confirm(
-            t('Убрать книгу «{title}» из списка «{list}»?', {title: book.title || t('Без названия'), list: list.name || ''}),
-            t('Удаление книги из списка'),
+            t('common.removeBookList', {title: book.title || t('common.untitled'), list: list.name || ''}),
+            t('readingLists.removeBookList'),
         );
         if (!confirmed)
             return;
@@ -470,7 +470,7 @@ class ListsPage {
             list.bookCount = Math.max(0, (Number(list.bookCount || 0) || 0) - 1);
             this.books = this.books.filter(item => item.bookUid !== book.bookUid);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -491,7 +491,7 @@ class ListsPage {
             const data = await this.api.exportReadingLists();
             this.downloadJson(data, `reading-lists-${new Date().toISOString().substring(0, 10)}.json`);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -511,9 +511,9 @@ class ListsPage {
         try {
             const result = await this.api.importReadingLists(JSON.parse(await file.text()));
             await this.load();
-            this.$root.notify.success(t('Импортировано списков: {lists}, книг: {books}', {lists: result.importedLists, books: result.importedBooks}));
+            this.$root.notify.success(t('readingLists.importedListsBooks', {lists: result.importedLists, books: result.importedBooks}));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 }

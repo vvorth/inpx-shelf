@@ -19,7 +19,7 @@
                     <div v-html="captionHtml"></div>
                 </div>
                 <div class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
+                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
                 </div>
@@ -44,7 +44,7 @@
                     <div v-html="captionHtml"></div>
                 </div>
                 <div class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
+                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
                 </div>
@@ -56,7 +56,7 @@
 
             <div class="buttons row justify-end q-pa-md">
                 <q-btn v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('Отмена') }}
+                    {{ $t('common.cancel') }}
                 </q-btn>
                 <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
                     {{ okButtonLabel }}
@@ -72,7 +72,7 @@
                     <div v-html="captionHtml"></div>
                 </div>
                 <div v-if="!noCancel" class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
+                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
                 </div>
@@ -88,7 +88,7 @@
 
             <div class="buttons row justify-end q-pa-md">
                 <q-btn v-if="!noCancel" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('Отмена') }}
+                    {{ $t('common.cancel') }}
                 </q-btn>
                 <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
                     OK
@@ -104,7 +104,7 @@
                     <div v-html="captionHtml"></div>
                 </div>
                 <div v-if="!noCancel" class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
+                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
                 </div>
@@ -128,7 +128,7 @@
                             round
                             dense
                             :icon="passwordVisible ? 'la la-eye-slash' : 'la la-eye'"
-                            :aria-label="passwordVisible ? $t('Скрыть пароль') : $t('Показать пароль')"
+                            :aria-label="passwordVisible ? $t('dialog.hidePassword') : $t('dialog.showPassword')"
                             class="password-visibility-toggle"
                             @click="passwordVisible = !passwordVisible"
                         />
@@ -141,7 +141,7 @@
 
             <div class="buttons row justify-end q-pa-md">
                 <q-btn v-if="!noCancel" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('Отмена') }}
+                    {{ $t('common.cancel') }}
                 </q-btn>
                 <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
                     OK
@@ -157,7 +157,7 @@
                     <div v-html="captionHtml"></div>
                 </div>
                 <div v-if="!noCancel" class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
+                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
                 </div>
@@ -168,7 +168,7 @@
                 <q-input
                     ref="profileLoginInput"
                     v-model="inputValue"
-                    :label="$t('Логин')"
+                    :label="$t('common.login')"
                     autocomplete="username"
                     class="q-mt-sm"
                     outlined
@@ -178,7 +178,7 @@
                     ref="profilePasswordInput"
                     v-model="profilePasswordValue"
                     :type="passwordVisible ? 'text' : 'password'"
-                    :label="$t('Пароль')"
+                    :label="$t('common.password')"
                     autocomplete="current-password"
                     class="q-mt-sm"
                     outlined
@@ -190,7 +190,7 @@
                             round
                             dense
                             :icon="passwordVisible ? 'la la-eye-slash' : 'la la-eye'"
-                            :aria-label="passwordVisible ? $t('Скрыть пароль') : $t('Показать пароль')"
+                            :aria-label="passwordVisible ? $t('dialog.hidePassword') : $t('dialog.showPassword')"
                             class="password-visibility-toggle"
                             @click="passwordVisible = !passwordVisible"
                         />
@@ -203,7 +203,7 @@
 
             <div class="buttons row justify-end q-pa-md">
                 <q-btn v-if="!noCancel" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('Отмена') }}
+                    {{ $t('common.cancel') }}
                 </q-btn>
                 <q-btn :disable="!profileLoginReady" class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
                     OK
@@ -219,7 +219,7 @@
                     <div v-html="captionHtml"></div>
                 </div>
                 <div class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
+                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
                 </div>
@@ -229,7 +229,7 @@
                 <div v-html="messageHtml"></div>
                 <div class="q-my-md text-center">
                     <div v-show="hotKeyCode == ''" class="text-grey-5">
-                        {{ $t('Нет') }}
+                        {{ $t('common.no') }}
                     </div>
                     <div>{{ hotKeyCode }}</div>
                 </div>
@@ -237,7 +237,7 @@
 
             <div class="buttons row justify-end q-pa-md">
                 <q-btn v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('Отмена') }}
+                    {{ $t('common.cancel') }}
                 </q-btn>
                 <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps :disabled="hotKeyCode == ''" @click="okClick">
                     OK
@@ -251,7 +251,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import * as utils from '../../share/utils';
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 const {escapeHtml} = require('../../../shared/safeHtml');
 
 const componentOptions = {
@@ -328,8 +328,8 @@ class StdDialog {
     }
 
     init(message, caption, opts) {
-        this.caption = tMessage(caption);
-        this.message = tMessage(message);
+        this.caption = tm(caption);
+        this.message = tm(message);
         this.html = !!(opts && opts.html);
 
         this.ok = false;        
@@ -410,12 +410,12 @@ class StdDialog {
 
         const login = String(this.inputValue || '').trim();
         if (!login) {
-            this.error = t('Логин не должен быть пустым');
+            this.error = t('dialog.loginRequired');
             return false;
         }
 
         if (!String(this.profilePasswordValue || '')) {
-            this.error = t('Пароль не должен быть пустым');
+            this.error = t('common.passwordRequired');
             return false;
         }
 

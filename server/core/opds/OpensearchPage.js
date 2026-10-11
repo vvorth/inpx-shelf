@@ -1,6 +1,6 @@
 const BasePage = require('./BasePage');
 const XmlParser = require('../xml/XmlParser');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class OpensearchPage extends BasePage {
     constructor(config) {
@@ -28,7 +28,7 @@ class OpensearchPage extends BasePage {
         xmlObject['OpenSearchDescription'] = {
             '*ATTRS': {xmlns: 'http://a9.com/-/spec/opensearch/1.1/'},
             ShortName: 'inpx-shelf',
-            Description: t('Поиск по каталогу'),
+            Description: t('opds.catalogSearch'),
             InputEncoding: 'UTF-8',
             OutputEncoding: 'UTF-8',
             Url: [

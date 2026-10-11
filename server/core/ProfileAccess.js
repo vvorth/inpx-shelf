@@ -1,4 +1,5 @@
 const {parseBasicAuth, equal} = require('./opds/Auth');
+const {t} = require('./i18n');
 
 const bootstrapActions = new Set(['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile', 'logout']);
 
@@ -67,7 +68,7 @@ class ProfileAccess {
     assertProfile(identity, requested = '') {
         if (!requested || requested === identity.user.id || requested === identity.user.login)
             return;
-        throw denied(identity.bound ? 'Профиль закреплён за пользователем proxy' : 'need_profile_login', identity.bound ? 403 : 401);
+        throw denied(identity.bound ? t('errors.profileBoundToProxy') : 'need_profile_login', identity.bound ? 403 : 401);
     }
 
     async prepareWebSocket(req, socketRequest) {
@@ -80,11 +81,11 @@ class ProfileAccess {
             if (!['get-config', 'get-user-profiles', 'logout-user-profile'].includes(req.action))
                 this.assertProfile(identity, String(req.userId || '').trim());
             if (identity.bound && req.action === 'login-user-profile')
-                throw denied('Профиль закреплён за пользователем proxy', 403);
+                throw denied(t('errors.profileBoundToProxy'), 403);
             if (identity.bound && req.action === 'update-user-profile' && req.targetUserId === identity.user.id
                 && req.profile && Object.hasOwn(req.profile, 'login')
                 && this.worker.readingListStore.normalizeLogin(req.profile.login) !== identity.user.login)
-                throw denied('Логин профиля закреплён за пользователем proxy', 403);
+                throw denied(t('errors.profileLoginBoundToProxy'), 403);
             req.userId = identity.user.id;
             req.profileAccessToken = identity.token;
             req.profileBoundId = identity.bound ? identity.user.id : '';

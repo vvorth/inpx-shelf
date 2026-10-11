@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const profilePassword = require('./ProfilePassword');
 const {withFileTransaction, writeFileAtomic} = require('./FilePersistence');
+const {t} = require('./i18n');
 
 const readerPreferencesVersion = 2;
 
@@ -53,18 +54,18 @@ class ReadingListStore {
     validateName(name) {
         const normalized = this.normalizeName(name);
         if (!normalized)
-            throw new Error('Название списка не должно быть пустым');
+            throw new Error(t('readingLists.listNameRequired'));
         if (normalized.length > 120)
-            throw new Error('Название списка слишком длинное');
+            throw new Error(t('errors.listNameTooLong'));
         return normalized;
     }
 
     validateUserName(name) {
         const normalized = this.normalizeName(name);
         if (!normalized)
-            throw new Error('Имя пользователя не должно быть пустым');
+            throw new Error(t('errors.userNameRequired'));
         if (normalized.length > 80)
-            throw new Error('Имя пользователя слишком длинное');
+            throw new Error(t('errors.userNameTooLong'));
         return normalized;
     }
 
@@ -77,7 +78,7 @@ class ReadingListStore {
         if (!normalized)
             return '';
         if (!/^[a-z0-9._-]{3,64}$/i.test(normalized))
-            throw new Error('Логин должен содержать 3-64 символа: буквы, цифры, точку, дефис или подчёркивание');
+            throw new Error(t('errors.loginFormat'));
         return normalized;
     }
 
@@ -108,7 +109,7 @@ class ReadingListStore {
         const login = this.adminLogin();
         return {
             id: 'admin',
-            name: 'Администратор',
+            name: t('profiles.defaultAdminName'),
             login,
             passwordHash: '',
             emailTo: '',
@@ -505,7 +506,7 @@ class ReadingListStore {
                 .map((row) => ({
                     id: String(row && row.id ? row.id : '').trim() || this.makeId(),
                     sectionId: String(row && row.sectionId ? row.sectionId : '').trim(),
-                    title: this.normalizeName(row && row.title ? row.title : '') || 'Закладка',
+                    title: this.normalizeName(row && row.title ? row.title : '') || t('reader.bookmark'),
                     excerpt: this.normalizeName(row && row.excerpt ? row.excerpt : ''),
                     note: this.normalizeName(row && row.note ? row.note : ''),
                     percent: Number.isFinite(Number(row && row.percent)) ? Math.max(0, Math.min(1, Number(row.percent))) : 0,
@@ -528,12 +529,12 @@ class ReadingListStore {
         if (Object.prototype.hasOwnProperty.call(value, 'title')) {
             result.title = this.normalizeName(value.title);
             if (!result.title)
-                throw new Error('Название книги не должно быть пустым');
+                throw new Error(t('errors.bookTitleRequired'));
         }
         if (Object.prototype.hasOwnProperty.call(value, 'author')) {
             result.author = this.normalizeName(value.author);
             if (!result.author)
-                throw new Error('Автор книги не должен быть пустым');
+                throw new Error(t('errors.bookAuthorRequired'));
         }
         if (Object.prototype.hasOwnProperty.call(value, 'series'))
             result.series = this.normalizeName(value.series);
@@ -565,7 +566,7 @@ class ReadingListStore {
         const now = this.nowIso();
         return {
             id: 'default',
-            name: 'Без профиля',
+            name: t('profiles.defaultAnonymousName'),
             login: '',
             passwordHash: '',
             emailTo: '',
@@ -615,7 +616,7 @@ class ReadingListStore {
         const now = this.nowIso();
         const normalized = Object.assign({}, fallback, item);
         normalized.id = String(normalized.id || '').trim() || this.makeId();
-        normalized.name = this.validateUserName(normalized.name || fallback.name || 'Пользователь');
+        normalized.name = this.validateUserName(normalized.name || fallback.name || t('profiles.defaultUserName'));
         normalized.login = this.validateLogin(normalized.login || '');
         normalized.passwordHash = String(normalized.passwordHash || '').trim();
         normalized.emailTo = String(normalized.emailTo || '').trim();
@@ -934,12 +935,12 @@ class ReadingListStore {
     async updateMetadataOverride(bookUid = '', patch = {}) {
         const uid = this.normalizeBookUid(bookUid);
         if (!uid)
-            throw new Error('Не указан идентификатор книги');
+            throw new Error(t('errors.bookIdRequired'));
 
         const data = await this.load();
         const normalized = this.normalizeMetadataPatch(patch || {});
         if (!Object.keys(normalized).length)
-            throw new Error('Не указаны данные для сохранения');
+            throw new Error(t('errors.noDataToSave'));
 
         data.metadataOverrides = this.normalizeMetadataOverrides(data.metadataOverrides);
         data.metadataOverrides[uid] = Object.assign({}, data.metadataOverrides[uid] || {}, normalized, {
@@ -956,7 +957,7 @@ class ReadingListStore {
             || data.users.find((item) => item.login === normalizedUserId)
             || data.users[0];
         if (!user)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         return {
             data,
@@ -967,7 +968,7 @@ class ReadingListStore {
     ensureUniqueUserName(users, name, excludeId = '') {
         const duplicate = users.find((item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase());
         if (duplicate)
-            throw new Error('Пользователь с таким именем уже существует');
+            throw new Error(t('errors.userNameExists'));
     }
 
     ensureUniqueUserLogin(users, login, excludeId = '') {
@@ -976,7 +977,7 @@ class ReadingListStore {
 
         const duplicate = users.find((item) => item.id !== excludeId && item.login === login);
         if (duplicate)
-            throw new Error('Пользователь с таким логином уже существует');
+            throw new Error(t('errors.userLoginExists'));
     }
 
     async getUsers(currentUserId = '') {
@@ -1099,7 +1100,7 @@ class ReadingListStore {
             isAdmin: false,
         });
         if (user.opdsAuthEnabled && (!user.login || !user.passwordHash))
-            throw new Error('Для OPDS-авторизации у профиля должен быть логин и пароль');
+            throw new Error(t('errors.opdsCredentialsRequired'));
 
         data.users.push(user);
         await this.save(data);
@@ -1110,13 +1111,13 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const nextName = this.validateUserName(utilsHasProp(patch, 'name') ? patch.name : target.name);
         const nextLogin = this.validateLogin(utilsHasProp(patch, 'login') ? patch.login : target.login);
         if (nextLogin !== target.login && profilePassword.isLegacy(target.passwordHash)
             && (!String(patch.passwordHash || '').trim() || patch.passwordHash === target.passwordHash))
-            throw new Error('Для смены логина укажите пароль заново');
+            throw new Error(t('errors.loginChangeNeedsPassword'));
         this.ensureUniqueUserName(data.users, nextName, target.id);
         this.ensureUniqueUserLogin(data.users, nextLogin, target.id);
 
@@ -1135,7 +1136,7 @@ class ReadingListStore {
         if (utilsHasProp(patch, 'readerPreferences'))
             target.readerPreferences = this.normalizeReaderPreferences(patch.readerPreferences);
         if (target.opdsAuthEnabled && (!target.login || !target.passwordHash))
-            throw new Error('Для OPDS-авторизации у профиля должен быть логин и пароль');
+            throw new Error(t('errors.opdsCredentialsRequired'));
         target.updatedAt = this.nowIso();
 
         await this.save(data);
@@ -1161,7 +1162,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         target.readerPreferences = this.normalizeReaderPreferences(Object.assign({}, target.readerPreferences || {}, patch || {}));
         target.updatedAt = this.nowIso();
@@ -1173,7 +1174,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const current = this.normalizeDiscoveryPreferences(target.discoveryPreferences);
         let hiddenBooks = Array.from(current.hiddenBooks || []);
@@ -1260,7 +1261,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const preferences = this.normalizeDiscoveryPreferences(target.discoveryPreferences);
         const events = Object.assign({}, preferences.events || {});
@@ -1376,7 +1377,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const normalizedBookUid = this.normalizeBookUid(bookUid);
         if (!normalizedBookUid)
@@ -1448,7 +1449,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const normalizedBookUid = this.normalizeBookUid(bookUid);
         if (!normalizedBookUid)
@@ -1466,7 +1467,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const current = (target.readerProgress && typeof(target.readerProgress) === 'object')
             ? target.readerProgress
@@ -1487,7 +1488,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const normalizedBookUid = this.normalizeBookUid(bookUid);
         if (!normalizedBookUid)
@@ -1500,7 +1501,7 @@ class ReadingListStore {
         current.unshift({
             id: this.makeId(),
             sectionId: String(bookmark.sectionId || '').trim(),
-            title: this.normalizeName(bookmark.title || '') || 'Закладка',
+            title: this.normalizeName(bookmark.title || '') || t('reader.bookmark'),
             excerpt: this.normalizeName(bookmark.excerpt || ''),
             note: this.normalizeName(bookmark.note || ''),
             percent: Number.isFinite(Number(bookmark.percent)) ? Math.max(0, Math.min(1, Number(bookmark.percent))) : 0,
@@ -1517,7 +1518,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const normalizedBookUid = this.normalizeBookUid(bookUid);
         if (!normalizedBookUid)
@@ -1541,14 +1542,14 @@ class ReadingListStore {
     async deleteUser(userId) {
         const data = await this.load();
         if (data.users.length <= 1)
-            throw new Error('Нельзя удалить последнего пользователя');
+            throw new Error(t('errors.cannotDeleteLastUser'));
 
         const index = data.users.findIndex((item) => item.id === userId);
         if (index < 0)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         if (data.users[index].isAdmin)
-            throw new Error('Нельзя удалить профиль администратора');
+            throw new Error(t('errors.cannotDeleteAdmin'));
 
         const [removed] = data.users.splice(index, 1);
         data.lists = data.lists.filter((item) => item.userId !== removed.id);
@@ -1618,7 +1619,7 @@ class ReadingListStore {
     ensureUniqueListName(lists, userId, name, excludeId = '') {
         const duplicate = lists.find((item) => item.userId === userId && item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase());
         if (duplicate)
-            throw new Error('Список с таким названием уже существует');
+            throw new Error(t('errors.listNameExists'));
     }
 
     async createList(userId = '', name, visibility = 'private') {
@@ -1646,7 +1647,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
         if (!item)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         const normalized = this.validateName(name);
         this.ensureUniqueListName(data.lists, user.id, normalized, item.id);
@@ -1661,7 +1662,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
         if (!item)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         item.visibility = this.normalizeVisibility(visibility);
         item.updatedAt = this.nowIso();
@@ -1674,7 +1675,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const index = data.lists.findIndex((row) => row.id === listId && row.userId === user.id);
         if (index < 0)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         data.lists.splice(index, 1);
         await this.save(data);
@@ -1689,7 +1690,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
         if (!item)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         const normalizedBookUid = this.normalizeBookUid(bookUid);
         if (!normalizedBookUid)
@@ -1714,7 +1715,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
         if (!item)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         const normalizedBookUid = this.normalizeBookUid(bookUid);
         if (!normalizedBookUid)
@@ -1723,7 +1724,7 @@ class ReadingListStore {
         item.books = this.normalizeEntries(item.books);
         const existing = item.books.find((row) => row.bookUid === normalizedBookUid);
         if (!existing)
-            throw new Error('Книга не найдена в списке');
+            throw new Error(t('errors.bookNotInList'));
 
         existing.read = !!read;
         item.updatedAt = this.nowIso();
@@ -1735,7 +1736,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
-            throw new Error('Пользователь не найден');
+            throw new Error(t('errors.userNotFound'));
 
         const normalizedBookUids = Array.from(new Set((Array.isArray(bookUids) ? bookUids : [bookUids])
             .map((bookUid) => this.normalizeBookUid(bookUid))
@@ -1858,7 +1859,7 @@ class ReadingListStore {
         const {data, user} = await this.resolveUser(userId);
         const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
         if (!item)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         item.books = this.normalizeEntries(item.books);
         const existing = new Set(item.books.map((row) => row.bookUid));
@@ -1911,7 +1912,7 @@ class ReadingListStore {
     async importData(userId = '', payload) {
         require('./RequestLimits').checkImport(payload, this.config);
         if (!payload || !Array.isArray(payload.lists))
-            throw new Error('Некорректный файл импорта списков');
+            throw new Error(t('errors.listImportInvalid'));
 
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);

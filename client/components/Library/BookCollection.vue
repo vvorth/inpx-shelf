@@ -19,7 +19,7 @@
                 </component>
                 <div class="wide-card-body">
                     <component :is="linkTag(book)" class="book-title-link wide-card-title" v-bind="linkAttrs(book)" @click="opened(book)">
-                        <span v-if="showSerno && book.serno" class="serno num">#{{ book.serno }}</span>{{ book.title || $t('Без названия') }}
+                        <span v-if="showSerno && book.serno" class="serno num">#{{ book.serno }}</span>{{ book.title || $t('common.untitled') }}
                     </component>
                     <div class="book-line">
                         <template v-for="(name, index) in authorsOf(book)" :key="name">
@@ -32,7 +32,7 @@
                     <div v-if="book.series && !isExternal(book)" class="book-line">
                         <router-link :to="seriesLink(book.series)">
                             {{ book.series }}
-                        </router-link><span v-if="book.serno" class="num"> · {{ $t('книга {n}', {n: book.serno}) }}</span>
+                        </router-link><span v-if="book.serno" class="num"> · {{ $t('bookCollection.book', {n: book.serno}) }}</span>
                     </div>
                     <div v-if="genresOf(book)" class="book-line book-line--muted">
                         {{ genresOf(book) }}
@@ -45,10 +45,10 @@
                         <span>{{ reasonOf(book) }}</span>
                     </div>
                     <div class="wide-card-foot">
-                        <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('Нет в библиотеке') }}</span>
-                        <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
-                        <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('Прочитано {n}%', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
-                        <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('Оценка')">{{ stars(book) }}</span>
+                        <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
+                        <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
+                        <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('bookCollection.read', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
+                        <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                         <span class="foot-spacer" />
                         <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
                         <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
@@ -64,7 +64,7 @@
                 </component>
                 <div class="row-main">
                     <component :is="linkTag(book)" class="book-title-link row-title" v-bind="linkAttrs(book)" @click="opened(book)">
-                        <span v-if="showSerno && book.serno" class="serno num">#{{ book.serno }}</span>{{ book.title || $t('Без названия') }}
+                        <span v-if="showSerno && book.serno" class="serno num">#{{ book.serno }}</span>{{ book.title || $t('common.untitled') }}
                     </component>
                     <div class="book-line">
                         <template v-for="(name, index) in authorsOf(book)" :key="name">
@@ -88,10 +88,10 @@
                     </div>
                 </div>
                 <div class="row-side">
-                    <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('Нет в библиотеке') }}</span>
-                    <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
+                    <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
+                    <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
                     <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
-                    <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('Оценка')">{{ stars(book) }}</span>
+                    <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                     <div class="row-actions">
                         <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
                         <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />

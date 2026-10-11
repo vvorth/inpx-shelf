@@ -7,7 +7,7 @@
                 </div>
                 <div class="entity-head-main">
                     <div class="page-eyebrow">
-                        {{ $t('Автор') }}
+                        {{ $t('search.author') }}
                     </div>
                     <h1 class="page-title">
                         {{ name }}
@@ -18,9 +18,9 @@
                     <div v-if="!loading && books.length" class="card-hint num">
                         {{ summary }}
                         <template v-if="hiddenCount">
-                            · {{ $t('ещё {n} на других языках', {n: hiddenCount}) }}
+                            · {{ $t('author.moreInOtherLanguages', {n: hiddenCount}) }}
                             <button type="button" class="link-btn" @click="showAllLanguages">
-                                {{ $t('показать') }}
+                                {{ $t('author.show') }}
                             </button>
                         </template>
                     </div>
@@ -28,15 +28,15 @@
             </header>
 
             <div v-if="loading" class="page-empty page-empty--inline">
-                {{ $t('Загрузка...') }}
+                {{ $t('author.loading') }}
             </div>
             <div v-else-if="error" class="page-empty page-empty--inline">
                 {{ error }}
             </div>
             <div v-else-if="!books.length" class="page-empty">
-                <div>{{ $t('В библиотеке нет книг этого автора.') }}</div>
+                <div>{{ $t('author.theLibraryHasNo') }}</div>
                 <q-btn color="primary" unelevated no-caps @click="$router.push({path: '/search', query: {q: name}})">
-                    {{ $t('Искать в каталоге') }}
+                    {{ $t('author.searchTheCatalog') }}
                 </q-btn>
             </div>
 
@@ -55,15 +55,15 @@
                             {{ item.code.toUpperCase() }} <span class="num">{{ item.count }}</span>
                         </button>
                         <button v-if="!activeLanguages.all" type="button" class="link-btn" @click="showAllLanguages">
-                            {{ $t('Все языки') }}
+                            {{ $t('author.allLanguages') }}
                         </button>
                         <button v-if="pageLanguages" type="button" class="link-btn" @click="pageLanguages = null">
-                            {{ $t('Мои языки') }}
+                            {{ $t('author.myLanguages') }}
                         </button>
                     </div>
 
                     <div class="author-controls">
-                        <q-input v-model="filterText" dense outlined clearable class="author-filter" :placeholder="$t('Найти у автора')">
+                        <q-input v-model="filterText" dense outlined clearable class="author-filter" :placeholder="$t('author.findInThisAuthor')">
                             <template #prepend>
                                 <q-icon name="la la-search" size="16px" />
                             </template>
@@ -86,16 +86,16 @@
                             @update:model-value="$store.commit('setSettings', {bookView: $event})"
                         />
                         <q-btn flat dense no-caps icon="la la-angle-double-down" @click="setAll(true)">
-                            {{ $t('Развернуть все') }}
+                            {{ $t('author.expandAll') }}
                         </q-btn>
                         <q-btn flat dense no-caps icon="la la-angle-double-up" @click="setAll(false)">
-                            {{ $t('Свернуть все') }}
+                            {{ $t('author.collapseAll') }}
                         </q-btn>
                     </div>
                 </div>
 
                 <div v-if="!visibleBooks.length" class="page-empty page-empty--inline">
-                    {{ filterText ? $t('Ничего не найдено у этого автора.') : $t('Нет книг на выбранных языках.') }}
+                    {{ filterText ? $t('author.nothingFoundForThis') : $t('author.noBooksInThe') }}
                 </div>
 
                 <section v-for="group in groups" :key="group.key" class="entity-group" :class="{'is-open': isOpen(group)}">
@@ -106,11 +106,11 @@
                             <span class="group-count num">{{ group.books.length }}</span>
                         </button>
                         <router-link v-if="group.series" class="group-link" :to="seriesLink(group.series)">
-                            {{ $t('Страница серии') }}
+                            {{ $t('author.seriesPage') }}
                         </router-link>
-                        <span v-if="groupRead(group)" class="card-hint num">{{ $t('{read} из {total} прочитано', {read: groupRead(group), total: group.books.length}) }}</span>
+                        <span v-if="groupRead(group)" class="card-hint num">{{ $t('addToListDialog.ofRead', {read: groupRead(group), total: group.books.length}) }}</span>
                         <router-link v-if="group.series && nextUnread(group) && groupRead(group)" class="group-next" :to="bookLink(nextUnread(group))">
-                            {{ $t('Далее: {title}', {title: (nextUnread(group).serno ? `#${nextUnread(group).serno} ` : '') + nextUnread(group).title}) }}
+                            {{ $t('author.next', {title: (nextUnread(group).serno ? `#${nextUnread(group).serno} ` : '') + nextUnread(group).title}) }}
                         </router-link>
                     </div>
                     <BookCollection
@@ -122,7 +122,7 @@
                         :cover-meta="bookMeta"
                     />
                     <button v-if="isOpen(group) && group.books.length > shownBooks(group).length" type="button" class="link-btn group-more" @click="showAllIn(group)">
-                        {{ $t('Показать все {n}', {n: group.books.length}) }}
+                        {{ $t('author.showAll', {n: group.books.length}) }}
                     </button>
                 </section>
             </template>
@@ -136,7 +136,7 @@ import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
 import {bookUid, bookAuthors} from '../../share/bookActions';
 import {myLanguages, bookLang, languageMatches} from '../../share/languages';
@@ -254,11 +254,11 @@ class AuthorPage {
     }
 
     get visibleBooks() {
-        const words = String(this.filterText || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);
+        const words = String(this.filterText || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);//i18n-ignore: нормализация текста
         if (!words.length)
             return this.languageBooks;
         return this.languageBooks.filter((book) => {
-            const text = `${book.title} ${book.series} ${book.author}`.toLowerCase().replace(/ё/g, 'е');
+            const text = `${book.title} ${book.series} ${book.author}`.toLowerCase().replace(/ё/g, 'е');//i18n-ignore: нормализация текста
             return words.every(word => text.includes(word));
         });
     }
@@ -268,21 +268,21 @@ class AuthorPage {
         const series = new Set(books.map(book => book.series).filter(Boolean)).size;
         const loose = books.filter(book => !book.series).length;
         const read = books.filter(book => this.stateOf(book).read).length;
-        const parts = [t('Книг: {n}', {n: books.length})];
+        const parts = [t('addToListDialog.books', {n: books.length})];
         if (series)
-            parts.push(t('серий: {n}', {n: series}));
+            parts.push(t('author.series', {n: series}));
         if (loose && series)
-            parts.push(t('вне серий: {n}', {n: loose}));
+            parts.push(t('author.notInSeriesCount', {n: loose}));
         if (read)
-            parts.push(t('прочитано: {n}', {n: read}));
+            parts.push(t('author.read', {n: read}));
         return parts.join(' · ');
     }
 
     get groupingOptions() {
         return [
-            {label: t('По сериям'), value: 'series'},
-            {label: t('По дате'), value: 'date'},
-            {label: t('А–Я'), value: 'title'},
+            {label: t('author.bySeries'), value: 'series'},
+            {label: t('author.byDate'), value: 'date'},
+            {label: t('author.aZ'), value: 'title'},
         ];
     }
 
@@ -290,14 +290,14 @@ class AuthorPage {
         const byTitle = (a, b) => String(a.title).localeCompare(String(b.title), 'ru');
         const books = this.visibleBooks;
         if (this.grouping === 'title')
-            return [{key: 'all', title: t('Все книги'), books: [...books].sort(byTitle)}];
+            return [{key: 'all', title: t('author.allBooks'), books: [...books].sort(byTitle)}];
 
         if (this.grouping === 'date') {
             const map = new Map();
             for (const book of books) {
                 const year = String(book.date || '').substring(0, 4) || '—';
                 if (!map.has(year))
-                    map.set(year, {key: `y-${year}`, title: t('Поступили в {year}', {year}), books: []});
+                    map.set(year, {key: `y-${year}`, title: t('author.addedIn', {year}), books: []});
                 map.get(year).books.push(book);
             }
             const groups = [...map.values()].sort((a, b) => b.key.localeCompare(a.key));
@@ -310,7 +310,7 @@ class AuthorPage {
         for (const book of books) {
             const key = book.series || '';
             if (!map.has(key))
-                map.set(key, {key: key ? `s-${key}` : 'loose', series: key, title: key || t('Вне серий'), books: []});
+                map.set(key, {key: key ? `s-${key}` : 'loose', series: key, title: key || t('author.notInSeries'), books: []});
             map.get(key).books.push(book);
         }
         const groups = [...map.values()];
@@ -385,7 +385,7 @@ class AuthorPage {
     bookMeta(book) {
         const coauthors = bookAuthors(book).filter(author => author.toLowerCase() !== this.name.toLowerCase());
         const lang = (this.activeLanguages.all || this.activeLanguages.list.length > 1 ? String(book.lang || '').toUpperCase() : '');
-        return [lang, coauthors.length ? t('Соавторы: {names}', {names: coauthors.join(', ')}) : ''].filter(Boolean).join(' · ');
+        return [lang, coauthors.length ? t('author.coAuthors', {names: coauthors.join(', ')}) : ''].filter(Boolean).join(' · ');
     }
 
     seriesLink(series) {
@@ -422,7 +422,7 @@ class AuthorPage {
             const showDeleted = !!this.$store.state.settings.showDeleted;
             this.books = (result.books || []).filter(book => showDeleted || !book.del);
         } catch (e) {
-            this.error = tMessage(e.message);
+            this.error = tm(e.message);
         } finally {
             this.loading = false;
         }

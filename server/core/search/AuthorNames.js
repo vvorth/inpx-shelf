@@ -4,6 +4,12 @@
 const fs = require('fs-extra');
 
 const {normalize} = require('./textNorm');
+const {t} = require('../i18n');
+
+//ошибка с ключом перевода: фоновая задача хранит описание, текст получается в браузере на языке интерфейса
+function keyError(key, params) {
+    return Object.assign(new Error(t(key, params)), {i18nKey: key, i18nParams: params});
+}
 
 const endpoint = 'https://query.wikidata.org/sparql';
 const pageSize = 20000;
@@ -128,7 +134,7 @@ class AuthorNames {
                     await onDone();
             })
             .catch((e) => {
-                this.state = {running: false, progress: 0, error: e.message, message: ''};
+                this.state = {running: false, progress: 0, error: (e.i18nKey ? {key: e.i18nKey, params: e.i18nParams} : e.message), message: ''};
             });
         return this.status();
     }
@@ -153,7 +159,7 @@ class AuthorNames {
         }
 
         if (!byItem.size)
-            throw new Error('Wikidata не вернула ни одного имени');
+            throw keyError('errors.wikidataNoNames');
 
         const tmpFile = `${this.file}.tmp`;
         await fs.writeJson(tmpFile, {source: 'wikidata', updatedAt: new Date().toISOString(), entries: [...byItem.values()]});
@@ -173,7 +179,7 @@ class AuthorNames {
                 await new Promise(resolve => setTimeout(resolve, (attempt + 1) * this.retryDelayMs));
             }
         }
-        throw new Error(`Wikidata недоступна: ${lastError ? lastError.message : ''}`);
+        throw keyError('errors.wikidataUnavailable', {message: (lastError ? lastError.message : '')});
     }
 }
 

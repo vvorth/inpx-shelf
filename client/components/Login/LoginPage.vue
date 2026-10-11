@@ -8,7 +8,7 @@
                         {{ collectionName || config.name || 'inpx-shelf' }}
                     </div>
                     <div class="login-subtitle">
-                        {{ $t('Вход в профиль') }}
+                        {{ $t('api.profileLogin') }}
                     </div>
                 </div>
             </div>
@@ -17,7 +17,7 @@
                 ref="loginInput"
                 v-model="login"
                 outlined
-                :label="$t('Логин')"
+                :label="$t('common.login')"
                 autocomplete="username"
                 :disable="busy"
             />
@@ -25,7 +25,7 @@
                 v-model="password"
                 outlined
                 :type="passwordVisible ? 'text' : 'password'"
-                :label="$t('Пароль')"
+                :label="$t('common.password')"
                 autocomplete="current-password"
                 :disable="busy"
             >
@@ -43,12 +43,12 @@
             </div>
 
             <q-btn type="submit" color="primary" unelevated no-caps :loading="busy" :disable="!canSubmit" class="login-submit">
-                {{ $t('Войти') }}
+                {{ $t('profiles.loginAction') }}
             </q-btn>
 
             <template v-if="openProfiles.length">
                 <div class="login-divider">
-                    <span>{{ $t('Профили без пароля') }}</span>
+                    <span>{{ $t('login.profilesWithoutAPassword') }}</span>
                 </div>
                 <div class="login-open-profiles">
                     <button
@@ -66,10 +66,10 @@
             </template>
 
             <q-btn v-if="guestAllowed" flat no-caps color="primary" :disable="busy" class="login-guest" @click="continueAsGuest">
-                {{ $t('Продолжить без входа') }}
+                {{ $t('login.continueWithoutSigningIn') }}
             </q-btn>
             <div v-else class="login-hint">
-                {{ $t('Библиотека открыта только для зарегистрированных читателей. Учётную запись создаёт администратор.') }}
+                {{ $t('login.thisLibraryIsOpen') }}
             </div>
         </form>
     </div>
@@ -79,7 +79,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {initials} from '../../share/session';
 
 class LoginPage {
@@ -117,7 +117,7 @@ class LoginPage {
         this.error = '';
         this.busy = false;
         this.succeeded = false;
-        this.$root.setAppTitle(t('Вход в профиль'));
+        this.$root.setAppTitle(t('api.profileLogin'));
         this.$nextTick(() => {
             if (this.$refs.loginInput)
                 this.$refs.loginInput.focus();
@@ -158,7 +158,7 @@ class LoginPage {
     }
 
     avatar(profile) {
-        return initials(tMessage(profile.name));
+        return initials(tm(profile.name));
     }
 
     finish() {
@@ -177,7 +177,7 @@ class LoginPage {
             await this.api.completeProfileLogin(result);
             this.finish();
         } catch (e) {
-            this.error = tMessage(e.message);
+            this.error = tm(e.message);
             this.password = '';
         } finally {
             this.busy = false;
@@ -190,7 +190,7 @@ class LoginPage {
             await this.api.selectOpenProfile(profile.id);
             this.finish();
         } catch (e) {
-            this.error = tMessage(e.message);
+            this.error = tm(e.message);
         } finally {
             this.busy = false;
         }
@@ -203,7 +203,7 @@ class LoginPage {
             await this.api.selectOpenProfile(guest ? guest.id : '');
             this.finish();
         } catch (e) {
-            this.error = tMessage(e.message);
+            this.error = tm(e.message);
         } finally {
             this.busy = false;
         }

@@ -1,14 +1,13 @@
 const BasePage = require('./BasePage');
-const utils = require('../utils');
 const iconv = require('iconv-lite');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class SearchPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'search';
-        this.title = 'Поиск';
+        this.title = 'opds.search';
     }
 
     async searchBooks(term = '', genre = '') {
@@ -66,8 +65,8 @@ class SearchPage extends BasePage {
                     const pageItems = found.slice(offset, offset + limit);
 
                     for (const book of pageItems) {
-                        const title = `${book.serno ? `${book.serno}. ` : ''}${book.title || t('Без названия')} (${book.ext})`;
-                        const subtitle = [this.bookAuthor(book.author), book.series ? t('Серия: {name}', {name: book.series}) : ''].filter(Boolean).join(' · ');
+                        const title = `${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')} (${book.ext})`;
+                        const subtitle = [this.bookAuthor(book.author), book.series ? t('common.seriesWithName', {name: book.series}) : ''].filter(Boolean).join(' · ');
 
                         entry.push(
                             this.makeEntry({
@@ -86,7 +85,7 @@ class SearchPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: 'next_page',
-                                title: t('[Следующая страница]'),
+                                title: t('opds.nextPage'),
                                 link: this.navLink({href: `/${this.id}?type=title&term=${encodeURIComponent(query.term)}&genre=${encodeURIComponent(query.genre)}&page=${page + 1}`}),
                             })
                         );
@@ -95,7 +94,7 @@ class SearchPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'error',
-                            title: t('Ошибка: {message}', {message: e.message}),
+                            title: t('common.errorWithMessage', {message: e.message}),
                             link: this.navLink({href: `/fake-error-link`}),
                         })
                     );
@@ -126,11 +125,11 @@ class SearchPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: row.id,
-                                title: `${(from === 'series' ? t('Серия: ') : '')}${from === 'author' ? this.bookAuthor(row[from]) : row[from]}`,
+                                title: `${(from === 'series' ? t('opds.series2') : '')}${from === 'author' ? this.bookAuthor(row[from]) : row[from]}`,
                                 link: this.navLink({href: `/${from}?${from}==${encodeURIComponent(row[from])}`}),
                                 content: {
                                     '*ATTRS': {type: 'text'},
-                                    '*TEXT': t('{n} книг{e}', {n: row.bookCount, e: utils.wordEnding(row.bookCount, 8)}),
+                                    '*TEXT': t('common.bookCount', {n: row.bookCount}),
                                 },
                             }),
                         );
@@ -140,7 +139,7 @@ class SearchPage extends BasePage {
                         entry.push(
                             this.makeEntry({
                                 id: 'next_page',
-                                title: t('[Следующая страница]'),
+                                title: t('opds.nextPage'),
                                 link: this.navLink({href: `/${this.id}?type=${from}&term=${encodeURIComponent(query.term)}&genre=${encodeURIComponent(query.genre)}&page=${page + 1}`}),
                             })
                         );
@@ -149,7 +148,7 @@ class SearchPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'error',
-                            title: t('Ошибка: {message}', {message: e.message}),
+                            title: t('common.errorWithMessage', {message: e.message}),
                             link: this.navLink({href: `/fake-error-link`}),
                         })
                     );
@@ -159,47 +158,47 @@ class SearchPage extends BasePage {
             entry = [
                 this.makeEntry({
                     id: 'search_author',
-                    title: t('Поиск авторов'),
+                    title: t('opds.searchAuthors'),
                     link: this.navLink({href: `/${this.id}?type=author&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Искать по именам авторов'),
+                        '*TEXT': t('opds.searchAuthorNames'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_series',
-                    title: t('Поиск серий'),
+                    title: t('opds.searchSeries'),
                     link: this.navLink({href: `/${this.id}?type=series&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Искать по названиям серий'),
+                        '*TEXT': t('opds.searchSeriesTitles'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_title',
-                    title: t('Поиск книг'),
+                    title: t('opds.searchBooks'),
                     link: this.navLink({href: `/${this.id}?type=title&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Искать книги по слову в названии, серии и авторе'),
+                        '*TEXT': t('opds.searchBooksWordTitle'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_genre',
-                    title: t('Поиск книг в жанре'),
+                    title: t('opds.searchBooksGenre'),
                     link: this.navLink({href: `/genre?from=search&term=${encodeURIComponent(query.term)}`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Искать по названиям книг в выбранном жанре'),
+                        '*TEXT': t('opds.searchBookTitlesSelected'),
                     },
                 }),
                 this.makeEntry({
                     id: 'search_help',
-                    title: t('[Памятка по поиску]'),
+                    title: t('opds.searchHelp'),
                     link: this.acqLink({href: `/search-help`}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Описание формата поискового значения'),
+                        '*TEXT': t('opds.searchValueFormatDescription'),
                     },
                 }),
             ];

@@ -6,6 +6,7 @@ const {PNG} = require('pngjs');
 
 const utils = require('./utils');
 const externalTools = require('./ExternalTools');
+const {t} = require('./i18n');
 
 function contentType(buf) {
     if ((buf.length >= 2 && buf[0] == 0xff && buf[1] == 0x0a)
@@ -118,7 +119,7 @@ async function normalizeForEpub(buf, fileName, tempDir, toolDirs = [], converter
     const type = contentType(buf);
     if (type === 'image/jxl') {
         if (!['png', 'jpg', 'jpeg'].includes(extension))
-            throw new Error(`Неподдерживаемый формат изображения EPUB: ${fileName}`);
+            throw new Error(t('errors.epubUnsupportedImage', {name: fileName}));
         return await jxlToImage(buf, tempDir, toolDirs, converterPaths, extension);
     }
     if (type === 'image/webp' && extension === 'png')
@@ -183,7 +184,7 @@ function decodeRgba(buf) {
         const {width, height, data} = PNG.sync.read(buf);
         return {width, height, data};
     }
-    throw new Error(`Неподдерживаемый формат обложки: ${type}`);
+    throw new Error(t('errors.coverFormatUnsupported', {type}));
 }
 
 // Area-average downscale, alpha composited over white (JPEG has no transparency).
@@ -222,7 +223,7 @@ function downscaleRgba(image, width, height) {
 function fitToJpeg(buf, maxWidth, maxHeight, quality = 85) {
     const image = decodeRgba(buf);
     if (!image.width || !image.height || image.width*image.height > maxDecodePixels)
-        throw new Error(`Некорректный размер обложки: ${image.width}x${image.height}`);
+        throw new Error(t('errors.coverSizeInvalid', {width: image.width, height: image.height}));
 
     const scale = Math.min(1, maxWidth/image.width, maxHeight/image.height);
     if (scale === 1 && contentType(buf) === 'image/jpeg')

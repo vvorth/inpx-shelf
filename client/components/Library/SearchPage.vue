@@ -3,14 +3,14 @@
         <div class="page-body search-body">
             <div v-if="notReady" class="card index-progress">
                 <h2 class="card-title">
-                    {{ $t('Готовлю поиск') }}
+                    {{ $t('search.preparingSearch') }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('После обновления библиотеки сервер строит поисковый индекс: читает все книги и составляет словарь для поиска с опечатками. На большой библиотеке это занимает несколько минут, страница обновится сама.') }}
+                    {{ $t('search.afterTheLibraryIs') }}
                 </div>
                 <q-linear-progress rounded size="8px" :value="indexProgress" :indeterminate="!indexProgress" color="primary" />
                 <div class="card-hint num">
-                    {{ indexProgress ? $t('Готово {n}%', {n: Math.round(indexProgress * 100)}) : $t('Подготовка...') }}
+                    {{ indexProgress ? $t('search.done', {n: Math.round(indexProgress * 100)}) : $t('search.gettingReady') }}
                 </div>
             </div>
 
@@ -18,14 +18,14 @@
                 <aside class="facets" :class="{'facets--open': facetsOpen}">
                     <div class="facets-head">
                         <h2 class="card-title">
-                            {{ $t('Фильтры') }}
+                            {{ $t('search.filters') }}
                         </h2>
                         <button v-if="customFilterCount" type="button" class="link-btn" @click="clearFilters">
-                            {{ $t('Сбросить') }}
+                            {{ $t('common.reset') }}
                         </button>
                     </div>
                     <div v-if="tab !== 'books'" class="card-hint">
-                        {{ $t('Фильтры относятся к книгам: выбор откроет вкладку «Книги».') }}
+                        {{ $t('search.filtersApplyToBooks') }}
                     </div>
 
                     <div v-for="group in facetGroups" :key="group.field" class="facet">
@@ -43,14 +43,14 @@
                             <span class="facet-count num">{{ option.count.toLocaleString() }}</span>
                         </label>
                         <button v-if="group.options.length > group.visible.length" type="button" class="link-btn facet-more" @click="expanded[group.field] = true">
-                            {{ $t('Ещё {n}', {n: group.options.length - group.visible.length}) }}
+                            {{ $t('search.more', {n: group.options.length - group.visible.length}) }}
                         </button>
                     </div>
 
                     <div class="facet">
                         <label class="facet-option">
                             <input type="checkbox" :checked="hideCopies" @change="setQuery({copies: hideCopies ? undefined : '1'})" />
-                            <span class="facet-label">{{ $t('Скрыть копии') }}</span>
+                            <span class="facet-label">{{ $t('search.hideCopies') }}</span>
                         </label>
                     </div>
 
@@ -60,21 +60,21 @@
                     <div class="results-head">
                         <div>
                             <h1 class="page-title">
-                                {{ q ? $t('Поиск: «{q}»', {q}) : $t('Все книги') }}
+                                {{ q ? $t('search.search', {q}) : $t('author.allBooks') }}
                             </h1>
                             <div class="card-hint num">
-                                {{ loading && !result ? $t('Ищу...') : $t('Найдено книг: {n}', {n: total.toLocaleString()}) }}
+                                {{ loading && !result ? $t('search.searching') : $t('search.booksFound', {n: total.toLocaleString()}) }}
                                 <template v-if="hiddenByLanguage">
-                                    · {{ $t('ещё {n} на других языках', {n: hiddenByLanguage.toLocaleString()}) }}
+                                    · {{ $t('author.moreInOtherLanguages', {n: hiddenByLanguage.toLocaleString()}) }}
                                     <button type="button" class="link-btn" @click="showAllLanguages">
-                                        {{ $t('показать') }}
+                                        {{ $t('author.show') }}
                                     </button>
                                 </template>
                             </div>
                         </div>
                         <div class="results-tools">
                             <q-btn class="facets-toggle" outline dense no-caps icon="la la-filter" @click="facetsOpen = !facetsOpen">
-                                {{ $t('Фильтры') }}<span v-if="customFilterCount" class="num">&nbsp;· {{ customFilterCount }}</span>
+                                {{ $t('search.filters') }}<span v-if="customFilterCount" class="num">&nbsp;· {{ customFilterCount }}</span>
                             </q-btn>
                             <q-select
                                 :model-value="sort"
@@ -85,7 +85,7 @@
                                 map-options
                                 options-dense
                                 class="sort-select"
-                                :aria-label="$t('Сортировка')"
+                                :aria-label="$t('db.sort')"
                                 @update:model-value="setQuery({sort: $event, page: undefined})"
                             />
                             <q-btn-toggle
@@ -100,24 +100,24 @@
                         </div>
                     </div>
 
-                    <nav class="tabs" :aria-label="$t('Что искать')">
+                    <nav class="tabs" :aria-label="$t('search.whatToSearch')">
                         <button type="button" class="tab" :class="{'is-active': tab === 'books'}" @click="setTab('books')">
-                            {{ $t('Книги') }}<span v-if="result" class="tab-count num">{{ total.toLocaleString() }}</span>
+                            {{ $t('common.books') }}<span v-if="result" class="tab-count num">{{ total.toLocaleString() }}</span>
                         </button>
                         <button type="button" class="tab" :class="{'is-active': tab === 'authors'}" @click="setTab('authors')">
-                            {{ $t('Авторы') }}<span v-if="namesTotals.author !== null" class="tab-count num">{{ namesTotals.author.toLocaleString() }}</span>
+                            {{ $t('common.authors') }}<span v-if="namesTotals.author !== null" class="tab-count num">{{ namesTotals.author.toLocaleString() }}</span>
                         </button>
                         <button type="button" class="tab" :class="{'is-active': tab === 'series'}" @click="setTab('series')">
-                            {{ $t('Серии') }}<span v-if="namesTotals.series !== null" class="tab-count num">{{ namesTotals.series.toLocaleString() }}</span>
+                            {{ $t('common.seriesPlural') }}<span v-if="namesTotals.series !== null" class="tab-count num">{{ namesTotals.series.toLocaleString() }}</span>
                         </button>
                     </nav>
 
                     <template v-if="tab !== 'books'">
                         <div v-if="namesLoading && !names.items.length" class="page-empty page-empty--inline">
-                            {{ $t('Ищу...') }}
+                            {{ $t('search.searching') }}
                         </div>
                         <div v-else-if="!names.items.length" class="page-empty page-empty--inline">
-                            {{ tab === 'authors' ? $t('Авторы не найдены.') : $t('Серии не найдены.') }}
+                            {{ tab === 'authors' ? $t('search.noAuthorsFound') : $t('search.noSeriesFound') }}
                         </div>
                         <ol v-else class="name-list" :class="{'is-loading': namesLoading}">
                             <li v-for="item in names.items" :key="item.name">
@@ -130,17 +130,17 @@
                                         <span class="entity-name">{{ item.name }}</span>
                                         <span v-if="item.alias" class="entity-meta">{{ item.alias }}</span>
                                     </span>
-                                    <span class="name-count num">{{ $t('Книг: {n}', {n: item.books}) }}</span>
+                                    <span class="name-count num">{{ $t('addToListDialog.books', {n: item.books}) }}</span>
                                 </router-link>
                             </li>
                         </ol>
-                        <nav v-if="namesPageCount > 1" class="pager" :aria-label="$t('Страницы')">
+                        <nav v-if="namesPageCount > 1" class="pager" :aria-label="$t('reader.backgroundPagesSolid')">
                             <q-btn flat dense no-caps icon="la la-angle-left" :disable="page <= 1" @click="setQuery({page: page > 2 ? String(page - 1) : undefined})">
-                                {{ $t('Назад') }}
+                                {{ $t('reader.back') }}
                             </q-btn>
-                            <span class="num">{{ $t('Страница {page} из {count}', {page, count: namesPageCount}) }}</span>
+                            <span class="num">{{ $t('search.pageOf', {page, count: namesPageCount}) }}</span>
                             <q-btn flat dense no-caps icon-right="la la-angle-right" :disable="page >= namesPageCount" @click="setQuery({page: String(page + 1)})">
-                                {{ $t('Дальше') }}
+                                {{ $t('reader.searchNext') }}
                             </q-btn>
                         </nav>
                     </template>
@@ -148,7 +148,7 @@
                     <template v-else>
                     <div v-if="result && result.corrected" class="notice">
                         <div>
-                            {{ result.layout ? $t('Похоже, запрос набран в другой раскладке. Показаны результаты для') : $t('Показаны результаты для') }}
+                            {{ result.layout ? $t('search.looksLikeTheWrong') : $t('search.showingResultsFor') }}
                             <router-link :to="{path: '/search', query: Object.assign({}, $route.query, {q: result.corrected, page: undefined})}">
                                 <b>{{ result.corrected }}</b>
                             </router-link>.
@@ -166,24 +166,24 @@
                             <span class="entity-avatar">{{ initials(item.name) }}</span>
                             <span class="entity-copy">
                                 <span class="entity-name">{{ item.name }}</span>
-                                <span class="entity-meta">{{ [item.alias || $t('Автор'), $t('Книг: {n}', {n: item.books})].join(' · ') }}</span>
+                                <span class="entity-meta">{{ [item.alias || $t('search.author'), $t('addToListDialog.books', {n: item.books})].join(' · ') }}</span>
                             </span>
                         </router-link>
                         <router-link v-for="item in result.series" :key="`s-${item.name}`" class="entity" :to="`/series/${encodeURIComponent(item.name)}`">
                             <span class="entity-avatar entity-avatar--series"><q-icon name="la la-layer-group" size="18px" /></span>
                             <span class="entity-copy">
                                 <span class="entity-name">{{ item.name }}</span>
-                                <span class="entity-meta">{{ $t('Серия') }} · {{ $t('Книг: {n}', {n: item.books}) }}</span>
+                                <span class="entity-meta">{{ $t('common.series') }} · {{ $t('addToListDialog.books', {n: item.books}) }}</span>
                             </span>
                         </router-link>
                     </div>
 
                     <div v-if="result && page === 1 && (namesTotals.author > result.authors.length || namesTotals.series > result.series.length) && (result.authors.length || result.series.length)" class="entities-more">
                         <button v-if="namesTotals.author > result.authors.length" type="button" class="link-btn" @click="setTab('authors')">
-                            {{ $t('Все авторы ({n})', {n: namesTotals.author}) }}
+                            {{ $t('search.allAuthors', {n: namesTotals.author}) }}
                         </button>
                         <button v-if="namesTotals.series > result.series.length" type="button" class="link-btn" @click="setTab('series')">
-                            {{ $t('Все серии ({n})', {n: namesTotals.series}) }}
+                            {{ $t('search.allSeries', {n: namesTotals.series}) }}
                         </button>
                     </div>
 
@@ -191,38 +191,38 @@
                         {{ error }}
                     </div>
                     <div v-else-if="result && !books.length" class="page-empty">
-                        <div>{{ activeChips.length ? $t('Ничего не найдено с этими фильтрами.') : $t('Ничего не найдено.') }}</div>
+                        <div>{{ activeChips.length ? $t('search.nothingMatchesTheseFilters') : $t('search.nothingFound') }}</div>
                         <q-btn v-if="hiddenByLanguage" outline color="primary" no-caps @click="showAllLanguages">
-                            {{ $t('Показать на всех языках') }}
+                            {{ $t('search.showInAllLanguages') }}
                         </q-btn>
                         <q-btn v-else-if="customFilterCount" outline color="primary" no-caps @click="clearFilters">
-                            {{ $t('Сбросить фильтры') }}
+                            {{ $t('search.clearFilters') }}
                         </q-btn>
                     </div>
 
                     <BookCollection v-else :class="{'is-loading': loading}" :books="books" :states="states" :view="view" />
 
-                    <nav v-if="pageCount > 1" class="pager" :aria-label="$t('Страницы')">
+                    <nav v-if="pageCount > 1" class="pager" :aria-label="$t('reader.backgroundPagesSolid')">
                         <q-btn flat dense no-caps icon="la la-angle-left" :disable="page <= 1" @click="setQuery({page: page > 2 ? String(page - 1) : undefined})">
-                            {{ $t('Назад') }}
+                            {{ $t('reader.back') }}
                         </q-btn>
-                        <span class="num">{{ $t('Страница {page} из {count}', {page, count: pageCount}) }}</span>
+                        <span class="num">{{ $t('search.pageOf', {page, count: pageCount}) }}</span>
                         <q-btn flat dense no-caps icon-right="la la-angle-right" :disable="page >= pageCount" @click="setQuery({page: String(page + 1)})">
-                            {{ $t('Дальше') }}
+                            {{ $t('reader.searchNext') }}
                         </q-btn>
                     </nav>
                     </template>
 
                     <details class="syntax-help">
-                        <summary>{{ $t('Точный поиск') }}</summary>
+                        <summary>{{ $t('search.preciseSearch') }}</summary>
                         <div class="card-hint">
-                            {{ $t('В строке поиска можно уточнять поля:') }}
+                            {{ $t('search.youCanNameFields') }}
                         </div>
                         <ul class="card-hint">
-                            <li><code>author:стругацк</code> — {{ $t('автор начинается со слова') }}</li>
-                            <li><code>title:="пикник на обочине"</code> — {{ $t('точное название') }}</li>
-                            <li><code>series:дозор</code>, <code>lang:ru</code>, <code>ext:epub</code>, <code>genre:sf_social</code></li>
-                            <li><code>-genre:det_classic</code> — {{ $t('исключить жанр') }}</li>
+                            <li><code>author:стругацк</code> — {{ $t('search.authorStartsWithThe') }}</li><!-- i18n-ignore: примеры запросов -->
+                            <li><code>title:="пикник на обочине"</code> — {{ $t('search.exactTitle') }}</li><!-- i18n-ignore: примеры запросов -->
+                            <li><code>series:дозор</code>, <code>lang:ru</code>, <code>ext:epub</code>, <code>genre:sf_social</code></li><!-- i18n-ignore: примеры запросов -->
+                            <li><code>-genre:det_classic</code> — {{ $t('search.excludeAGenre') }}</li>
                         </ul>
                     </details>
                 </section>
@@ -237,7 +237,7 @@ import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
 import {bookUid} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
@@ -287,7 +287,7 @@ class SearchPage {
     }
 
     activated() {
-        this.$root.setAppTitle(this.q ? t('Поиск: «{q}»', {q: this.q}) : t('Поиск'));
+        this.$root.setAppTitle(this.q ? t('search.search', {q: this.q}) : t('opds.search'));
         if (this.queryKey !== this.loadedKey || this.notReady)
             this.load();
     }
@@ -443,13 +443,13 @@ class SearchPage {
 
     get sortOptions() {
         const options = [
-            {label: t('Сначала новые'), value: 'date'},
-            {label: t('По названию'), value: 'title'},
-            {label: t('По автору'), value: 'author'},
-            {label: t('По оценке'), value: 'rating'},
+            {label: t('reader.readerHomeSortUpdatedDesc'), value: 'date'},
+            {label: t('reader.readerHomeSortTitle'), value: 'title'},
+            {label: t('reader.readerHomeSortAuthor'), value: 'author'},
+            {label: t('search.byRating'), value: 'rating'},
         ];
         if (this.q)
-            options.unshift({label: t('По релевантности'), value: 'relevance'});
+            options.unshift({label: t('search.bestMatch'), value: 'relevance'});
         return options;
     }
 
@@ -466,27 +466,27 @@ class SearchPage {
         if (field === 'ext')
             return String(value).toUpperCase();
         if (field === 'librate')
-            return (Number(value) > 0 ? '★'.repeat(Number(value)) : t('Без оценки'));
+            return (Number(value) > 0 ? '★'.repeat(Number(value)) : t('common.noRating'));
         if (field === 'source') {
             const source = (this.config.librarySources || []).find(item => item.id === value);
             return source ? source.name : value;
         }
         if (field === 'added')
-            return {'7d': t('За неделю'), '30d': t('За месяц'), '365d': t('За год')}[value] || value;
+            return {'7d': t('search.pastWeek'), '30d': t('search.pastMonth'), '365d': t('search.pastYear')}[value] || value;
         return value;
     }
 
     get facetGroups() {
         const facets = (this.result && this.result.facets) || {};
         const groups = [
-            {field: 'lang', label: t('Язык')},
-            {field: 'genre', label: t('Жанр')},
-            {field: 'ext', label: t('Формат')},
-            {field: 'added', label: t('Поступления'), single: true},
-            {field: 'librate', label: t('Оценка')},
+            {field: 'lang', label: t('search.language')},
+            {field: 'genre', label: t('common.genre')},
+            {field: 'ext', label: t('reader.controlsReadMode')},
+            {field: 'added', label: t('search.added'), single: true},
+            {field: 'librate', label: t('common.rating')},
         ];
         if ((this.config.librarySources || []).filter(item => item.enabled !== false).length > 1)
-            groups.push({field: 'source', label: t('Источник')});
+            groups.push({field: 'source', label: t('common.source')});
 
         return groups.map((group) => {
             let options = (facets[group.field] || []).map(([value, count]) => ({value, count, label: this.optionLabel(group.field, value)}));
@@ -576,7 +576,7 @@ class SearchPage {
         this.loadedKey = key;
         this.loading = true;
         this.error = '';
-        this.$root.setAppTitle(this.q ? t('Поиск: «{q}»', {q: this.q}) : t('Поиск'));
+        this.$root.setAppTitle(this.q ? t('search.search', {q: this.q}) : t('opds.search'));
         if (this.namesTotalsKey !== this.q)
             this.loadNameTotals(this.q);
         const booksTab = (this.tab === 'books');
@@ -606,7 +606,7 @@ class SearchPage {
                 this.notReady = true;
                 this.schedulePoll();
             } else {
-                this.error = tMessage(e.message);
+                this.error = tm(e.message);
             }
         } finally {
             if (seq === this.requestSeq)

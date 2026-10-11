@@ -1,5 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
+const {t} = require('./i18n');
 
 const SEVEN_ZIP_DOWNLOAD_URL = 'https://www.7-zip.org/download.html';
 const DJXL_DOWNLOAD_URL = 'https://github.com/libjxl/libjxl/releases/latest';
@@ -127,26 +128,26 @@ function dwebpCommandCandidates(extraDirs = [], converterPaths = null) {
 
 function missingSevenZipMessage() {
     if (process.platform === 'win32') {
-        return `Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7-Zip или положите 7za.exe/7z.exe в каталог bin рядом с inpx-shelf.exe. Ссылка: ${SEVEN_ZIP_DOWNLOAD_URL}`;
+        return t('errors.missingSevenZipWindows', {url: SEVEN_ZIP_DOWNLOAD_URL});
     }
 
-    return `Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7z/7za через пакетный менеджер вашей системы. Ссылка: ${SEVEN_ZIP_DOWNLOAD_URL}`;
+    return t('errors.missingSevenZip', {url: SEVEN_ZIP_DOWNLOAD_URL});
 }
 
 function missingDjxlMessage() {
     if (process.platform === 'win32') {
-        return `Не найден djxl для декодирования JXL-обложек. Установите libjxl или положите djxl.exe и его DLL в каталог bin рядом с inpx-shelf.exe. Ссылка: ${DJXL_DOWNLOAD_URL}`;
+        return t('errors.missingDjxlWindows', {url: DJXL_DOWNLOAD_URL});
     }
 
-    return `Не найден djxl для декодирования JXL-обложек. Установите libjxl-tools или аналогичный пакет вашей системы. Ссылка: ${DJXL_DOWNLOAD_URL}`;
+    return t('errors.missingDjxl', {url: DJXL_DOWNLOAD_URL});
 }
 
 function missingDwebpMessage() {
     if (process.platform === 'win32') {
-        return `Не найден dwebp для декодирования WebP-обложек. Установите libwebp или положите dwebp.exe и его DLL в каталог bin рядом с inpx-shelf.exe. Ссылка: ${DWEBP_DOWNLOAD_URL}`;
+        return t('errors.missingDwebpWindows', {url: DWEBP_DOWNLOAD_URL});
     }
 
-    return `Не найден dwebp для декодирования WebP-обложек. Установите webp/libwebp-tools или аналогичный пакет вашей системы. Ссылка: ${DWEBP_DOWNLOAD_URL}`;
+    return t('errors.missingDwebp', {url: DWEBP_DOWNLOAD_URL});
 }
 
 function createMissingToolError(code, message) {

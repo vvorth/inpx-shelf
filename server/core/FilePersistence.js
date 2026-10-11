@@ -2,6 +2,7 @@ const {AsyncLocalStorage} = require('async_hooks');
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
+const {t} = require('./i18n');
 
 const context = new AsyncLocalStorage();
 const queues = new Map();
@@ -20,7 +21,7 @@ function withFileTransaction(file, task) {
     const previous = queues.get(key) || Promise.resolve();
     const operation = previous.catch(() => {}).then(() => {
         if (blocked.has(key))
-            throw new Error('Восстановление данных прервано; требуется перезапуск для восстановления из журнала');
+            throw new Error(t('errors.recoveryInterrupted'));
         const scope = {key, active: true, parent: current};
         return context.run(scope, async() => {
             try {

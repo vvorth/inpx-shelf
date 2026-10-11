@@ -32,11 +32,11 @@ for (const line of lines) {
     if (!nonfb2) {
         if (num.length < 3) {//раздел
             if (section == '0.20') {//прочее
-                other = {name, value: []};
+                other = {id: num[1], name, value: []};
             } else {
                 if (sec2index[section] === undefined) {
                     if (!genres[index])
-                        genres[index] = {name, value: []};
+                        genres[index] = {id: num[1], name, value: []};
                     sec2index[section] = index;
                     index++;
                 }

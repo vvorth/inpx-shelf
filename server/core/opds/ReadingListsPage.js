@@ -1,13 +1,12 @@
-const utils = require('../utils');
 const BasePage = require('./BasePage');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class ReadingListsPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'reading-lists';
-        this.title = 'Списки чтения';
+        this.title = 'opds.readingLists';
     }
 
     async body(req) {
@@ -19,11 +18,11 @@ class ReadingListsPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'no-user',
-                    title: t('[Выберите профиль пользователя]'),
+                    title: t('opds.chooseUserProfile'),
                     link: this.navLink({href: '/reading-profiles', req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Для OPDS-подборок откройте профиль пользователя'),
+                        '*TEXT': t('opds.openUserProfileOpds'),
                     },
                 }),
             );
@@ -41,7 +40,7 @@ class ReadingListsPage extends BasePage {
                     link: this.navLink({href: `/${this.id}/list?id=${encodeURIComponent(item.id)}`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('{read}/{n} книг{e} прочитано', {read: item.readCount || 0, n: item.bookCount, e: utils.wordEnding(item.bookCount, 8)}),
+                        '*TEXT': t('opds.readOfTotal', {read: item.readCount || 0, n: item.bookCount}),
                     },
                 }),
             );
@@ -51,11 +50,11 @@ class ReadingListsPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: t('[Списков пока нет]'),
+                    title: t('opds.noListsYet'),
                     link: this.navLink({href: `/${this.id}`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Создайте список в веб-интерфейсе и переведите его в режим OPDS'),
+                        '*TEXT': t('opds.createListWebInterface'),
                     },
                 }),
             );

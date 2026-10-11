@@ -11,12 +11,12 @@ const schemaVersion = '8';
 const maxLimit = 200;
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
-    ['author', 'author'], ['автор', 'author'],
-    ['title', 'title'], ['название', 'title'],
-    ['series', 'series'], ['серия', 'series'],
-    ['genre', 'genre'], ['жанр', 'genre'],
-    ['lang', 'lang'], ['язык', 'lang'],
-    ['ext', 'ext'], ['format', 'ext'], ['формат', 'ext'],
+    ['author', 'author'], ['автор', 'author'],//i18n-ignore: данные поиска
+    ['title', 'title'], ['название', 'title'],//i18n-ignore: данные поиска
+    ['series', 'series'], ['серия', 'series'],//i18n-ignore: данные поиска
+    ['genre', 'genre'], ['жанр', 'genre'],//i18n-ignore: данные поиска
+    ['lang', 'lang'], ['язык', 'lang'],//i18n-ignore: данные поиска
+    ['ext', 'ext'], ['format', 'ext'], ['формат', 'ext'],//i18n-ignore: данные поиска
     ['source', 'source'], ['rating', 'librate'],
 ]);
 

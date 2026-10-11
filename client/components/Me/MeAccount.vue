@@ -2,42 +2,42 @@
     <div class="card-stack">
         <form class="card" @submit.prevent="saveProfile">
             <h2 class="card-title">
-                {{ $t('Профиль') }}
+                {{ $t('common.profile') }}
             </h2>
             <div class="form-grid">
-                <q-input v-model="name" outlined dense :label="$t('Имя')" />
-                <q-input v-model="login" outlined dense :disable="sso" :label="$t('Логин')" :hint="sso ? $t('Логин задаёт SSO') : ''" />
+                <q-input v-model="name" outlined dense :label="$t('profiles.name')" />
+                <q-input v-model="login" outlined dense :disable="sso" :label="$t('common.login')" :hint="sso ? $t('meAccount.yourLoginComesFrom') : ''" />
             </div>
             <div class="card-actions">
                 <q-btn type="submit" color="primary" unelevated no-caps :loading="profileSaving">
-                    {{ $t('Сохранить') }}
+                    {{ $t('common.save') }}
                 </q-btn>
             </div>
         </form>
 
         <form v-if="!sso" class="card" @submit.prevent="changePassword">
             <h2 class="card-title">
-                {{ $t('Пароль') }}
+                {{ $t('common.password') }}
             </h2>
             <div class="form-grid">
-                <q-input v-model="newPassword" outlined dense type="password" autocomplete="new-password" :label="$t('Новый пароль')" />
+                <q-input v-model="newPassword" outlined dense type="password" autocomplete="new-password" :label="$t('profiles.newPassword')" />
                 <q-input
                     v-model="repeatPassword"
                     outlined
                     dense
                     type="password"
                     autocomplete="new-password"
-                    :label="$t('Повторите пароль')"
+                    :label="$t('meAccount.repeatPassword')"
                     :error="!!repeatPassword && repeatPassword !== newPassword"
-                    :error-message="$t('Пароли не совпадают')"
+                    :error-message="$t('meAccount.passwordsDontMatch')"
                 />
             </div>
             <div class="card-hint">
-                {{ $t('После смены пароля вход на других устройствах сбрасывается.') }}
+                {{ $t('meAccount.changingThePasswordSigns') }}
             </div>
             <div class="card-actions">
                 <q-btn type="submit" color="primary" unelevated no-caps :loading="passwordSaving" :disable="!canChangePassword">
-                    {{ $t('Сменить пароль') }}
+                    {{ $t('meAccount.changePassword') }}
                 </q-btn>
             </div>
         </form>
@@ -102,8 +102,8 @@ class MeAccount {
             patch.login = String(this.login || '').trim();
             //смена логина закрывает сессии профиля: нужен пароль, чтобы сразу войти снова
             if (this.profile.hasPassword) {
-                const prompt = await this.$root.stdDialog.password(t('Введите пароль, чтобы сменить логин:'), t('Смена логина'), {
-                    inputValidator: (value) => (value ? true : t('Пароль не должен быть пустым')),
+                const prompt = await this.$root.stdDialog.password(t('meAccount.enterYourPasswordTo'), t('meAccount.changeLogin'), {
+                    inputValidator: (value) => (value ? true : t('common.passwordRequired')),
                 });
                 if (!prompt || prompt === false)
                     return;
@@ -120,9 +120,9 @@ class MeAccount {
             } else {
                 await this.api.updateConfig();
             }
-            this.$root.notify.success(t('Профиль сохранён'));
+            this.$root.notify.success(t('profiles.profileSaved'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.profileSaving = false;
         }
@@ -142,9 +142,9 @@ class MeAccount {
             await this.api.completeProfileLogin(result);
             this.newPassword = '';
             this.repeatPassword = '';
-            this.$root.notify.success(t('Пароль изменён'));
+            this.$root.notify.success(t('meAccount.passwordChanged'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.passwordSaving = false;
         }

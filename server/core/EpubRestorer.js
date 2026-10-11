@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const {pipeline} = require('stream/promises');
 const yazl = require('yazl');
 const ZipReader = require('./ZipReader');
+const {t} = require('./i18n');
 
 const imageIndexName = 'FLibraryImageIndex.json';
 const mimetype = 'application/epub+zip';
@@ -11,16 +12,16 @@ function safeEntryName(value) {
     const name = String(value || '').replace(/\\/g, '/').replace(/^(\.\/)+/, '');
     if (!name || name.startsWith('/') || /[:\x00-\x1f]/.test(name)
         || name.split('/').some(part => part === '..'))
-        throw new Error(`Некорректный путь в EPUB: ${name}`);
+        throw new Error(t('errors.epubInvalidPath', {name}));
     const normalized = path.posix.normalize(name);
     if (normalized === '.' || normalized.endsWith('/'))
-        throw new Error(`Некорректный путь в EPUB: ${name}`);
+        throw new Error(t('errors.epubInvalidPath', {name}));
     return normalized;
 }
 
 function safeArchiveEntry(entry) {
     if (entry.isLink)
-        throw new Error(`Ссылка внутри EPUB: ${entry.name}`);
+        throw new Error(t('errors.epubLink', {name: entry.name}));
     const rawName = entry.isDirectory ? entry.name.replace(/[\\/]+$/, '') : entry.name;
     return {sourceName: entry.name, name: safeEntryName(rawName), isDirectory: entry.isDirectory};
 }
@@ -35,7 +36,7 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
         const containers = entries.filter(entry => entry.name === 'META-INF/container.xml'
             || entry.name.endsWith('/META-INF/container.xml'));
         if (containers.length !== 1)
-            throw new Error('EPUB должен содержать один META-INF/container.xml');
+            throw new Error(t('errors.epubContainer'));
         const prefix = containers[0].name.slice(0, -'META-INF/container.xml'.length);
         const files = new Map();
         for (const entry of entries) {
@@ -43,7 +44,7 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
                 continue;
             const name = entry.name.slice(prefix.length);
             if (files.has(name))
-                throw new Error(`Повторяющийся файл в EPUB: ${name}`);
+                throw new Error(t('errors.epubDuplicateFile', {name}));
             files.set(name, entry.sourceName);
         }
         // Heimdall stores this sidecar at the archive root while EPUB files
@@ -54,7 +55,7 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
         if (reader.archiveType === 'zip' && !indexes.length)
             return false;
         if (indexes.length > 1)
-            throw new Error('Несколько индексов изображений EPUB');
+            throw new Error(t('errors.epubMultipleImageIndexes'));
 
         stagingDir = await fs.mkdtemp(path.join(config.tempDir || path.dirname(bookFile), 'epub-'));
         let extractedDir = '';
@@ -67,40 +68,40 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
             for (const entry of validated) {
                 const key = entry.name.toLowerCase();
                 if (seen.has(key))
-                    throw new Error(`Повторяющийся путь в EPUB: ${entry.name}`);
+                    throw new Error(t('errors.epubDuplicatePath', {name: entry.name}));
                 seen.add(key);
             }
             await reader.extractAllToDir(extractedDir);
             for (const entry of entries) {
                 const stat = await fs.lstat(path.join(extractedDir, entry.name));
                 if (!stat.isFile())
-                    throw new Error(`Некорректный файл EPUB: ${entry.name}`);
+                    throw new Error(t('errors.epubInvalidFile', {name: entry.name}));
             }
         }
         const readEntry = async(name) => extractedDir
             ? await fs.readFile(path.join(extractedDir, safeEntryName(name))) : await reader.extractToBuf(name);
         if (!files.has('mimetype') || (await readEntry(files.get('mimetype'))).toString().trim() !== mimetype)
-            throw new Error('Некорректный mimetype EPUB');
+            throw new Error(t('errors.epubMimetype'));
 
         let imageIndex = [];
         if (indexes.length) {
             try {
                 imageIndex = JSON.parse((await readEntry(indexes[0].sourceName)).toString());
             } catch (error) {
-                throw new Error(`Некорректный индекс изображений EPUB: ${error.message}`);
+                throw new Error(t('errors.epubInvalidImageIndex', {details: error.message}));
             }
             if (!Array.isArray(imageIndex))
-                throw new Error('Индекс изображений EPUB должен быть массивом');
+                throw new Error(t('errors.epubImageIndexArray'));
         }
         const imageNames = new Set();
         const images = imageIndex.map(item => {
             if (!item || typeof item.id !== 'string' || !Number.isInteger(item.num) || item.num < -1)
-                throw new Error('Некорректная запись индекса изображений EPUB');
+                throw new Error(t('errors.epubImageIndexEntry'));
             let name = safeEntryName(item.id);
             if (prefix && name.startsWith(prefix))
                 name = name.slice(prefix.length);
             if (imageNames.has(name) || ['mimetype', 'META-INF/container.xml', ...indexNames].includes(name))
-                throw new Error(`Некорректное имя изображения EPUB: ${name}`);
+                throw new Error(t('errors.epubInvalidImageName', {name}));
             imageNames.add(name);
             return {name, num: item.num};
         });
@@ -121,7 +122,7 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
                 continue;
             const data = await loadImage(image.num, image.name);
             if (!data || !data.length)
-                throw new Error(`Не найдено изображение EPUB: ${image.name} (номер ${image.num})`);
+                throw new Error(t('errors.epubImageNotFound', {name: image.name, num: image.num}));
             const file = existing || path.join(stagingDir, `entry-${staged.size}`);
             await fs.writeFile(file, data);
             staged.set(image.name, file);

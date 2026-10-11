@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const {promisify} = require('util');
+const {t} = require('./i18n');
 const scrypt = promisify(crypto.scrypt);
 
 // OWASP's 16 MiB scrypt configuration; version fixes costs independently of input.
@@ -26,9 +27,9 @@ function legacy(login, password) {
 
 async function derive(password, salt) {
     if (Buffer.byteLength(String(password || '')) > maxPasswordBytes)
-        throw new Error('Пароль слишком длинный');
+        throw new Error(t('errors.passwordTooLong'));
     if (active >= 4)
-        throw new Error('Проверка паролей занята, повторите позже');
+        throw new Error(t('errors.passwordCheckBusy'));
     active++;
     try {
         return await scrypt(String(password || ''), salt, 32, options);

@@ -218,19 +218,19 @@ function showUpdateRecovery(deployedBuildId) {
 
     const title = document.createElement('h1');
     title.style.cssText = 'font-size:24px;margin:0 0 12px';
-    title.textContent = t('Не удалось обновить приложение');
+    title.textContent = t('app.updateFailedTitle');
 
     const message = document.createElement('p');
-    message.textContent = t('Автоматическое обновление остановлено после нескольких попыток. Настройки читалки, прогресс и закладки при восстановлении сохранятся.');
+    message.textContent = t('app.updateFailedText');
 
     const versions = document.createElement('p');
     versions.style.cssText = 'font-size:13px;opacity:.7;word-break:break-all';
-    versions.textContent = t('Текущая сборка: {current}; сервер: {deployed}', {current: currentBuildId || t('неизвестна'), deployed: deployedBuildId});
+    versions.textContent = t('app.updateFailedBuilds', {current: currentBuildId || t('app.unknownBuild'), deployed: deployedBuildId});
 
     const resetLink = document.createElement('a');
     resetLink.href = appResetUrl();
     resetLink.style.cssText = 'display:inline-block;margin-top:8px;padding:12px 16px;border-radius:10px;background:#8f5725;color:#fff;text-decoration:none;font-weight:600';
-    resetLink.textContent = t('Очистить кэш приложения и повторить');
+    resetLink.textContent = t('app.clearCacheRetry');
 
     panel.append(title, message, versions, resetLink);
     host.replaceChildren(panel);

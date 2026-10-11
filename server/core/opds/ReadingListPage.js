@@ -1,12 +1,12 @@
 const BasePage = require('./BasePage');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class ReadingListPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'reading-list';
-        this.title = 'Список чтения';
+        this.title = 'opds.readingList';
     }
 
     async body(req) {
@@ -24,11 +24,11 @@ class ReadingListPage extends BasePage {
         this.title = list.name;
 
         for (const book of books) {
-            const title = `${book._readingListRead ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('Без названия')} (${book.ext})`;
+            const title = `${book._readingListRead ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')} (${book.ext})`;
             const subtitle = [
                 this.bookAuthor(book.author),
-                book.series ? t('Серия: {name}', {name: book.series}) : '',
-                book._readingListRead ? t('Прочитано') : t('Не прочитано'),
+                book.series ? t('common.seriesWithName', {name: book.series}) : '',
+                book._readingListRead ? t('common.read') : t('opds.unread'),
             ].filter(Boolean).join(' · ');
 
             entry.push(
@@ -48,11 +48,11 @@ class ReadingListPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: t('[Список пуст]'),
+                    title: t('opds.listEmpty'),
                     link: this.navLink({href: `/reading-lists`, req}),
                     content: {
                         '*ATTRS': {type: 'text'},
-                        '*TEXT': t('Добавьте книги в этот список через веб-интерфейс'),
+                        '*TEXT': t('opds.addBooksListWeb'),
                     },
                 }),
             );

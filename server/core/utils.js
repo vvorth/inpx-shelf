@@ -3,6 +3,7 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const {pipeline} = require('stream/promises');
+const {t} = require('./i18n');
 const pendingCacheFiles = new Map();
 
 function sleep(ms) {
@@ -142,7 +143,7 @@ function prepareCachedFile(outputFile, writer, expectedSize = 0) {
             try {
                 await writer(temporaryFile);
                 if (!await valid(temporaryFile))
-                    throw new Error('Подготовленный файл кэша пуст или имеет неверный размер');
+                    throw new Error(t('errors.preparedFileInvalid'));
                 // Only the completed file becomes visible to downloads.
                 await fs.rename(temporaryFile, outputFile);
                 return true;
@@ -202,25 +203,6 @@ function makeValidFileNameOrEmpty(fileName) {
     }
 }
 
-function wordEnding(num, type = 0) {
-    const endings = [
-        ['ов', '', 'а', 'а', 'а', 'ов', 'ов', 'ов', 'ов', 'ов'],//0
-        ['й', 'я', 'и', 'и', 'и', 'й', 'й', 'й', 'й', 'й'],//1
-        ['о', '', 'о', 'о', 'о', 'о', 'о', 'о', 'о', 'о'],//2
-        ['ий', 'ие', 'ия', 'ия', 'ия', 'ий', 'ий', 'ий', 'ий', 'ий'],//3
-        ['о', 'а', 'о', 'о', 'о', 'о', 'о', 'о', 'о', 'о'],//4
-        ['ок', 'ка', 'ки', 'ки', 'ки', 'ок', 'ок', 'ок', 'ок', 'ок'],//5
-        ['ых', 'ое', 'ых', 'ых', 'ых', 'ых', 'ых', 'ых', 'ых', 'ых'],//6
-        ['о', 'о', 'о', 'о', 'о', 'о', 'о', 'о', 'о', 'о'],//7
-        ['', 'а', 'и', 'и', 'и', '', '', '', '', ''],//8
-    ];
-    const deci = num % 100;
-    if (deci > 10 && deci < 20) {
-        return endings[type][0];
-    } else {
-        return endings[type][num % 10];
-    }
-}
 
 function cutString(data, len = 500) {
     try {
@@ -246,7 +228,7 @@ function checkSearchRegExp(pattern = '') {
     const quantifiers = value.replace(/\\./g, '').replace(/\(\?/g, '(').replace(/([*+?}])\?/g, '$1');
     const variable = (quantifiers.match(/[*+?]|\{\d*,\d*\}/g) || []).length;
     if (value.length > 100 || variable > 1 || /\)[*+?{]/.test(value) || /\\[1-9]|\\k</.test(value))
-        throw new Error('Регулярное выражение слишком сложное: не больше 100 символов и одного "*", "+" или "?", без повторяемых групп');
+        throw new Error(t('errors.regexTooComplex'));
     return new RegExp(value, 'i');
 }
 
@@ -272,6 +254,5 @@ module.exports = {
     toUnixPath,
     makeValidFileName,
     makeValidFileNameOrEmpty,
-    wordEnding,
     cutString,
 };

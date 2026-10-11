@@ -5,6 +5,7 @@ const textUtils = require('./textUtils');
 
 const Fb2Parser = require('../fb2/Fb2Parser');
 const utils = require('../utils');
+const {t} = require('../i18n');
 
 class Fb2Helper {
     async decompressIfNeeded(data) {
@@ -40,7 +41,7 @@ class Fb2Helper {
                 encoding = 'utf-8';
             } else if (declared && !/^utf-?8$/i.test(declared[2])) {
                 if (!iconv.encodingExists(declared[2]))
-                    throw new Error(`Неподдерживаемая кодировка FB2: ${declared[2]}`);
+                    throw new Error(t('errors.fb2UnsupportedEncoding', {encoding: declared[2]}));
                 encoding = declared[2];
             } else {
                 encoding = textUtils.getEncoding(data);

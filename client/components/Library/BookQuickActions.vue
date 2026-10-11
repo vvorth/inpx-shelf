@@ -1,22 +1,22 @@
 <template>
     <div v-if="external" class="quick-actions">
         <q-btn flat dense no-caps icon="la la-external-link-alt" type="a" :href="book.discoveryUrl" target="_blank" rel="noopener">
-            {{ $t('Открыть источник') }}
+            {{ $t('book.openSource') }}
         </q-btn>
     </div>
     <div v-else class="quick-actions">
-        <q-btn flat dense round icon="la la-book-open" :aria-label="$t('Читать')" @click="act('readBook')">
-            <q-tooltip>{{ $t('Читать') }}</q-tooltip>
+        <q-btn flat dense round icon="la la-book-open" :aria-label="$t('common.readBook')" @click="act('readBook')">
+            <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
         </q-btn>
-        <q-btn flat dense round icon="la la-download" :aria-label="$t('Скачать')" @click="act('download')">
-            <q-tooltip>{{ $t('Скачать {ext}', {ext: String(book.ext || '').toUpperCase()}) }}</q-tooltip>
+        <q-btn flat dense round icon="la la-download" :aria-label="$t('common.download')" @click="act('download')">
+            <q-tooltip>{{ $t('bookQuickActions.download', {ext: String(book.ext || '').toUpperCase()}) }}</q-tooltip>
         </q-btn>
-        <q-btn v-if="formats.length" flat dense round icon="la la-file-export" :aria-label="$t('Скачать в другом формате')">
-            <q-tooltip>{{ $t('Скачать в другом формате') }}</q-tooltip>
+        <q-btn v-if="formats.length" flat dense round icon="la la-file-export" :aria-label="$t('bookQuickActions.downloadInAnotherFormat')">
+            <q-tooltip>{{ $t('bookQuickActions.downloadInAnotherFormat') }}</q-tooltip>
             <q-menu anchor="bottom right" self="top right">
                 <div class="format-menu">
                     <div class="format-menu-title">
-                        {{ $t('Конвертировать и скачать') }}
+                        {{ $t('bookQuickActions.convertAndDownload') }}
                     </div>
                     <button v-for="format in formats" :key="format" v-close-popup type="button" class="format-item" @click="act('download', format)">
                         {{ format.toUpperCase() }}
@@ -24,8 +24,8 @@
                 </div>
             </q-menu>
         </q-btn>
-        <q-btn v-if="signedIn" flat dense round icon="la la-bookmark" :aria-label="$t('В список')" @click="$emit('lists')">
-            <q-tooltip>{{ $t('В список') }}</q-tooltip>
+        <q-btn v-if="signedIn" flat dense round icon="la la-bookmark" :aria-label="$t('book.list')" @click="$emit('lists')">
+            <q-tooltip>{{ $t('book.list') }}</q-tooltip>
         </q-btn>
     </div>
 </template>

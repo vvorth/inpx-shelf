@@ -1,13 +1,12 @@
 const BasePage = require('./BasePage');
-const utils = require('../utils');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class TitlePage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'title';
-        this.title = 'Книги';
+        this.title = 'opds.books';
     }
 
     async body(req) {
@@ -38,7 +37,7 @@ class TitlePage extends BasePage {
                 const filtered = this.filterBooks(books, query);
 
                 for (const book of filtered) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('Без названия')} (${book.ext})`;
+                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('common.untitled')} (${book.ext})`;
 
                     entry.push(
                         this.makeEntry({
@@ -58,14 +57,14 @@ class TitlePage extends BasePage {
                 entry.push(
                     this.makeEntry({
                         id: 'select_genre',
-                        title: t('[Выбрать жанр]'),
+                        title: t('opds.chooseGenre'),
                         link: this.navLink({href: `/genre?from=${this.id}`}),
                     })
                 );
             }
 
             //навигация по каталогу
-            const queryRes = await this.opdsQuery('title', query, t('[Остальные названия]'));
+            const queryRes = await this.opdsQuery('title', query, t('opds.otherTitles'));
 
             for (const rec of queryRes) {
                 const e = {
@@ -76,9 +75,9 @@ class TitlePage extends BasePage {
 
                 let countStr = '';
                 if (rec.count)
-                    countStr = `${t('{n} назван{e}', {n: rec.count, e: utils.wordEnding(rec.count, 3)})}${(query.genre ? t(' (в выбранном жанре)') : '')}`;
+                    countStr = `${t('opds.titleCount', {n: rec.count})}${(query.genre ? t('opds.selectedGenre') : '')}`;
                 if (!countStr && rec.bookCount && !query.genre)
-                    countStr = t('{n} книг{e}', {n: rec.bookCount, e: utils.wordEnding(rec.bookCount, 8)});
+                    countStr = t('common.bookCount', {n: rec.bookCount});
 
                 if (countStr) {
                     e.content = {

@@ -187,48 +187,48 @@ class Fb2Parser extends XmlParser {
             valueToString = myValueToString;
 
         let mapping = [
-            {name: 'titleInfo', label: 'Общая информация', value: [
-                {name: 'author', label: 'Автор(ы)'},
-                {name: 'bookTitle', label: 'Название'},
-                {name: 'sequence', label: 'Серия'},
-                {name: 'genre', label: 'Жанр'},
+            {name: 'titleInfo', label: 'bookInfo.generalInformation', value: [
+                {name: 'author', label: 'bookInfo.authors'},
+                {name: 'bookTitle', label: 'common.title'},
+                {name: 'sequence', label: 'common.series'},
+                {name: 'genre', label: 'common.genre'},
 
-                {name: 'date', label: 'Дата'},
-                {name: 'lang', label: 'Язык книги'},
-                {name: 'srcLang', label: 'Язык оригинала'},
-                {name: 'translator', label: 'Переводчик(и)'},
-                {name: 'keywords', label: 'Ключевые слова'},
+                {name: 'date', label: 'fb2.date'},
+                {name: 'lang', label: 'bookInfo.bookLanguage'},
+                {name: 'srcLang', label: 'fb2.srcLang'},
+                {name: 'translator', label: 'fb2.translators'},
+                {name: 'keywords', label: 'common.keywords'},
             ]},
-            {name: 'srcTitleInfo', label: 'Информация о произведении на языке оригинала', value: [
-                {name: 'author', label: 'Автор(ы)'},
-                {name: 'bookTitle', label: 'Название'},
-                {name: 'sequence', label: 'Серия'},
-                {name: 'genre', label: 'Жанр'},
+            {name: 'srcTitleInfo', label: 'fb2.srcTitleInfo', value: [
+                {name: 'author', label: 'bookInfo.authors'},
+                {name: 'bookTitle', label: 'common.title'},
+                {name: 'sequence', label: 'common.series'},
+                {name: 'genre', label: 'common.genre'},
 
-                {name: 'date', label: 'Дата'},
-                {name: 'lang', label: 'Язык книги'},
-                {name: 'srcLang', label: 'Язык оригинала'},
-                {name: 'translator', label: 'Переводчик(и)'},
-                {name: 'keywords', label: 'Ключевые слова'},
+                {name: 'date', label: 'fb2.date'},
+                {name: 'lang', label: 'bookInfo.bookLanguage'},
+                {name: 'srcLang', label: 'fb2.srcLang'},
+                {name: 'translator', label: 'fb2.translators'},
+                {name: 'keywords', label: 'common.keywords'},
             ]},
-            {name: 'publishInfo', label: 'Издательская информация', value: [
-                {name: 'bookName', label: 'Название'},
-                {name: 'publisher', label: 'Издательство'},
-                {name: 'city', label: 'Город'},
-                {name: 'year', label: 'Год'},
+            {name: 'publishInfo', label: 'fb2.publishInfo', value: [
+                {name: 'bookName', label: 'common.title'},
+                {name: 'publisher', label: 'fb2.publisher'},
+                {name: 'city', label: 'fb2.city'},
+                {name: 'year', label: 'fb2.year'},
                 {name: 'isbn', label: 'ISBN'},
-                {name: 'sequence', label: 'Серия'},
+                {name: 'sequence', label: 'common.series'},
             ]},
-            {name: 'documentInfo', label: 'Информация о документе (OCR)', value: [
-                {name: 'author', label: 'Автор(ы)'},
-                {name: 'programUsed', label: 'Программа'},
-                {name: 'date', label: 'Дата'},
+            {name: 'documentInfo', label: 'fb2.documentInfo', value: [
+                {name: 'author', label: 'bookInfo.authors'},
+                {name: 'programUsed', label: 'fb2.programUsed'},
+                {name: 'date', label: 'fb2.date'},
                 //srcUrl = []
                 {name: 'id', label: 'ID'},
-                {name: 'version', label: 'Версия'},
-                {name: 'srcOcr', label: 'Автор источника'},
-                {name: 'historyHtml', label: 'История'},
-                {name: 'publisher', label: 'Правообладатели'},
+                {name: 'version', label: 'fb2.version'},
+                {name: 'srcOcr', label: 'fb2.srcOcr'},
+                {name: 'historyHtml', label: 'fb2.history'},
+                {name: 'publisher', label: 'fb2.copyrightHolders'},
             ]},
         ];
 

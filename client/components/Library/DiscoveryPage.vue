@@ -9,28 +9,28 @@
                     <div class="card-hint num">
                         {{ pageSubtitle }}
                         <template v-if="hiddenByLanguage">
-                            · {{ $t('ещё {n} на других языках', {n: hiddenByLanguage}) }}
+                            · {{ $t('author.moreInOtherLanguages', {n: hiddenByLanguage}) }}
                             <button type="button" class="link-btn" @click="allLanguages = true">
-                                {{ $t('показать') }}
+                                {{ $t('author.show') }}
                             </button>
                         </template>
                     </div>
                 </div>
                 <div class="page-actions">
                     <q-btn v-if="kind === 'home'" color="primary" unelevated no-caps icon="la la-search" @click="$router.push('/search')">
-                        {{ $t('Открыть каталог') }}
+                        {{ $t('discovery.openCatalog') }}
                     </q-btn>
                     <q-toggle
                         v-if="kind === 'home' && signedIn"
                         :model-value="settings.showDiscoveryUnreadOnly === true"
-                        :label="$t('Только непрочитанное')"
+                        :label="$t('discovery.unreadOnly')"
                         @update:model-value="setSetting('showDiscoveryUnreadOnly', $event)"
                     />
                     <q-btn v-if="kind === 'home' && signedIn" flat no-caps icon="la la-sliders-h" @click="tasteOpen = !tasteOpen">
-                        {{ $t('Настроить вкусы') }}
+                        {{ $t('discovery.setUpTastes') }}
                     </q-btn>
                     <q-btn v-if="requestable" flat no-caps icon="la la-sync" :loading="loading" @click="load(true)">
-                        {{ $t('Обновить') }}
+                        {{ $t('reader.refresh') }}
                     </q-btn>
                     <q-btn-toggle
                         :model-value="view"
@@ -64,7 +64,7 @@
                     options-dense
                     class="external-genre"
                     :options="genreOptions"
-                    :label="$t('Жанр внешней витрины')"
+                    :label="$t('discovery.externalShowcaseGenre')"
                     :disable="loading"
                     @update:model-value="setExternalGenre"
                 />
@@ -72,14 +72,14 @@
 
             <section v-if="kind === 'home' && !signedIn" class="card">
                 <h2 class="card-title">
-                    {{ $t('Войдите, чтобы читать с того же места') }}
+                    {{ $t('discovery.signInToPick') }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('После входа здесь появятся книги, которые вы читаете, ваши списки и подборки по вашим вкусам.') }}
+                    {{ $t('discovery.afterYouSignIn') }}
                 </div>
                 <div class="card-actions">
                     <q-btn color="primary" unelevated no-caps @click="$router.push({path: '/login', query: {redirect: '/'}})">
-                        {{ $t('Войти') }}
+                        {{ $t('profiles.loginAction') }}
                     </q-btn>
                 </div>
             </section>
@@ -87,13 +87,13 @@
             <div v-else-if="!requestable" />
             <div v-else-if="loading && !shelves.length" class="page-empty page-empty--inline">
                 <q-linear-progress indeterminate size="3px" color="primary" />
-                {{ $t('Собираю витрину...') }}
+                {{ $t('discovery.buildingShowcase') }}
             </div>
             <div v-else-if="error" class="page-empty page-empty--inline">
                 {{ error }}
             </div>
             <div v-else-if="!shelves.length" class="page-empty">
-                {{ $t('Пока пусто.') }}
+                {{ $t('discovery.nothingHereYet') }}
             </div>
 
             <section v-for="shelf in shelves" :key="shelf.id" class="shelf">
@@ -106,17 +106,17 @@
                             {{ $tm(shelf.subtitle) }}
                         </div>
                         <div class="shelf-meta">
-                            <span v-if="shelf.updatedAt">{{ $t('Обновлено {time}', {time: formatTime(shelf.updatedAt)}) }}</span>
-                            <span v-if="shelf.discoveryStale" class="shelf-warn">{{ $t('Показан кеш') }}</span>
+                            <span v-if="shelf.updatedAt">{{ $t('discovery.updated', {time: formatTime(shelf.updatedAt)}) }}</span>
+                            <span v-if="shelf.discoveryStale" class="shelf-warn">{{ $t('discovery.showingCachedData') }}</span>
                             <span v-if="shelf.discoveryRefreshError" class="shelf-warn">{{ shelf.discoveryRefreshError }}</span>
                         </div>
                     </div>
                     <div class="shelf-actions">
                         <q-btn v-if="shelf.sourceUrl" flat dense no-caps icon="la la-external-link-alt" type="a" :href="shelf.sourceUrl" target="_blank" rel="noopener">
-                            {{ $t('Источник') }}
+                            {{ $t('common.source') }}
                         </q-btn>
                         <q-btn v-if="hideSetting(shelf)" flat dense no-caps icon="la la-eye-slash" @click="hideShelf(shelf)">
-                            {{ $t('Скрыть полку') }}
+                            {{ $t('discovery.hideShelf') }}
                         </q-btn>
                     </div>
                 </div>
@@ -132,11 +132,11 @@
                     @restore="restoreBook"
                 />
                 <div v-else class="card-hint">
-                    {{ shelf.emptyMessage ? $tm(shelf.emptyMessage) : $t('Пока пусто.') }}
+                    {{ shelf.emptyMessage ? $tm(shelf.emptyMessage) : $t('discovery.nothingHereYet') }}
                 </div>
 
                 <q-btn v-if="canLoadMore(shelf)" class="shelf-more" outline color="primary" no-caps icon="la la-plus" :loading="loading" @click="loadMore(shelf)">
-                    {{ shelf.id === 'similar-books' ? $t('Ещё рекомендации') : $t('Загрузить ещё') }}
+                    {{ shelf.id === 'similar-books' ? $t('discovery.moreRecommendations') : $t('discovery.loadMore') }}
                 </q-btn>
             </section>
         </div>
@@ -149,7 +149,7 @@ import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
 import TastePanel from './TastePanel.vue';
 
-import {t, tMessage, getLocale} from '../../share/i18n';
+import {t, tm, getLocale} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {bookUid} from '../../share/bookActions';
 import {bookView, bookViewOptions} from '../../share/bookView';
@@ -208,7 +208,7 @@ class DiscoveryPage {
     }
 
     onEnter() {
-        this.$root.setAppTitle(this.kind === 'home' ? (this.collectionName || t('Главная')) : this.pageTitle);
+        this.$root.setAppTitle(this.kind === 'home' ? (this.collectionName || t('discovery.home')) : this.pageTitle);
         if (this.requestKey !== this.loadedKey)
             this.load();
     }
@@ -248,7 +248,7 @@ class DiscoveryPage {
     get pageSubtitle() {
         if (this.kind === 'home')
             return this.statsLine;
-        return t('Подборка с внешнего сайта: книги, которых нет в библиотеке, открываются на сайте источника');
+        return t('discovery.picksFromAnExternal');
     }
 
     get collectionName() {
@@ -258,27 +258,27 @@ class DiscoveryPage {
 
     get greeting() {
         if (!this.signedIn)
-            return this.collectionName || t('Библиотека');
-        const name = tMessage(currentProfile(this.config).name) || '';
+            return this.collectionName || t('settings.library');
+        const name = tm(currentProfile(this.config).name) || '';
         const hour = new Date().getHours();
         if (hour < 5 || hour >= 22)
-            return t('Доброй ночи, {name}', {name});
+            return t('discovery.goodNight', {name});
         if (hour < 12)
-            return t('Доброе утро, {name}', {name});
+            return t('discovery.goodMorning', {name});
         if (hour < 18)
-            return t('Добрый день, {name}', {name});
-        return t('Добрый вечер, {name}', {name});
+            return t('discovery.goodAfternoon', {name});
+        return t('discovery.goodEvening', {name});
     }
 
     get statsLine() {
         const stats = (this.config.dbConfig && this.config.dbConfig.stats) || {};
         const parts = [];
         if (stats.bookCount)
-            parts.push(t('Книг: {n}', {n: Number(stats.bookCount).toLocaleString()}));
+            parts.push(t('addToListDialog.books', {n: Number(stats.bookCount).toLocaleString()}));
         if (stats.authorCount)
-            parts.push(t('Авторов: {n}', {n: Number(stats.authorCount).toLocaleString()}));
+            parts.push(t('discovery.authors', {n: Number(stats.authorCount).toLocaleString()}));
         if (stats.seriesCount)
-            parts.push(t('Серий: {n}', {n: Number(stats.seriesCount).toLocaleString()}));
+            parts.push(t('discovery.series', {n: Number(stats.seriesCount).toLocaleString()}));
         if (this.signedIn && this.collectionName)
             parts.unshift(this.collectionName);
         return parts.join(' · ');
@@ -338,7 +338,7 @@ class DiscoveryPage {
             this.loadStates();
         } catch (e) {
             if (seq === this.requestSeq)
-                this.error = t('Ошибка витрины: {message}', {message: tMessage(e.message) || t('нет ответа от сервера')});
+                this.error = t('search.showcaseError', {message: tm(e.message) || t('search.noResponseServer')});
         } finally {
             if (seq === this.requestSeq)
                 this.loading = false;
@@ -420,7 +420,7 @@ class DiscoveryPage {
 
     get genreOptions() {
         const shelf = this.rawShelves.find(item => item && item.source === 'external') || {};
-        const result = [{label: t('Все жанры'), value: ''}];
+        const result = [{label: t('search.allGenres'), value: ''}];
         const seen = new Set(['']);
         for (const option of (shelf.genreOptions || [])) {
             const value = String(option && option.value || '').trim();
@@ -453,7 +453,7 @@ class DiscoveryPage {
 
     hideShelf(shelf) {
         this.setSetting(this.hideSetting(shelf), false);
-        this.$root.notify.success(t('Полка скрыта. Её можно вернуть в настройках.'));
+        this.$root.notify.success(t('search.shelfHiddenCanRestore'));
     }
 
     setExternalGenre(value) {
@@ -473,7 +473,7 @@ class DiscoveryPage {
             const after = (this.shelves.find(item => item.id === 'similar-books') || {items: []}).items.length;
             if (after <= before) {
                 this.similarExhausted = true;
-                this.$root.notify.info(t('Новых рекомендаций пока нет.'));
+                this.$root.notify.info(t('search.noNewRecommendationsYet'));
             }
         } else {
             const current = parseInt(this.settings.discoveryExternalLimit, 10) || 24;
@@ -525,17 +525,17 @@ class DiscoveryPage {
             this.$root.notify.success(feedbackMessage(kind));
             await this.load(true);
         } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
+            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
         }
     }
 
     async restoreBook(book) {
         try {
             await this.api.updateDiscoveryPreferences({hiddenBooksRemove: [bookUid(book)], feedbackRemove: [bookUid(book)]});
-            this.$root.notify.success(t('Книга возвращена в персональные витрины.'));
+            this.$root.notify.success(t('search.bookReturnedPersonalShowcases'));
             await this.load(true);
         } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
+            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
         }
     }
 
@@ -545,10 +545,10 @@ class DiscoveryPage {
             this.tasteOpen = false;
             this.tasteDismissed = true;
             this.similarExhausted = false;
-            this.$root.notify.success(t('Вкусы сохранены. Персональная подборка обновлена.'));
+            this.$root.notify.success(t('search.tastesSavedPersonalPicks'));
             await this.load(true);
         } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
+            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
         }
     }
 
@@ -556,9 +556,9 @@ class DiscoveryPage {
         this.tasteDismissed = true;
         try {
             await this.api.updateDiscoveryPreferences({tastePromptDismissedAt: new Date().toISOString()});
-            this.$root.notify.info(t('Вкусы можно настроить позже кнопкой «Настроить вкусы» на главной.'));
+            this.$root.notify.info(t('discovery.youCanSetYour'));
         } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
+            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
         }
     }
 }

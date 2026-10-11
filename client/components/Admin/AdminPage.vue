@@ -3,7 +3,7 @@
         <div class="page-body">
             <header class="page-head">
                 <div>
-                    <div class="page-eyebrow"><q-icon name="la la-shield-alt" size="16px" />{{ $t('Администрирование') }}</div>
+                    <div class="page-eyebrow"><q-icon name="la la-shield-alt" size="16px" />{{ $t('settings.admin.title') }}</div>
                     <h1 class="page-title">{{ sectionLabel }}</h1>
                 </div>
                 <div v-if="canEditExternalDiscovery && section === 'overview'" class="admin-toolbar">
@@ -11,7 +11,7 @@
                         {{ adminUi.refresh }}
                     </q-btn>
                     <q-btn outline color="primary" dense no-caps icon="la la-broom" :loading="adminCleanLoading" @click="cleanAdminCache('all')">
-                        {{ $t('Очистить оба кэша') }}
+                        {{ $t('settings.clearBothCaches') }}
                     </q-btn>
                     <q-btn outline color="negative" dense no-caps icon="la la-database" :loading="adminReindexLoading" :disable="adminIndexBusy" @click="reindexAdmin">
                         {{ adminUi.reindex }}
@@ -20,11 +20,11 @@
             </header>
 
             <div v-if="!canEditExternalDiscovery" class="card">
-                <div>{{ $t('Этот раздел доступен только администратору.') }}</div>
+                <div>{{ $t('admin.onlyAnAdministratorCan') }}</div>
             </div>
 
             <div v-else class="section-layout">
-                <nav class="section-nav" :aria-label="$t('Разделы администрирования')">
+                <nav class="section-nav" :aria-label="$t('admin.adminSections')">
                     <router-link
                         v-for="item in sections"
                         :key="item.id"
@@ -36,7 +36,7 @@
                     </router-link>
                     <div class="section-nav-sep" />
                     <router-link class="section-nav-item" to="/">
-                        <q-icon name="la la-arrow-left" size="18px" />{{ $t('В библиотеку') }}
+                        <q-icon name="la la-arrow-left" size="18px" />{{ $t('admin.backToLibrary') }}
                     </router-link>
                 </nav>
 
@@ -54,7 +54,7 @@
                     <template v-if="section === 'overview'">
                 <div class="admin-dashboard-sections">
                     <section class="admin-dashboard-section">
-                        <div class="admin-dashboard-section-title">{{ $t('Библиотека') }}</div>
+                        <div class="admin-dashboard-section-title">{{ $t('settings.library') }}</div>
                         <div class="admin-dashboard-grid">
                             <div class="admin-stat">
                                 <div class="admin-stat-label">{{ adminUi.books }}</div>
@@ -72,7 +72,7 @@
                     </section>
 
                     <section class="admin-dashboard-section">
-                        <div class="admin-dashboard-section-title">{{ $t('Процесс') }}</div>
+                        <div class="admin-dashboard-section-title">{{ $t('settings.process') }}</div>
                         <div class="admin-dashboard-grid">
                             <div class="admin-stat">
                                 <div class="admin-stat-label">{{ adminUi.uptime }}</div>
@@ -118,43 +118,43 @@
                     </section>
 
                     <section class="admin-dashboard-section admin-dashboard-section--wide">
-                        <div class="admin-dashboard-section-title">{{ $t('Качество рекомендаций') }}</div>
+                        <div class="admin-dashboard-section-title">{{ $t('settings.recommendationQuality') }}</div>
                         <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('Показы') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.metricImpressions') }}</div>
                                 <div class="admin-stat-value">{{ discoveryMetric('impression') }}</div>
-                                <div class="admin-stat-hint">{{ $t('{n} профилей с событиями', {n: adminDiscovery.profiles || 0}) }}</div>
+                                <div class="admin-stat-hint">{{ $t('settings.metricProfiles', {n: adminDiscovery.profiles || 0}) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('CTR открытий') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.metricOpenCtr') }}</div>
                                 <div class="admin-stat-value">{{ discoveryRateText('ctr') }}</div>
-                                <div class="admin-stat-hint">{{ $t('{n} открытий', {n: discoveryMetric('open')}) }}</div>
+                                <div class="admin-stat-hint">{{ $t('settings.metricOpens', {n: discoveryMetric('open')}) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('Начали читать') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.metricStartedReading') }}</div>
                                 <div class="admin-stat-value">{{ discoveryRateText('start') }}</div>
-                                <div class="admin-stat-hint">{{ $t('{n} стартов', {n: discoveryMetric('start')}) }}</div>
+                                <div class="admin-stat-hint">{{ $t('settings.metricStarts', {n: discoveryMetric('start')}) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('Сохранили') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.metricSaved') }}</div>
                                 <div class="admin-stat-value">{{ discoveryRateText('save') }}</div>
-                                <div class="admin-stat-hint">{{ $t('{n} сохранений', {n: discoveryMetric('save')}) }}</div>
+                                <div class="admin-stat-hint">{{ $t('settings.metricSaves', {n: discoveryMetric('save')}) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('Негативные реакции') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.metricNegative') }}</div>
                                 <div class="admin-stat-value">{{ discoveryRateText('negativeFeedback') }}</div>
-                                <div class="admin-stat-hint">{{ $t('{n} реакций всего', {n: discoveryMetric('feedback')}) }}</div>
+                                <div class="admin-stat-hint">{{ $t('settings.metricReactions', {n: discoveryMetric('feedback')}) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('Настроили вкусы') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.metricSetUpTastes') }}</div>
                                 <div class="admin-stat-value">{{ adminDiscovery.configuredProfiles || 0 }}</div>
-                                <div class="admin-stat-hint">{{ $t('Жанры, авторы или языки') }}</div>
+                                <div class="admin-stat-hint">{{ $t('settings.metricTastesHint') }}</div>
                             </div>
                         </div>
                     </section>
 
                     <section class="admin-dashboard-section">
-                        <div class="admin-dashboard-section-title">{{ $t('Хранилище') }}</div>
+                        <div class="admin-dashboard-section-title">{{ $t('settings.storage') }}</div>
                         <div class="admin-dashboard-grid admin-dashboard-grid--storage">
                             <div class="admin-stat">
                                 <div class="admin-stat-label">{{ adminUi.dbSize }}</div>
@@ -171,7 +171,7 @@
                                 <div class="admin-stat-hint">{{ adminCacheLimitText('cover') }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('Ротация кэша') }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.cacheRotation') }}</div>
                                 <div class="admin-stat-value">{{ adminCacheRotationValue() }}</div>
                                 <div class="admin-stat-hint">{{ adminCacheRotationHint() }}</div>
                             </div>
@@ -245,11 +245,11 @@
                         <AdminAuthorNames v-if="catalogSearchEnabled" />
 
                         <section v-if="discoveryEnabled" class="card">
-                            <h2 class="card-title">{{ $t('Внешняя витрина') }}</h2>
+                            <h2 class="card-title">{{ $t('admin.externalShowcase') }}</h2>
                             <div class="card-hint">{{ externalDiscoverySummary }}</div>
                             <div class="card-actions">
                                 <q-btn outline color="primary" dense no-caps icon="la la-sliders-h" @click="discoverySourceDialogVisible = true">
-                                    {{ $t('Управлять') }}
+                                    {{ $t('settings.manage') }}
                                 </q-btn>
                             </div>
                         </section>
@@ -258,7 +258,7 @@
                     <template v-else-if="section === 'integrations'">
                         <section class="card">
                             <h2 class="card-title">{{ mailUi.title }}</h2>
-                            <div class="card-hint">{{ $t('Telegram-бот и почта для отправки книг читателям. Получателей каждый читатель указывает в своём профиле.') }}</div>
+                            <div class="card-hint">{{ $t('admin.theTelegramBotAnd') }}</div>
                 <div class="admin-mail-section">
                     <div class="admin-mail-section-head">
                         <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="mailUi.telegramEnabled" />
@@ -331,29 +331,29 @@
                 <div class="admin-subsection">
                     <div class="admin-subsection-head">
                         <div>
-                            <div class="admin-mail-title">{{ $t('Ротация кэша') }}</div>
-                            <div class="admin-mail-subtitle">{{ $t('Лимиты задаются в мегабайтах. Плановая ротация запускается в выбранное время по локальным часам сервера.') }}</div>
+                            <div class="admin-mail-title">{{ $t('settings.cacheRotation') }}</div>
+                            <div class="admin-mail-subtitle">{{ $t('settings.limitsSetMegabytesScheduled') }}</div>
                         </div>
                         <q-btn outline color="primary" dense no-caps icon="la la-save" :loading="adminCacheSaveLoading" @click="saveAdminCacheSettings">
-                            {{ $t('Сохранить') }}
+                            {{ $t('common.save') }}
                         </q-btn>
                     </div>
                     <div class="admin-cache-settings-grid">
-                        <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('Книжный кэш, MB')" />
-                        <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('Кэш обложек, MB')" />
-                        <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('Плановая ротация')" />
-                        <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('Периодичность')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('День недели')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('Число месяца')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                        <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('Время запуска')" :hint="$t('По времени сервера')" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
-                        <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('Цель после чистки, %')" />
+                        <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('settings.bookCacheMb')" />
+                        <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('settings.coverCacheMb')" />
+                        <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('settings.scheduledRotation')" />
+                        <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('settings.frequency')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('settings.dayWeek')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('settings.dayMonth')" :disable="!adminCacheSettings.cacheCleanEnabled" />
+                        <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('settings.startTime')" :hint="$t('settings.serverTime')" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
+                        <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('settings.cleanupTargetPercent')" />
                     </div>
                     <div class="admin-cache-actions">
                         <q-btn outline color="primary" dense no-caps icon="la la-book" :loading="adminCleanBookCacheLoading" @click="cleanAdminCache('book')">
-                            {{ $t('Очистить книжный кэш') }}
+                            {{ $t('settings.clearBookCache') }}
                         </q-btn>
                         <q-btn outline color="primary" dense no-caps icon="la la-image" :loading="adminCleanCoverCacheLoading" @click="cleanAdminCache('cover')">
-                            {{ $t('Очистить кэш обложек') }}
+                            {{ $t('settings.clearCoverCache') }}
                         </q-btn>
                     </div>
                 </div>
@@ -550,68 +550,68 @@ class AdminPage {
     opdsSettings = this.makeDefaultOpdsSettings();
     get adminUi() {
         return {
-            title: t('Администрирование'),
-            subtitle: t('Состояние библиотеки, источники и журнал событий.'),
-            refresh: t('Обновить'),
-            cleanCache: t('Очистить кэш'),
-            reindex: t('Переиндексировать'),
-            books: t('Книги'),
-            authors: t('Авторы'),
-            series: t('Серии'),
+            title: t('settings.admin.title'),
+            subtitle: t('settings.admin.subtitle'),
+            refresh: t('settings.admin.refresh'),
+            cleanCache: t('settings.admin.cleanCache'),
+            reindex: t('settings.admin.reindex'),
+            books: t('settings.admin.books'),
+            authors: t('settings.admin.authors'),
+            series: t('settings.admin.series'),
             uptime: 'Uptime',
-            memory: t('Память'),
-            cpu: t('CPU процесса'),
-            requests: t('Запросы'),
+            memory: t('settings.admin.memory'),
+            cpu: t('settings.admin.cpu'),
+            requests: t('settings.admin.requests'),
             actionsTotal: 'WebSocket action',
             eventLoopLag: 'Event loop',
-            lastSlowAction: t('Медленный action'),
-            dbSize: t('База'),
-            bookCache: t('Книжный кэш'),
-            coverCache: t('Кэш обложек'),
-            files: t('Файлы'),
-            limit: t('Лимит'),
-            coverErrors: t('Ошибки'),
-            coverDiagnostics: t('Обложки'),
-            coverDiagnosticsHint: t('Размер кэша, последние ошибки и ручное обслуживание обложек.'),
-            coverBookUid: t('UID книги для пересборки обложки'),
-            rebuildCover: t('Пересобрать обложку'),
-            cleanBrokenCovers: t('Очистить битые'),
-            sources: t('Источники библиотек'),
-            addSource: t('Добавить'),
-            saveSources: t('Сохранить источники'),
-            sourceName: t('Название'),
-            sourceInpx: t('INPX файл'),
-            sourceLibDir: t('Папка библиотеки'),
-            folder: t('Папка'),
-            archives: t('Архивы'),
-            foundInpx: t('Найдено .inpx'),
-            checkSource: t('Проверить источник'),
-            sourcesNeedReindex: t('Изменения источников применятся после переиндексации.'),
-            indexNeedsReindex: t('Требуется переиндексация'),
-            indexReady: t('Индекс готов'),
-            indexBusy: t('Переиндексация выполняется'),
-            indexNotReady: t('Индекс не готов'),
-            indexWaiting: t('Ожидание состояния индекса'),
-            events: t('События'),
-            eventLogEnabled: t('Журнал'),
-            testEvent: t('Тест'),
-            eventsLoading: t('Загрузка событий...'),
-            noEvents: t('Событий пока нет.'),
-            eventsDisabled: t('Журнал событий выключен.'),
-            savedSources: t('Источники библиотек сохранены'),
-            cleanStarted: t('Чистка кэша выполнена'),
-            reindexStarted: t('Переиндексация запущена'),
-            coverRebuildStarted: t('Кэш обложки сброшен, новая обложка будет собрана при следующем запросе'),
-            brokenCoversCleaned: t('Битые файлы обложек очищены'),
-            tasks: t('Задачи и фоновые процессы'),
-            noTaskMessage: t('Нет активной задачи'),
-            cancel: t('Отменить'),
-            noCancel: t('Отмена недоступна'),
+            lastSlowAction: t('settings.admin.lastSlowAction'),
+            dbSize: t('settings.admin.dbSize'),
+            bookCache: t('settings.admin.bookCache'),
+            coverCache: t('settings.admin.coverCache'),
+            files: t('settings.admin.files'),
+            limit: t('settings.admin.limit'),
+            coverErrors: t('settings.admin.coverErrors'),
+            coverDiagnostics: t('settings.admin.coverDiagnostics'),
+            coverDiagnosticsHint: t('settings.admin.coverDiagnosticsHint'),
+            coverBookUid: t('settings.admin.coverBookUid'),
+            rebuildCover: t('settings.admin.rebuildCover'),
+            cleanBrokenCovers: t('settings.admin.cleanBrokenCovers'),
+            sources: t('settings.admin.sources'),
+            addSource: t('settings.admin.addSource'),
+            saveSources: t('settings.admin.saveSources'),
+            sourceName: t('settings.admin.sourceName'),
+            sourceInpx: t('settings.admin.sourceInpx'),
+            sourceLibDir: t('settings.admin.sourceLibDir'),
+            folder: t('settings.admin.folder'),
+            archives: t('settings.admin.archives'),
+            foundInpx: t('settings.admin.foundInpx'),
+            checkSource: t('settings.admin.checkSource'),
+            sourcesNeedReindex: t('settings.admin.sourcesNeedReindex'),
+            indexNeedsReindex: t('settings.admin.indexNeedsReindex'),
+            indexReady: t('settings.admin.indexReady'),
+            indexBusy: t('settings.admin.indexBusy'),
+            indexNotReady: t('settings.admin.indexNotReady'),
+            indexWaiting: t('settings.admin.indexWaiting'),
+            events: t('settings.admin.events'),
+            eventLogEnabled: t('settings.admin.eventLogEnabled'),
+            testEvent: t('settings.admin.testEvent'),
+            eventsLoading: t('settings.admin.eventsLoading'),
+            noEvents: t('settings.admin.noEvents'),
+            eventsDisabled: t('settings.admin.eventsDisabled'),
+            savedSources: t('settings.admin.savedSources'),
+            cleanStarted: t('settings.admin.cleanStarted'),
+            reindexStarted: t('settings.admin.reindexStarted'),
+            coverRebuildStarted: t('settings.admin.coverRebuildStarted'),
+            brokenCoversCleaned: t('settings.admin.brokenCoversCleaned'),
+            tasks: t('settings.admin.tasks'),
+            noTaskMessage: t('settings.admin.noTaskMessage'),
+            cancel: t('settings.admin.cancel'),
+            noCancel: t('settings.admin.noCancel'),
         };
     }
     get adminEventLevelOptions() {
         return [
-            {label: t('Все уровни'), value: 'all'},
+            {label: t('settings.allLevels'), value: 'all'},
             {label: 'Info', value: 'info'},
             {label: 'Warn', value: 'warn'},
             {label: 'Error', value: 'error'},
@@ -619,14 +619,14 @@ class AdminPage {
     }
     get adminEventCategoryOptions() {
         return [
-            {label: t('Все события'), value: 'all'},
-            {label: t('Настройки'), value: 'settings'},
-            {label: t('Источники'), value: 'sources'},
-            {label: t('Кэш'), value: 'cache'},
-            {label: t('Обложки'), value: 'cover'},
-            {label: t('Индекс'), value: 'index'},
-            {label: t('Отправка'), value: 'delivery'},
-            {label: t('Система'), value: 'system'},
+            {label: t('settings.allEvents'), value: 'all'},
+            {label: t('common.settings'), value: 'settings'},
+            {label: t('settings.sources'), value: 'sources'},
+            {label: t('settings.cache'), value: 'cache'},
+            {label: t('settings.covers'), value: 'cover'},
+            {label: t('settings.index'), value: 'index'},
+            {label: t('settings.delivery'), value: 'delivery'},
+            {label: t('settings.system'), value: 'system'},
         ];
     }
     adminEventLogSizeOptions = [
@@ -637,88 +637,88 @@ class AdminPage {
     ];
     get backupUi() {
         return {
-            title: t('Резервная копия'),
-            subtitle: t('Полный бэкап и отдельный экспорт конфигурации.'),
-            fullBackupInfo: t('Полный ZIP сохраняет состояние сервиса: настройки, secret.key, профили, списки, прогресс чтения, закладки и кэш витрины. Архивы книг, обложки, временные кэши и поисковая БД не входят.'),
-            settingsBackupInfo: t('JSON настроек нужен только для переноса конфигурации. Пользователи, списки, прогресс и закладки в него не входят.'),
-            backup: t('Скачать полный бэкап'),
-            backupImport: t('Восстановить полный ZIP'),
-            settings: t('Экспорт настроек JSON'),
-            settingsImport: t('Восстановить настройки JSON'),
-            restoreNote: t('Восстановление полного ZIP заменяет текущее состояние данными из архива. После восстановления перезапустите контейнер или приложение; если в бэкапе другие источники библиотек, выполните переиндексацию.'),
-            restoreConfirm: t('Восстановить полный ZIP-бэкап? Текущие настройки, профили, списки, прогресс чтения и закладки будут заменены данными из архива.'),
-            restored: t('Полный бэкап восстановлен. Перезапустите приложение; если менялись источники библиотек, выполните переиндексацию.'),
-            ready: t('Резервная копия готова'),
+            title: t('settings.backup.title'),
+            subtitle: t('settings.backup.subtitle'),
+            fullBackupInfo: t('settings.backup.fullBackupInfo'),
+            settingsBackupInfo: t('settings.backup.settingsBackupInfo'),
+            backup: t('settings.backup.backup'),
+            backupImport: t('settings.backup.backupImport'),
+            settings: t('settings.backup.settings'),
+            settingsImport: t('settings.backup.settingsImport'),
+            restoreNote: t('settings.backup.restoreNote'),
+            restoreConfirm: t('settings.backup.restoreConfirm'),
+            restored: t('settings.backup.restored'),
+            ready: t('settings.backup.ready'),
         };
     }
     get mailUi() {
         return {
-            title: t('Отправка книг'),
-            subtitle: t('Настройки SMTP и Telegram доступны только администратору.'),
-            telegramEnabled: t('Включить Telegram'),
+            title: t('settings.mail.title'),
+            subtitle: t('settings.mail.subtitle'),
+            telegramEnabled: t('settings.mail.telegramEnabled'),
             telegramToken: 'Telegram bot token',
-            telegramChatId: t('Telegram chat id задаётся в профиле пользователя'),
-            telegramCaption: t('Подпись Telegram'),
-            smtpEnabled: t('Включить email'),
+            telegramChatId: t('settings.mail.telegramChatId'),
+            telegramCaption: t('settings.mail.telegramCaption'),
+            smtpEnabled: t('settings.mail.smtpEnabled'),
             smtpHost: 'SMTP host',
             smtpPort: 'SMTP port',
             smtpUser: 'SMTP user',
             smtpPass: 'SMTP password',
             smtpSecure: 'SMTP secure / SSL',
             emailFrom: 'Email from',
-            emailTo: t('Email to по умолчанию'),
-            save: t('Сохранить'),
-            test: t('Проверить'),
-            saved: t('Настройки отправки сохранены'),
-            errorTitle: t('Ошибка'),
+            emailTo: t('settings.mail.emailTo'),
+            save: t('settings.mail.save'),
+            test: t('settings.mail.test'),
+            saved: t('settings.mail.saved'),
+            errorTitle: t('settings.mail.errorTitle'),
         };
     }
 
     get opdsUi() {
         return {
-            title: t('Общий OPDS'),
-            subtitle: t('Администратор может включить каталог /opds и задать общий Basic Auth. Смена пути каталога применяется после перезапуска.'),
-            enabled: t('Включить OPDS'),
-            root: t('Путь каталога'),
-            lang: t('Язык каталога'),
-            user: t('Логин'),
-            password: t('Пароль'),
-            save: t('Сохранить'),
-            saved: t('Настройки OPDS сохранены'),
+            title: t('settings.opds.title'),
+            subtitle: t('settings.opds.subtitle'),
+            enabled: t('settings.opds.enabled'),
+            root: t('settings.opds.root'),
+            lang: t('settings.opds.lang'),
+            user: t('settings.opds.user'),
+            password: t('settings.opds.password'),
+            save: t('settings.opds.save'),
+            saved: t('settings.opds.saved'),
         };
     }
 
     get opdsLangOptions() {
         return [
-            {label: t('Автоматически (по языку читалки)'), value: ''},
-            {label: 'Русский', value: 'ru'},
-            {label: 'English', value: 'en'},
+            {label: t('settings.automaticReaderAppLanguage'), value: ''},
+            {label: t('langNames.ru'), value: 'ru'},
+            {label: t('langNames.en'), value: 'en'},
         ];
     }
 
     get adminCacheFrequencyOptions() {
         return [
-            {label: t('Каждый день'), value: 'daily'},
-            {label: t('Раз в неделю'), value: 'weekly'},
-            {label: t('Раз в месяц'), value: 'monthly'},
+            {label: t('settings.frequencyDaily'), value: 'daily'},
+            {label: t('settings.frequencyWeekly'), value: 'weekly'},
+            {label: t('settings.frequencyMonthly'), value: 'monthly'},
         ];
     }
 
     get adminCacheWeekDayOptions() {
         return [
-            {label: t('Понедельник'), value: 1},
-            {label: t('Вторник'), value: 2},
-            {label: t('Среда'), value: 3},
-            {label: t('Четверг'), value: 4},
-            {label: t('Пятница'), value: 5},
-            {label: t('Суббота'), value: 6},
-            {label: t('Воскресенье'), value: 0},
+            {label: t('settings.monday'), value: 1},
+            {label: t('settings.tuesday'), value: 2},
+            {label: t('settings.wednesday'), value: 3},
+            {label: t('settings.thursday'), value: 4},
+            {label: t('settings.friday'), value: 5},
+            {label: t('settings.saturday'), value: 6},
+            {label: t('settings.sunday'), value: 0},
         ];
     }
 
     get adminCacheMonthDayOptions() {
         return Array.from({length: 31}, (_, index) => ({
-            label: t('{n} число', {n: index + 1}),
+            label: t('settings.monthDay', {n: index + 1}),
             value: index + 1,
         }));
     }
@@ -753,13 +753,13 @@ class AdminPage {
 
     get sections() {
         return [
-            {id: 'overview', label: t('Обзор'), icon: 'la la-tachometer-alt'},
-            {id: 'users', label: t('Пользователи'), icon: 'la la-users'},
-            {id: 'library', label: t('Библиотека'), icon: 'la la-book'},
-            {id: 'integrations', label: t('Интеграции'), icon: 'la la-plug'},
-            {id: 'storage', label: t('Хранилище'), icon: 'la la-hdd'},
-            {id: 'backups', label: t('Резервные копии'), icon: 'la la-archive'},
-            {id: 'log', label: t('Журнал событий'), icon: 'la la-stream'},
+            {id: 'overview', label: t('admin.overview'), icon: 'la la-tachometer-alt'},
+            {id: 'users', label: t('admin.users'), icon: 'la la-users'},
+            {id: 'library', label: t('settings.library'), icon: 'la la-book'},
+            {id: 'integrations', label: t('admin.integrations'), icon: 'la la-plug'},
+            {id: 'storage', label: t('settings.storage'), icon: 'la la-hdd'},
+            {id: 'backups', label: t('admin.backups'), icon: 'la la-archive'},
+            {id: 'log', label: t('admin.eventLog'), icon: 'la la-stream'},
         ];
     }
 
@@ -770,12 +770,12 @@ class AdminPage {
 
     get sectionLabel() {
         const item = this.sections.find(row => row.id === this.section);
-        return item ? item.label : t('Администрирование');
+        return item ? item.label : t('settings.admin.title');
     }
 
     updateTitle() {
         if (this.$route.path.startsWith('/admin'))
-            this.$root.setAppTitle(`${t('Администрирование')}: ${this.sectionLabel}`);
+            this.$root.setAppTitle(`${t('settings.admin.title')}: ${this.sectionLabel}`);
     }
 
     get config() {
@@ -825,10 +825,10 @@ class AdminPage {
 
     get externalDiscoverySummary() {
         if (!this.effectiveExternalDiscoveryAvailable)
-            return t('Не настроен');
+            return t('settings.notConfigured');
 
-        const name = this.effectiveExternalDiscoveryName || t('Внешний источник');
-        return t('{name} · веб-витрина', {name});
+        const name = this.effectiveExternalDiscoveryName || t('common.externalSource');
+        return t('settings.webShowcase', {name});
     }
 
     makeDefaultIntegrations() {
@@ -1057,9 +1057,9 @@ class AdminPage {
         const minutes = Math.floor(total / 60);
 
         return [
-            days ? t('{n}д', {n: days}) : '',
-            hours ? t('{n}ч', {n: hours}) : '',
-            t('{n}м', {n: minutes}),
+            days ? t('settings.durationDays', {n: days}) : '',
+            hours ? t('settings.durationHours', {n: hours}) : '',
+            t('settings.durationMinutes', {n: minutes}),
         ].filter(Boolean).join(' ');
     }
 
@@ -1086,7 +1086,7 @@ class AdminPage {
         const parts = [];
 
         if (limit !== null && limit !== undefined)
-            parts.push(t('Лимит: {value}', {value: this.formatBytes(limit)}));
+            parts.push(t('settings.limitValue', {value: this.formatBytes(limit)}));
         if (target !== null && target !== undefined)
             parts.push(this.adminCacheTargetText(target));
 
@@ -1098,15 +1098,15 @@ class AdminPage {
         const schedule = String(limits.cacheCleanSchedule || '').trim();
         const parsed = this.parseAdminCacheSchedule(schedule);
         if (!parsed.enabled)
-            return t('Отключена');
+            return t('settings.rotationDisabled');
         if (parsed.advancedSchedule)
-            return t('По cron');
+            return t('settings.scheduleCron');
         if (parsed.frequency === 'weekly')
-            return t('Раз в неделю');
+            return t('settings.frequencyWeekly');
         if (parsed.frequency === 'monthly')
-            return t('Раз в месяц');
+            return t('settings.frequencyMonthly');
 
-        return t('Каждый день');
+        return t('settings.frequencyDaily');
     }
 
     adminCacheRotationHint() {
@@ -1120,14 +1120,14 @@ class AdminPage {
             if (parsed.frequency === 'weekly')
                 parts.push(`${this.adminCacheWeekDayLabel(parsed.weekDay)}, ${parsed.time}`);
             else if (parsed.frequency === 'monthly')
-                parts.push(t('{day} число, {time}', {day: parsed.monthDay, time: parsed.time}));
+                parts.push(t('settings.monthDayAt', {day: parsed.monthDay, time: parsed.time}));
             else
                 parts.push(parsed.time);
         } else if (parsed.advancedSchedule) {
             parts.push(schedule);
         }
         if (nextRun)
-            parts.push(t('Следующая: {value}', {value: nextRun}));
+            parts.push(t('settings.nextRun', {value: nextRun}));
         if (limits.cacheCleanServerTimeZone)
             parts.push(limits.cacheCleanServerTimeZone);
 
@@ -1138,17 +1138,17 @@ class AdminPage {
         if (value === null || value === undefined)
             return '';
 
-        return t('Цель после чистки: {value}', {value: this.formatBytes(value)});
+        return t('settings.cleanupTarget', {value: this.formatBytes(value)});
     }
 
     adminCacheScheduleText(schedule = '', nextRunAt = '', timeZone = '') {
         if (!schedule)
-            return t('Ротация: отключена');
+            return t('settings.rotationStatusDisabled');
 
-        const parts = [t('Ротация: {value}', {value: this.adminCacheScheduleLabel(schedule)})];
+        const parts = [t('settings.rotationStatus', {value: this.adminCacheScheduleLabel(schedule)})];
         const nextRun = this.formatServerDateTime(nextRunAt, timeZone);
         if (nextRun)
-            parts.push(t('след.: {value}', {value: nextRun}));
+            parts.push(t('settings.nextShort', {value: nextRun}));
         if (timeZone)
             parts.push(timeZone);
 
@@ -1158,15 +1158,15 @@ class AdminPage {
     adminCacheScheduleLabel(schedule = '') {
         const parsed = this.parseAdminCacheSchedule(schedule);
         if (!parsed.enabled)
-            return t('отключена');
+            return t('settings.rotationDisabledLower');
         if (parsed.advancedSchedule)
             return schedule;
         if (parsed.frequency === 'weekly')
-            return t('еженедельно, {day} в {time}', {day: this.adminCacheWeekDayLabel(parsed.weekDay), time: parsed.time});
+            return t('settings.scheduleWeeklyAt', {day: this.adminCacheWeekDayLabel(parsed.weekDay), time: parsed.time});
         if (parsed.frequency === 'monthly')
-            return t('ежемесячно, {day} числа в {time}', {day: parsed.monthDay, time: parsed.time});
+            return t('settings.scheduleMonthlyAt', {day: parsed.monthDay, time: parsed.time});
 
-        return t('ежедневно в {time}', {time: parsed.time});
+        return t('settings.scheduleDailyAt', {time: parsed.time});
     }
 
     formatServerDateTime(value = '', timeZone = '') {
@@ -1202,9 +1202,9 @@ class AdminPage {
     get adminCpuHint() {
         const cpu = (this.adminDashboard && this.adminDashboard.cpu) || {};
         const average = Number(cpu.averagePercent);
-        const averageText = Number.isFinite(average) ? `${t('Среднее: {value}%', {value: average.toFixed(average >= 10 ? 0 : 1)})} · ` : '';
+        const averageText = Number.isFinite(average) ? `${t('settings.cpuAverage', {value: average.toFixed(average >= 10 ? 0 : 1)})} · ` : '';
         const totalSeconds = Number(cpu.totalSeconds);
-        const totalText = Number.isFinite(totalSeconds) ? t('CPU-время: {value}', {value: this.formatDuration(totalSeconds)}) : '';
+        const totalText = Number.isFinite(totalSeconds) ? t('settings.cpuTime', {value: this.formatDuration(totalSeconds)}) : '';
         return `${averageText}${totalText}`.trim();
     }
 
@@ -1228,7 +1228,7 @@ class AdminPage {
     get adminRuntimeHint() {
         const inFlight = Number(this.adminRuntime.inFlightActions || 0);
         const actionCount = Number(this.adminRuntime.actionCount || 0);
-        return t('{inFlight} выполняется · {count} типов', {inFlight, count: actionCount});
+        return t('settings.requestsRunning', {inFlight, count: actionCount});
     }
 
     get runtimeLagText() {
@@ -1241,13 +1241,13 @@ class AdminPage {
 
     get runtimeLastSlowActionText() {
         const slow = this.adminRuntime.lastSlowAction || {};
-        return slow.action || t('нет');
+        return slow.action || t('settings.noSlowAction');
     }
 
     get runtimeLastSlowActionHint() {
         const slow = this.adminRuntime.lastSlowAction || {};
         if (!slow.action)
-            return t('Порог: 1.5 s');
+            return t('settings.slowActionThreshold');
 
         const time = slow.at ? this.formatDateTime(slow.at) : '';
         return `${this.formatMilliseconds(slow.durationMs)}${time ? ` · ${time}` : ''}`;
@@ -1569,12 +1569,12 @@ class AdminPage {
     cacheCleanSummary(result = {}) {
         const rows = Array.isArray(result.cleaned) ? result.cleaned : [];
         if (!rows.length)
-            return t('Кэш уже чист');
+            return t('settings.cacheAlreadyClean');
 
         return rows.map(row => {
-            const title = row.title || row.id || t('Кэш');
+            const title = row.title || row.id || t('settings.cache');
             const removed = Number(row.removed || 0);
-            return t('{title}: удалено {removed}, сейчас {size}', {title, removed, size: this.formatBytes(row.after || row.size || 0)});
+            return t('settings.cacheCleanResult', {title, removed, size: this.formatBytes(row.after || row.size || 0)});
         }).join(' · ');
     }
 
@@ -1589,7 +1589,7 @@ class AdminPage {
             });
             await this.api.updateConfig();
             await this.refreshAdminDashboard(false);
-            this.$root.notify.success(t('Настройки ротации кэша сохранены'));
+            this.$root.notify.success(t('settings.cacheRotationSettingsSaved'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
         } finally {
@@ -1809,7 +1809,7 @@ class AdminPage {
             await this.api.importAdminSettings(data);
             await this.api.updateConfig();
             this.loadSettings();
-            this.$root.notify.success(t('Настройки восстановлены'));
+            this.$root.notify.success(t('settings.settingsRestored'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
         } finally {

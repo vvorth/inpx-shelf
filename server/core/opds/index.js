@@ -12,7 +12,7 @@ const ReadingProgressPage = require('./ReadingProgressPage');
 const OpensearchPage = require('./OpensearchPage');
 const SearchPage = require('./SearchPage');
 const SearchHelpPage = require('./SearchHelpPage');
-const i18n = require('./i18n');
+const i18n = require('../i18n');
 
 const log = new (require('../AppLogger'))().log;//singleton
 
@@ -89,7 +89,7 @@ module.exports = function(app, config, security = new (require('../Security'))(c
                     ? 'application/opensearchdescription+xml; charset=utf-8'
                     : 'application/atom+xml; charset=utf-8');
 
-                const lang = i18n.resolveLang(config, req);
+                const lang = i18n.resolveOpdsLang(config, req);
                 res.set('Content-Language', lang);
                 res.vary('Accept-Language');
 

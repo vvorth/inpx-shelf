@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const {BookMetadata} = require('./BookMetadata');
 const genreNames = new Map(require('./genres').flatMap(section => section.value).map(genre => [genre.value, genre.name]));
+const {t} = require('./i18n');
 const coverLifetime = 24 * 60 * 60 * 1000;
 // Audiobookshelf's CustomProviderAdapter stops waiting after 10 seconds.
 const searchTimeoutMs = 8000;
@@ -40,7 +41,7 @@ function isAuthorizedRequest(req, config) {
 }
 
 function normalized(value = '') {
-    return String(value).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    return String(value).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();//i18n-ignore: нормализация
 }
 
 function authorMatches(author, wanted) {
@@ -73,7 +74,7 @@ function optionalText(value) {
 
 function mapMetadata(book, extra) {
     const result = {
-        title: book.title || 'Без названия',
+        title: book.title || t('common.untitled'),
     };
     const author = optionalText(book.author).split(',').map(optionalText).filter(Boolean).join(', ');
     if (author) result.author = author;
@@ -124,27 +125,27 @@ function init(app, config, worker, security) {
         const denied = authorizationError(req, config);
         const info = {
             provider: 'inpx-shelf', version: config.version || '',
-            description: 'Провайдер метаданных Audiobookshelf. Укажите этот базовый адрес в настройках custom provider; ABS сам добавляет /search.',
+            description: t('abs.description'),
             search: `${root}/search`, cover: `${root}/cover`, authorizationRequired: true,
             configuration: {enabled: !!config.absEnabled, tokenConfigured: !!config.absToken},
             authorization: {header: 'Authorization', formats: ['<INPX_ABS_TOKEN>', 'Bearer <INPX_ABS_TOKEN>']},
             parameters: {
-                query: 'Название книги; параметр обязателен, но может быть пустым при поиске по автору.',
-                author: 'Имя автора; необязательный параметр. Название или автор должны быть заполнены.',
+                query: t('abs.paramQuery'),
+                author: t('abs.paramAuthor'),
                 maxLength: 200,
             },
             limits: {maxResults: resultLimit(config), searchTimeoutMs, metadataTimeoutMs},
             example: {
-                method: 'GET', path: `${root}/search?query=&author=${encodeURIComponent('Хандке')}`,
-                curl: `curl --get 'http://<host>:12380${root}/search' --header 'Authorization: <INPX_ABS_TOKEN>' --data-urlencode 'query=' --data-urlencode 'author=Хандке'`,
+                method: 'GET', path: `${root}/search?query=&author=${encodeURIComponent('Хандке')/*i18n-ignore: пример данных*/}`,
+                curl: `curl --get 'http://<host>:12380${root}/search' --header 'Authorization: <INPX_ABS_TOKEN>' --data-urlencode 'query=' --data-urlencode 'author=Хандке'`,//i18n-ignore: пример данных
             },
             troubleshooting: {
-                400: 'Проверьте query и author: строки до 200 символов, хотя бы одна непустая.',
-                401: 'Передайте INPX_ABS_TOKEN в заголовке Authorization. В браузере заголовок обычно отсутствует.',
-                403: 'Проверьте общую авторизацию inpx-shelf и правила reverse proxy.',
-                404: 'Включите провайдер: INPX_ABS_ENABLED=true.',
-                429: 'Дождитесь завершения активных поисков и повторите запрос.',
-                503: 'Проверьте INPX_ABS_TOKEN, готовность индекса и доступность библиотеки.',
+                400: t('abs.help400'),
+                401: t('abs.help401'),
+                403: t('abs.help403'),
+                404: t('abs.help404'),
+                429: t('abs.help429'),
+                503: t('abs.help503'),
             },
         };
         if (denied) return res.status(denied.status).json({...info, error: denied.error});

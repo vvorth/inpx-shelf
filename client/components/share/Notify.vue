@@ -5,7 +5,7 @@
 <script>
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
-import {tMessage} from '../../share/i18n';
+import {tm} from '../../share/i18n';
 const {escapeHtml} = require('../../../shared/safeHtml');
 
 class Notify {
@@ -23,7 +23,7 @@ class Notify {
         } = opts;
 
         //сообщения - текст (имена, названия книг); разметка только с opts.html
-        message = tMessage(message);
+        message = tm(message);
         if (!html) {
             message = escapeHtml(message);
             caption = (caption ? escapeHtml(caption) : caption);

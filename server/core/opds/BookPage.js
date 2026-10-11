@@ -4,14 +4,14 @@ const dayjs = require('dayjs');
 
 const BasePage = require('./BasePage');
 const Fb2Parser = require('../fb2/Fb2Parser');
-const {t, tGenre} = require('./i18n');
+const {t, tGenre} = require('../i18n');
 
 class BookPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'book';
-        this.title = 'Книга';
+        this.title = 'opds.book';
 
     }
 
@@ -40,24 +40,24 @@ class BookPage extends BasePage {
 
     inpxInfo(bookRec) {
         const mapping = [
-            {name: 'fileInfo', label: t('Информация о файле'), value: [
-                {name: 'folder', label: t('Папка')},
-                {name: 'file', label: t('Файл')},
-                {name: 'size', label: t('Размер')},
-                {name: 'date', label: t('Добавлен')},
-                {name: 'del', label: t('Удален')},
+            {name: 'fileInfo', label: t('bookInfo.fileInformation'), value: [
+                {name: 'folder', label: t('opds.folder')},
+                {name: 'file', label: t('opds.file')},
+                {name: 'size', label: t('common.size')},
+                {name: 'date', label: t('bookInfo.added')},
+                {name: 'del', label: t('bookInfo.deleted')},
                 {name: 'libid', label: 'LibId'},
                 {name: 'insno', label: 'InsideNo'},
             ]},
 
-            {name: 'titleInfo', label: t('Общая информация'), value: [
-                {name: 'author', label: t('Автор(ы)')},
-                {name: 'title', label: t('Название')},
-                {name: 'series', label: t('Серия')},
-                {name: 'genre', label: t('Жанр')},
-                {name: 'librate', label: t('Оценка')},
-                {name: 'lang', label: t('Язык книги')},
-                {name: 'keywords', label: t('Ключевые слова')},
+            {name: 'titleInfo', label: t('bookInfo.generalInformation'), value: [
+                {name: 'author', label: t('bookInfo.authors')},
+                {name: 'title', label: t('common.title')},
+                {name: 'series', label: t('common.series')},
+                {name: 'genre', label: t('common.genre')},
+                {name: 'librate', label: t('common.rating')},
+                {name: 'lang', label: t('bookInfo.bookLanguage')},
+                {name: 'keywords', label: t('common.keywords')},
             ]},
         ];
 
@@ -72,7 +72,7 @@ class BookPage extends BasePage {
                 return dayjs(value, 'YYYY-MM-DD').format('DD.MM.YYYY');
 
             if (nodePath == 'fileInfo/del')
-                return (value ? t('Да') : null);
+                return (value ? t('common.yes') : null);
 
             if (nodePath == 'fileInfo/insno')
                 return (value ? value : null);
@@ -181,7 +181,7 @@ class BookPage extends BasePage {
                 //entry
                 const e = this.makeEntry({
                     id: bookUid,
-                    title: bookInfo.book.title || t('Без названия'),
+                    title: bookInfo.book.title || t('common.untitled'),
                 });
 
                 //author bookInfo
@@ -238,12 +238,12 @@ class BookPage extends BasePage {
                             },
                         });
 
-                        info += this.htmlInfo(t('Fb2 инфо'), infoList);
+                        info += this.htmlInfo(t('opds.fb2Info'), infoList);
                     }
                 }
 
                 //content
-                info += this.htmlInfo(t('Inpx инфо'), this.inpxInfo(bookInfo.book));
+                info += this.htmlInfo(t('opds.inpxInfo'), this.inpxInfo(bookInfo.book));
 
                 content = `${ann}${info}`;
                 if (content) {

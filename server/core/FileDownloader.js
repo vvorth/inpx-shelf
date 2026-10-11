@@ -1,4 +1,5 @@
 const axios = require('axios');
+const {t} = require('./i18n');
 
 const userAgent = 'Mozilla/5.0 (X11; HasCodingOs 1.0; Linux x64) AppleWebKit/637.36 (KHTML, like Gecko) Chrome/70.0.3112.101 Safari/637.36 HasBrowser/5.0';
 
@@ -47,14 +48,14 @@ class FileDownloader {
             response = await axios.get(url, options);
             const estimatedSize = Number(response.headers['content-length']) || 0;
             if (this.limitDownloadSize && estimatedSize > this.limitDownloadSize)
-                throw new Error('Файл слишком большой');
+                throw new Error(t('errors.fileTooLarge'));
 
             let transferred = 0;
             let previousProgress = 0;
             return await this.streamToBuffer(response.data, chunk => {
                 transferred += chunk.length;
                 if (this.limitDownloadSize && transferred > this.limitDownloadSize)
-                    throw new Error('Файл слишком большой');
+                    throw new Error(t('errors.fileTooLarge'));
                 const progress = Math.round(transferred/(estimatedSize || transferred + 200000)*100);
                 if (progress !== previousProgress && callback)
                     callback(progress);

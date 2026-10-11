@@ -14,6 +14,7 @@ const {getEnabledLibrarySources} = require('./core/LibrarySources');
 const Fb2Helper = require('./core/fb2/Fb2Helper');
 
 const log = new (require('./core/AppLogger'))().log;//singleton
+const {t, getLang} = require('./core/i18n');
 let coverArchives = null;
 let bookArchives = null;
 let coverArchivesKey = '';
@@ -247,15 +248,23 @@ function normalizeWebAppBasePath(rootPathStatic = '') {
     return root ? `/${root}/` : '/';
 }
 
+function escapeHtml(value) {
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function jsString(value) {
+    return JSON.stringify(String(value)).replace(/</g, '\\u003c');
+}
+
 function appResetPage(rootPathStatic = '') {
     const basePath = JSON.stringify(normalizeWebAppBasePath(rootPathStatic)).replace(/</g, '\\u003c');
     return `<!doctype html>
-<html lang="ru">
+<html lang="${escapeHtml(getLang())}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Обновление INPX Web</title>
+  <title>${escapeHtml(t('reset.pageTitle'))}</title>
   <style>
     body{margin:0;background:#f4ede2;color:#2d2925;font:16px/1.5 system-ui,sans-serif}
     main{box-sizing:border-box;max-width:560px;margin:12vh auto;padding:24px}
@@ -264,9 +273,9 @@ function appResetPage(rootPathStatic = '') {
 </head>
 <body>
   <main>
-    <h1>Обновляем приложение</h1>
-    <p id="status">Очищаем только файлы приложения. Настройки читалки, прогресс и закладки сохраняются.</p>
-    <noscript>Включите JavaScript и <a href="./">вернитесь в приложение</a>.</noscript>
+    <h1>${escapeHtml(t('reset.heading'))}</h1>
+    <p id="status">${escapeHtml(t('reset.status'))}</p>
+    <noscript>${escapeHtml(t('reset.noScript'))} <a href="./">${escapeHtml(t('reset.backToApp'))}</a></noscript>
   </main>
   <script>
   (() => {
@@ -352,10 +361,10 @@ function appResetPage(rootPathStatic = '') {
 
     reset().catch(() => {
       const status = document.getElementById('status');
-      status.textContent = 'Автоматическая очистка не удалась. Вернитесь в приложение и обновите страницу.';
+      status.textContent = ${jsString(t('reset.failed'))};
       const link = document.createElement('a');
       link.href = BASE_PATH;
-      link.textContent = 'Вернуться в приложение';
+      link.textContent = ${jsString(t('reset.backToApp'))};
       status.append(document.createElement('br'), link);
     });
   })();
@@ -748,7 +757,7 @@ module.exports = (app, config, webWorker = null, security = null) => {
             if (bookConverter.canConvertTo(req.params.fileType)) {
                 //текст конвертера с путями сервера остаётся в журнале; пользователю - только понятные причины
                 const known = String(e.code || '').startsWith('INPX_CONVERSION_');
-                res.status(500).send(known ? e.message : 'Не удалось конвертировать книгу, подробности в журнале сервера');
+                res.status(500).send(known ? e.message : t('errors.conversionFailed'));
                 return;
             }
         }

@@ -1,6 +1,6 @@
 <template>
     <div class="app-shell" :class="{'app-shell--bare': bare}">
-        <nav v-if="!bare" class="shell-rail" :aria-label="$t('Разделы')">
+        <nav v-if="!bare" class="shell-rail" :aria-label="$t('appShell.sections')">
             <router-link class="shell-brand" to="/">
                 <img class="shell-brand-logo" src="./assets/logo.png" alt="" />
                 <span class="shell-brand-name">{{ collectionName || config.name || 'inpx-shelf' }}</span>
@@ -9,11 +9,11 @@
             <div class="shell-nav">
                 <router-link class="shell-nav-item" :class="{'is-active': activeItem === 'home'}" to="/">
                     <q-icon name="la la-home" size="20px" />
-                    <span>{{ $t('Главная') }}</span>
+                    <span>{{ $t('discovery.home') }}</span>
                 </router-link>
                 <router-link class="shell-nav-item" :class="{'is-active': activeItem === 'catalog'}" :to="catalogPath">
                     <q-icon name="la la-book" size="20px" />
-                    <span>{{ $t('Каталог') }}</span>
+                    <span>{{ $t('mePreferences.catalog') }}</span>
                 </router-link>
                 <router-link
                     v-for="item in discoveryItems"
@@ -27,33 +27,33 @@
                 </router-link>
                 <router-link class="shell-nav-item" :class="{'is-active': activeItem === 'lists'}" to="/lists">
                     <q-icon name="la la-bookmark" size="20px" />
-                    <span>{{ $t('Списки') }}</span>
+                    <span>{{ $t('profiles.lists') }}</span>
                 </router-link>
             </div>
 
             <div class="shell-nav shell-nav--bottom">
                 <router-link v-if="signedIn" class="shell-nav-item" :class="{'is-active': activeItem === 'me'}" to="/me">
                     <q-icon name="la la-user-cog" size="20px" />
-                    <span>{{ $t('Профиль и устройства') }}</span>
+                    <span>{{ $t('me.profileAndDevices') }}</span>
                 </router-link>
                 <router-link v-if="admin" class="shell-nav-item" :class="{'is-active': activeItem === 'admin'}" to="/admin">
                     <q-icon name="la la-shield-alt" size="20px" />
-                    <span>{{ $t('Администрирование') }}</span>
+                    <span>{{ $t('settings.admin.title') }}</span>
                 </router-link>
 
                 <div v-if="showReleaseNotice" class="shell-release">
                     <div class="shell-release-title">
-                        {{ $t('Доступна версия {version}', {version: config.latestVersion}) }}
+                        {{ $t('appShell.versionIsAvailable', {version: config.latestVersion}) }}
                     </div>
                     <div class="shell-release-actions">
-                        <a v-if="config.latestReleaseLink" :href="config.latestReleaseLink" target="_blank" rel="noopener">{{ $t('Подробнее') }}</a>
+                        <a v-if="config.latestReleaseLink" :href="config.latestReleaseLink" target="_blank" rel="noopener">{{ $t('appShell.details') }}</a>
                         <button type="button" class="shell-link-btn" @click="dismissRelease">
-                            {{ $t('Скрыть') }}
+                            {{ $t('common.hide') }}
                         </button>
                     </div>
                 </div>
 
-                <button type="button" class="shell-user" :aria-label="$t('Меню профиля')">
+                <button type="button" class="shell-user" :aria-label="$t('appShell.profileMenu')">
                     <span class="shell-avatar" :class="{'shell-avatar--guest': !signedIn}">{{ signedIn ? avatarText : '' }}<q-icon v-if="!signedIn" name="la la-user" size="18px" /></span>
                     <span class="shell-user-copy">
                         <span class="shell-user-name">{{ userName }}</span>
@@ -83,11 +83,11 @@
         <div class="shell-column">
             <div v-if="!bare && showNamesBanner" class="shell-banner" role="status">
                 <q-icon name="la la-lightbulb" size="18px" />
-                <span class="shell-banner-text">{{ $t('Поиск может находить авторов и по английским именам: «Isaac Asimov» найдёт Азимова. Для этого нужно скачать таблицу имён.') }}</span>
+                <span class="shell-banner-text">{{ $t('appShell.searchCanAlsoFind') }}</span>
                 <router-link to="/admin/library" @click="dismissNamesBanner">
-                    {{ $t('Настроить') }}
+                    {{ $t('appShell.setUp') }}
                 </router-link>
-                <button type="button" class="shell-banner-close" :aria-label="$t('Скрыть на неделю')" :title="$t('Скрыть на неделю')" @click="dismissNamesBanner">
+                <button type="button" class="shell-banner-close" :aria-label="$t('appShell.hideForAWeek')" :title="$t('appShell.hideForAWeek')" @click="dismissNamesBanner">
                     <q-icon name="la la-times" size="16px" />
                 </button>
             </div>
@@ -100,26 +100,26 @@
             </main>
         </div>
 
-        <nav v-if="!bare" class="shell-tabbar" :aria-label="$t('Разделы')">
+        <nav v-if="!bare" class="shell-tabbar" :aria-label="$t('appShell.sections')">
             <router-link class="shell-tab" :class="{'is-active': activeItem === 'home' || discoveryActive}" to="/">
                 <q-icon name="la la-home" size="22px" />
-                <span>{{ $t('Главная') }}</span>
+                <span>{{ $t('discovery.home') }}</span>
             </router-link>
             <router-link class="shell-tab" :class="{'is-active': activeItem === 'catalog'}" :to="catalogPath">
                 <q-icon name="la la-book" size="22px" />
-                <span>{{ $t('Каталог') }}</span>
+                <span>{{ $t('mePreferences.catalog') }}</span>
             </router-link>
             <router-link class="shell-tab" :class="{'is-active': activeItem === 'lists'}" to="/lists">
                 <q-icon name="la la-bookmark" size="22px" />
-                <span>{{ $t('Списки') }}</span>
+                <span>{{ $t('profiles.lists') }}</span>
             </router-link>
             <router-link v-if="signedIn" class="shell-tab" :class="{'is-active': activeItem === 'me' || activeItem === 'admin'}" to="/me">
                 <q-icon name="la la-user-circle" size="22px" />
-                <span>{{ $t('Профиль') }}</span>
+                <span>{{ $t('common.profile') }}</span>
             </router-link>
             <button v-else type="button" class="shell-tab" @click="signIn">
                 <q-icon name="la la-sign-in-alt" size="22px" />
-                <span>{{ $t('Войти') }}</span>
+                <span>{{ $t('profiles.loginAction') }}</span>
             </button>
         </nav>
     </div>
@@ -132,7 +132,7 @@ import ShellUserMenu from './ShellUserMenu.vue';
 import Omnibox from './Omnibox.vue';
 import LanguagePicker from './LanguagePicker.vue';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {currentProfile, isSignedIn, isAdmin, initials} from '../../share/session';
 import {enabledDiscoveryRoutes, discoveryRouteLabel} from '../../share/discoveryRoutes';
 import {newReleaseAvailable} from '../../share/release';
@@ -224,17 +224,17 @@ class AppShell {
     }
 
     get userName() {
-        return this.signedIn ? (tMessage(this.profile.name) || this.profile.login || t('Профиль')) : t('Гость');
+        return this.signedIn ? (tm(this.profile.name) || this.profile.login || t('common.profile')) : t('adminUsers.guest');
     }
 
     get userHint() {
         if (!this.signedIn)
-            return t('Войти');
+            return t('profiles.loginAction');
         const parts = [this.profile.login || ''];
         if (this.admin)
-            parts.push(t('Администратор'));
+            parts.push(t('profiles.defaultAdminName'));
         if (this.sso)
-            parts.push(t('Вход через SSO'));
+            parts.push(t('appShell.signedInWithSso'));
         return parts.filter(Boolean).join(' · ');
     }
 

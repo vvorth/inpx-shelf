@@ -3,12 +3,12 @@
         <div class="page-body">
             <header class="page-head">
                 <h1 class="page-title">
-                    {{ $t('Профиль и устройства') }}
+                    {{ $t('me.profileAndDevices') }}
                 </h1>
             </header>
 
             <div class="section-layout">
-                <nav class="section-nav" :aria-label="$t('Разделы профиля')">
+                <nav class="section-nav" :aria-label="$t('me.profileSections')">
                     <router-link
                         v-for="item in sections"
                         :key="item.id"
@@ -20,22 +20,22 @@
                     </router-link>
                     <div class="section-nav-sep" />
                     <router-link v-if="admin" class="section-nav-item" to="/admin">
-                        <q-icon name="la la-shield-alt" size="18px" />{{ $t('Администрирование') }}
+                        <q-icon name="la la-shield-alt" size="18px" />{{ $t('settings.admin.title') }}
                     </router-link>
                     <button v-if="signedIn && !sso" type="button" class="section-nav-item" @click="signOut">
-                        <q-icon name="la la-sign-out-alt" size="18px" />{{ $t('Выйти из профиля') }}
+                        <q-icon name="la la-sign-out-alt" size="18px" />{{ $t('profiles.logout') }}
                     </button>
                     <button v-if="!signedIn" type="button" class="section-nav-item" @click="signIn">
-                        <q-icon name="la la-sign-in-alt" size="18px" />{{ $t('Войти') }}
+                        <q-icon name="la la-sign-in-alt" size="18px" />{{ $t('profiles.loginAction') }}
                     </button>
                 </nav>
 
                 <div class="section-content">
                     <div v-if="needsSignIn" class="card">
-                        <div>{{ $t('Этот раздел доступен после входа в профиль.') }}</div>
+                        <div>{{ $t('me.signInToOpen') }}</div>
                         <div>
                             <q-btn color="primary" unelevated no-caps @click="signIn">
-                                {{ $t('Войти') }}
+                                {{ $t('profiles.loginAction') }}
                             </q-btn>
                         </div>
                     </div>
@@ -113,11 +113,11 @@ class MePage {
 
     get sections() {
         return [
-            {id: 'account', label: t('Аккаунт'), icon: 'la la-user'},
-            {id: 'devices', label: t('Устройства'), icon: 'la la-tablet'},
-            {id: 'delivery', label: t('Отправка книг'), icon: 'la la-paper-plane'},
-            {id: 'preferences', label: t('Интерфейс'), icon: 'la la-sliders-h'},
-            {id: 'data', label: t('Мои данные'), icon: 'la la-database'},
+            {id: 'account', label: t('me.account'), icon: 'la la-user'},
+            {id: 'devices', label: t('me.devices'), icon: 'la la-tablet'},
+            {id: 'delivery', label: t('settings.mail.title'), icon: 'la la-paper-plane'},
+            {id: 'preferences', label: t('me.interface'), icon: 'la la-sliders-h'},
+            {id: 'data', label: t('me.myData'), icon: 'la la-database'},
         ];
     }
 
@@ -125,7 +125,7 @@ class MePage {
         if (!this.$route.path.startsWith('/me'))
             return;
         const item = this.sections.find(row => row.id === this.section);
-        this.$root.setAppTitle(item ? item.label : t('Профиль'));
+        this.$root.setAppTitle(item ? item.label : t('common.profile'));
     }
 
     signIn() {

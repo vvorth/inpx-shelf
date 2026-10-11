@@ -1,21 +1,29 @@
 #!/usr/bin/env node
-//Проверка переводов интерфейса: собирает ключи t('...'), $t('...'), tk('...') и tHtml('id', ...)
-//из клиентского кода и сравнивает их со словарями в client/share/i18n.
-//Также проверяет словари OPDS (server/core/opds/i18n.*.js): ключи t('...'), tText('id', ...),
-//заголовки разделов this.title = '...' и подписи полей fb2 (server/core/fb2/Fb2Parser.js).
-//Использование: node scripts/i18n-check.js [--keys] [--unused]
+//Проверка переводов (shared/locales/<lang>.json):
+// - ключи, используемые в коде (t, $t, tk, msg, keyError и т.п.), есть во всех языках;
+// - во всех языках одинаковый набор ключей, одинаковые параметры {name}, правильные формы множественного числа;
+// - в словарях нет неиспользуемых ключей;
+// - в коде нет русского текста интерфейса (кроме комментариев, данных жанров и строк с пометкой i18n-ignore).
+//Использование: node scripts/i18n-check.js
 const fs = require('fs');
 const path = require('path');
 
+const i18n = require('../shared/i18n');
+
 const root = path.resolve(__dirname, '..');
-const clientDir = path.join(root, 'client');
-const dictDir = path.join(clientDir, 'share', 'i18n');
+const codeDirs = ['client', 'server', 'shared'];
+//файлы с данными, а не с текстом интерфейса
+const dataFiles = new Set(['server/core/genres/genresText.js']);
+//ключи, которые строятся в коде динамически
+const dynamicPrefixes = ['genres.', 'genreSections.'];
+const pluralCategories = {ru: ['one', 'few', 'many', 'other'], en: ['one', 'other']};
+const cyrillic = /[А-Яа-яЁё]/;
 
 function walk(dir, result = []) {
     for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-            if (fullPath !== dictDir)
+            if (!['node_modules', 'locales'].includes(entry.name) && !entry.name.startsWith('.'))
                 walk(fullPath, result);
         } else if (/\.(vue|js)$/.test(entry.name)) {
             result.push(fullPath);
@@ -24,141 +32,125 @@ function walk(dir, result = []) {
     return result;
 }
 
-function unescapeJs(raw) {
-    return raw.replace(/\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)/g, (match, seq) => {
-        if (seq[0] === 'u')
-            return String.fromCodePoint(parseInt(seq.replace(/[u{}]/g, ''), 16));
-        if (seq[0] === 'x')
-            return String.fromCharCode(parseInt(seq.substring(1), 16));
-        return ({n: '\n', t: '\t', r: '\r'})[seq] || seq;
-    });
+function flatten(node, prefix = '', result = new Map()) {
+    for (const [name, value] of Object.entries(node)) {
+        const key = (prefix ? `${prefix}.${name}` : name);
+        const isPlural = value && typeof value === 'object' && !Array.isArray(value) && value.other !== undefined
+            && Object.keys(value).every(name => ['zero', 'one', 'two', 'few', 'many', 'other'].includes(name));
+        if (value && typeof value === 'object' && !Array.isArray(value) && !isPlural)
+            flatten(value, key, result);
+        else
+            result.set(key, value);
+    }
+    return result;
 }
 
-function collectKeys() {
-    const keys = new Map();
-    const htmlIds = new Map();
-    const keyRe = /(?<![\w$.])(?:\$t|t|tk)\(\s*'((?:[^'\\\n]|\\.)*)'/g;
-    const htmlRe = /(?<![\w$.])tHtml\(\s*'([^']+)'/g;
+function texts(value) {
+    if (Array.isArray(value))
+        return [value.join('\n')];
+    if (value && typeof value === 'object')
+        return Object.values(value);
+    return [String(value)];
+}
 
-    for (const file of walk(clientDir)) {
+function params(value) {
+    const result = new Set();
+    for (const text of texts(value)) {
+        for (const m of text.matchAll(/\{(\w+)\}/g))
+            result.add(m[1]);
+    }
+    return result;
+}
+
+//код без комментариев (строки сохраняются, чтобы номера строк совпадали)
+function stripComments(text) {
+    return text
+        .replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, ' '))
+        .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:'"`\\])\/\/.*$/gm, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+}
+
+function main() {
+    const problems = [];
+    const locales = {};
+    for (const lang of i18n.supportedLangs)
+        locales[lang] = flatten(i18n.locales[lang]);
+
+    //1. одинаковые ключи, параметры и формы множественного числа во всех языках
+    const allKeys = new Set();
+    for (const map of Object.values(locales))
+        map.forEach((value, key) => allKeys.add(key));
+    for (const key of allKeys) {
+        const values = {};
+        for (const lang of i18n.supportedLangs) {
+            if (!locales[lang].has(key))
+                problems.push(`missing in ${lang}.json: ${key}`);
+            else
+                values[lang] = locales[lang].get(key);
+        }
+        const langs = Object.keys(values);
+        for (const lang of langs) {
+            const value = values[lang];
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                const required = pluralCategories[lang] || ['other'];
+                const missing = required.filter(c => value[c] === undefined);
+                if (missing.length)
+                    problems.push(`plural forms missing in ${lang}.json: ${key} (${missing.join(', ')})`);
+            }
+        }
+        if (langs.length > 1) {
+            const base = [...params(values[langs[0]])].sort().join(',');
+            for (const lang of langs.slice(1)) {
+                const other = [...params(values[lang])].sort().join(',');
+                if (other !== base)
+                    problems.push(`placeholders differ for ${key}: ${langs[0]} {${base}} vs ${lang} {${other}}`);
+            }
+        }
+    }
+
+    //2. ключи в коде и русский текст в коде
+    const usedKeys = new Set();
+    const callRe = /(?<![\w$])(?:\$t|t|tk|msg|keyError|i18n\.t|\$tm|tm)\(\s*'([a-zA-Z]\w*(?:\.[\w-]+)+)'/g;
+    const literalRe = /'([a-zA-Z]\w*(?:\.[\w-]+)+)'/g;
+    for (const file of codeDirs.flatMap(dir => walk(path.join(root, dir)))) {
         const rel = path.relative(root, file);
         const text = fs.readFileSync(file, 'utf8');
-        for (const [re, map] of [[keyRe, keys], [htmlRe, htmlIds]]) {
-            re.lastIndex = 0;
-            let m;
-            while ((m = re.exec(text))) {
-                const key = unescapeJs(m[1]);
-                const line = text.substring(0, m.index).split('\n').length;
-                if (!map.has(key))
-                    map.set(key, []);
-                map.get(key).push(`${rel}:${line}`);
+        const code = stripComments(text);
+
+        for (const m of code.matchAll(callRe)) {
+            usedKeys.add(m[1]);
+            if (!locales[i18n.fallbackLang].has(m[1])) {
+                const line = code.substring(0, m.index).split('\n').length;
+                problems.push(`unknown key ${m[1]} (${rel}:${line})`);
             }
         }
-    }
-    return {keys, htmlIds};
-}
-
-async function main() {
-    const args = new Set(process.argv.slice(2));
-    const {keys, htmlIds} = collectKeys();
-
-    if (args.has('--keys')) {
-        for (const key of keys.keys())
-            console.log(JSON.stringify(key));
-        return;
-    }
-
-    const cyrillic = /[А-Яа-яЁё]/;
-    let failed = false;
-    const langs = fs.readdirSync(dictDir).filter(name => /^[a-z]{2}\.js$/.test(name)).map(name => name.replace(/\.js$/, ''));
-    for (const lang of langs) {
-        const mod = await import(path.join(dictDir, `${lang}.js`));
-        const dict = mod.default || {};
-        const html = mod.html || {};
-
-        const missing = [...keys.keys()].filter(key => cyrillic.test(key) && dict[key] === undefined);
-        const missingHtml = [...htmlIds.keys()].filter(id => html[id] === undefined);
-        console.log(`[${lang}] keys: ${keys.size}, translated: ${keys.size - missing.length}, missing: ${missing.length}, html missing: ${missingHtml.length}`);
-        for (const key of missing)
-            console.log(`  missing: ${JSON.stringify(key)}  (${keys.get(key)[0]})`);
-        for (const id of missingHtml)
-            console.log(`  missing html: ${id}  (${htmlIds.get(id)[0]})`);
-
-        if (args.has('--unused')) {
-            for (const key of Object.keys(dict)) {
-                if (!keys.has(key))
-                    console.log(`  unused: ${JSON.stringify(key)}`);
-            }
+        //ключи, передаваемые как строки (заголовки OPDS, подписи fb2, сообщения состояния и т.п.)
+        for (const m of code.matchAll(literalRe)) {
+            if (allKeys.has(m[1]))
+                usedKeys.add(m[1]);
         }
 
-        if (missing.length || missingHtml.length)
-            failed = true;
+        if (dataFiles.has(rel))
+            continue;
+        const lines = text.split('\n');
+        code.split('\n').forEach((line, index) => {
+            if (cyrillic.test(line) && !lines[index].includes('i18n-ignore'))
+                problems.push(`russian text in code (${rel}:${index + 1}): ${lines[index].trim().substring(0, 100)}`);
+        });
     }
 
-    if (!checkOpds(args))
-        failed = true;
-
-    process.exitCode = (failed ? 1 : 0);
-}
-
-function collectOpdsKeys() {
-    const opdsDir = path.join(root, 'server', 'core', 'opds');
-    const files = fs.readdirSync(opdsDir).filter(name => /Page\.js$/.test(name)).map(name => path.join(opdsDir, name));
-    const keys = new Map();
-    const textIds = new Map();
-    const add = (map, key, file, text, index) => {
-        if (!map.has(key))
-            map.set(key, []);
-        map.get(key).push(`${path.relative(root, file)}:${text.substring(0, index).split('\n').length}`);
-    };
-
-    const fb2Parser = path.join(root, 'server', 'core', 'fb2', 'Fb2Parser.js');
-    for (const file of files.concat([fb2Parser])) {
-        const text = fs.readFileSync(file, 'utf8');
-        const patterns = (file === fb2Parser
-            ? [/label: '((?:[^'\\\n]|\\.)*)'/g]
-            : [/(?<![\w$.])t\(\s*'((?:[^'\\\n]|\\.)*)'/g, /this\.title = '((?:[^'\\\n]|\\.)*)'/g]);
-        for (const re of patterns) {
-            let m;
-            while ((m = re.exec(text)))
-                add(keys, unescapeJs(m[1]), file, text, m.index);
-        }
-        const textRe = /(?<![\w$.])tText\(\s*'([^']+)'/g;
-        let m;
-        while ((m = textRe.exec(text)))
-            add(textIds, m[1], file, text, m.index);
+    //3. неиспользуемые ключи
+    for (const key of allKeys) {
+        if (!usedKeys.has(key) && !dynamicPrefixes.some(prefix => key.startsWith(prefix)))
+            problems.push(`unused key: ${key}`);
     }
-    return {keys, textIds};
+
+    for (const lang of i18n.supportedLangs)
+        console.log(`[${lang}] keys: ${locales[lang].size}`);
+    for (const problem of problems)
+        console.log(`  ${problem}`);
+    console.log(problems.length ? `${problems.length} problem(s)` : 'ok');
+    process.exitCode = (problems.length ? 1 : 0);
 }
 
-function checkOpds(args) {
-    const {keys, textIds} = collectOpdsKeys();
-    const cyrillic = /[А-Яа-яЁё]/;
-    const opdsDir = path.join(root, 'server', 'core', 'opds');
-    let ok = true;
-    for (const name of fs.readdirSync(opdsDir).filter(name => /^i18n\.[a-z]{2}\.js$/.test(name))) {
-        const lang = name.split('.')[1];
-        const {strings = {}, texts = {}} = require(path.join(opdsDir, name));
-        const missing = [...keys.keys()].filter(key => cyrillic.test(key) && strings[key] === undefined);
-        const missingTexts = [...textIds.keys()].filter(id => texts[id] === undefined);
-        console.log(`[opds ${lang}] keys: ${keys.size}, translated: ${keys.size - missing.length}, missing: ${missing.length}, texts missing: ${missingTexts.length}`);
-        for (const key of missing)
-            console.log(`  missing: ${JSON.stringify(key)}  (${keys.get(key)[0]})`);
-        for (const id of missingTexts)
-            console.log(`  missing text: ${id}  (${textIds.get(id)[0]})`);
-        if (args.has('--unused')) {
-            for (const key of Object.keys(strings)) {
-                if (!keys.has(key))
-                    console.log(`  unused: ${JSON.stringify(key)}`);
-            }
-        }
-        if (missing.length || missingTexts.length)
-            ok = false;
-    }
-    return ok;
-}
-
-main().catch((e) => {
-    console.error(e);
-    process.exitCode = 2;
-});
+main();

@@ -2,7 +2,7 @@
     <div class="card-stack">
         <section class="card">
             <h2 class="card-title">
-                {{ $t('Интерфейс') }}
+                {{ $t('me.interface') }}
             </h2>
             <div class="form-grid">
                 <q-select
@@ -12,7 +12,7 @@
                     dense
                     emit-value
                     map-options
-                    :label="$t('Язык интерфейса')"
+                    :label="$t('settings.interfaceLanguage')"
                     @update:model-value="set('uiLang', $event || '')"
                 />
                 <q-select
@@ -22,7 +22,7 @@
                     dense
                     emit-value
                     map-options
-                    :label="$t('Результатов на странице')"
+                    :label="$t('settings.resultsPerPage')"
                     @update:model-value="set('limit', $event)"
                 />
                 <q-select
@@ -32,39 +32,39 @@
                     dense
                     emit-value
                     map-options
-                    :label="$t('Вид списков книг')"
+                    :label="$t('mePreferences.bookListView')"
                     @update:model-value="set('bookView', $event)"
                 />
             </div>
-            <q-toggle :model-value="!!settings.darkTheme" :label="$t('Тёмная тема')" @update:model-value="set('darkTheme', $event)" />
-            <q-toggle v-if="config.latestVersion" :model-value="settings.showNewReleaseAvailable !== false" :label="$t('Уведомлять о выходе новой версии')" @update:model-value="set('showNewReleaseAvailable', $event)" />
+            <q-toggle :model-value="!!settings.darkTheme" :label="$t('mePreferences.darkTheme')" @update:model-value="set('darkTheme', $event)" />
+            <q-toggle v-if="config.latestVersion" :model-value="settings.showNewReleaseAvailable !== false" :label="$t('settings.notifyAboutNewVersions')" @update:model-value="set('showNewReleaseAvailable', $event)" />
         </section>
 
         <section class="card">
             <h2 class="card-title">
-                {{ $t('Каталог') }}
+                {{ $t('mePreferences.catalog') }}
             </h2>
             <div class="toggle-grid">
-                <q-toggle :model-value="settings.showDeleted" :label="$t('Показывать удалённые')" @update:model-value="set('showDeleted', $event)" />
-                <q-toggle :model-value="settings.downloadAsZip" :label="$t('Скачивать книги в виде zip-архива')" @update:model-value="set('downloadAsZip', $event)" />
+                <q-toggle :model-value="settings.showDeleted" :label="$t('settings.showDeleted')" @update:model-value="set('showDeleted', $event)" />
+                <q-toggle :model-value="settings.downloadAsZip" :label="$t('settings.downloadBooksZipArchives')" @update:model-value="set('downloadAsZip', $event)" />
             </div>
         </section>
 
         <section v-if="discoveryEnabled" class="card">
             <h2 class="card-title">
-                {{ $t('Витрины') }}
+                {{ $t('settings.showcases') }}
             </h2>
             <div class="toggle-grid">
-                <q-toggle v-if="externalAvailable" :model-value="settings.showDiscoveryExternal !== false" :label="$t('Показывать вкладку внешнего источника')" @update:model-value="set('showDiscoveryExternal', $event)" />
-                <q-toggle :model-value="settings.showDiscoveryContinueReading !== false" :label="$t('Показывать полку «Продолжить чтение»')" @update:model-value="set('showDiscoveryContinueReading', $event)" />
-                <q-toggle :model-value="settings.showDiscoveryFromLists !== false" :label="$t('Показывать полку «Из ваших списков»')" @update:model-value="set('showDiscoveryFromLists', $event)" />
-                <q-toggle :model-value="settings.showDiscoveryUnfinishedSeries !== false" :label="$t('Показывать полку «Незаконченные серии»')" @update:model-value="set('showDiscoveryUnfinishedSeries', $event)" />
-                <q-toggle :model-value="settings.showDiscoverySimilar !== false" :label="$t('Показывать полку «Похоже на то, что вы читали»')" @update:model-value="set('showDiscoverySimilar', $event)" />
-                <q-toggle :model-value="settings.showDiscoveryUnreadOnly === true" :label="$t('На главной показывать только непрочитанное')" @update:model-value="set('showDiscoveryUnreadOnly', $event)" />
+                <q-toggle v-if="externalAvailable" :model-value="settings.showDiscoveryExternal !== false" :label="$t('settings.showExternalSourceTab')" @update:model-value="set('showDiscoveryExternal', $event)" />
+                <q-toggle :model-value="settings.showDiscoveryContinueReading !== false" :label="$t('settings.showContinueReadingShelf')" @update:model-value="set('showDiscoveryContinueReading', $event)" />
+                <q-toggle :model-value="settings.showDiscoveryFromLists !== false" :label="$t('settings.showListsShelf')" @update:model-value="set('showDiscoveryFromLists', $event)" />
+                <q-toggle :model-value="settings.showDiscoveryUnfinishedSeries !== false" :label="$t('settings.showUnfinishedSeriesShelf')" @update:model-value="set('showDiscoveryUnfinishedSeries', $event)" />
+                <q-toggle :model-value="settings.showDiscoverySimilar !== false" :label="$t('settings.showSimilarWhatRead')" @update:model-value="set('showDiscoverySimilar', $event)" />
+                <q-toggle :model-value="settings.showDiscoveryUnreadOnly === true" :label="$t('mePreferences.showOnlyUnreadBooks')" @update:model-value="set('showDiscoveryUnreadOnly', $event)" />
             </div>
         </section>
         <div class="card-hint">
-            {{ $t('Эти настройки хранятся в этом браузере.') }}
+            {{ $t('mePreferences.theseSettingsAreStored') }}
         </div>
     </div>
 </template>
@@ -99,7 +99,7 @@ class MePreferences {
     }
 
     get uiLangSelectOptions() {
-        return uiLangOptions.map(option => (option.value ? option : {...option, label: t(option.label)}));
+        return uiLangOptions();
     }
 
     get bookViewValue() {
@@ -108,9 +108,9 @@ class MePreferences {
 
     get bookViewSelectOptions() {
         return [
-            {label: t('Обложками'), value: 'covers'},
-            {label: t('Карточками'), value: 'cards'},
-            {label: t('Списком'), value: 'list'},
+            {label: t('mePreferences.asCovers'), value: 'covers'},
+            {label: t('mePreferences.asCards'), value: 'cards'},
+            {label: t('mePreferences.asAList'), value: 'list'},
         ];
     }
 

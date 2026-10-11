@@ -10,7 +10,7 @@
                         {{ title }}
                     </div>
                     <div class="atl-book">
-                        {{ series || (book && book.title) || $t('Без названия') }}
+                        {{ series || (book && book.title) || $t('common.untitled') }}
                     </div>
                     <div v-if="subtitle" class="atl-author">
                         {{ subtitle }}
@@ -20,14 +20,14 @@
 
             <q-linear-progress v-if="stateLoading" indeterminate size="2px" color="primary" class="atl-loading" />
             <div v-if="stateLoading" class="atl-hint">
-                {{ series ? $t('Обновляю списки...') : $t('Проверяю, в каких списках уже есть книга. Отмечать можно сразу.') }}
+                {{ series ? $t('addToListDialog.updatingLists') : $t('addToListDialog.checkingWhichListsAlready') }}
             </div>
             <div class="atl-body">
                 <div v-if="!rows.length && !listsKnown" class="atl-empty">
-                    {{ $t('Загрузка списков...') }}
+                    {{ $t('readingLists.loadingLists') }}
                 </div>
                 <div v-else-if="!rows.length" class="atl-empty">
-                    {{ $t('Списков пока нет. Создайте первый ниже.') }}
+                    {{ $t('addToListDialog.noListsYetCreate') }}
                 </div>
 
                 <div v-for="row in rows" :key="row.key" class="atl-row" :class="{'is-on': row.checked, 'is-changed': isChanged(row)}">
@@ -51,16 +51,16 @@
                         v-model="row.read"
                         dense
                         size="sm"
-                        :label="$t('Прочитано')"
+                        :label="$t('common.read')"
                         class="atl-read"
                     />
 
-                    <q-btn v-if="!series && book && book.series && !row.isNew" flat dense round size="sm" icon="la la-ellipsis-h" :aria-label="$t('Ещё')">
+                    <q-btn v-if="!series && book && book.series && !row.isNew" flat dense round size="sm" icon="la la-ellipsis-h" :aria-label="$t('book.more')">
                         <q-menu anchor="bottom right" self="top right">
                             <div class="atl-menu">
                                 <label class="atl-menu-item">
                                     <input v-model="row.addSeries" type="checkbox" class="atl-check" />
-                                    {{ $t('Добавить всю серию «{name}»', {name: book.series}) }}
+                                    {{ $t('addToListDialog.addTheWholeSeries', {name: book.series}) }}
                                 </label>
                             </div>
                         </q-menu>
@@ -74,23 +74,23 @@
                     dense
                     outlined
                     class="atl-create-input"
-                    :placeholder="$t('Новый список')"
+                    :placeholder="$t('readingLists.newList')"
                 />
                 <q-btn type="submit" outline color="primary" dense no-caps icon="la la-plus" :disable="!String(newListName || '').trim()">
-                    {{ $t('Создать') }}
+                    {{ $t('common.create') }}
                 </q-btn>
             </form>
 
             <footer class="atl-foot">
                 <router-link to="/lists" @click="visible = false">
-                    {{ $t('Все списки') }}
+                    {{ $t('addToListDialog.allLists') }}
                 </router-link>
                 <span class="atl-foot-spacer" />
                 <q-btn flat dense no-caps @click="visible = false">
-                    {{ $t('Отмена') }}
+                    {{ $t('common.cancel') }}
                 </q-btn>
                 <q-btn color="primary" unelevated dense no-caps class="atl-save" :disable="!hasChanges" @click="save">
-                    {{ $t('Сохранить') }}
+                    {{ $t('common.save') }}
                 </q-btn>
             </footer>
         </div>
@@ -102,7 +102,7 @@
 import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {bookUid, bookAuthors} from '../../share/bookActions';
 import {readingListsCache, refreshReadingLists} from '../../share/readingLists';
 
@@ -159,7 +159,7 @@ class AddToListDialog {
     }
 
     get title() {
-        return (this.series ? t('Серия в список') : t('Добавить в список'));
+        return (this.series ? t('addToListDialog.addSeriesToA') : t('addToListDialog.addToList'));
     }
 
     get subtitle() {
@@ -184,12 +184,12 @@ class AddToListDialog {
 
     rowMeta(row) {
         if (row.isNew)
-            return t('Новый список');
+            return t('readingLists.newList');
         if (row.bookCount === undefined)
             return '';
         const total = Number(row.bookCount || 0);
         const read = Number(row.readCount || 0);
-        return (read ? t('{read} из {total} прочитано', {read, total}) : t('Книг: {n}', {n: total}));
+        return (read ? t('addToListDialog.ofRead', {read, total}) : t('addToListDialog.books', {n: total}));
     }
 
     makeRow(list) {
@@ -263,7 +263,7 @@ class AddToListDialog {
         if (!name)
             return;
         if (this.rows.some(row => row.name.toLowerCase() === name.toLowerCase())) {
-            this.$root.notify.info(t('Список «{name}» уже есть', {name}));
+            this.$root.notify.info(t('addToListDialog.theListAlreadyExists', {name}));
             return;
         }
         this.rows.unshift(Object.assign(this.makeRow({id: `new-${Date.now()}`, name, visibility: 'private'}), {isNew: true, checked: true}));
@@ -292,7 +292,7 @@ class AddToListDialog {
 
                 if (seriesMode) {
                     await this.api.addSeriesToReadingList(listId, series);
-                    done.push(t('серия добавлена в «{list}»', {list: row.name}));
+                    done.push(t('addToListDialog.seriesAddedTo', {list: row.name}));
                     continue;
                 }
 
@@ -300,7 +300,7 @@ class AddToListDialog {
                     await this.api.updateReadingListBook(listId, uid, true);
                 if (!row.checked && row.inList) {
                     await this.api.updateReadingListBook(listId, uid, false);
-                    done.push(t('убрано из «{list}»', {list: row.name}));
+                    done.push(t('addToListDialog.removedFrom', {list: row.name}));
                     continue;
                 }
                 if (row.checked && row.read !== row.wasRead)
@@ -308,14 +308,14 @@ class AddToListDialog {
                 if (row.checked && row.addSeries && series)
                     await this.api.addSeriesToReadingList(listId, series);
                 if (row.checked && (!row.inList || row.addSeries))
-                    done.push(t('добавлено в «{list}»', {list: row.name}));
+                    done.push(t('addToListDialog.addedTo', {list: row.name}));
                 else if (row.checked)
-                    done.push(t('обновлено в «{list}»', {list: row.name}));
+                    done.push(t('addToListDialog.updatedIn', {list: row.name}));
             }
             if (done.length)
                 this.$root.notify.success(done.join(', '));
         } catch (e) {
-            this.$root.stdDialog.alert(tMessage(e.message), t('Ошибка'));
+            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
         } finally {
             this.$emit('changed');
             refreshReadingLists(this.api, this.userKey);

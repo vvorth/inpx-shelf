@@ -3,31 +3,31 @@
         <div class="card-head">
             <div>
                 <h2 class="card-title">
-                    {{ $t('Английские имена авторов') }}
+                    {{ $t('adminAuthorNames.englishAuthorNames') }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('Поиск найдёт «Азимов Айзек» по запросу «Isaac Asimov». Имена писателей на русском и английском скачиваются из Wikidata (несколько мегабайт) и сопоставляются с авторами библиотеки. Тёзки с разными английскими именами пропускаются.') }}
+                    {{ $t('adminAuthorNames.searchWillFindFor') }}
                 </div>
             </div>
             <q-btn color="primary" unelevated no-caps icon="la la-download" :loading="busy" @click="update">
-                {{ status.ready ? $t('Обновить') : $t('Скачать и сопоставить') }}
+                {{ status.ready ? $t('reader.refresh') : $t('adminAuthorNames.downloadAndMatch') }}
             </q-btn>
         </div>
 
         <div v-if="running" class="names-progress">
             <q-linear-progress rounded size="6px" :value="progress" color="primary" />
             <div class="card-hint">
-                {{ job.running ? $t('Скачиваю имена из Wikidata...') : $t('Перестраиваю поисковый индекс...') }}
+                {{ job.running ? $t('adminAuthorNames.downloadingNamesFromWikidata') : $t('adminAuthorNames.rebuildingTheSearchIndex') }}
             </div>
         </div>
         <div v-else-if="job.error" class="names-error">
-            {{ $t('Не удалось скачать: {error}', {error: $tm(job.error)}) }}
+            {{ $t('adminAuthorNames.downloadFailed', {error: $tm(job.error)}) }}
         </div>
         <div v-else-if="status.ready" class="card-hint num">
-            {{ $t('Имён в таблице: {count}, обновлена {date}. Сопоставлено авторов библиотеки: {matched}.', {count: status.count.toLocaleString(), date: formatDate(status.updatedAt), matched: status.matched.toLocaleString()}) }}
+            {{ $t('adminAuthorNames.namesInTheTable', {count: status.count.toLocaleString(), date: formatDate(status.updatedAt), matched: status.matched.toLocaleString()}) }}
         </div>
         <div v-else class="card-hint">
-            {{ $t('Таблица ещё не скачана.') }}
+            {{ $t('adminAuthorNames.tableEmpty') }}
         </div>
     </section>
 </template>
@@ -93,7 +93,7 @@ class AdminAuthorNames {
             this.status = await this.api.adminAuthorNamesUpdate();
             this.timer = setTimeout(() => this.refresh(), 1000);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.busy = false;
         }

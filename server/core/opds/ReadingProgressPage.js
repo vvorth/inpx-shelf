@@ -1,39 +1,39 @@
 const BasePage = require('./BasePage');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class ReadingProgressPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'reading-progress';
-        this.title = 'Моё чтение';
+        this.title = 'opds.myReading';
     }
 
     stateTitle(state = 'reading') {
         switch (state) {
             case 'read':
-                return t('Прочитано');
+                return t('common.read');
             case 'hidden':
-                return t('Скрыто');
+                return t('opds.hidden');
             case 'all':
-                return t('Все книги профиля');
+                return t('opds.allProfileBooks');
             case 'reading':
             default:
-                return t('Продолжить чтение');
+                return t('opds.continueReading');
         }
     }
 
     stateDescription(state = 'reading') {
         switch (state) {
             case 'read':
-                return t('Книги, отмеченные прочитанными');
+                return t('opds.booksMarkedAsRead');
             case 'hidden':
-                return t('Книги, скрытые из текущего чтения');
+                return t('opds.booksHiddenFromCurrent');
             case 'all':
-                return t('Все книги с личным прогрессом профиля');
+                return t('opds.allBooksPersonalProgress');
             case 'reading':
             default:
-                return t('Книги, которые сейчас читаются');
+                return t('opds.booksCurrentlyBeingRead');
         }
     }
 
@@ -45,7 +45,7 @@ class ReadingProgressPage extends BasePage {
             link: this.navLink({href: `/${this.id}`, req, query: {state}}),
             content: {
                 '*ATTRS': {type: 'text'},
-                '*TEXT': count ? t('{n} книг', {n: count}) : this.stateDescription(state),
+                '*TEXT': count ? t('common.bookCount', {n: count}) : this.stateDescription(state),
             },
         });
     }
@@ -68,13 +68,13 @@ class ReadingProgressPage extends BasePage {
 
         for (const book of response.items || []) {
             const percent = Math.max(0, Math.min(100, Math.round((Number(book.percent || 0) || 0) * 100)));
-            const title = `${book.state === 'read' ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('Без названия')}${book.ext ? ` (${book.ext})` : ''}`;
+            const title = `${book.state === 'read' ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')}${book.ext ? ` (${book.ext})` : ''}`;
             const subtitle = [
                 this.bookAuthor(book.author),
-                book.series ? t('Серия: {name}', {name: book.series}) : '',
+                book.series ? t('common.seriesWithName', {name: book.series}) : '',
                 `${percent}%`,
-                book.hidden ? t('Скрыто') : '',
-                book.unavailable ? t('Прогресс сохранён, но книга не найдена в текущей библиотеке') : '',
+                book.hidden ? t('opds.hidden') : '',
+                book.unavailable ? t('opds.progressSavedButBook') : '',
             ].filter(Boolean).join(' · ');
 
             entry.push(
@@ -96,7 +96,7 @@ class ReadingProgressPage extends BasePage {
             entry.push(
                 this.makeEntry({
                     id: 'empty',
-                    title: t('[Книг пока нет]'),
+                    title: t('opds.noBooksYet'),
                     link: this.navLink({href: `/${this.id}`, req, query: {state: response.state}}),
                     content: {
                         '*ATTRS': {type: 'text'},

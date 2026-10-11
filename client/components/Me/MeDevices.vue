@@ -3,39 +3,39 @@
         <section class="card">
             <div class="card-head">
                 <h2 class="card-title">
-                    {{ $t('OPDS-каталог') }}
+                    {{ $t('meDevices.opdsCatalog') }}
                 </h2>
                 <q-toggle
                     :model-value="opdsEnabled"
                     :disable="profile.isAdmin || opdsSaving"
-                    :label="$t('Включён')"
+                    :label="$t('meDevices.on')"
                     left-label
                     @update:model-value="saveOpds({opdsEnabled: $event})"
                 />
             </div>
             <div v-if="profile.isAdmin" class="card-hint">
-                {{ $t('Профиль администратора не публикуется в OPDS.') }}
+                {{ $t('meDevices.theAdministratorProfileIs') }}
             </div>
             <template v-else>
                 <div class="card-hint">
-                    {{ $t('Добавьте этот адрес в KOReader, Moon+ Reader, FBReader или другую OPDS-читалку.') }}
+                    {{ $t('meDevices.addThisAddressTo') }}
                 </div>
                 <div class="copy-row">
                     <code class="copy-value">{{ opdsUrl }}</code>
                     <q-btn flat dense no-caps color="primary" icon="la la-copy" @click="copy(opdsUrl)">
-                        {{ $t('Скопировать') }}
+                        {{ $t('meDevices.copy') }}
                     </q-btn>
                 </div>
                 <q-toggle
                     :model-value="opdsAuthEnabled"
                     :disable="!opdsEnabled || !profile.login || !profile.hasPassword || opdsSaving"
-                    :label="$t('Требовать мой логин и пароль')"
+                    :label="$t('meDevices.requireMyLoginAnd')"
                     @update:model-value="saveOpds({opdsAuthEnabled: $event})"
                 />
                 <div class="card-hint">
-                    {{ $t('Списки, которые видны в OPDS, отмечаются на странице') }}
+                    {{ $t('meDevices.chooseWhichListsAppear') }}
                     <router-link to="/lists">
-                        {{ $t('Списки') }}
+                        {{ $t('profiles.lists') }}
                     </router-link>.
                 </div>
             </template>
@@ -48,21 +48,21 @@
                 </h2>
             </div>
             <div class="card-hint">
-                {{ $t('Kobo синхронизирует книги из выбранных списков чтения: книга в списке — книга на устройстве. FB2 конвертируется в KEPUB. Каждый список появляется на Kobo как коллекция, а книга, дочитанная на Kobo, отмечается прочитанной.') }}
+                {{ $t('meDevices.koboSyncsTheBooks') }}
             </div>
 
             <div v-if="koboEndpoint" class="notice">
-                <b>{{ $t('Адрес для Kobo') }}</b>
+                <b>{{ $t('meDevices.koboAddress') }}</b>
                 <div class="card-hint">
-                    {{ $t('Подключите Kobo к компьютеру, откройте .kobo/Kobo/Kobo eReader.conf и замените строку api_endpoint в разделе [OneStoreServices]. Адрес показывается только сейчас; если потеряете его, создайте новую ссылку.') }}
+                    {{ $t('meDevices.connectTheKoboTo') }}
                 </div>
                 <div class="copy-row">
                     <code class="copy-value">api_endpoint={{ koboEndpoint }}</code>
                     <q-btn flat dense no-caps color="primary" icon="la la-copy" @click="copy(`api_endpoint=${koboEndpoint}`)">
-                        {{ $t('Скопировать') }}
+                        {{ $t('meDevices.copy') }}
                     </q-btn>
                     <q-btn flat dense no-caps @click="koboEndpoint = ''">
-                        {{ $t('Скрыть') }}
+                        {{ $t('common.hide') }}
                     </q-btn>
                 </div>
             </div>
@@ -71,64 +71,64 @@
                 …
             </div>
             <div v-else-if="!koboDevices.length" class="card-hint">
-                {{ $t('Устройств пока нет.') }}
+                {{ $t('meDevices.noDevicesYet') }}
             </div>
 
             <div v-for="device in koboDevices" :key="device.id" class="device">
                 <div class="device-head">
-                    <q-input v-model="device.draft.name" outlined dense class="device-name" :label="$t('Название устройства')" />
+                    <q-input v-model="device.draft.name" outlined dense class="device-name" :label="$t('meDevices.deviceName')" />
                     <div class="card-hint">
-                        {{ $t('Книг на устройстве') }}: {{ device.bookCount }} ·
-                        {{ $t('Последняя синхронизация') }}: {{ device.lastSyncAt ? formatDateTime(device.lastSyncAt) : $t('ещё не было') }}
+                        {{ $t('meDevices.booksOnDevice') }}: {{ device.bookCount }} ·
+                        {{ $t('meDevices.lastSync') }}: {{ device.lastSyncAt ? formatDateTime(device.lastSyncAt) : $t('meDevices.never') }}
                         <template v-if="device.refreshPending">
-                            · {{ $t('ожидают обновления') }}: {{ device.refreshPending }}
+                            · {{ $t('meDevices.waitingForRefresh') }}: {{ device.refreshPending }}
                         </template>
                     </div>
                 </div>
                 <div class="device-sub">
-                    {{ $t('Синхронизируемые списки') }}
+                    {{ $t('meDevices.syncedLists') }}
                 </div>
                 <div v-if="!readingLists.length" class="card-hint">
-                    {{ $t('Для этого профиля пока нет списков чтения.') }}
+                    {{ $t('profiles.noReadingLists') }}
                 </div>
                 <div class="device-lists">
                     <q-checkbox v-for="list in readingLists" :key="list.id" v-model="device.draft.listIds" :val="list.id" dense :label="list.name" />
                 </div>
-                <q-checkbox v-model="device.draft.keepRemovedBooks" dense :label="$t('Оставлять книги на устройстве после удаления из списка')" />
+                <q-checkbox v-model="device.draft.keepRemovedBooks" dense :label="$t('meDevices.keepBooksOnThe')" />
                 <div class="card-hint">
-                    {{ $t('Если выключено, книга, убранная из всех выбранных списков, удаляется с Kobo при следующей синхронизации.') }}
+                    {{ $t('meDevices.whenOffABook') }}
                 </div>
-                <q-checkbox v-model="device.draft.resendDeletedBooks" dense :label="$t('Возвращать книги, удалённые на устройстве')" />
+                <q-checkbox v-model="device.draft.resendDeletedBooks" dense :label="$t('meDevices.sendBackBooksDeleted')" />
                 <div class="card-hint">
-                    {{ $t('Если включено, книга из выбранных списков, удалённая на Kobo, загружается снова при следующей синхронизации. Чтобы убрать книгу с устройства, уберите её из списка.') }}
+                    {{ $t('meDevices.whenOnABook') }}
                 </div>
-                <q-checkbox v-model="device.draft.storeProxy" dense :label="$t('Подключать магазин Kobo')" />
+                <q-checkbox v-model="device.draft.storeProxy" dense :label="$t('meDevices.connectTheKoboStore')" />
                 <div class="card-hint">
-                    {{ $t('Для купленных в магазине Kobo книг: вход, покупки и их прогресс передаются на серверы Kobo. Если выключено, устройство общается только с inpx-shelf.') }}
+                    {{ $t('meDevices.forBooksBoughtIn') }}
                 </div>
                 <div class="card-actions">
                     <q-btn color="primary" unelevated dense no-caps icon="la la-save" @click="saveKoboDevice(device)">
-                        {{ $t('Сохранить') }}
+                        {{ $t('common.save') }}
                     </q-btn>
                     <q-btn flat dense no-caps color="primary" icon="la la-sync" @click="resetKoboDevice(device)">
-                        {{ $t('Синхронизировать заново') }}
+                        {{ $t('meDevices.syncAgain') }}
                     </q-btn>
                     <q-btn flat dense no-caps color="primary" icon="la la-redo-alt" @click="refreshKoboDevice(device)">
-                        {{ $t('Обновить книги на устройстве') }}
+                        {{ $t('meDevices.refreshBooksOnDevice') }}
                     </q-btn>
                     <q-btn flat dense no-caps icon="la la-key" @click="regenerateKoboDevice(device)">
-                        {{ $t('Новая ссылка') }}
+                        {{ $t('meDevices.newLink') }}
                     </q-btn>
                     <q-btn flat dense no-caps color="negative" icon="la la-trash" @click="deleteKoboDevice(device)">
-                        {{ $t('Удалить') }}
+                        {{ $t('profiles.delete') }}
                     </q-btn>
                 </div>
             </div>
 
             <form class="device-add" @submit.prevent="createKoboDevice">
-                <q-input v-model="newKoboDeviceName" outlined dense class="device-name" :label="$t('Название устройства')" />
+                <q-input v-model="newKoboDeviceName" outlined dense class="device-name" :label="$t('meDevices.deviceName')" />
                 <q-btn type="submit" color="primary" unelevated dense no-caps icon="la la-plus" :disable="!String(newKoboDeviceName || '').trim()">
-                    {{ $t('Добавить устройство') }}
+                    {{ $t('meDevices.addDevice') }}
                 </q-btn>
             </form>
         </section>
@@ -193,7 +193,7 @@ class MeDevices {
 
     async copy(text) {
         if (await copyTextToClipboard(text))
-            this.$root.notify.success(t('Скопировано'));
+            this.$root.notify.success(t('meDevices.copied'));
     }
 
     async saveOpds(patch) {
@@ -201,9 +201,9 @@ class MeDevices {
         try {
             await this.api.updateUserProfile(this.profile.id, patch);
             await this.api.updateConfig();
-            this.$root.notify.success(t('Настройки OPDS сохранены'));
+            this.$root.notify.success(t('settings.opds.saved'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.opdsSaving = false;
         }
@@ -232,7 +232,7 @@ class MeDevices {
             const result = await this.api.getKoboDevices();
             this.setKoboDevices(result && Array.isArray(result.devices) ? result.devices : []);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.koboLoading = false;
         }
@@ -245,7 +245,7 @@ class MeDevices {
             this.newKoboDeviceName = 'Kobo';
             await this.loadKoboDevices();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -253,9 +253,9 @@ class MeDevices {
         try {
             await this.api.updateKoboDevice(device.id, device.draft);
             await this.loadKoboDevices();
-            this.$root.notify.success(t('Устройство сохранено'));
+            this.$root.notify.success(t('meDevices.deviceSaved'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -264,46 +264,46 @@ class MeDevices {
     }
 
     async resetKoboDevice(device) {
-        if (!await this.confirmDevice(t('Отправить на «{name}» все книги из списков заново при следующей синхронизации?', {name: device.name})))
+        if (!await this.confirmDevice(t('meDevices.sendAllBooksFrom', {name: device.name})))
             return;
         try {
             await this.api.resetKoboDevice(device.id);
             await this.loadKoboDevices();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async refreshKoboDevice(device) {
-        if (!await this.confirmDevice(t('Отправить на «{name}» заново все книги, которые уже на нём, с текущими авторами, сериями и файлами? Книги не удаляются с устройства, поэтому прогресс чтения и заметки сохраняются.', {name: device.name})))
+        if (!await this.confirmDevice(t('meDevices.sendEveryBookAlready', {name: device.name})))
             return;
         try {
             await this.api.refreshKoboDevice(device.id);
             await this.loadKoboDevices();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async regenerateKoboDevice(device) {
-        if (!await this.confirmDevice(t('Создать новую ссылку для «{name}»? Старая перестанет работать, и её нужно будет заменить в Kobo eReader.conf.', {name: device.name})))
+        if (!await this.confirmDevice(t('meDevices.createANewLink', {name: device.name})))
             return;
         try {
             const result = await this.api.regenerateKoboDeviceToken(device.id);
             this.koboEndpoint = result.endpoint;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
     async deleteKoboDevice(device) {
-        if (!await this.confirmDevice(t('Удалить устройство «{name}»? Kobo перестанет синхронизироваться, книги на нём останутся.', {name: device.name})))
+        if (!await this.confirmDevice(t('meDevices.deleteDeviceTheKobo', {name: device.name})))
             return;
         try {
             await this.api.deleteKoboDevice(device.id);
             await this.loadKoboDevices();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 }

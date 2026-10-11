@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const express = require('express');
 
+const {t} = require('../i18n');
 const KoboStore = require('./KoboStore');
 const defaultResources = require('./resources');
 const {BookMetadata, epubMetadata} = require('../BookMetadata');
@@ -174,7 +175,7 @@ class KoboService {
         const own = await this.ownListIds(userId);
         for (const listId of settings.listIds) {
             if (!own.has(String(listId || '').trim()))
-                throw new Error('Список не найден');
+                throw new Error(t('errors.listNotFound'));
         }
     }
 

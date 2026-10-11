@@ -2,6 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
 const {withFileTransaction, writeFileAtomic} = require('../FilePersistence');
+const {t} = require('../i18n');
 
 const storeVersion = 1;
 const maxDevicesPerUser = 16;
@@ -189,7 +190,7 @@ class KoboStore {
         if (Object.prototype.hasOwnProperty.call(patch, 'name')) {
             const name = String(patch.name || '').trim().slice(0, 64);
             if (!name)
-                throw new Error('Название устройства не должно быть пустым');
+                throw new Error(t('errors.koboDeviceNameEmpty'));
             result.name = name;
         }
         if (Object.prototype.hasOwnProperty.call(patch, 'listIds')) {
@@ -197,7 +198,7 @@ class KoboStore {
                 throw new Error('listIds must be an array');
             result.listIds = Array.from(new Set(patch.listIds.map(id => String(id || '').trim()).filter(Boolean)));
             if (result.listIds.length > maxListsPerDevice)
-                throw new Error(`Не больше ${maxListsPerDevice} списков на устройство`);
+                throw new Error(t('errors.koboTooManyLists', {n: maxListsPerDevice}));
         }
         if (Object.prototype.hasOwnProperty.call(patch, 'keepRemovedBooks'))
             result.keepRemovedBooks = patch.keepRemovedBooks === true;
@@ -212,7 +213,7 @@ class KoboStore {
         const token = makeToken();
         const device = await this.mutate(async(data) => {
             if (data.devices.filter(item => item.userId === userId).length >= maxDevicesPerUser)
-                throw new Error(`Не больше ${maxDevicesPerUser} устройств на профиль`);
+                throw new Error(t('errors.koboTooManyDevices', {n: maxDevicesPerUser}));
             const now = nowIso();
             const item = this.normalizeDevice(Object.assign({name: 'Kobo'}, this.normalizeSettings(settings), {
                 userId, tokenHash: hashToken(token), createdAt: now, updatedAt: now,
@@ -226,7 +227,7 @@ class KoboStore {
     findOwnDevice(data, userId, deviceId) {
         const device = data.devices.find(item => item.id === deviceId && item.userId === userId);
         if (!device)
-            throw new Error('Устройство не найдено');
+            throw new Error(t('errors.koboDeviceNotFound'));
         return device;
     }
 

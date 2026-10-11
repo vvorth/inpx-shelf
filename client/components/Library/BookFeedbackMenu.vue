@@ -1,9 +1,9 @@
 <template>
     <q-btn v-if="restore" flat dense no-caps icon="la la-undo" @click="$emit('restore')">
-        {{ $t('Вернуть') }}
+        {{ $t('common.restore') }}
     </q-btn>
-    <q-btn v-else flat dense round icon="la la-ellipsis-h" :aria-label="$t('Отзыв о рекомендации')">
-        <q-tooltip>{{ $t('Отзыв о рекомендации') }}</q-tooltip>
+    <q-btn v-else flat dense round icon="la la-ellipsis-h" :aria-label="$t('bookFeedbackMenu.feedbackOnThisPick')">
+        <q-tooltip>{{ $t('bookFeedbackMenu.feedbackOnThisPick') }}</q-tooltip>
         <q-menu anchor="bottom right" self="top right">
             <div class="feedback-menu">
                 <button v-for="item in options" :key="item.kind" v-close-popup type="button" class="feedback-item" @click="$emit('feedback', item.kind)">

@@ -4,7 +4,7 @@
             <header class="page-head">
                 <div>
                     <div class="page-eyebrow">
-                        {{ $t('Серия') }}
+                        {{ $t('common.series') }}
                     </div>
                     <h1 class="page-title">
                         {{ name }}
@@ -19,42 +19,42 @@
                     <div v-if="books.length" class="card-hint num">
                         {{ summary }}
                         <template v-if="hiddenCount">
-                            · {{ $t('ещё {n} на других языках', {n: hiddenCount}) }}
+                            · {{ $t('author.moreInOtherLanguages', {n: hiddenCount}) }}
                             <button type="button" class="link-btn" @click="allLanguages = true">
-                                {{ $t('показать') }}
+                                {{ $t('author.show') }}
                             </button>
                         </template>
                         <button v-else-if="allLanguages" type="button" class="link-btn" @click="allLanguages = false">
-                            · {{ $t('Только мои языки') }}
+                            · {{ $t('series.onlyMyLanguages') }}
                         </button>
                     </div>
                 </div>
                 <div v-if="visibleBooks.length" class="page-actions">
                     <q-btn v-if="nextBook" color="primary" unelevated no-caps icon="la la-book-open" @click="openBook(nextBook)">
-                        {{ readCount ? $t('Читать дальше: #{n}', {n: nextBook.serno || '?'}) : $t('Начать с первой') }}
+                        {{ readCount ? $t('series.readNext', {n: nextBook.serno || '?'}) : $t('series.startWithTheFirst') }}
                     </q-btn>
                     <q-btn v-if="signedIn" outline color="primary" no-caps icon="la la-bookmark" @click="readingListsDialogVisible = true">
-                        {{ $t('В список') }}
+                        {{ $t('book.list') }}
                     </q-btn>
                     <q-btn v-if="signedIn" flat color="primary" no-caps :icon="allRead ? 'la la-undo' : 'la la-check-double'" @click="toggleSeriesRead">
-                        {{ allRead ? $t('Снять отметки') : $t('Отметить серию прочитанной') }}
+                        {{ allRead ? $t('series.clearReadMarks') : $t('series.markSeriesAsRead') }}
                     </q-btn>
                 </div>
             </header>
 
             <div v-if="loading" class="page-empty page-empty--inline">
-                {{ $t('Загрузка...') }}
+                {{ $t('author.loading') }}
             </div>
             <div v-else-if="error" class="page-empty page-empty--inline">
                 {{ error }}
             </div>
             <div v-else-if="!books.length" class="page-empty page-empty--inline">
-                {{ $t('В библиотеке нет книг этой серии.') }}
+                {{ $t('series.theLibraryHasNo') }}
             </div>
             <div v-else-if="!visibleBooks.length" class="page-empty">
-                <div>{{ $t('Книг этой серии на ваших языках нет.') }}</div>
+                <div>{{ $t('series.thisSeriesHasNo') }}</div>
                 <q-btn outline color="primary" no-caps @click="allLanguages = true">
-                    {{ $t('Показать на всех языках') }}
+                    {{ $t('search.showInAllLanguages') }}
                 </q-btn>
             </div>
 
@@ -67,17 +67,17 @@
                         </router-link>
                         <div class="series-main">
                             <router-link class="series-title" :to="bookLink(row.book)">
-                                {{ row.book.title || $t('Без названия') }}
+                                {{ row.book.title || $t('common.untitled') }}
                             </router-link>
                             <div class="card-hint">
                                 {{ bookMeta(row.book) }}
                             </div>
                         </div>
-                        <span v-if="stateOf(row.book).read" class="pill pill--accent">{{ $t('Прочитано') }}</span>
+                        <span v-if="stateOf(row.book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(row.book).percent > 0" class="pill num">{{ Math.round(stateOf(row.book).percent * 100) }}%</span>
                     </template>
                     <div v-else class="series-main card-hint">
-                        {{ $t('Этой книги нет в библиотеке') }}
+                        {{ $t('series.thisBookIsNot') }}
                     </div>
                 </li>
             </ol>
@@ -93,7 +93,7 @@ import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 import AddToListDialog from './AddToListDialog.vue';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
 import {bookUid, bookAuthors} from '../../share/bookActions';
 import {myLanguages, languageMatches} from '../../share/languages';
@@ -203,11 +203,11 @@ class SeriesPage {
 
     get summary() {
         const missing = this.rows.filter(row => !row.book).length;
-        const parts = [t('Книг: {n}', {n: this.visibleBooks.length})];
+        const parts = [t('addToListDialog.books', {n: this.visibleBooks.length})];
         if (this.readCount)
-            parts.push(t('{read} из {total} прочитано', {read: this.readCount, total: this.visibleBooks.length}));
+            parts.push(t('addToListDialog.ofRead', {read: this.readCount, total: this.visibleBooks.length}));
         if (missing)
-            parts.push(t('нет в библиотеке: {n}', {n: missing}));
+            parts.push(t('series.missingFromTheLibrary', {n: missing}));
         return parts.join(' · ');
     }
 
@@ -242,7 +242,7 @@ class SeriesPage {
             const showDeleted = !!this.$store.state.settings.showDeleted;
             this.books = (result.books || []).filter(book => showDeleted || !book.del);
         } catch (e) {
-            this.error = tMessage(e.message);
+            this.error = tm(e.message);
         } finally {
             this.loading = false;
         }
@@ -265,9 +265,9 @@ class SeriesPage {
         try {
             await this.api.markSeriesRead(this.name, read);
             await this.loadStates();
-            this.$root.notify.success(read ? t('Серия отмечена прочитанной') : t('Отметки серии сняты'));
+            this.$root.notify.success(read ? t('series.seriesMarkedAsRead') : t('series.seriesReadMarksCleared'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 }

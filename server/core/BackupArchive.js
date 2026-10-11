@@ -2,6 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const StreamZip = require('node-stream-zip');
 const {limits} = require('./RequestLimits');
+const {t} = require('./i18n');
 
 const names = new Set(['backup-info.json', 'config.json', 'secret.key', 'reading-lists.json', 'discovery-cache.json', 'kobo-sync.json']);
 
@@ -9,27 +10,27 @@ async function read(payload, config, folder) {
     const maximum = limits(config);
     const raw = payload && (payload.contentBase64 || payload.data);
     if (typeof raw !== 'string' || raw.length > Math.ceil(maximum.backup/3)*4 + 1024)
-        throw new Error('Превышен размер бэкапа или неверный формат');
+        throw new Error(t('errors.backupTooLargeOrInvalid'));
     const base64 = raw.replace(/^data:[^,]{0,200},/, '').trim();
     if (!base64 || base64.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64))
-        throw new Error('Некорректный base64 бэкапа');
+        throw new Error(t('errors.backupInvalidBase64'));
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > maximum.backup)
-        throw new Error('Превышен размер бэкапа');
+        throw new Error(t('errors.backupTooLarge'));
     const file = path.join(folder, 'backup.zip');
     await fs.writeFile(file, buffer, {mode: 0o600});
     const zip = new StreamZip.async({file});
     try {
         const entries = Object.values(await zip.entries());
         if (entries.length > names.size || await zip.entriesCount !== entries.length)
-            throw new Error('Слишком много файлов в бэкапе');
+            throw new Error(t('errors.backupTooManyFiles'));
         let declared = 0;
         for (const entry of entries) {
             if (!names.has(entry.name) || entry.isDirectory)
-                throw new Error('Неизвестный файл в бэкапе');
+                throw new Error(t('errors.backupUnknownFile'));
             declared += entry.size;
             if (!Number.isSafeInteger(entry.size) || entry.size < 0 || declared > maximum.expanded)
-                throw new Error('Превышен распакованный размер бэкапа');
+                throw new Error(t('errors.backupUnpackedTooLarge'));
         }
         const result = {};
         let total = 0;
@@ -40,31 +41,31 @@ async function read(payload, config, folder) {
                 total += chunk.length;
                 if (total > maximum.expanded) {
                     stream.destroy();
-                    throw new Error('Превышен распакованный размер бэкапа');
+                    throw new Error(t('errors.backupUnpackedTooLarge'));
                 }
                 chunks.push(chunk);
             }
             result[entry.name] = Buffer.concat(chunks);
         }
         if (!result['backup-info.json'] || (!result['config.json'] && !result['reading-lists.json']))
-            throw new Error('Файл не похож на полный бэкап inpx-shelf');
+            throw new Error(t('errors.backupNotFull'));
         for (const [name, data] of Object.entries(result)) {
             if (!name.endsWith('.json'))
                 continue;
             const parsed = JSON.parse(data.toString('utf8'));
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-                throw new Error(`Неверный формат ${name}`);
+                throw new Error(t('errors.backupFileInvalid', {name}));
             result[name] = parsed;
         }
         const lists = result['reading-lists.json'];
         if (lists && (!Array.isArray(lists.users) || !Array.isArray(lists.lists)))
-            throw new Error('Неверный формат reading-lists.json');
+            throw new Error(t('errors.backupReadingListsInvalid'));
         const kobo = result['kobo-sync.json'];
         if (kobo && (!Array.isArray(kobo.devices) || (kobo.states && (typeof kobo.states !== 'object' || Array.isArray(kobo.states)))))
-            throw new Error('Неверный формат kobo-sync.json');
+            throw new Error(t('errors.backupKoboInvalid'));
         const key = result['secret.key'];
         if (key && (!result['config.json'] || !/^[A-Za-z0-9+/]{43}=\s*$/.test(key.toString('utf8'))))
-            throw new Error('Ключ бэкапа повреждён или отсутствует config.json');
+            throw new Error(t('errors.backupKeyDamaged'));
         return result;
     } finally {
         await zip.close();

@@ -1,13 +1,12 @@
 const BasePage = require('./BasePage');
-const utils = require('../utils');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 class SeriesPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'series';
-        this.title = 'Серии';
+        this.title = 'opds.series';
     }
 
     sortSeriesBooks(seriesBooks) {
@@ -55,7 +54,7 @@ class SeriesPage extends BasePage {
                     entry.push(
                         this.makeEntry({
                             id: 'all_series_books',
-                            title: t('[Все книги серии]'),
+                            title: t('opds.allBooksSeries'),
                             link: this.navLink({
                                 href: `/${this.id}?series=${encodeURIComponent(query.series)}&all=1`}),
                         })
@@ -63,7 +62,7 @@ class SeriesPage extends BasePage {
                 }
 
                 for (const book of sorted) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('Без названия')} (${book.ext})`;
+                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('common.untitled')} (${book.ext})`;
 
                     entry.push(
                         this.makeEntry({
@@ -83,27 +82,27 @@ class SeriesPage extends BasePage {
                 entry.push(
                     this.makeEntry({
                         id: 'select_genre',
-                        title: t('[Выбрать жанр]'),
+                        title: t('opds.chooseGenre'),
                         link: this.navLink({href: `/genre?from=${this.id}`}),
                     })
                 );
             }
 
             //навигация по каталогу
-            const queryRes = await this.opdsQuery('series', query, t('[Остальные серии]'));
+            const queryRes = await this.opdsQuery('series', query, t('opds.otherSeries'));
 
             for (const rec of queryRes) {
                 const e = {
                     id: rec.id,
-                    title: (rec.count ? rec.title : t('Серия: {name}', {name: rec.title})),
+                    title: (rec.count ? rec.title : t('common.seriesWithName', {name: rec.title})),
                     link: this.navLink({href: `/${this.id}?series=${rec.q}&genre=${encodeURIComponent(query.genre)}`}),
                 };
 
                 let countStr = '';
                 if (rec.count)
-                    countStr = `${t('{n} сери{e}', {n: rec.count, e: utils.wordEnding(rec.count, 1)})}${(query.genre ? t(' (в выбранном жанре)') : '')}`;
+                    countStr = `${t('series.foundCount', {n: rec.count})}${(query.genre ? t('opds.selectedGenre') : '')}`;
                 if (!countStr && rec.bookCount && !query.genre)
-                    countStr = t('{n} книг{e}', {n: rec.bookCount, e: utils.wordEnding(rec.bookCount, 8)});
+                    countStr = t('common.bookCount', {n: rec.bookCount});
 
                 if (countStr) {
                     e.content = {

@@ -2,12 +2,12 @@
     <div class="page">
         <div class="page-body">
             <div v-if="loading" class="page-empty page-empty--inline">
-                {{ $t('Загрузка...') }}
+                {{ $t('author.loading') }}
             </div>
             <div v-else-if="error" class="page-empty">
                 <div>{{ error }}</div>
                 <q-btn color="primary" unelevated no-caps @click="$router.push('/search')">
-                    {{ $t('В каталог') }}
+                    {{ $t('book.goToCatalog') }}
                 </q-btn>
             </div>
 
@@ -19,7 +19,7 @@
 
                     <div class="book-hero-main">
                         <h1 class="page-title">
-                            {{ book.title || $t('Без названия') }}
+                            {{ book.title || $t('common.untitled') }}
                         </h1>
                         <div class="book-authors">
                             <template v-for="(name, index) in authors" :key="name">
@@ -32,14 +32,14 @@
                             <router-link :to="seriesLink(book.series)">
                                 {{ book.series }}
                             </router-link>
-                            <span v-if="book.serno"> · {{ $t('книга {n}', {n: book.serno}) }}</span>
+                            <span v-if="book.serno"> · {{ $t('bookCollection.book', {n: book.serno}) }}</span>
                         </div>
 
                         <div v-if="progress > 0 && progress < 1" class="book-progress">
                             <div class="progress">
                                 <i :style="{width: `${percent}%`}" />
                             </div>
-                            <span class="card-hint num">{{ $t('Прочитано {n}%', {n: percent}) }}</span>
+                            <span class="card-hint num">{{ $t('bookCollection.read', {n: percent}) }}</span>
                         </div>
 
                         <div class="book-actions">
@@ -48,29 +48,29 @@
                             </q-btn>
 
                             <q-btn outline color="primary" no-caps icon="la la-download" icon-right="la la-angle-down">
-                                {{ $t('Скачать') }}
+                                {{ $t('common.download') }}
                                 <q-menu anchor="bottom left" self="top left">
                                     <div class="menu-list">
                                         <button v-close-popup type="button" class="menu-item" @click="act('download')">
                                             {{ originalLabel }}<span class="menu-item-meta num">{{ fileSize }}</span>
                                         </button>
                                         <button v-for="format in formats" :key="format" v-close-popup type="button" class="menu-item" @click="act('download', format)">
-                                            {{ format.toUpperCase() }}<span class="menu-item-meta">{{ $t('конвертация') }}</span>
+                                            {{ format.toUpperCase() }}<span class="menu-item-meta">{{ $t('book.converted') }}</span>
                                         </button>
                                         <div class="menu-sep" />
                                         <button v-close-popup type="button" class="menu-item" @click="act('copyLink')">
-                                            {{ $t('Скопировать ссылку') }}
+                                            {{ $t('book.copyLink') }}
                                         </button>
                                     </div>
                                 </q-menu>
                             </q-btn>
 
                             <q-btn v-if="signedIn" outline color="primary" no-caps icon="la la-bookmark" @click="readingListsDialogVisible = true">
-                                {{ $t('В список') }}
+                                {{ $t('book.list') }}
                             </q-btn>
 
                             <q-btn v-if="config.telegramShareEnabled || config.emailShareEnabled" outline color="primary" no-caps icon="la la-paper-plane" icon-right="la la-angle-down">
-                                {{ $t('Отправить') }}
+                                {{ $t('book.send') }}
                                 <q-menu anchor="bottom left" self="top left">
                                     <div class="menu-list">
                                         <template v-if="config.telegramShareEnabled">
@@ -94,17 +94,17 @@
                             </q-btn>
 
                             <q-btn v-if="signedIn" flat color="primary" no-caps :icon="progress >= 1 ? 'la la-undo' : 'la la-check'" @click="toggleRead">
-                                {{ progress >= 1 ? $t('Снять отметку') : $t('Прочитано') }}
+                                {{ progress >= 1 ? $t('common.unmark') : $t('common.read') }}
                             </q-btn>
                         </div>
 
                         <div v-if="inLists.length" class="card-hint">
-                            {{ $t('В ваших списках:') }} {{ inLists.join(', ') }}
+                            {{ $t('book.inYourLists') }} {{ inLists.join(', ') }}
                         </div>
 
                         <dl class="book-meta">
                             <template v-if="genres.length">
-                                <dt>{{ $t('Жанр') }}</dt>
+                                <dt>{{ $t('common.genre') }}</dt>
                                 <dd>
                                     <template v-for="(code, index) in genres" :key="code">
                                         <router-link :to="{path: '/search', query: {genre: code}}">
@@ -114,30 +114,30 @@
                                 </dd>
                             </template>
                             <template v-if="book.lang">
-                                <dt>{{ $t('Язык') }}</dt>
+                                <dt>{{ $t('search.language') }}</dt>
                                 <dd>{{ book.lang }}</dd>
                             </template>
-                            <dt>{{ $t('Файл') }}</dt>
+                            <dt>{{ $t('opds.file') }}</dt>
                             <dd class="num">
                                 {{ [String(book.ext || '').toUpperCase(), fileSize].filter(Boolean).join(' · ') }}
                             </dd>
                             <template v-if="book.date">
-                                <dt>{{ $t('Добавлена') }}</dt>
+                                <dt>{{ $t('book.added') }}</dt>
                                 <dd class="num">
                                     {{ book.date }}
                                 </dd>
                             </template>
                             <template v-if="sourceName">
-                                <dt>{{ $t('Источник') }}</dt>
+                                <dt>{{ $t('common.source') }}</dt>
                                 <dd>{{ sourceName }}</dd>
                             </template>
                             <template v-if="Number(book.librate) > 0">
-                                <dt>{{ $t('Оценка') }}</dt>
+                                <dt>{{ $t('common.rating') }}</dt>
                                 <dd>{{ '★'.repeat(Number(book.librate)) }}{{ '☆'.repeat(Math.max(0, 5 - Number(book.librate))) }}</dd>
                             </template>
                             <template v-if="book.del">
-                                <dt>{{ $t('Статус') }}</dt>
-                                <dd>{{ $t('Помечена удалённой в библиотеке') }}</dd>
+                                <dt>{{ $t('reader.backgroundStatusSolid') }}</dt>
+                                <dd>{{ $t('book.markedAsDeletedIn') }}</dd>
                             </template>
                         </dl>
                     </div>
@@ -146,11 +146,11 @@
                 <section class="book-section">
                     <div class="card-head">
                         <h2 class="card-title">
-                            {{ $t('Аннотация') }}
+                            {{ $t('reader.annotation') }}
                         </h2>
                     </div>
                     <div v-if="infoLoading" class="card-hint">
-                        {{ $t('Загрузка...') }}
+                        {{ $t('author.loading') }}
                     </div>
                     <div v-else-if="annotation.length" class="book-annotation">
                         <p v-for="(paragraph, index) in annotation" :key="index">
@@ -158,7 +158,7 @@
                         </p>
                     </div>
                     <div v-else class="card-hint">
-                        {{ infoError || $t('Аннотации нет.') }}
+                        {{ infoError || $t('book.noAnnotation') }}
                     </div>
                 </section>
 
@@ -167,10 +167,10 @@
                 <section v-if="related.length" class="book-section">
                     <div class="card-head">
                         <h2 class="card-title">
-                            {{ book.series ? $t('Ещё в серии') : $t('Ещё у автора') }}
+                            {{ book.series ? $t('book.moreInThisSeries') : $t('book.moreByThisAuthor') }}
                         </h2>
                         <router-link :to="book.series ? seriesLink(book.series) : authorLink(authors[0])">
-                            {{ $t('Все') }}
+                            {{ $t('reader.readerHomeFilterAll') }}
                         </router-link>
                     </div>
                     <div class="book-grid">
@@ -200,7 +200,7 @@ import AddToListDialog from './AddToListDialog.vue';
 import BookDetails from './BookDetails.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
-import {t, tMessage} from '../../share/i18n';
+import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
 import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
@@ -284,10 +284,10 @@ class BookPage {
 
     get readLabel() {
         if (!canReadOnline(this.config, this.book || {}))
-            return t('Читать');
+            return t('common.readBook');
         if (this.progress > 0 && this.progress < 1)
-            return t('Продолжить · {n}%', {n: this.percent});
-        return this.progress >= 1 ? t('Читать снова') : t('Читать');
+            return t('book.continue', {n: this.percent});
+        return this.progress >= 1 ? t('book.readAgain') : t('common.readBook');
     }
 
     get originalLabel() {
@@ -349,7 +349,7 @@ class BookPage {
             this.book = result.book;
             this.$root.setAppTitle(this.book.title);
         } catch (e) {
-            this.error = tMessage(e.message);
+            this.error = tm(e.message);
             return;
         } finally {
             this.loading = false;
@@ -418,7 +418,7 @@ class BookPage {
             this.annotation = this.extractAnnotation(bookInfo);
         } catch (e) {
             //подробности ошибки (пути на сервере) читателю не нужны
-            this.infoError = t('Не удалось открыть файл книги, аннотация недоступна.');
+            this.infoError = t('book.couldNotOpenThe');
         } finally {
             this.infoLoading = false;
         }

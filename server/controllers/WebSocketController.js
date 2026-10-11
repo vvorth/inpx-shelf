@@ -6,6 +6,7 @@ const WebWorker = require('../core/WebWorker');//singleton
 const log = new (require('../core/AppLogger'))().log;//singleton
 const utils = require('../core/utils');
 const runtimeMetrics = require('../core/RuntimeMetrics');
+const i18n = require('../core/i18n');
 
 const cleanPeriod = 1*60*1000;//1 минута
 const closeSocketOnIdle = 5*60*1000;//5 минут
@@ -63,6 +64,13 @@ class WebSocketController {
     }
 
     async onMessage(ws, message) {
+        //тексты ответа - на языке интерфейса клиента (поле uiLang запроса), см. server/core/i18n.js
+        const langMatch = /"uiLang":"([a-z]{2})"/.exec(String(message));
+        const lang = i18n.resolveRequestLang(this.config, ws.req, (langMatch ? langMatch[1] : ''));
+        return i18n.run(lang, () => this.processMessage(ws, message));
+    }
+
+    async processMessage(ws, message) {
         const messageBytes = Buffer.byteLength(message);
         const large = messageBytes > require('../core/RequestLimits').limits(this.config).message;
         if ((ws.activeRequests || 0) >= 8 || (this.activeRequests || 0) >= 64 || (large && this.largeRequestActive)) {
@@ -282,7 +290,7 @@ class WebSocketController {
             }
             metricOk = true;
         } catch (e) {
-            this.send({error: e.message}, req || {}, ws);
+            this.send({error: (e && e.i18nKey ? i18n.t(e.i18nKey, e.i18nParams) : i18n.render(e && e.message))}, req || {}, ws);
         } finally {
             ws.activeRequests--;
             this.activeRequests--;
@@ -472,14 +480,18 @@ class WebSocketController {
     async getWorkerState(req, ws) {
         if (req.profileLoginRequired) {
             const state = this.workerState.getState('server_state') || {};
-            this.send({state: state.state || 'normal', serverMessage: state.state === 'normal' ? '' : 'Подготовка библиотеки'}, req, ws);
+            this.send({state: state.state || 'normal', serverMessage: state.state === 'normal' ? '' : i18n.t('server.preparingLibrary')}, req, ws);
             return;
         }
         if (!req.workerId)
             throw new Error(`key 'workerId' is empty`);
 
         const state = this.workerState.getState(req.workerId);
-        this.send((state ? state : {}), req, ws);
+        //сообщения состояния хранятся как ключи/описания переводов и переводятся на языке запроса
+        this.send((state ? Object.assign({}, state, {
+            serverMessage: i18n.render(state.serverMessage),
+            jobMessage: i18n.render(state.jobMessage),
+        }) : {}), req, ws);
     }
 
     async getAuthorBookList(req, ws) {
@@ -847,7 +859,7 @@ class WebSocketController {
         const profile = Object.assign({}, req.profile || {});
         delete profile.passwordHash;
         if (profile.password && !String(profile.login || '').trim())
-            throw new Error('Для пароля нужно указать логин');
+            throw new Error(i18n.t('errors.passwordNeedsLogin'));
         if (profile.password)
             profile.passwordHash = await this.webWorker.hashProfilePassword(profile.login, profile.password);
         delete profile.password;
@@ -873,7 +885,7 @@ class WebSocketController {
         delete profile.passwordHash;
         const passwordLogin = String(profile.login || target.login || '').trim();
         if (profile.password && !passwordLogin)
-            throw new Error('Для пароля нужно указать логин');
+            throw new Error(i18n.t('errors.passwordNeedsLogin'));
         if (profile.password)
             profile.passwordHash = await this.webWorker.hashProfilePassword(passwordLogin, profile.password);
         delete profile.password;
@@ -1026,11 +1038,11 @@ class WebSocketController {
     async koboUser(req) {
         const kobo = this.webWorker.koboService;
         if (!kobo)
-            throw new Error('Синхронизация с Kobo выключена');
+            throw new Error(i18n.t('errors.koboDisabled'));
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         // A device token reads the profile's lists: the shared "no profile" mode has no owner to bind it to.
         if (user.id === 'default' && !user.login && !user.passwordHash)
-            throw new Error('Для синхронизации с Kobo выберите профиль пользователя');
+            throw new Error(i18n.t('errors.koboNeedsProfile'));
         return {kobo, user};
     }
 

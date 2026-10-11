@@ -1,12 +1,12 @@
 const BasePage = require('./BasePage');
-const {t, tText} = require('./i18n');
+const {t} = require('../i18n');
 
 class SearchHelpPage extends BasePage {
     constructor(config) {
         super(config);
 
         this.id = 'search_help';
-        this.title = 'Памятка по поиску';
+        this.title = 'opds.searchHelp2';
 
     }
 
@@ -15,29 +15,7 @@ class SearchHelpPage extends BasePage {
 
         result.link = this.baseLinks(req, true);
 
-        const content = tText('searchHelp', `
-Формат поискового значения:
-<ul>
-    <li>
-        без префикса: значение трактуется, как "начинается с"
-    </li>
-    <li>
-        префикс "=": поиск по точному совпадению
-    </li>
-    <li>
-        префикс "*": поиск подстроки в строке
-    </li>
-    <li>
-        префикс "#": поиск подстроки в строке, но только среди значений, начинающихся не с латинского или кириллического символа
-    </li>
-    <li>
-        префикс "~": поиск по регулярному выражению
-    </li>
-    <li>
-        префикс "?": поиск пустых значений или тех, что начинаются с этого символа
-    </li>
-</ul>
-`);
+        const content = t('opds.searchHelpHtml');
         const entry = [
             this.makeEntry({
                 id: 'help',

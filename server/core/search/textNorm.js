@@ -4,7 +4,7 @@
 function normalize(text = '') {
     return String(text || '')
         .toLowerCase()
-        .replace(/ё/g, 'е')
+        .replace(/ё/g, 'е')//i18n-ignore: данные поиска
         .replace(/[^\p{L}\p{N}]+/gu, ' ')
         .trim();
 }
@@ -16,12 +16,12 @@ function tokens(text = '') {
 
 //Запрос, набранный в неправильной раскладке: ghbdtn -> привет и обратно
 const latinKeys = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`";
-const cyrillicKeys = 'йцукенгшщзхъфывапролджэячсмитьбюё';
+const cyrillicKeys = 'йцукенгшщзхъфывапролджэячсмитьбюё';//i18n-ignore: данные поиска
 
 function switchLayout(text = '') {
     const value = String(text || '').toLowerCase();
     const latin = (value.match(/[a-z]/g) || []).length;
-    const cyrillic = (value.match(/[а-яё]/g) || []).length;
+    const cyrillic = (value.match(/[а-яё]/g) || []).length;//i18n-ignore: данные поиска
     const [from, to] = (latin >= cyrillic ? [latinKeys, cyrillicKeys] : [cyrillicKeys, latinKeys]);
 
     let result = '';

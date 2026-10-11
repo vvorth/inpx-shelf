@@ -3,7 +3,7 @@
         <img v-if="!placeholder" :src="src" alt="" loading="lazy" @error="failed = true" @load="onLoad" />
         <template v-else>
             <div class="book-cover-title">
-                {{ book.title || $t('Без названия') }}
+                {{ book.title || $t('common.untitled') }}
             </div>
             <div class="book-cover-author">
                 {{ shortAuthor }}
@@ -12,7 +12,7 @@
         <div v-if="progress > 0 && progress < 1" class="book-cover-progress">
             <i :style="{width: `${Math.round(progress * 100)}%`}" />
         </div>
-        <div v-else-if="progress >= 1" class="book-cover-read" :title="$t('Прочитано')">
+        <div v-else-if="progress >= 1" class="book-cover-read" :title="$t('common.read')">
             <q-icon name="la la-check" size="14px" />
         </div>
     </div>

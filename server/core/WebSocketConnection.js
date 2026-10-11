@@ -73,7 +73,7 @@ class WebSocketConnection {
     _open() {
         return new Promise((resolve, reject) => { (async() => {
             if (this.closed)
-                reject(new Error('Этот экземпляр класса уничтожен. Пожалуйста, создайте новый.'));
+                reject(new Error('errors.wsDestroyed'));
 
             if (this.connecting) {
                 let i = this.openTimeout/100;
@@ -138,7 +138,7 @@ class WebSocketConnection {
                 }
 
                 await utils.sleep(this.openTimeout);
-                reject(new Error('Соединение не удалось'));
+                reject(new Error('errors.wsConnectFailed'));
             }
         })() });
     }
@@ -175,16 +175,16 @@ class WebSocketConnection {
                 resp = await this.message(requestId, timeoutSecs);
             } catch(e) {
                 this.terminate();
-                throw new Error('WebSocket не отвечает');
+                throw new Error('errors.wsNoResponse');
             }
 
             if (resp._rok) {                
                 return requestId;
             } else {
-                throw new Error('Запрос не принят сервером');
+                throw new Error('errors.wsRequestRejected');
             }
         } else {
-            throw new Error('WebSocket коннект закрыт');
+            throw new Error('errors.wsClosed');
         }
     }
 
@@ -215,7 +215,7 @@ class WebSocketConnection {
                         newListeners.push(listener);
                     } else {
                         if (listener.onError)
-                            listener.onError('Время ожидания ответа истекло');
+                            listener.onError('errors.wsTimeout');
                     }
                 }
                 this.listeners = newListeners;

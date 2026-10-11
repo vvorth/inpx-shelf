@@ -15,7 +15,7 @@ let currentMarks = null;
 
 //нормализация префикса без обрезки пробела в конце: «иван » - это уже следующая буква навигации
 function normalizePrefix(text = '') {
-    return String(text || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/^ /, '');
+    return String(text || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/^ /, '');//i18n-ignore: данные поиска
 }
 
 function regExpFor(pattern) {
@@ -72,7 +72,7 @@ function valueCondition(field, value, params) {
         return '0';
     if (mode === '*' || mode === '#') {
         params.push(p);
-        return `(${norm} != '' AND instr(${norm}, ?) > 0${mode === '#' ? ` AND ${norm} NOT GLOB '[а-яa-z]*'` : ''})`;
+        return `(${norm} != '' AND instr(${norm}, ?) > 0${mode === '#' ? ` AND ${norm} NOT GLOB '[а-яa-z]*'` : ''})`;//i18n-ignore: данные поиска
     }
     if (!p)
         return '';

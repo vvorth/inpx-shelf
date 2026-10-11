@@ -5,6 +5,7 @@ const _ = require('lodash');
 const yazl = require('yazl');
 
 const utils = require('./utils');
+const {t, msg} = require('./i18n');
 const ConfigManager = require('../config');
 const log = new (require('./AppLogger'))().log;//singleton
 
@@ -86,11 +87,11 @@ module.exports = {
             ? payload.settings
             : payload;
         if (!source || typeof source !== 'object' || Array.isArray(source))
-            throw new Error('Файл настроек имеет неверный формат');
+            throw new Error(t('errors.settingsFileInvalid'));
 
         const patch = _.pick(_.cloneDeep(source), this.adminSettingsExportKeys());
         if (!Object.keys(patch).length)
-            throw new Error('В файле не найдены настройки для восстановления');
+            throw new Error(t('errors.settingsFileEmpty'));
 
         if (patch.opds && typeof patch.opds === 'object') {
             const currentOpds = this.config.opds || {};
@@ -103,7 +104,7 @@ module.exports = {
         }
 
         if (utils.hasProp(patch, 'librarySources') && !Array.isArray(patch.librarySources))
-            throw new Error('librarySources должен быть массивом');
+            throw new Error(t('errors.librarySourcesArray'));
 
         return patch;
     },
@@ -114,7 +115,7 @@ module.exports = {
 
         const patch = this.normalizeImportedAdminSettings(payload);
         await this.saveRuntimeConfigPatch(patch);
-        this.addAdminEvent('info', 'settings', 'Восстановлены настройки администратора из файла');
+        this.addAdminEvent('info', 'settings', msg('admin.settingsRestored'));
 
         return {
             success: true,
@@ -258,14 +259,14 @@ module.exports = {
                     this.discoveryDiskCache = archive['discovery-cache.json'];
                 }
                 const restored = Object.keys(content);
-                this.addAdminEvent('warn', 'settings', 'Восстановлен полный бэкап: ' + restored.join(', '));
+                this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
                 //правки метаданных из бэкапа попадают в поиск и связи авторов при пересборке БД библиотеки;
                 //прежняя БД отвечает, пока строится новая
                 if (archive['reading-lists.json'] && this.catalogSearch && this.catalogSearch.ready)
                     this.recreateDb().catch(e => log(LM_ERR, `Library DB rebuild after restore: ${e.message}`));//no await
                 return {
                     success: true, restored, restartRecommended: true,
-                    message: 'Полный бэкап восстановлен. Перезапустите приложение для применения всех настроек. При смене библиотек выполните переиндексацию.',
+                    message: t('admin.fullBackupRestoredMessage'),
                 };
             });
         } finally {

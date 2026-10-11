@@ -8,8 +8,8 @@
             type="search"
             autocomplete="off"
             spellcheck="false"
-            :placeholder="$t('Авторы, книги, серии')"
-            :aria-label="$t('Поиск по библиотеке')"
+            :placeholder="$t('omnibox.authorsBooksSeries')"
+            :aria-label="$t('omnibox.searchTheLibrary')"
             aria-autocomplete="list"
             :aria-expanded="open ? 'true' : 'false'"
             @input="onInput"
@@ -21,7 +21,7 @@
 
         <div v-if="open" class="omnibox-panel" role="listbox" @mousedown.prevent>
             <div v-if="suggestion.corrected" class="omnibox-note">
-                {{ suggestion.layout ? $t('Другая раскладка:') : $t('Возможно, вы искали:') }}
+                {{ suggestion.layout ? $t('omnibox.otherKeyboardLayout') : $t('omnibox.didYouMean') }}
                 <b>{{ suggestion.corrected }}</b>
             </div>
             <template v-for="group in groups" :key="group.id">
@@ -51,7 +51,7 @@
                 @mousemove="activeIndex = allIndex"
             >
                 <q-icon name="la la-search" size="16px" class="omnibox-item-icon" />
-                <span class="omnibox-item-main">{{ $t('Искать «{q}» везде', {q: query.trim()}) }}</span>
+                <span class="omnibox-item-main">{{ $t('omnibox.searchEverythingFor', {q: query.trim()}) }}</span>
                 <span class="omnibox-item-meta">Enter</span>
             </button>
         </div>
@@ -121,20 +121,20 @@ class Omnibox {
         const s = this.suggestion;
         const groups = [];
         if (s.authors.length) {
-            groups.push(make('authors', t('Авторы'), s.authors.map(item => ({
+            groups.push(make('authors', t('common.authors'), s.authors.map(item => ({
                 key: `a-${item.name}`, icon: 'la la-user', label: item.name,
-                meta: [item.alias, t('Книг: {n}', {n: item.books})].filter(Boolean).join(' · '),
+                meta: [item.alias, t('addToListDialog.books', {n: item.books})].filter(Boolean).join(' · '),
                 to: `/author/${encodeURIComponent(item.name)}`,
             }))));
         }
         if (s.series.length) {
-            groups.push(make('series', t('Серии'), s.series.map(item => ({
-                key: `s-${item.name}`, icon: 'la la-layer-group', label: item.name, meta: t('Книг: {n}', {n: item.books}),
+            groups.push(make('series', t('common.seriesPlural'), s.series.map(item => ({
+                key: `s-${item.name}`, icon: 'la la-layer-group', label: item.name, meta: t('addToListDialog.books', {n: item.books}),
                 to: `/series/${encodeURIComponent(item.name)}`,
             }))));
         }
         if (s.books.length) {
-            groups.push(make('books', t('Книги'), s.books.map(item => ({
+            groups.push(make('books', t('common.books'), s.books.map(item => ({
                 key: `b-${item._uid}`, icon: 'la la-book', label: item.title,
                 meta: [bookAuthors(item)[0], String(item.ext || '').toUpperCase()].filter(Boolean).join(' · '),
                 to: `/book/${encodeURIComponent(item._uid)}`,

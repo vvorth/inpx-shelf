@@ -264,8 +264,8 @@ async function testFb2cngConfigAndConversionCache() {
     const workerSource = await fs.readFile(path.join(__dirname, '../server/core/WebWorker.js'), 'utf8');
     assert.match(staticSource, /cacheBasePath: bookFile/);
     assert.match(workerSource, /cacheBasePath: gzipFile/);
-    assert.match(workerSource, /Неподдерживаемый формат отправки/);
-    assert.match(workerSource, /Конвертация книг отключена в текущем образе/);
+    assert.match(workerSource, /unsupportedMessage: t\('errors\.unsupportedDeliveryFormat'/);
+    assert.match(workerSource, /disabledMessage: t\('list\.bookConversionDisabledImage'\)/);
 }
 
 function request(server, urlPath, headers = {}) {
@@ -428,7 +428,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.strictEqual((readerSource.match(/data-testid="reader-notes-link"/g) || []).length, 2);
     assert.strictEqual((readerSource.match(/'reader-note-return'/g) || []).length, 1);
     assert.match(readerSource, /v-if="\(hasAnnotation \|\| hasBookNotes\) && displayContents\.length"/);
-    assert.match(readerSource, /bookNotes: t\('Примечания'\)/);
+    assert.match(readerSource, /bookNotes: t\('reader\.bookNotes'\)/);
 
     const firstAnnotationLink = readerSource.indexOf('@click="showReaderAnnotation"');
     const firstNotesLink = readerSource.indexOf('@click="showReaderNotes"', firstAnnotationLink);
@@ -454,8 +454,8 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     const builderMethodEnd = readerSource.indexOf('    createFb2Parser(source = \'\') {', builderMethodStart);
     assert.ok(builderMethodStart >= 0 && builderMethodEnd > builderMethodStart);
     const builderMethod = readerSource.slice(builderMethodStart, builderMethodEnd).trim();
-    //t() из client/share/i18n недоступен вне модуля; в русском режиме он возвращает строку без изменений
-    const NotesBuilder = new Function('t', `return class NotesBuilder {${builderMethod}}`)(text => text);
+    //t() из client/share/i18n недоступен вне модуля: подставляем перевод на русский
+    const NotesBuilder = new Function('t', `return class NotesBuilder {${builderMethod}}`)(key => require('../shared/i18n').translate('ru', key));
     const makeBody = (name, marker) => ({
         attrs: () => ({name}),
         rawNodes: [[1, 'body', [], [marker]]],
@@ -1795,14 +1795,16 @@ async function testPersonalDiscoveryUsesColdStartTaste() {
         _uid: 'explore', author: 'New Author', genre: 'history', lang: 'ru', title: 'Explore', librate: 5,
     }, profile, 5) > 0);
 
-    assert.strictEqual(
+    const i18n = require('../server/core/i18n');
+    assert.deepStrictEqual(
         worker.getPersonalDiscoveryGenreReason(['love_erotica'], profile),
-        'Учитывает ваши читательские интересы'
+        {key: 'discovery.reason.readingInterests'}
     );
-    assert.strictEqual(
-        worker.getPersonalDiscoveryGenreReason(['sf_fantasy'], profile),
-        'Вы выбрали жанр: sf_fantasy'
-    );
+    const genreReason = worker.getPersonalDiscoveryGenreReason(['sf_fantasy'], profile);
+    assert.strictEqual(genreReason.key, 'discovery.reason.chosenGenre');
+    assert.strictEqual(i18n.run('ru', () => i18n.render(genreReason)), 'Вы выбрали жанр: Фэнтези');
+    assert.strictEqual(i18n.run('en', () => i18n.render(genreReason)), 'You chose the genre: Fantasy');
+
 }
 
 async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
@@ -1931,7 +1933,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
 
             assert.ok(shelf.items.some(book => book.author !== 'Favorite Author'));
             assert.ok(shelf.items.some(book => book.discoveryExploration === true));
-            assert.ok(shelf.items.find(book => book.discoveryExploration === true).discoveryReason.includes('нового'));
+            assert.ok(shelf.items.find(book => book.discoveryExploration === true).discoveryReasons.some(reason => reason.key === 'discovery.reason.exploration'));
             assert.strictEqual(shelf.discoveryNeedsTasteSetup, true);
             assert.ok(favoriteAuthorCount <= 2);
             assert.ok(sagaACount <= 1);

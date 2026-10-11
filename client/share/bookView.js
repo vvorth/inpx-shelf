@@ -10,8 +10,8 @@ export function bookView(settings = {}) {
 
 export function bookViewOptions() {
     return [
-        {icon: 'la la-th', value: 'covers', attrs: {'aria-label': t('Обложками'), title: t('Обложками')}},
-        {icon: 'la la-th-large', value: 'cards', attrs: {'aria-label': t('Карточками'), title: t('Карточками')}},
-        {icon: 'la la-list', value: 'list', attrs: {'aria-label': t('Списком'), title: t('Списком')}},
+        {icon: 'la la-th', value: 'covers', attrs: {'aria-label': t('mePreferences.asCovers'), title: t('mePreferences.asCovers')}},
+        {icon: 'la la-th-large', value: 'cards', attrs: {'aria-label': t('mePreferences.asCards'), title: t('mePreferences.asCards')}},
+        {icon: 'la la-list', value: 'list', attrs: {'aria-label': t('mePreferences.asAList'), title: t('mePreferences.asAList')}},
     ];
 }

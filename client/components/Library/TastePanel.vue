@@ -3,10 +3,10 @@
         <div class="card-head">
             <div>
                 <h2 class="card-title">
-                    {{ $t('Что вам нравится читать?') }}
+                    {{ $t('discovery.whatDoLikeRead') }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('Жанры и авторы уточняют рекомендации. Языки книг задаются кнопкой «Мои языки» рядом с поиском.') }}
+                    {{ $t('tastePanel.genresAndAuthorsRefine') }}
                 </div>
             </div>
         </div>
@@ -26,7 +26,7 @@
                 input-debounce="0"
                 max-values="20"
                 :options="genreOptions"
-                :label="$t('Любимые жанры')"
+                :label="$t('discovery.favoriteGenres')"
                 @filter="filterGenres"
             />
             <q-select
@@ -43,8 +43,8 @@
                 max-values="40"
                 :options="authorOptions"
                 :loading="authorsLoading"
-                :label="$t('Любимые авторы')"
-                :hint="$t('Начните вводить фамилию или имя')"
+                :label="$t('discovery.favoriteAuthors')"
+                :hint="$t('discovery.startTypingLastFirst')"
                 @filter="filterAuthors"
             />
             <q-select
@@ -54,16 +54,16 @@
                 emit-value
                 map-options
                 :options="explorationOptions"
-                :label="$t('Сколько нового пробовать')"
+                :label="$t('discovery.howMuchNewTry')"
             />
         </div>
 
         <div class="card-actions">
             <q-btn color="primary" unelevated no-caps icon="la la-check" @click="save">
-                {{ $t('Сохранить вкусы') }}
+                {{ $t('discovery.saveTastes') }}
             </q-btn>
             <q-btn flat no-caps @click="needsSetup ? $emit('dismiss') : $emit('close')">
-                {{ needsSetup ? $t('Не сейчас') : $t('Закрыть') }}
+                {{ needsSetup ? $t('discovery.notNow') : $t('common.close') }}
             </q-btn>
         </div>
     </section>
@@ -110,17 +110,17 @@ class TastePanel {
 
     get explorationOptions() {
         return [
-            {label: t('Осторожно · 10%'), value: 0.1},
-            {label: t('Сбалансированно · 15%'), value: 0.15},
-            {label: t('Больше нового · 25%'), value: 0.25},
+            {label: t('discovery.noveltyCareful'), value: 0.1},
+            {label: t('discovery.noveltyBalanced'), value: 0.15},
+            {label: t('discovery.noveltyMore'), value: 0.25},
         ];
     }
 
     filterGenres(value, update) {
-        const words = String(value || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);
+        const words = String(value || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);//i18n-ignore: нормализация текста
         update(() => {
             this.genreOptions = allGenres().filter((item) => {
-                const text = `${item.label} ${item.value}`.toLowerCase().replace(/ё/g, 'е');
+                const text = `${item.label} ${item.value}`.toLowerCase().replace(/ё/g, 'е');//i18n-ignore: нормализация текста
                 return words.every(word => text.includes(word));
             });
         });

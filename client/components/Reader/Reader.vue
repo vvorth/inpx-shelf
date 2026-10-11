@@ -1545,7 +1545,7 @@ import readerContent from '../../../server/core/fb2/ReaderContent';
 import _ from 'lodash';
 import he from 'he';
 const readerProgress = require('../../share/readerProgress');
-import {t, tMessage, getLocale} from '../../share/i18n';
+import {t, tm, getLocale} from '../../share/i18n';
 
 const readerPreferencesStorageKey = 'inpx.reader.preferences.v1';
 const readerProgressStorageKey = 'inpx.reader.progress.v1';
@@ -2085,7 +2085,7 @@ class Reader {
         const current = this.currentSelectedProfile;
         if (!current)
             return this.uiText.profileNotSelected;
-        const profileName = tMessage(current.name) || this.uiText.profile;
+        const profileName = tm(current.name) || this.uiText.profile;
         if (this.isCompactLayout) {
             if (this.readerProfileCanLogin)
                 return this.uiText.profileLoginAction;
@@ -2094,10 +2094,10 @@ class Reader {
         if (this.readerAnonymousProfile)
             return `${profileName}: ${this.uiText.profileLoginAction}`;
         if (this.readerProfileCanLogin)
-            return `${tMessage(current.name) || this.uiText.profile}: ${this.uiText.profileNeedsLoginShort}`;
+            return `${tm(current.name) || this.uiText.profile}: ${this.uiText.profileNeedsLoginShort}`;
         if (this.config.profileAuthorized)
             return profileName;
-        return `${tMessage(current.name) || this.uiText.profile}: ${this.uiText.profileOpenShort}`;
+        return `${tm(current.name) || this.uiText.profile}: ${this.uiText.profileOpenShort}`;
     }
 
     get readerProfileChipClass() {
@@ -2154,7 +2154,7 @@ class Reader {
             return this.uiText.profileSelectReaderHint;
         if (this.readerProfileNeedsLogin)
             return this.uiText.profileLoginReaderHint;
-        return current.name ? `${this.uiText.profile}: ${tMessage(current.name)}` : this.uiText.continueReading;
+        return current.name ? `${this.uiText.profile}: ${tm(current.name)}` : this.uiText.continueReading;
     }
 
     get readerHomeEmptyText() {
@@ -2516,194 +2516,194 @@ class Reader {
 
     get uiText() {
         return {
-            back: t('Назад'),
-            myPlaces: t('Мои места'),
-            continueReading: t('Продолжить'),
-            bookmarks: t('Закладки'),
-            notes: t('Заметки'),
-            readerHelp: t('Как читать'),
-            searchTitle: t('Поиск по тексту'),
-            searchPlaceholder: t('Найти фразу или слово'),
-            searchPrev: t('Назад'),
-            searchNext: t('Дальше'),
-            searchEmpty: t('Совпадений нет.'),
-            searchHint: t('Поиск ищет по уже разбитым страницам.'),
-            helpMobileIntro: t('Мобильный режим'),
-            helpDesktopIntro: t('Десктопный режим'),
-            bookmark: t('Закладка'),
-            readShort: t('Прочитано'),
-            unreadShort: t('Снять'),
-            noBookmarks: t('У этой книги пока нет ручных закладок.'),
-            noNotes: t('Заметок пока нет.'),
-            newPlace: t('Новое место'),
-            noteLabel: t('Заметка'),
-            simpleBookmark: t('Простая закладка'),
-            saveAsNote: t('Сохранить как заметку'),
-            readPrefix: t('Прочитано'),
-            bookmarkAdded: t('Закладка добавлена'),
-            noteSaved: t('Заметка сохранена'),
-            readMarked: t('Книга помечена прочитанной'),
-            readUnmarked: t('Отметка прочитано снята'),
-            bookmarkTitle: t('Закладка'),
-            error: t('Ошибка'),
-            profileLoginRequired: t('Войти в профиль'),
-            profileNotSelected: t('Профиль не выбран'),
-            profileLoginReaderHint: t('Войдите, чтобы сохранять личный прогресс.'),
-            profileSelectReaderHint: t('Выберите профиль, чтобы сохранять личный прогресс чтения.'),
-            profileLoginAction: t('Войти'),
-            profile: t('Профиль'),
-            profileNeedsLoginShort: t('нужен вход'),
-            profileLoggedInShort: t('вход выполнен'),
-            profileOpenShort: t('без пароля'),
-            refresh: t('Обновить'),
+            back: t('reader.back'),
+            myPlaces: t('reader.myPlaces'),
+            continueReading: t('reader.continueReading'),
+            bookmarks: t('reader.bookmarks'),
+            notes: t('reader.notes'),
+            readerHelp: t('reader.readerHelp'),
+            searchTitle: t('reader.searchTitle'),
+            searchPlaceholder: t('reader.searchPlaceholder'),
+            searchPrev: t('reader.searchPrev'),
+            searchNext: t('reader.searchNext'),
+            searchEmpty: t('reader.searchEmpty'),
+            searchHint: t('reader.searchHint'),
+            helpMobileIntro: t('reader.helpMobileIntro'),
+            helpDesktopIntro: t('reader.helpDesktopIntro'),
+            bookmark: t('reader.bookmark'),
+            readShort: t('reader.readShort'),
+            unreadShort: t('reader.unreadShort'),
+            noBookmarks: t('reader.noBookmarks'),
+            noNotes: t('reader.noNotes'),
+            newPlace: t('reader.newPlace'),
+            noteLabel: t('reader.noteLabel'),
+            simpleBookmark: t('reader.simpleBookmark'),
+            saveAsNote: t('reader.saveAsNote'),
+            readPrefix: t('reader.readPrefix'),
+            bookmarkAdded: t('reader.bookmarkAdded'),
+            noteSaved: t('reader.noteSaved'),
+            readMarked: t('reader.readMarked'),
+            readUnmarked: t('reader.readUnmarked'),
+            bookmarkTitle: t('reader.bookmarkTitle'),
+            error: t('reader.error'),
+            profileLoginRequired: t('reader.profileLoginRequired'),
+            profileNotSelected: t('reader.profileNotSelected'),
+            profileLoginReaderHint: t('reader.profileLoginReaderHint'),
+            profileSelectReaderHint: t('reader.profileSelectReaderHint'),
+            profileLoginAction: t('reader.profileLoginAction'),
+            profile: t('reader.profile'),
+            profileNeedsLoginShort: t('reader.profileNeedsLoginShort'),
+            profileLoggedInShort: t('reader.profileLoggedInShort'),
+            profileOpenShort: t('reader.profileOpenShort'),
+            refresh: t('reader.refresh'),
             readerWebApp: 'INPX Reader',
-            readerHomeTitle: t('Читалка'),
-            readerHomeEmptyTitle: t('Нет книг в чтении'),
-            readerHomeEmptyText: t('Откройте книгу из каталога, и она появится здесь.'),
-            readerHomeSearchPlaceholder: t('Быстрый поиск по своим книгам'),
-            readerHomeSearchEmptyText: t('По этому запросу в выбранном разделе ничего не найдено.'),
-            readerHomeUnavailableText: t('Прогресс сохранён, но книга не найдена в текущей библиотеке. Проверьте выбранную библиотеку и её INPX-индекс.'),
-            readerHomeReadEmptyText: t('Здесь появятся книги, вручную отмеченные прочитанными или дочитанные до конца.'),
-            readerHomeHiddenEmptyText: t('Скрытых книг нет. Если убрать книгу из чтения, её можно будет вернуть отсюда.'),
-            readerHomeFilterReading: t('Читаю'),
-            readerHomeFilterRead: t('Прочитано'),
-            readerHomeFilterHidden: t('Скрыто'),
-            readerHomeFilterAll: t('Все'),
-            readerHomeSortUpdatedDesc: t('Сначала новые'),
-            readerHomeSortUpdatedAsc: t('Сначала старые'),
-            readerHomeSortTitle: t('По названию'),
-            readerHomeSortAuthor: t('По автору'),
-            readerHomeSortProgressDesc: t('Прогресс по убыванию'),
-            readerHomeSortProgressAsc: t('Прогресс по возрастанию'),
-            resetReaderProgress: t('Сбросить прогресс'),
-            resetReaderProgressAction: t('Сбросить'),
-            resetReaderProgressConfirm: t('Сбросить все позиции чтения профиля «{profile}»? Книги исчезнут из разделов «Читаю», «Прочитано» и «Скрыто». Закладки и настройки читалки останутся.'),
-            resetReaderProgressSuccess: t('Прогресс чтения сброшен'),
-            openBook: t('Открыть'),
-            restoreToReading: t('Вернуть'),
-            restoreReadingSuccess: t('Книга возвращена в чтение'),
-            removeFromReading: t('Скрыть'),
-            removeReadingConfirm: t('Скрыть книгу «{title}»? Её можно будет вернуть из раздела «Скрыто».'),
-            removeReadingSuccess: t('Книга перемещена в «Скрыто»'),
-            untitledBook: t('Без названия'),
-            series: t('Серия'),
-            themeDark: t('Тёмная'),
-            themeSepia: t('Сепия'),
-            themeLight: t('Светлая'),
+            readerHomeTitle: t('reader.readerHomeTitle'),
+            readerHomeEmptyTitle: t('reader.readerHomeEmptyTitle'),
+            readerHomeEmptyText: t('reader.readerHomeEmptyText'),
+            readerHomeSearchPlaceholder: t('reader.readerHomeSearchPlaceholder'),
+            readerHomeSearchEmptyText: t('reader.readerHomeSearchEmptyText'),
+            readerHomeUnavailableText: t('reader.readerHomeUnavailableText'),
+            readerHomeReadEmptyText: t('reader.readerHomeReadEmptyText'),
+            readerHomeHiddenEmptyText: t('reader.readerHomeHiddenEmptyText'),
+            readerHomeFilterReading: t('reader.readerHomeFilterReading'),
+            readerHomeFilterRead: t('reader.readerHomeFilterRead'),
+            readerHomeFilterHidden: t('reader.readerHomeFilterHidden'),
+            readerHomeFilterAll: t('reader.readerHomeFilterAll'),
+            readerHomeSortUpdatedDesc: t('reader.readerHomeSortUpdatedDesc'),
+            readerHomeSortUpdatedAsc: t('reader.readerHomeSortUpdatedAsc'),
+            readerHomeSortTitle: t('reader.readerHomeSortTitle'),
+            readerHomeSortAuthor: t('reader.readerHomeSortAuthor'),
+            readerHomeSortProgressDesc: t('reader.readerHomeSortProgressDesc'),
+            readerHomeSortProgressAsc: t('reader.readerHomeSortProgressAsc'),
+            resetReaderProgress: t('reader.resetReaderProgress'),
+            resetReaderProgressAction: t('reader.resetReaderProgressAction'),
+            resetReaderProgressConfirm: t('reader.resetReaderProgressConfirm'),
+            resetReaderProgressSuccess: t('reader.resetReaderProgressSuccess'),
+            openBook: t('reader.openBook'),
+            restoreToReading: t('reader.restoreToReading'),
+            restoreReadingSuccess: t('reader.restoreReadingSuccess'),
+            removeFromReading: t('reader.removeFromReading'),
+            removeReadingConfirm: t('reader.removeReadingConfirm'),
+            removeReadingSuccess: t('reader.removeReadingSuccess'),
+            untitledBook: t('reader.untitledBook'),
+            series: t('reader.series'),
+            themeDark: t('reader.themeDark'),
+            themeSepia: t('reader.themeSepia'),
+            themeLight: t('reader.themeLight'),
             themeEink: 'eink',
-            readModeScroll: t('Лента'),
-            readModePages: t('Страницы'),
-            widthFixed: t('Фикс'),
-            widthViewport: t('Экран'),
-            textShadowOn: t('Тень букв'),
-            textShadowOff: t('Без тени'),
-            spreadSingle: t('1 стр.'),
-            spreadDual: t('2 стр.'),
-            pageGap: t('Центр'),
-            pageVerticalPadding: t('Верх/низ'),
-            pageHorizontalPadding: t('Края'),
-            pageOuterGap: t('Экран верх/низ'),
-            pagePaddingTop: t('Лист сверху'),
-            pagePaddingBottom: t('Лист снизу'),
-            pagePaddingLeft: t('Лист слева'),
-            pagePaddingRight: t('Лист справа'),
-            pageOuterGapTop: t('Экран сверху'),
-            pageOuterGapBottom: t('Экран снизу'),
-            pageOuterGapLeft: t('Экран слева'),
-            pageOuterGapRight: t('Экран справа'),
-            controlsText: t('Текст'),
-            controlsPage: t('Страница'),
-            controlsBackground: t('Фон'),
-            controlsStatus: t('Статус'),
-            controlsReset: t('Сброс'),
-            controlsView: t('Вид'),
-            controlsTheme: t('Тема'),
-            controlsFont: t('Шрифт'),
-            controlsTypography: t('Текст'),
-            controlsFontSize: t('Размер шрифта'),
-            controlsLineHeight: t('Междустрочие'),
-            controlsTextShadow: t('Тень'),
-            controlsWidth: t('Ширина'),
-            controlsTextWidth: t('Ширина текста'),
-            controlsTextWidthMode: t('Режим ширины'),
+            readModeScroll: t('reader.readModeScroll'),
+            readModePages: t('reader.readModePages'),
+            widthFixed: t('reader.widthFixed'),
+            widthViewport: t('reader.widthViewport'),
+            textShadowOn: t('reader.textShadowOn'),
+            textShadowOff: t('reader.textShadowOff'),
+            spreadSingle: t('reader.spreadSingle'),
+            spreadDual: t('reader.spreadDual'),
+            pageGap: t('reader.pageGap'),
+            pageVerticalPadding: t('reader.pageVerticalPadding'),
+            pageHorizontalPadding: t('reader.pageHorizontalPadding'),
+            pageOuterGap: t('reader.pageOuterGap'),
+            pagePaddingTop: t('reader.pagePaddingTop'),
+            pagePaddingBottom: t('reader.pagePaddingBottom'),
+            pagePaddingLeft: t('reader.pagePaddingLeft'),
+            pagePaddingRight: t('reader.pagePaddingRight'),
+            pageOuterGapTop: t('reader.pageOuterGapTop'),
+            pageOuterGapBottom: t('reader.pageOuterGapBottom'),
+            pageOuterGapLeft: t('reader.pageOuterGapLeft'),
+            pageOuterGapRight: t('reader.pageOuterGapRight'),
+            controlsText: t('reader.controlsText'),
+            controlsPage: t('reader.controlsPage'),
+            controlsBackground: t('reader.controlsBackground'),
+            controlsStatus: t('reader.controlsStatus'),
+            controlsReset: t('reader.controlsReset'),
+            controlsView: t('reader.controlsView'),
+            controlsTheme: t('reader.controlsTheme'),
+            controlsFont: t('reader.controlsFont'),
+            controlsTypography: t('reader.controlsTypography'),
+            controlsFontSize: t('reader.controlsFontSize'),
+            controlsLineHeight: t('reader.controlsLineHeight'),
+            controlsTextShadow: t('reader.controlsTextShadow'),
+            controlsWidth: t('reader.controlsWidth'),
+            controlsTextWidth: t('reader.controlsTextWidth'),
+            controlsTextWidthMode: t('reader.controlsTextWidthMode'),
             controlsInk: 'E-ink',
-            controlsMode: t('Режим чтения'),
-            controlsReadMode: t('Формат'),
-            controlsPageFlow: t('Листание'),
-            controlsSpread: t('Разворот'),
-            controlsSpacing: t('Отступы'),
-            controlsAnimation: t('Анимация'),
-            controlsAnimationType: t('Эффект'),
-            controlsAnimationSpeed: t('Скорость'),
-            controlsBackgroundImage: t('Картинка'),
-            controlsBackgroundLayers: t('Поверх фона'),
-            controlsPages: t('Страницы'),
-            controlsStatusBar: t('Статус-бар'),
-            controlsStatusField: t('Панель'),
-            controlsStatusVisibility: t('Видимость'),
-            controlsStatusPosition: t('Расположение'),
-            controlsStatusContent: t('Что показывать'),
-            controlsClock: t('Часы'),
-            controlsProgressBar: t('Шкала'),
-            controlsProgressPosition: t('Где шкала'),
-            controlsRemaining: t('Остаток'),
-            noteReturn: t('Назад к тексту'),
-            directionVertical: t('Вертикально'),
-            directionHorizontal: t('Горизонтально'),
-            animationNone: t('Без анимации'),
-            animationSoft: t('Мягко'),
-            animationSlide: t('Слайд'),
-            speedFast: t('Быстро'),
-            speedNormal: t('Нормально'),
-            speedSlow: t('Медленно'),
-            statusBarOn: t('Показать статус'),
-            statusBarOff: t('Скрыть статус'),
-            statusClockOn: t('Часы'),
-            statusClockOff: t('Без часов'),
-            statusProgressOn: t('Шкала прогресса'),
-            statusProgressOff: t('Без шкалы'),
-            statusProgressBottom: t('Шкала снизу'),
-            statusProgressSide: t('Шкала справа'),
-            statusRemainingOn: t('Осталось страниц'),
-            statusRemainingOff: t('Без остатка'),
-            statusAlignCenter: t('По центру'),
-            statusAlignEdge: t('У края'),
-            statusSize: t('Размер'),
-            backgroundUpload: t('Загрузить фон'),
-            backgroundClear: t('Убрать фон'),
-            backgroundPagesSolid: t('Страницы'),
-            backgroundPagesTransparent: t('Текст на фоне'),
-            backgroundStatusSolid: t('Статус'),
-            backgroundStatusTransparent: t('Статус на фоне'),
-            resetReaderAppearance: t('Сбросить оформление'),
-            resetReaderAppearanceHint: t('Прогресс и закладки останутся.'),
-            resetReaderAppearanceConfirm: t('Вернуть стандартное оформление читалки? Прогресс и закладки не изменятся.'),
-            resetReaderAppearanceSuccess: t('Оформление читалки сброшено.'),
-            backgroundTooLarge: t('Картинка фона должна быть до 4 МБ.'),
-            backgroundInvalid: t('Выберите файл картинки.'),
-            einkContrast: t('Контраст'),
-            einkPaper: t('Бумага'),
-            einkInk: t('Чернила'),
-            loadingBook: t('Подготовка книги...'),
-            loadingFetch: t('Загрузка книги...'),
-            loadingParse: t('Подготовка текста...'),
-            loadingPages: t('Разбивка на страницы...'),
-            loadingPagesCompact: t('Считаю страницы...'),
-            loadingPagesCompacting: t('Убираю пустые места...'),
-            loadingPagesFinalizing: t('Готовлю страницу...'),
-            loadingPagedPage: t('Готовлю страницу'),
-            restoringPage: t('Восстанавливаю место чтения...'),
-            refreshingPagesCompact: t('Перестраиваю страницы...'),
-            contents: t('Содержание'),
-            annotation: t('Аннотация'),
-            bookNotes: t('Примечания'),
-            backToContents: t('Назад к содержанию'),
-            show: t('Показать'),
-            hide: t('Скрыть'),
-            settings: t('Настройки'),
-            screen: t('Экран'),
-            rebuildPages: t('Перестроить страницу'),
-            refreshingLayout: t('Обновление вида...'),
+            controlsMode: t('reader.controlsMode'),
+            controlsReadMode: t('reader.controlsReadMode'),
+            controlsPageFlow: t('reader.controlsPageFlow'),
+            controlsSpread: t('reader.controlsSpread'),
+            controlsSpacing: t('reader.controlsSpacing'),
+            controlsAnimation: t('reader.controlsAnimation'),
+            controlsAnimationType: t('reader.controlsAnimationType'),
+            controlsAnimationSpeed: t('reader.controlsAnimationSpeed'),
+            controlsBackgroundImage: t('reader.controlsBackgroundImage'),
+            controlsBackgroundLayers: t('reader.controlsBackgroundLayers'),
+            controlsPages: t('reader.controlsPages'),
+            controlsStatusBar: t('reader.controlsStatusBar'),
+            controlsStatusField: t('reader.controlsStatusField'),
+            controlsStatusVisibility: t('reader.controlsStatusVisibility'),
+            controlsStatusPosition: t('reader.controlsStatusPosition'),
+            controlsStatusContent: t('reader.controlsStatusContent'),
+            controlsClock: t('reader.controlsClock'),
+            controlsProgressBar: t('reader.controlsProgressBar'),
+            controlsProgressPosition: t('reader.controlsProgressPosition'),
+            controlsRemaining: t('reader.controlsRemaining'),
+            noteReturn: t('reader.noteReturn'),
+            directionVertical: t('reader.directionVertical'),
+            directionHorizontal: t('reader.directionHorizontal'),
+            animationNone: t('reader.animationNone'),
+            animationSoft: t('reader.animationSoft'),
+            animationSlide: t('reader.animationSlide'),
+            speedFast: t('reader.speedFast'),
+            speedNormal: t('reader.speedNormal'),
+            speedSlow: t('reader.speedSlow'),
+            statusBarOn: t('reader.statusBarOn'),
+            statusBarOff: t('reader.statusBarOff'),
+            statusClockOn: t('reader.statusClockOn'),
+            statusClockOff: t('reader.statusClockOff'),
+            statusProgressOn: t('reader.statusProgressOn'),
+            statusProgressOff: t('reader.statusProgressOff'),
+            statusProgressBottom: t('reader.statusProgressBottom'),
+            statusProgressSide: t('reader.statusProgressSide'),
+            statusRemainingOn: t('reader.statusRemainingOn'),
+            statusRemainingOff: t('reader.statusRemainingOff'),
+            statusAlignCenter: t('reader.statusAlignCenter'),
+            statusAlignEdge: t('reader.statusAlignEdge'),
+            statusSize: t('reader.statusSize'),
+            backgroundUpload: t('reader.backgroundUpload'),
+            backgroundClear: t('reader.backgroundClear'),
+            backgroundPagesSolid: t('reader.backgroundPagesSolid'),
+            backgroundPagesTransparent: t('reader.backgroundPagesTransparent'),
+            backgroundStatusSolid: t('reader.backgroundStatusSolid'),
+            backgroundStatusTransparent: t('reader.backgroundStatusTransparent'),
+            resetReaderAppearance: t('reader.resetReaderAppearance'),
+            resetReaderAppearanceHint: t('reader.resetReaderAppearanceHint'),
+            resetReaderAppearanceConfirm: t('reader.resetReaderAppearanceConfirm'),
+            resetReaderAppearanceSuccess: t('reader.resetReaderAppearanceSuccess'),
+            backgroundTooLarge: t('reader.backgroundTooLarge'),
+            backgroundInvalid: t('reader.backgroundInvalid'),
+            einkContrast: t('reader.einkContrast'),
+            einkPaper: t('reader.einkPaper'),
+            einkInk: t('reader.einkInk'),
+            loadingBook: t('reader.loadingBook'),
+            loadingFetch: t('reader.loadingFetch'),
+            loadingParse: t('reader.loadingParse'),
+            loadingPages: t('reader.loadingPages'),
+            loadingPagesCompact: t('reader.loadingPagesCompact'),
+            loadingPagesCompacting: t('reader.loadingPagesCompacting'),
+            loadingPagesFinalizing: t('reader.loadingPagesFinalizing'),
+            loadingPagedPage: t('reader.loadingPagedPage'),
+            restoringPage: t('reader.restoringPage'),
+            refreshingPagesCompact: t('reader.refreshingPagesCompact'),
+            contents: t('reader.contents'),
+            annotation: t('reader.annotation'),
+            bookNotes: t('reader.bookNotes'),
+            backToContents: t('reader.backToContents'),
+            show: t('reader.show'),
+            hide: t('reader.hide'),
+            settings: t('reader.settings'),
+            screen: t('reader.screen'),
+            rebuildPages: t('reader.rebuildPages'),
+            refreshingLayout: t('reader.refreshingLayout'),
         };
     }
 
@@ -2715,33 +2715,33 @@ class Reader {
         if (this.isPagedMode) {
             if (this.isCompactLayout) {
                 return [
-                    t('Касание слева/справа страницы листает книгу.'),
-                    t('Свайп вверх/вниз или влево/вправо тоже перелистывает.'),
-                    t('Касание по центру показывает или скрывает панели.'),
-                    t('Кнопка «?» всегда открывает эту подсказку.'),
+                    t('reader.tapLeftRightSide'),
+                    t('reader.swipingUpDownLeft'),
+                    t('reader.tapCenterShowHide'),
+                    t('reader.buttonAlwaysOpensHelp'),
                 ];
             }
 
             return [
-                t('Клик по верхней/нижней зоне или по левой/правой зоне листает страницы.'),
-                t('Колесо мыши тоже листает книгу.'),
-                t('Клавиши `← → ↑ ↓`, `PageUp`, `PageDown` и `Space` работают для навигации.'),
-                t('Клик по центру показывает или скрывает панели.'),
+                t('reader.clickTopBottomLeft'),
+                t('reader.mouseWheelAlsoTurns'),
+                t('reader.usePageupPagedownSpace'),
+                t('reader.clickCenterShowHide'),
             ];
         }
 
         if (this.isCompactLayout) {
             return [
-                t('Листайте книгу обычным скроллом или свайпом.'),
-                t('Нижняя панель даёт быстрый доступ к местам, оглавлению и настройкам.'),
-                t('Кнопка «?» в любой момент откроет эту памятку.'),
+                t('reader.scrollSwipeReadBook'),
+                t('reader.bottomBarGivesQuick'),
+                t('reader.buttonOpensHelpAny'),
             ];
         }
 
         return [
-            t('В режиме «лента» книга читается обычным скроллом.'),
-            t('Используйте мышь, тачпад или клавиши `PageUp`/`PageDown`, `Space`, `Home`, `End`.'),
-            t('Оглавление и «Мои места» помогают быстро вернуться к нужному фрагменту.'),
+            t('reader.scrollModeBookRead'),
+            t('reader.useMouseTouchpadPageup'),
+            t('reader.contentsMyPlacesHelp'),
         ];
     }
 
@@ -2773,7 +2773,7 @@ class Reader {
         const total = Math.max(1, Number(this.displayTotalPages || this.totalPages || 1) || 1);
         const current = Math.max(1, Math.min(total, Number(this.displayCurrentPage || this.currentPage || 1) || 1));
         const remaining = Math.max(0, total - current);
-        return t('{n} стр.', {n: remaining});
+        return t('reader.pagesLeft', {n: remaining});
     }
 
     get statusBarProgressPercent() {
@@ -3798,7 +3798,7 @@ class Reader {
                 this.readerHomeCounters.all = this.readerHomeBooks.length;
             }
         } catch (e) {
-            this.error = tMessage(e.message || String(e));
+            this.error = tm(e.message || String(e));
         } finally {
             this.readerHomeLoading = false;
         }
@@ -8680,7 +8680,7 @@ class Reader {
                     continue;
 
                 const anchorAttribute = notesAnchorAdded ? '' : ` id="${this.escapeHtml(notesAnchorId)}"`;
-                parts.push(`<section class="reader-notes"><h2${anchorAttribute}>${this.escapeHtml(t('Примечания'))}</h2>${html}</section>`);
+                parts.push(`<section class="reader-notes"><h2${anchorAttribute}>${this.escapeHtml(t('reader.bookNotes'))}</h2>${html}</section>`);
                 notesAnchorAdded = true;
             } else {
                 parts.push(`<section class="reader-section">${html}</section>`);
@@ -8724,7 +8724,7 @@ class Reader {
         const fb2Info = parser.bookInfo();
         const authorFallback = ((fb2Info.titleInfo && fb2Info.titleInfo.author) ? fb2Info.titleInfo.author.join(', ') : '');
 
-        this.title = this.decodeReaderText(book.title || (fb2Info.titleInfo && fb2Info.titleInfo.bookTitle) || t('Без названия'));
+        this.title = this.decodeReaderText(book.title || (fb2Info.titleInfo && fb2Info.titleInfo.bookTitle) || t('common.untitled'));
         this.authorLine = this.decodeReaderText(book.author || authorFallback);
         this.seriesLine = this.decodeReaderText(book.series ? `${book.series}${book.serno ? ` #${book.serno}` : ''}` : '');
         if (stateResponse && stateResponse.preferences)
@@ -8834,7 +8834,7 @@ class Reader {
 
         const api = this.$root.api;
         if (!api && !this.isStandaloneMode) {
-            this.error = t('Читалка ещё не готова. Попробуйте открыть книгу ещё раз.');
+            this.error = t('reader.readerNotReadyYet');
             return;
         }
 
@@ -8903,7 +8903,7 @@ class Reader {
                 this.bookInfo = (bookResponse ? bookResponse.bookInfo : null);
                 const info = (this.bookInfo || {});
                 if (!info.fb2)
-                    throw new Error(t('Встроенная читалка пока поддерживает только FB2.'));
+                    throw new Error(t('common.builtReaderCurrentlySupports'));
 
                 await this.applyReaderDocumentSource({
                     book: (info.book || {}),
@@ -8935,7 +8935,7 @@ class Reader {
                 for (let attempt = 0; attempt < 3 && !initialBuildCommitted; attempt += 1) {
                     const initialBuildJobId = ++this.pagedBuildJobId;
                     if (!await this.waitForPagedBuildIdle(2400))
-                        throw new Error(t('Не удалось завершить предыдущую разбивку страниц.'));
+                        throw new Error(t('reader.couldNotFinishPrevious'));
                     await this.waitForStablePagedStage();
                     if (
                         loadJobId !== this.readerLoadJobId
@@ -8954,7 +8954,7 @@ class Reader {
                         await this.waitForAnimationFrames(2);
                 }
                 if (!initialBuildCommitted)
-                    throw new Error(t('Геометрия страницы не стабилизировалась.'));
+                    throw new Error(t('reader.pageGeometryDidNot'));
                 if (this.hasReaderProgressPlace(this.progress))
                     this.restorePending = true;
                 this.restoreFromSavedProgress = this.restorePending;
@@ -8978,7 +8978,7 @@ class Reader {
             await this.waitForAnimationFrames(2);
         } catch (e) {
             if (loadJobId === this.readerLoadJobId)
-                this.error = tMessage(e.message);
+                this.error = tm(e.message);
         } finally {
             if (loadJobId === this.readerLoadJobId) {
                 this.loading = false;
@@ -10128,7 +10128,7 @@ class Reader {
             const response = await api.deleteReaderBookmark(this.bookUid, bookmarkId);
             this.bookmarks = Array.isArray(response.bookmarks) ? response.bookmarks : [];
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         }
     }
 
@@ -10667,7 +10667,7 @@ class Reader {
             return true;
         } catch (e) {
             const message = e.message || String(e);
-            if (message !== t('Вход в профиль отменён'))
+            if (message !== t('common.profileLoginCancelled'))
                 this.$root.stdDialog.alert(message, this.uiText.error);
             return false;
         }

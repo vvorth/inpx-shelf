@@ -1,5 +1,5 @@
 <template>
-    <q-btn class="lang-picker" outline no-caps dense :aria-label="$t('Мои языки')" @click="load">
+    <q-btn class="lang-picker" outline no-caps dense :aria-label="$t('author.myLanguages')" @click="load">
         <q-icon name="la la-language" size="18px" />
         <span class="lang-picker-label">{{ label }}</span>
         <q-icon name="la la-angle-down" size="14px" />
@@ -7,15 +7,15 @@
             <div class="lang-menu">
                 <div class="lang-menu-head">
                     <div class="lang-menu-title">
-                        {{ $t('Мои языки') }}
+                        {{ $t('author.myLanguages') }}
                     </div>
                     <div class="lang-menu-hint">
-                        {{ $t('Книги на других языках скрыты в поиске, у авторов, в сериях и на главной.') }}
+                        {{ $t('languagePicker.booksInOtherLanguages') }}
                     </div>
                 </div>
                 <label class="lang-option">
                     <input type="checkbox" :checked="languages.all" :disabled="saving" @change="toggleAll" />
-                    <span class="lang-option-name">{{ $t('Все языки') }}</span>
+                    <span class="lang-option-name">{{ $t('author.allLanguages') }}</span>
                 </label>
                 <div class="lang-sep" />
                 <label v-for="item in options" :key="item.code" class="lang-option">
@@ -24,7 +24,7 @@
                     <span v-if="item.count" class="lang-option-count num">{{ item.count.toLocaleString() }}</span>
                 </label>
                 <div v-if="!signedIn" class="lang-menu-hint lang-menu-foot">
-                    {{ $t('Выбор сохранится в этом браузере. После входа языки хранятся в профиле.') }}
+                    {{ $t('languagePicker.yourChoiceIsSaved') }}
                 </div>
             </div>
         </q-menu>
@@ -59,7 +59,7 @@ class LanguagePicker {
 
     get label() {
         if (this.languages.all)
-            return t('Все языки');
+            return t('author.allLanguages');
         const codes = this.languages.list.map(code => code.toUpperCase());
         return (codes.length > 3 ? `${codes.slice(0, 3).join(' · ')} +${codes.length - 3}` : codes.join(' · '));
     }
@@ -101,7 +101,7 @@ class LanguagePicker {
         try {
             await saveMyLanguages(this, codes);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.saving = false;
         }

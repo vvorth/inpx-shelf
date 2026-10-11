@@ -4,12 +4,12 @@ const utils = require('../utils');
 
 const WebWorker = require('../WebWorker');//singleton
 const XmlParser = require('../xml/XmlParser');
-const {t} = require('./i18n');
+const {t} = require('../i18n');
 
 const spaceChar = String.fromCodePoint(0x00B7);
 const emptyFieldValue = '?';
 const maxUtf8Char = String.fromCodePoint(0xFFFFF);
-const ruAlphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';
+const ruAlphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';//i18n-ignore: алфавит для разбора данных
 const enAlphabet = 'abcdefghijklmnopqrstuvwxyz';
 const enruArr = (ruAlphabet + enAlphabet).split('');
 const enru = new Set(enruArr);
@@ -195,7 +195,7 @@ class BasePage {
         for (const row of queryRes.found) {
             const rec = {
                 id: row.id,
-                title: (row[from] || t('Без автора')),
+                title: (row[from] || t('opds.noAuthor')),
                 q: `=${encodeURIComponent(row[from])}`,
                 bookCount: row.bookCount,
             };
@@ -206,7 +206,7 @@ class BasePage {
         return result;
     }
 
-    async opdsQuery(from, query, otherTitle = t('[Другие]'), prevLen = 0) {
+    async opdsQuery(from, query, otherTitle = t('opds.others'), prevLen = 0) {
         const queryRes = await this.webWorker.catalogSearch.call('opdsGroups', from, query);
         let count = 0;
         for (const row of queryRes.found)
@@ -395,7 +395,7 @@ class BasePage {
     bookAuthor(author) {
         if (author) {
             let a = author.split(',');
-            return a.slice(0, 3).join(', ') + (a.length > 3 ? t(' и др.') : '');
+            return a.slice(0, 3).join(', ') + (a.length > 3 ? t('common.etAl') : '');
         }
 
         return '';

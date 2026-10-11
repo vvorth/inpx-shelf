@@ -32,6 +32,8 @@ const genreTree = require('./genres');
 const Fb2Helper = require('./fb2/Fb2Helper');
 const ConfigManager = require('../config');
 const {getEnabledLibrarySources} = require('./LibrarySources');
+const i18n = require('./i18n');
+const {t, msg} = i18n;
 
 //server states
 const ssNormal = 'normal';
@@ -40,8 +42,8 @@ const ssDbCreating = 'db_creating';
 
 const stateToText = {
     [ssNormal]: '',
-    [ssDbLoading]: 'Загрузка поисковой базы',
-    [ssDbCreating]: 'Создание поисковой базы',
+    [ssDbLoading]: 'server.dbLoading',
+    [ssDbCreating]: 'server.dbCreating',
 };
 
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
@@ -86,26 +88,26 @@ function parseCronField(field, min, max, options = {}) {
         const normalized = aliases[String(value || '').toLowerCase()];
         const number = parseInt(normalized !== undefined ? normalized : value, 10);
         if (!Number.isFinite(number))
-            throw new Error(`Некорректное значение cron: ${value}`);
+            throw new Error(t('errors.cronInvalidValue', {value}));
 
         if (number < inputMin || number > inputMax)
-            throw new Error(`Значение cron вне диапазона: ${value}`);
+            throw new Error(t('errors.cronOutOfRange', {value}));
 
         return number;
     };
 
     if (!text)
-        throw new Error('Пустое поле cron');
+        throw new Error(t('errors.cronEmptyField'));
 
     for (const token of text.split(',')) {
         const item = token.trim();
         if (!item)
-            throw new Error('Пустое значение cron');
+            throw new Error(t('errors.cronEmptyValue'));
 
         const [rangeText, stepText] = item.split('/');
         const step = stepText === undefined ? 1 : parseInt(stepText, 10);
         if (!Number.isFinite(step) || step <= 0)
-            throw new Error(`Некорректный шаг cron: ${item}`);
+            throw new Error(t('errors.cronInvalidStep', {value: item}));
 
         let start;
         let end;
@@ -115,7 +117,7 @@ function parseCronField(field, min, max, options = {}) {
         } else if (rangeText.includes('-')) {
             const parts = rangeText.split('-');
             if (parts.length !== 2)
-                throw new Error(`Некорректный диапазон cron: ${item}`);
+                throw new Error(t('errors.cronInvalidRange', {value: item}));
 
             start = parseValue(parts[0]);
             end = parseValue(parts[1]);
@@ -125,12 +127,12 @@ function parseCronField(field, min, max, options = {}) {
         }
 
         if (start > end)
-            throw new Error(`Некорректный диапазон cron: ${item}`);
+            throw new Error(t('errors.cronInvalidRange', {value: item}));
 
         for (let value = start; value <= end; value += step) {
             const normalized = normalize(value);
             if (normalized < min || normalized > max)
-                throw new Error(`Значение cron вне диапазона: ${value}`);
+                throw new Error(t('errors.cronOutOfRange', {value}));
 
             values.add(normalized);
         }
@@ -142,7 +144,7 @@ function parseCronField(field, min, max, options = {}) {
 function parseCleanDirCron(schedule) {
     const fields = String(schedule || '').trim().split(/\s+/);
     if (fields.length !== 5)
-        throw new Error('Расписание кэша должно быть в формате cron из 5 полей: минута час день месяц день-недели');
+        throw new Error(t('errors.cronFormat'));
 
     const monthAliases = {
         jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
@@ -200,7 +202,7 @@ function cleanDirNextCronDelay(schedule, now = new Date()) {
         candidate.setMinutes(candidate.getMinutes() + 1);
     }
 
-    throw new Error('Не удалось найти следующий запуск cron в пределах года');
+    throw new Error(t('errors.cronNoNextRun'));
 }
 
 function cleanDirSchedule(config) {
@@ -307,13 +309,17 @@ function compareReleaseVersions(left = '', right = '') {
 function getUserDisplayName(user = {}) {
     const name = String(user.name || '').trim();
     if (isAnonymousDefaultUser(user))
-        return 'Без профиля';
+        return t('profiles.defaultAnonymousName');
+    if (user.id === 'admin' && i18n.allTranslations('profiles.defaultAdminName').includes(name))
+        return t('profiles.defaultAdminName');
     return name;
 }
 
 function isAnonymousDefaultUser(user = {}) {
+    //имена профиля по умолчанию на любом языке (они сохраняются в данных при создании профиля)
+    const defaultNames = i18n.allTranslations('profiles.defaultAnonymousName').concat(i18n.allTranslations('profiles.legacyMainName'));
     const name = String(user.name || '').trim();
-    return user.id === 'default' && (name === 'Основной' || name === 'Без профиля') && !user.login && !user.passwordHash;
+    return user.id === 'default' && defaultNames.includes(name) && !user.login && !user.passwordHash;
 }
 
 function isRcReleaseTag(value = '') {
@@ -402,7 +408,7 @@ function buildExternalFlagsByUrl(sourceUrl = '') {
     const normalized = String(sourceUrl || '').trim().toLowerCase();
     return {
         isNew: /\/showroom\/new\/|\/catalog\/new\/|\/novinki\/|\/new\/|[?&]new\b/.test(normalized),
-        isBestseller: /\/popular\/|\/bestsellers?\/|best[_-]?seller|хиты|popular/.test(normalized),
+        isBestseller: /\/popular\/|\/bestsellers?\/|best[_-]?seller|хиты|popular/.test(normalized),//i18n-ignore: разбор данных
     };
 }
 
@@ -551,7 +557,7 @@ function stripHtml(html) {
 function normalizeAuthorText(value) {
     return stripHtml(value)
         .toLowerCase()
-        .replace(/ё/g, 'е')
+        .replace(/ё/g, 'е')//i18n-ignore: нормализация
         .replace(/[()[\]{}.,;:!?'"`«»]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -560,16 +566,16 @@ function normalizeAuthorText(value) {
 function normalizeDiscoveryText(value) {
     return stripHtml(value)
         .toLowerCase()
-        .replace(/ё/g, 'е')
+        .replace(/ё/g, 'е')//i18n-ignore: нормализация
         .replace(/&[a-z0-9#]+;/gi, ' ')
-        .replace(/[^a-zа-я0-9]+/gi, ' ')
+        .replace(/[^a-zа-я0-9]+/gi, ' ')//i18n-ignore: разбор данных
         .replace(/\s+/g, ' ')
         .trim();
 }
 
 function isSensitiveDiscoveryGenre(value = '') {
     const normalized = String(value || '').trim().toLowerCase();
-    return /(?:erotic|erotica|sex|adult|porn|hentai|bdsm|18\+|эрот|секс|порн|интим)/i.test(normalized);
+    return /(?:erotic|erotica|sex|adult|porn|hentai|bdsm|18\+|эрот|секс|порн|интим)/i.test(normalized);//i18n-ignore: разбор данных
 }
 
 function extractDiscoveryAuthorTokens(author = '') {
@@ -668,9 +674,9 @@ class WebWorker {
         const result = {
             ready,
             state: this.myState || workerState.state || '',
-            serverMessage: workerState.serverMessage || '',
+            serverMessage: i18n.render(workerState.serverMessage),
             job: workerState.job || '',
-            jobMessage: workerState.jobMessage || '',
+            jobMessage: i18n.render(workerState.jobMessage),
             jobStep: workerState.jobStep || 0,
             jobStepCount: workerState.jobStepCount || 0,
             progress: workerState.progress || 0,
@@ -732,7 +738,7 @@ class WebWorker {
             if (firstLoad) {
                 progressTimer = setInterval(() => {
                     if (this.catalogSearch.building)
-                        this.setMyState(ssDbCreating, {job: 'build library', jobMessage: 'Загрузка INPX', jobStep: 1, jobStepCount: 1, progress: this.catalogSearch.progress});
+                        this.setMyState(ssDbCreating, {job: 'build library', jobMessage: 'db.loadInpx', jobStep: 1, jobStepCount: 1, progress: this.catalogSearch.progress});
                 }, 500);
             }
 
@@ -951,19 +957,19 @@ class WebWorker {
     getDiscoveryMatchLabel(kind = '') {
         switch (String(kind || '').trim()) {
             case 'exact':
-                return 'Точное совпадение';
+                return msg('discovery.match.exact');
             case 'title-author':
-                return 'Совпадение по названию и автору';
+                return msg('discovery.match.titleAuthor');
             case 'title':
-                return 'Совпадение по названию';
+                return msg('discovery.match.title');
             case 'title-partial':
-                return 'Частичное совпадение по названию';
+                return msg('discovery.match.titlePartial');
             case 'missing-local':
-                return 'Нет в локальной библиотеке';
+                return msg('discovery.match.missingLocal');
             case 'genre':
-                return 'Жанр внешнего каталога';
+                return msg('discovery.match.genre');
             default:
-                return 'Совпадение с внешней витриной';
+                return msg('discovery.match.external');
         }
     }
 
@@ -974,12 +980,12 @@ class WebWorker {
         if (options.discoverySource) {
             const matchLabel = this.getDiscoveryMatchLabel(options.matchKind);
             if (options.matchKind === 'missing-local')
-                reasons.unshift(`${options.discoverySource} · ${matchLabel}`);
+                reasons.unshift(options.discoverySource, matchLabel);
             else
-                reasons.unshift(`Источник ${options.discoverySource} · ${matchLabel}`);
+                reasons.unshift(msg('discovery.reason.source', {source: options.discoverySource}), matchLabel);
         }
 
-        result.discoveryReason = reasons.join(' · ');
+        result.discoveryReasons = reasons;
         return result;
     }
     async getDiscoveryDiskCache() {
@@ -1279,7 +1285,7 @@ class WebWorker {
                 cover,
                 rating: 0,
                 isBestseller: flags.isBestseller,
-                isNew: flags.isNew || /Новинка/.test(titleBlock),
+                isNew: flags.isNew || /Новинка/.test(titleBlock),//i18n-ignore: разбор данных
             });
 
             if (items.length >= Math.max(limit * 3, limit))
@@ -1316,8 +1322,8 @@ class WebWorker {
                 url,
                 cover,
                 rating: 0,
-                isBestseller: flags.isBestseller || /book-item-labels__item[^>]*>[\s\S]*?Бестселлер/i.test(block),
-                isNew: flags.isNew || /book-item-labels__item[^>]*>[\s\S]*?Новинка/i.test(block),
+                isBestseller: flags.isBestseller || /book-item-labels__item[^>]*>[\s\S]*?Бестселлер/i.test(block),//i18n-ignore: разбор данных
+                isNew: flags.isNew || /book-item-labels__item[^>]*>[\s\S]*?Новинка/i.test(block),//i18n-ignore: разбор данных
             });
 
             if (items.length >= Math.max(limit * 3, limit))
@@ -1330,7 +1336,7 @@ class WebWorker {
     async fetchExternalFeedItems(limit = 8, url = '') {
         const sourceUrl = String(url || '').trim();
         if (!sourceUrl)
-            throw new Error('Не задан URL внешней витрины');
+            throw new Error(t('errors.externalUrlMissing'));
 
         const requestPageHtml = async(pageUrl = '') => {
             const response = await axios.get(pageUrl, {
@@ -1398,7 +1404,7 @@ class WebWorker {
         genreOptions = buildExternalGenreOptions(parsedItems, sourceUrl);
 
         if (!items.length)
-            throw new Error('Не удалось прочитать внешнюю витрину');
+            throw new Error(t('errors.externalReadFailed'));
 
         return {sourceUrl, items, hasMore, genreOptions};
     }
@@ -1591,7 +1597,7 @@ class WebWorker {
         } catch (e) {
             const details = String(e && e.message || '').trim();
             const suffix = details ? `: ${details}` : '';
-            throw new Error(`Не удалось обновить внешний источник "${discovery.externalName || 'Внешний источник'}"${suffix}`);
+            throw new Error(t('errors.externalUpdateFailed', {name: discovery.externalName || t('discovery.externalSource'), details: suffix}));
         }
     }
 
@@ -1601,7 +1607,7 @@ class WebWorker {
             return null;
 
         if (discovery.externalSource !== 'web-page')
-            throw new Error(`Неизвестный источник витрины: ${discovery.externalSource}`);
+            throw new Error(t('errors.unknownShowcaseSource', {source: discovery.externalSource}));
 
         const feed = await this.fetchExternalDiscoveryItemsV2(discovery);
         const feedBooks = (Array.isArray(feed.items) ? feed.items : [])
@@ -1609,17 +1615,19 @@ class WebWorker {
         const matched = await this.matchExternalItemsToLocalBooksV2(feedBooks, limit);
         const items = matched.items
             .map((book) => this.decorateDiscoveryBook(book, {
-                discoverySource: (discovery.externalName || 'Внешний источник'),
+                discoverySource: (discovery.externalName || msg('discovery.externalSource')),
                 matchKind: book.discoveryMatchType,
             }));
-        const sourceName = (discovery.externalName || 'Внешний источник');
+        const sourceName = (discovery.externalName || msg('discovery.externalSource'));
         const activeGenreName = String(discovery.externalBrowseName || '').trim();
-        const genrePrefix = (activeGenreName ? `Жанр: ${activeGenreName} · ` : '');
+        const libraryCounts = {inLibrary: matched.matchedCount, notInLibrary: matched.missingCount};
 
         return {
             id: 'external-source',
             title: sourceName,
-            subtitle: `${genrePrefix}В библиотеке ${matched.matchedCount} · вне библиотеки ${matched.missingCount}`,
+            subtitle: (activeGenreName
+                ? msg('discovery.shelf.externalGenreCounts', {genre: activeGenreName, ...libraryCounts})
+                : msg('discovery.shelf.externalCounts', libraryCounts)),
             source: 'external',
             sourceName,
             sourceUrl: feed.sourceUrl,
@@ -1630,7 +1638,7 @@ class WebWorker {
             activeGenreUrl: (discovery.externalBrowseUrl || ''),
             activeGenreName,
             items,
-            emptyMessage: 'Во внешнем источнике пока ничего не найдено.',
+            emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
     }
     async getDiscoveryShelvesV2(options = {}) {
@@ -1670,10 +1678,10 @@ class WebWorker {
             } catch (e) {
                 shelves.push({
                     id: 'external-error',
-                    title: (discovery.externalName || 'Внешний источник'),
-                    subtitle: 'Внешний источник временно недоступен',
+                    title: (discovery.externalName || msg('discovery.externalSource')),
+                    subtitle: msg('discovery.shelf.externalUnavailable'),
                     source: 'external',
-                    sourceName: (discovery.externalName || 'Внешний источник'),
+                    sourceName: (discovery.externalName || msg('discovery.externalSource')),
                     sourceUrl: (discovery.externalUrl || ''),
                     items: [],
                     emptyMessage: e.message,
@@ -1755,7 +1763,7 @@ class WebWorker {
             const percent = Math.max(0, Math.min(100, Math.round((Number(item.progress.percent || 0) || 0) * 100)));
             const updatedLabel = this.formatPersonalDiscoveryDate(item.progress.updatedAt);
             items.push(Object.assign({}, book, {
-                discoveryReason: `\u041f\u0440\u043e\u0433\u0440\u0435\u0441\u0441 ${percent}%${updatedLabel ? ` \u00b7 \u041e\u0442\u043a\u0440\u044b\u0432\u0430\u043b\u0438 ${updatedLabel}` : ''}`,
+                discoveryReasons: [msg('discovery.reason.progress', {percent})].concat(updatedLabel ? [msg('discovery.reason.openedAt', {time: updatedLabel})] : []),
                 discoveryRead: readBookUids.has(item.bookUid),
             }));
 
@@ -1766,13 +1774,13 @@ class WebWorker {
 
         return {
             id: 'continue-reading',
-            title: '\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c \u0447\u0442\u0435\u043d\u0438\u0435',
-            subtitle: '\u041a\u043d\u0438\u0433\u0438, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0432\u044b \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u043b\u0438 \u043d\u0435\u0434\u0430\u0432\u043d\u043e',
+            title: msg('discovery.shelf.continueReading'),
+            subtitle: msg('discovery.shelf.continueReadingSubtitle'),
             source: 'personal',
-            sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+            sourceName: msg('discovery.sourceForYou'),
             updatedAt: updatedAt || Date.now(),
             items,
-            emptyMessage: '\u0417\u0434\u0435\u0441\u044c \u043f\u043e\u044f\u0432\u044f\u0442\u0441\u044f \u043a\u043d\u0438\u0433\u0438, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0432\u044b \u043d\u0430\u0447\u0430\u043b\u0438 \u0447\u0438\u0442\u0430\u0442\u044c.',
+            emptyMessage: msg('discovery.shelf.continueReadingEmpty'),
         };
     }
 
@@ -1781,13 +1789,13 @@ class WebWorker {
         if (!user || !user.id) {
             return {
                 id: 'from-your-lists',
-                title: '\u0418\u0437 \u0432\u0430\u0448\u0438\u0445 \u0441\u043f\u0438\u0441\u043a\u043e\u0432',
-                subtitle: '\u041d\u0435\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043d\u044b\u0435 \u043a\u043d\u0438\u0433\u0438 \u0438\u0437 \u0432\u0430\u0448\u0438\u0445 \u0441\u043f\u0438\u0441\u043a\u043e\u0432 \u0447\u0442\u0435\u043d\u0438\u044f',
+                title: msg('discovery.shelf.fromLists'),
+                subtitle: msg('discovery.shelf.fromListsUnreadSubtitle'),
                 source: 'personal',
-                sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+                sourceName: msg('discovery.sourceForYou'),
                 updatedAt: Date.now(),
                 items: [],
-                emptyMessage: '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0447\u0442\u0435\u043d\u0438\u044f.',
+                emptyMessage: msg('discovery.shelf.selectProfileFirst'),
             };
         }
 
@@ -1835,7 +1843,7 @@ class WebWorker {
 
             seenBookUids.add(item.bookUid);
             items.push(Object.assign({}, book, {
-                discoveryReason: '\u041d\u0430 \u043e\u0441\u043d\u043e\u0432\u0435 \u0432\u0430\u0448\u0435\u0439 \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438',
+                discoveryReasons: [msg('discovery.reason.basedOnLibrary')],
                 discoveryRead: (item.read || readBookUids.has(item.bookUid)),
             }));
 
@@ -1845,13 +1853,13 @@ class WebWorker {
 
         return {
             id: 'from-your-lists',
-            title: '\u0418\u0437 \u0432\u0430\u0448\u0438\u0445 \u0441\u043f\u0438\u0441\u043a\u043e\u0432',
-            subtitle: '\u041a\u043d\u0438\u0433\u0438 \u0438\u0437 \u0432\u0430\u0448\u0438\u0445 \u043b\u0438\u0447\u043d\u044b\u0445 \u0441\u043f\u0438\u0441\u043a\u043e\u0432 \u0447\u0442\u0435\u043d\u0438\u044f',
+            title: msg('discovery.shelf.fromLists'),
+            subtitle: msg('discovery.shelf.fromListsSubtitle'),
             source: 'personal',
-            sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+            sourceName: msg('discovery.sourceForYou'),
             updatedAt: updatedAt || Date.now(),
             items,
-            emptyMessage: '\u0414\u043e\u0431\u0430\u0432\u044c\u0442\u0435 \u043a\u043d\u0438\u0433\u0438 \u0432 \u043b\u0438\u0447\u043d\u044b\u0435 \u0441\u043f\u0438\u0441\u043a\u0438, \u0438 \u043e\u043d\u0438 \u043f\u043e\u044f\u0432\u044f\u0442\u0441\u044f \u0437\u0434\u0435\u0441\u044c.',
+            emptyMessage: msg('discovery.shelf.fromListsEmpty'),
         };
     }
 
@@ -1860,13 +1868,13 @@ class WebWorker {
         if (!user || !user.id) {
             return {
                 id: 'unfinished-series',
-                title: '\u041d\u0435\u0437\u0430\u043a\u043e\u043d\u0447\u0435\u043d\u043d\u044b\u0435 \u0441\u0435\u0440\u0438\u0438',
-                subtitle: '\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u043a\u043d\u0438\u0433\u0438 \u0432 \u0441\u0435\u0440\u0438\u044f\u0445, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0432\u044b \u0443\u0436\u0435 \u043d\u0430\u0447\u0430\u043b\u0438',
+                title: msg('discovery.shelf.unfinishedSeries'),
+                subtitle: msg('discovery.shelf.unfinishedSeriesSubtitle'),
                 source: 'personal',
-                sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+                sourceName: msg('discovery.sourceForYou'),
                 updatedAt: Date.now(),
                 items: [],
-                emptyMessage: '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0447\u0442\u0435\u043d\u0438\u044f.',
+                emptyMessage: msg('discovery.shelf.selectProfileFirst'),
             };
         }
 
@@ -1959,7 +1967,8 @@ class WebWorker {
             seenBookUids.add(nextBook._uid);
             const updatedLabel = this.formatPersonalDiscoveryDate(state.updatedAt);
             items.push(Object.assign({}, nextBook, {
-                discoveryReason: `\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0442\u043e\u043c \u043f\u043e\u0441\u043b\u0435 \u00ab${state.lastTitle || '\u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0439 \u043a\u043d\u0438\u0433\u0438'}\u00bb${updatedLabel ? ` \u00b7 \u0421\u0435\u0440\u0438\u044f \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430 ${updatedLabel}` : ''}`,
+                discoveryReasons: [(state.lastTitle ? msg('discovery.reason.nextAfter', {title: state.lastTitle}) : msg('discovery.reason.nextAfterPrevious'))]
+                    .concat(updatedLabel ? [msg('discovery.reason.seriesUpdatedAt', {time: updatedLabel})] : []),
                 discoveryRead: false,
             }));
 
@@ -1970,13 +1979,13 @@ class WebWorker {
 
         return {
             id: 'unfinished-series',
-            title: '\u041d\u0435\u0437\u0430\u043a\u043e\u043d\u0447\u0435\u043d\u043d\u044b\u0435 \u0441\u0435\u0440\u0438\u0438',
-            subtitle: '\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u043a\u043d\u0438\u0433\u0438 \u0432 \u0441\u0435\u0440\u0438\u044f\u0445, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0432\u044b \u0443\u0436\u0435 \u043d\u0430\u0447\u0430\u043b\u0438',
+            title: msg('discovery.shelf.unfinishedSeries'),
+            subtitle: msg('discovery.shelf.unfinishedSeriesSubtitle'),
             source: 'personal',
-            sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+            sourceName: msg('discovery.sourceForYou'),
             updatedAt: updatedAt || Date.now(),
             items,
-            emptyMessage: '\u041a\u0430\u043a \u0442\u043e\u043b\u044c\u043a\u043e \u0432\u044b \u043d\u0430\u0447\u043d\u0451\u0442\u0435 \u0441\u0435\u0440\u0438\u044e, \u0437\u0434\u0435\u0441\u044c \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0442\u043e\u043c.',
+            emptyMessage: msg('discovery.shelf.unfinishedSeriesEmpty'),
         };
     }
 
@@ -2312,14 +2321,16 @@ class WebWorker {
             .map(genre => String(genre || '').trim())
             .filter(Boolean);
         if (!matchedGenres.length)
-            return '';
+            return null;
         if (matchedGenres.some(isSensitiveDiscoveryGenre))
-            return '\u0423\u0447\u0438\u0442\u044b\u0432\u0430\u0435\u0442 \u0432\u0430\u0448\u0438 \u0447\u0438\u0442\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u0438\u0435 \u0438\u043d\u0442\u0435\u0440\u0435\u0441\u044b';
+            return msg('discovery.reason.readingInterests');
 
         const explicitGenres = (profile.explicitTasteGenres instanceof Set ? profile.explicitTasteGenres : new Set());
+        //названия жанров переводятся в браузере по коду
+        const genreNames = matchedGenres.slice(0, 2).map(code => ({key: `genres.${code}`, fallback: code}));
         return matchedGenres.some(genre => explicitGenres.has(genre.toLowerCase()))
-            ? `\u0412\u044b \u0432\u044b\u0431\u0440\u0430\u043b\u0438 \u0436\u0430\u043d\u0440: ${matchedGenres.slice(0, 2).join(', ')}`
-            : `\u041f\u043e\u0445\u043e\u0436\u0438\u0435 \u0436\u0430\u043d\u0440\u044b: ${matchedGenres.slice(0, 2).join(', ')}`;
+            ? msg('discovery.reason.chosenGenre', {genres: genreNames})
+            : msg('discovery.reason.similarGenres', {genres: genreNames});
     }
 
     //Кандидаты «Похожих» из индекса каталога: лучшие id по оценке, затем записи книг из основной БД.
@@ -2350,13 +2361,13 @@ class WebWorker {
         if (!user || !user.id) {
             return {
                 id: 'similar-books',
-                title: '\u041f\u043e\u0445\u043e\u0436\u0435 \u043d\u0430 \u0442\u043e, \u0447\u0442\u043e \u0432\u044b \u0447\u0438\u0442\u0430\u043b\u0438',
-                subtitle: '\u041a\u043d\u0438\u0433\u0438 \u0441 \u043f\u043e\u0445\u043e\u0436\u0438\u043c\u0438 \u0430\u0432\u0442\u043e\u0440\u0430\u043c\u0438, \u0441\u0435\u0440\u0438\u044f\u043c\u0438 \u0438 \u0436\u0430\u043d\u0440\u0430\u043c\u0438',
+                title: msg('discovery.shelf.similar'),
+                subtitle: msg('discovery.shelf.similarSubtitle'),
                 source: 'personal',
-                sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+                sourceName: msg('discovery.sourceForYou'),
                 updatedAt: Date.now(),
                 items: [],
-                emptyMessage: '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0447\u0442\u0435\u043d\u0438\u044f.',
+                emptyMessage: msg('discovery.shelf.selectProfileFirst'),
             };
         }
 
@@ -2377,15 +2388,15 @@ class WebWorker {
         if (!Object.keys(preferredAuthors).length && !Object.keys(preferredSeries).length && !Object.keys(preferredGenres).length && !Object.keys(preferredKeywords).length && !Object.keys(preferredLanguages).length) {
             return {
                 id: 'similar-books',
-                title: '\u041f\u043e\u0445\u043e\u0436\u0435 \u043d\u0430 \u0442\u043e, \u0447\u0442\u043e \u0432\u044b \u0447\u0438\u0442\u0430\u043b\u0438',
-                subtitle: '\u041a\u043d\u0438\u0433\u0438 \u0441 \u043f\u043e\u0445\u043e\u0436\u0438\u043c\u0438 \u0430\u0432\u0442\u043e\u0440\u0430\u043c\u0438, \u0441\u0435\u0440\u0438\u044f\u043c\u0438 \u0438 \u0436\u0430\u043d\u0440\u0430\u043c\u0438',
+                title: msg('discovery.shelf.similar'),
+                subtitle: msg('discovery.shelf.similarSubtitle'),
                 source: 'personal',
-                sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+                sourceName: msg('discovery.sourceForYou'),
                 updatedAt: Date.now(),
                 discoveryTaste: profile.taste,
                 discoveryNeedsTasteSetup: !profile.taste.completedAt && !profile.taste.promptDismissedAt,
                 items: [],
-                emptyMessage: '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043b\u044e\u0431\u0438\u043c\u044b\u0435 \u0436\u0430\u043d\u0440\u044b, \u0430\u0432\u0442\u043e\u0440\u043e\u0432 \u0438\u043b\u0438 \u044f\u0437\u044b\u043a\u0438 \u0432\u044b\u0448\u0435 \u2014 \u043b\u0438\u0431\u043e \u043d\u0430\u0447\u043d\u0438\u0442\u0435 \u0447\u0438\u0442\u0430\u0442\u044c.',
+                emptyMessage: msg('discovery.shelf.similarEmptyNoProfile'),
             };
         }
 
@@ -2455,17 +2466,17 @@ class WebWorker {
             const seriesKey = String(book.series || '').trim().toLowerCase();
             const reasons = [];
             if (book._discoveryExplore) {
-                reasons.push('\u041d\u0435\u043c\u043d\u043e\u0433\u043e \u043d\u043e\u0432\u043e\u0433\u043e \u0434\u043b\u044f \u0440\u0430\u0437\u043d\u043e\u043e\u0431\u0440\u0430\u0437\u0438\u044f');
+                reasons.push(msg('discovery.reason.exploration'));
                 if (Number(book.librate) >= 4)
-                    reasons.push('\u0412\u044b\u0441\u043e\u043a\u0430\u044f \u043e\u0446\u0435\u043d\u043a\u0430');
+                    reasons.push(msg('discovery.reason.highRating'));
                 explorationCount++;
             } else if (authorKey && profile.authorWeights.has(authorKey)) {
                 reasons.push(profile.explicitTasteAuthors.has(authorKey)
-                    ? `\u0412\u044b \u0432\u044b\u0431\u0440\u0430\u043b\u0438 \u0430\u0432\u0442\u043e\u0440\u0430: ${book.author}`
-                    : `\u041f\u043e\u0445\u043e\u0436\u0438\u0439 \u0430\u0432\u0442\u043e\u0440: ${book.author}`);
+                    ? msg('discovery.reason.chosenAuthor', {author: book.author})
+                    : msg('discovery.reason.similarAuthor', {author: book.author}));
             }
             if (seriesKey && profile.seriesWeights.has(seriesKey))
-                reasons.push(`\u0421\u0435\u0440\u0438\u044f: ${book.series}`);
+                reasons.push(msg('discovery.reason.series', {series: book.series}));
 
             const matchedGenres = String(book.genre || '')
                 .split(',')
@@ -2479,10 +2490,10 @@ class WebWorker {
             const matchedKeywords = this.getPersonalDiscoveryFeatureKeys(book.keywords, 'keywords')
                 .filter(keyword => profile.keywordWeights.has(keyword));
             if (matchedKeywords.length)
-                reasons.push(`\u0422\u0435\u043c\u044b: ${matchedKeywords.slice(0, 2).join(', ')}`);
+                reasons.push(msg('discovery.reason.topics', {topics: matchedKeywords.slice(0, 2).join(', ')}));
 
             items.push(Object.assign({}, book, {
-                discoveryReason: (reasons.length ? reasons.join(' \u00b7 ') : '\u041f\u043e\u0445\u043e\u0436\u0435 \u043d\u0430 \u0442\u043e, \u0447\u0442\u043e \u0432\u044b \u0447\u0438\u0442\u0430\u043b\u0438'),
+                discoveryReasons: (reasons.length ? reasons : [msg('discovery.shelf.similar')]),
                 discoveryExploration: book._discoveryExplore === true,
                 discoveryRead: readBookUids.has(String(book._uid || '').trim()),
             }));
@@ -2500,17 +2511,17 @@ class WebWorker {
 
         return {
             id: 'similar-books',
-            title: '\u041f\u043e\u0445\u043e\u0436\u0435 \u043d\u0430 \u0442\u043e, \u0447\u0442\u043e \u0432\u044b \u0447\u0438\u0442\u0430\u043b\u0438',
-            subtitle: '\u041f\u043e\u0434\u0431\u043e\u0440\u043a\u0430 \u043f\u043e \u0430\u0432\u0442\u043e\u0440\u0430\u043c, \u0441\u0435\u0440\u0438\u044f\u043c, \u0436\u0430\u043d\u0440\u0430\u043c \u0438 \u0442\u0435\u043c\u0430\u043c \u0438\u0437 \u0432\u0430\u0448\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438',
+            title: msg('discovery.shelf.similar'),
+            subtitle: msg('discovery.shelf.similarHistorySubtitle'),
             source: 'personal',
-            sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+            sourceName: msg('discovery.sourceForYou'),
             updatedAt: profile.updatedAt || Date.now(),
             discoveryHasMore: hasMore,
             discoveryTaste: profile.taste,
             discoveryNeedsTasteSetup: !profile.taste.completedAt && !profile.taste.promptDismissedAt,
             discoveryExplorationRatio: explorationRatio,
             items: visibleItems,
-            emptyMessage: '\u041f\u043e\u043a\u0430 \u043c\u0430\u043b\u043e \u0434\u0430\u043d\u043d\u044b\u0445 \u0434\u043b\u044f \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0439. \u041f\u043e\u0447\u0438\u0442\u0430\u0439\u0442\u0435 \u0435\u0449\u0451 \u043d\u0435\u043c\u043d\u043e\u0433\u043e \u0438\u043b\u0438 \u0434\u043e\u0431\u0430\u0432\u044c\u0442\u0435 \u043a\u043d\u0438\u0433\u0438 \u0432 \u0441\u043f\u0438\u0441\u043a\u0438.',
+            emptyMessage: msg('discovery.shelf.similarEmpty'),
         };
     }
 
@@ -2525,7 +2536,7 @@ class WebWorker {
                 continue;
 
             items.push(Object.assign({}, book, {
-                discoveryReason: '\u0421\u043a\u0440\u044b\u0442\u043e \u0438\u0437 \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u044b\u0445 \u0432\u0438\u0442\u0440\u0438\u043d',
+                discoveryReasons: [msg('discovery.reason.hidden')],
                 discoveryRead: readBookUids.has(bookUid),
             }));
 
@@ -2535,13 +2546,13 @@ class WebWorker {
 
         return {
             id: 'hidden-books',
-            title: '\u0421\u043a\u0440\u044b\u0442\u044b\u0435 \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438',
-            subtitle: '\u041a\u043d\u0438\u0433\u0438, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0432\u044b \u0441\u043a\u0440\u044b\u043b\u0438 \u0438\u0437 \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u044b\u0445 \u0432\u0438\u0442\u0440\u0438\u043d',
+            title: msg('discovery.shelf.hidden'),
+            subtitle: msg('discovery.shelf.hiddenSubtitle'),
             source: 'personal',
-            sourceName: '\u0414\u043b\u044f \u0432\u0430\u0441',
+            sourceName: msg('discovery.sourceForYou'),
             updatedAt: Date.now(),
             items,
-            emptyMessage: '\u0417\u0434\u0435\u0441\u044c \u0431\u0443\u0434\u0443\u0442 \u043a\u043d\u0438\u0433\u0438, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0432\u044b \u043e\u0442\u043c\u0435\u0442\u0438\u043b\u0438 \u043a\u0430\u043a \u043d\u0435\u0438\u043d\u0442\u0435\u0440\u0435\u0441\u043d\u044b\u0435.',
+            emptyMessage: msg('discovery.shelf.hiddenEmpty'),
         };
     }
 
@@ -2635,7 +2646,7 @@ class WebWorker {
 
         const book = await this.getBookRecordByUid(String(bookUid || '').trim());
         if (!book)
-            throw new Error('Книга не найдена');
+            throw new Error(t('errors.bookNotFound'));
 
         const result = {books: [Object.assign({}, book)]};
         await this.applyMetadataOverridesToSearchResult(result);
@@ -2719,7 +2730,7 @@ class WebWorker {
 
             result.push({
                 bookUid: item.bookUid,
-                title: book.title || 'Без названия',
+                title: book.title || t('common.untitled'),
                 author: book.author || '',
                 series: book.series || '',
                 serno: book.serno || '',
@@ -2785,7 +2796,7 @@ class WebWorker {
 
             const resultItem = {
                 bookUid: item.bookUid,
-                title: metadata.title || (book ? 'Без названия' : 'Книга недоступна'),
+                title: metadata.title || (book ? t('common.untitled') : t('reader.bookUnavailable')),
                 author: metadata.author || '',
                 series: metadata.series || '',
                 serno: metadata.serno || '',
@@ -2913,7 +2924,7 @@ class WebWorker {
     async requireAdmin(userId = '', profileAccessToken = '') {
         const user = await this.requireAuthorizedUser(userId, profileAccessToken);
         if (!user.isAdmin)
-            throw new Error('Только администратор может управлять профилями');
+            throw new Error(t('errors.adminOnlyProfiles'));
         return user;
     }
 
@@ -2952,9 +2963,9 @@ class WebWorker {
         return withFileTransaction(this.readingListStore.file, async() => {
             const user = await this.readingListStore.findUserByLogin(login);
             if (!user || !user.passwordHash)
-                throw new Error('Неверный логин или пароль');
+                throw new Error(t('errors.invalidLogin'));
             if (!await this.readingListStore.verifyUserPassword(user.id, password))
-                throw new Error('Неверный логин или пароль');
+                throw new Error(t('errors.invalidLogin'));
             return {
                 userId: user.id,
                 profileAccessToken: this.createProfileSession(user.id),
@@ -3005,7 +3016,7 @@ class WebWorker {
         this.checkMyState();
         const user = await this.readingListStore.getOpdsUser(publicId);
         if (!user)
-            throw new Error('Профиль OPDS не найден');
+            throw new Error(t('errors.opdsProfileNotFound'));
 
         return await this.getUserReadingLibrary(user, options);
     }
@@ -3082,6 +3093,10 @@ class WebWorker {
         };
     }
 
+    renderAdminEvent(event = {}) {
+        return Object.assign({}, event, {message: i18n.render(event.message)});
+    }
+
     addAdminEvent(level = 'info', category = 'system', message = '', details = {}) {
         if (this.config.adminEventLogEnabled === false)
             return null;
@@ -3092,7 +3107,8 @@ class WebWorker {
             time: new Date().toISOString(),
             level: String(level || 'info'),
             category: String(category || 'system'),
-            message: String(message || ''),
+            //текст события - описание {key, params} (переводится при выдаче) или готовая строка (например, из лога)
+            message: (message && typeof message === 'object' ? message : String(message || '')),
             details: details || {},
         };
 
@@ -3359,8 +3375,8 @@ class WebWorker {
                 if (event.level !== 'error')
                     return false;
 
-                const text = `${event.category || ''} ${event.message || ''}`.toLowerCase();
-                return text.includes('cover') || text.includes('облож') || /\bimage\s+\S+:/i.test(text);
+                const text = `${event.category || ''} ${i18n.render(event.message)}`.toLowerCase();
+                return text.includes('cover') || text.includes('облож') || /\bimage\s+\S+:/i.test(text);//i18n-ignore: поиск по тексту лога
             })
             .slice(0, 8);
         const state = this.wState.get() || {};
@@ -3378,32 +3394,32 @@ class WebWorker {
             tasks: [
                 {
                     id: 'index',
-                    title: 'Индексация',
+                    title: t('admin.taskIndexing'),
                     active: state.state === 'db_creating' || state.state === 'db_loading',
                     state: state.state,
-                    message: state.jobMessage || state.serverMessage || '',
+                    message: i18n.render(state.jobMessage || state.serverMessage || ''),
                     progress: state.progress || 0,
-                    lastError: (this.adminEvents.slice().reverse().find(event => event.category === 'index' && event.level === 'error') || {}).message || '',
+                    lastError: i18n.render((this.adminEvents.slice().reverse().find(event => event.category === 'index' && event.level === 'error') || {}).message),
                     cancellable: false,
                 },
                 {
                     id: 'cache',
-                    title: 'Чистка кэша',
+                    title: t('admin.taskCacheClean'),
                     active: false,
                     state: 'idle',
-                    message: 'Ручная чистка выполняется синхронно',
+                    message: t('admin.taskCacheCleanMessage'),
                     progress: 0,
-                    lastError: (this.adminEvents.slice().reverse().find(event => event.category === 'cache' && event.level === 'error') || {}).message || '',
+                    lastError: i18n.render((this.adminEvents.slice().reverse().find(event => event.category === 'cache' && event.level === 'error') || {}).message),
                     cancellable: false,
                 },
                 {
                     id: 'delivery',
-                    title: 'Конвертации и отправки',
+                    title: t('admin.taskDelivery'),
                     active: false,
                     state: 'events',
-                    message: 'Смотрите последние события отправки и конвертации ниже',
+                    message: t('admin.taskDeliveryMessage'),
                     progress: 0,
-                    lastError: (this.adminEvents.slice().reverse().find(event => ['delivery', 'conversion'].includes(event.category) && event.level === 'error') || {}).message || '',
+                    lastError: i18n.render((this.adminEvents.slice().reverse().find(event => ['delivery', 'conversion'].includes(event.category) && event.level === 'error') || {}).message),
                     cancellable: false,
                 },
             ],
@@ -3425,7 +3441,7 @@ class WebWorker {
         return {
             enabled: this.config.adminEventLogEnabled !== false,
             maxSize: Math.max(1, Math.min(2000, parseInt(this.config.adminEventLogSize, 10) || 300)),
-            events: events.slice(0, limit),
+            events: events.slice(0, limit).map(event => this.renderAdminEvent(event)),
         };
     }
 
@@ -3447,7 +3463,7 @@ class WebWorker {
         await this.saveRuntimeConfigPatch(patch);
         if (this.adminEvents.length > patch.adminEventLogSize)
             this.adminEvents.splice(0, this.adminEvents.length - patch.adminEventLogSize);
-        this.addAdminEvent('info', 'settings', patch.adminEventLogEnabled ? 'Журнал событий включен' : 'Журнал событий выключен');
+        this.addAdminEvent('info', 'settings', msg(patch.adminEventLogEnabled ? 'admin.eventLogEnabled' : 'admin.eventLogDisabled'));
         return {
             enabled: this.config.adminEventLogEnabled !== false,
             maxSize: patch.adminEventLogSize,
@@ -3483,13 +3499,13 @@ class WebWorker {
 
         const normalized = this.normalizeAdminLibrarySources(sources);
         if (!normalized.length)
-            throw new Error('Нужно указать хотя бы один источник библиотеки');
+            throw new Error(t('errors.sourcesRequired'));
         if (!normalized.some(source => source.enabled !== false))
-            throw new Error('Должен быть включен хотя бы один источник библиотеки');
+            throw new Error(t('errors.sourcesEnabledRequired'));
 
         this.config.librarySources = normalized;
         await this.saveRuntimeConfigPatch({librarySources: normalized});
-        this.addAdminEvent('info', 'sources', `Обновлены источники библиотек: ${normalized.length}`);
+        this.addAdminEvent('info', 'sources', msg('admin.sourcesUpdated', {n: normalized.length}));
         return {sources: normalized};
     }
 
@@ -3535,7 +3551,7 @@ class WebWorker {
         if ((normalizedKind === 'all' || normalizedKind === 'book') && bookMaxSize !== null && bookMaxSize > 0) {
             result.push({
                 id: 'book',
-                title: 'Книжный кэш',
+                title: t('settings.admin.bookCache'),
                 dir: this.config.bookDir,
                 maxSize: bookMaxSize,
                 targetRatio,
@@ -3546,7 +3562,7 @@ class WebWorker {
         if ((normalizedKind === 'all' || normalizedKind === 'cover') && coverMaxSize !== null && coverMaxSize > 0) {
             result.push({
                 id: 'cover',
-                title: 'Кэш обложек',
+                title: t('settings.admin.coverCache'),
                 dir: this.config.coverDir || `${this.config.publicFilesDir}/cover`,
                 maxSize: coverMaxSize,
                 targetRatio,
@@ -3580,7 +3596,7 @@ class WebWorker {
             }
 
             if (reason)
-                this.addAdminEvent('info', 'cache', `Чистка кэша: ${reason}`, {result});
+                this.addAdminEvent('info', 'cache', msg('admin.cacheCleaned', {reason}), {result});
 
             return {cleaned: result};
         } finally {
@@ -3608,9 +3624,9 @@ class WebWorker {
 
         const normalizedKind = String(kind || 'all').trim().toLowerCase();
         if (!['all', 'book', 'cover'].includes(normalizedKind))
-            throw new Error('Неизвестный кэш для очистки');
+            throw new Error(t('errors.unknownCache'));
 
-        return await this.runCacheClean('ручной запуск', {
+        return await this.runCacheClean(msg('admin.cleanReasonManual'), {
             kind: normalizedKind,
             forceTarget: true,
         });
@@ -3669,7 +3685,7 @@ class WebWorker {
         if (Object.keys(normalized).length)
             await this.saveRuntimeConfigPatch(normalized);
 
-        this.addAdminEvent('info', 'settings', 'Обновлены настройки ротации кэша', normalized);
+        this.addAdminEvent('info', 'settings', msg('admin.cacheRotationUpdated'), normalized);
         return {
             cache: {
                 bookCacheSize: this.effectiveBookCacheSize(),
@@ -3687,7 +3703,7 @@ class WebWorker {
         await this.requireAdmin(userId, profileAccessToken);
 
         const result = await this.cleanBrokenCoverCacheFiles(this.config.coverDir || `${this.config.publicFilesDir}/cover`);
-        this.addAdminEvent('info', 'cover', `Очищены битые файлы обложек: ${result.removed}`, result);
+        this.addAdminEvent('info', 'cover', msg('admin.brokenCoversCleaned', {n: result.removed}), result);
         return result;
     }
 
@@ -3697,7 +3713,7 @@ class WebWorker {
 
         const book = await this.getBookRecordByUid(bookUid);
         if (!book)
-            throw new Error('Книга не найдена');
+            throw new Error(t('errors.bookNotFound'));
 
         const libid = parseInt(book.libid, 10);
 
@@ -3714,7 +3730,7 @@ class WebWorker {
         }
 
         const coverUrl = `${this.config.rootPathStatic || ''}/cover/by-uid?uid=${encodeURIComponent(bookUid)}`;
-        this.addAdminEvent('info', 'cover', `Сброшен кэш обложки для ${book.title || bookUid}`, {bookUid, libid, sourceId, removed});
+        this.addAdminEvent('info', 'cover', msg('admin.coverCacheReset', {title: book.title || bookUid}), {bookUid, libid, sourceId, removed});
         return {
             success: true,
             bookUid,
@@ -3729,7 +3745,7 @@ class WebWorker {
         await this.requireAdmin(userId, profileAccessToken);
         this.checkMyState();
 
-        this.addAdminEvent('warn', 'index', 'Запущено переиндексирование библиотеки');
+        this.addAdminEvent('warn', 'index', msg('admin.reindexStarted'));
         this.recreateDb();//no await
         return {started: true};
     }
@@ -3815,7 +3831,7 @@ class WebWorker {
         }
 
         if (normalized.password && !normalized.user)
-            throw new Error('Для общего OPDS-пароля нужно указать логин');
+            throw new Error(t('errors.opdsLoginRequired'));
 
         return normalized;
     }
@@ -3826,7 +3842,7 @@ class WebWorker {
 
         const normalized = this.normalizeIntegrationPatch(patch || {});
         await this.saveRuntimeConfigPatch(normalized);
-        this.addAdminEvent('info', 'settings', 'Обновлены настройки отправки книг');
+        this.addAdminEvent('info', 'settings', msg('admin.deliverySettingsUpdated'));
 
         return {integrations: this.getAdminIntegrationConfig()};
     }
@@ -3837,7 +3853,7 @@ class WebWorker {
 
         const opds = this.normalizeAdminOpdsPatch(patch || {});
         await this.saveRuntimeConfigPatch({opds});
-        this.addAdminEvent('info', 'settings', 'Обновлены настройки общего OPDS');
+        this.addAdminEvent('info', 'settings', msg('admin.opdsSettingsUpdated'));
 
         return {opds: this.getAdminOpdsConfig()};
     }
@@ -3899,7 +3915,7 @@ class WebWorker {
 
         const item = await this.readingListStore.getList(userId, listId, options);
         if (!item)
-            throw new Error('Список не найден');
+            throw new Error(t('errors.listNotFound'));
 
         const listEntries = this.readingListStore.normalizeEntries(item.books);
         const books = [];
@@ -3974,7 +3990,7 @@ class WebWorker {
 
         const book = await this.getBookRecordByUid(bookUid);
         if (!book)
-            throw new Error('404 Файл не найден');
+            throw new Error(t('errors.fileNotFound'));
 
         const item = await this.readingListStore.setBookMembership(userId, listId, bookUid, enabled);
         if (enabled && this.koboService)
@@ -3991,7 +4007,7 @@ class WebWorker {
 
         const book = await this.getBookRecordByUid(bookUid);
         if (!book)
-            throw new Error('404 Файл не найден');
+            throw new Error(t('errors.fileNotFound'));
 
         const item = await this.readingListStore.setBookRead(userId, listId, bookUid, read);
         await this.readingListStore.setBooksRead(userId, [bookUid], read, {listIds: [listId]});
@@ -4013,7 +4029,7 @@ class WebWorker {
 
         const booksByUid = await this.getBookRecordsByUids(normalized);
         if (normalized.some(bookUid => !booksByUid.has(bookUid)))
-            throw new Error('404 Файл не найден');
+            throw new Error(t('errors.fileNotFound'));
 
         return await this.readingListStore.setBooksRead(userId, normalized, read, options);
     }
@@ -4762,7 +4778,7 @@ class WebWorker {
 
         const assetVersion = assetVersionFor(path.extname(libFile).slice(1));
         await fs.writeFile(bookFileDesc, JSON.stringify({libFolder, libFile, sourceLibDir, downFileName, size, assetVersion}));
-        this.scheduleCacheClean('после подготовки книги');
+        this.scheduleCacheClean(msg('admin.cleanReasonAfterBook'));
 
         this.stateStore.putBookFile({id: bookUid, hash, size, assetVersion});
 
@@ -4779,7 +4795,7 @@ class WebWorker {
             //найдем downFileName, libFolder, libFile
             const book = await this.getBookRecordByUid(bookUid);
             if (!book)
-                throw new Error('404 Файл не найден');
+                throw new Error(t('errors.fileNotFound'));
 
             let downFileName = book.file;
             const authors = book.author.split(',');
@@ -4788,7 +4804,7 @@ class WebWorker {
             for (let i = 1; i < author.length; i++)
                 author[i] = `${(i === 1 ? ' ' : '')}${author[i][0]}.`;
             if (authors.length > 1)
-                author.push(' и др.');
+                author.push(t('common.etAl'));
 
             const at = [author.join(''), (book.title ? `_${book.title}` : '')];
             downFileName = utils.makeValidFileNameOrEmpty(at.filter(r => r).join(''))
@@ -4841,13 +4857,13 @@ class WebWorker {
             }
 
             if (!link)
-                throw new Error('404 Файл не найден');
+                throw new Error(t('errors.fileNotFound'));
 
             return {link, libFolder, libFile, downFileName, size};
         } catch(e) {
             log(LM_ERR, `getBookLink error: ${e.message}`);
             if (e.message.indexOf('ENOENT') >= 0)
-                throw new Error('404 Файл не найден');
+                throw new Error(t('errors.fileNotFound'));
             throw e;
         }
     }
@@ -4865,7 +4881,7 @@ class WebWorker {
 
         const book = await this.getBookRecordByUid(bookUid);
         if (!book)
-            throw new Error('404 Файл не найден');
+            throw new Error(t('errors.fileNotFound'));
 
         let preparedFile = rawFile;
         let preparedFileName = downFileName;
@@ -4880,8 +4896,8 @@ class WebWorker {
                 sourceFileName: downFileName,
                 downFileName,
                 config: this.config,
-                unsupportedMessage: `Неподдерживаемый формат отправки: ${targetFormat}`,
-                disabledMessage: 'Конвертация книг отключена в текущем образе.',
+                unsupportedMessage: t('errors.unsupportedDeliveryFormat', {format: targetFormat}),
+                disabledMessage: t('list.bookConversionDisabledImage'),
             });
             preparedFile = prepared.filePath;
             preparedFileName = prepared.downloadName;
@@ -4891,7 +4907,7 @@ class WebWorker {
         }
 
         if (cacheChanged)
-            this.scheduleCacheClean('после обновления книжного кэша');
+            this.scheduleCacheClean(msg('admin.cleanReasonAfterCacheUpdate'));
 
         return {
             book,
@@ -5173,7 +5189,7 @@ class WebWorker {
                         continue;
 
                     const review = {
-                        name: String(item.name || '').trim() || 'Аноним',
+                        name: String(item.name || '').trim(),
                         time: String(item.time || '').trim(),
                         text: String(item.text || '').replace(/<br\s*\/?>/gi, '\n').trim(),
                     };
@@ -5238,7 +5254,7 @@ class WebWorker {
 
             const found = await this.getBookRecordByUid(bookUid);
             if (!found)
-                throw new Error('404 Файл не найден');
+                throw new Error(t('errors.fileNotFound'));
             const book = {...found};
             this.applyPreparedBookSize(book, bookInfo.size);
             const reviewState = await this.getReviewArchiveState(book.sourceLibDir);
@@ -5317,7 +5333,7 @@ class WebWorker {
         } catch(e) {
             log(LM_ERR, `getBookInfo error: ${e.message}`);
             if (e.message.indexOf('ENOENT') >= 0)
-                throw new Error('404 Файл не найден');
+                throw new Error(t('errors.fileNotFound'));
             throw e;
         }
     }
@@ -5437,7 +5453,7 @@ class WebWorker {
                 if (delay === null) {
                     await utils.sleep(60*1000);
                 } else if (delay <= 1000) {
-                    await this.runCacheClean('плановая ротация');
+                    await this.runCacheClean(msg('admin.cleanReasonScheduled'));
 
                     await utils.sleep(60*1000);
                 } else {

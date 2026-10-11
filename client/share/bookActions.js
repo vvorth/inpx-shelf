@@ -3,7 +3,7 @@
 import axios from 'axios';
 
 import * as utils from './utils';
-import {t, tHtml} from './i18n';
+import {t} from './i18n';
 
 const defaultConversionFormats = ['epub', 'epub3', 'kepub', 'kfx', 'azw8', 'pdf'];
 
@@ -79,7 +79,7 @@ export async function runBookAction(vm, book, action, format = '', options = {})
     const settings = vm.$store.state.settings;
 
     if (format && config.conversionEnabled === false) {
-        root.stdDialog.alert(t('Конвертация книг отключена в текущем образе.'), t('Информация'));
+        root.stdDialog.alert(t('list.bookConversionDisabledImage'), t('common.information'));
         return null;
     }
 
@@ -93,13 +93,13 @@ export async function runBookAction(vm, book, action, format = '', options = {})
 
         if (action == 'sendTelegram') {
             await api.sendBookTelegram(bookUid(book), format);
-            root.notify.success(`${t('Книга отправлена в Telegram')}${format ? ` (${format.toUpperCase()})` : ''}`);
+            root.notify.success(`${t('list.bookSentTelegram')}${format ? ` (${format.toUpperCase()})` : ''}`);
             return null;
         }
 
         if (action == 'sendEmail') {
             await api.sendBookEmail(bookUid(book), format);
-            root.notify.success(`${t('Книга отправлена на email')}${format ? ` (${format.toUpperCase()})` : ''}`);
+            root.notify.success(`${t('list.bookSentEmail')}${format ? ` (${format.toUpperCase()})` : ''}`);
             return null;
         }
 
@@ -129,15 +129,9 @@ export async function runBookAction(vm, book, action, format = '', options = {})
 
         if (action == 'copyLink') {
             if (await utils.copyTextToClipboard(href))
-                root.notify.success(t('Ссылка успешно скопирована'));
+                root.notify.success(t('list.linkCopied'));
             else
-                root.stdDialog.alert(tHtml('copyLinkFailed',
-`Копирование ссылки не удалось. Пожалуйста, попробуйте еще раз.
-<br><br>
-<b>Пояснение</b>: вероятно, браузер запретил копирование, т.к. прошло<br>
-слишком много времени с момента нажатия на кнопку (инициация<br>
-пользовательского события). Сейчас ссылка уже закеширована,<br>
-поэтому повторная попытка должна быть успешной.`), t('Ошибка'), {html: true});
+                root.stdDialog.alert(t('list.copyLinkFailedHtml'), t('common.error'), {html: true});
         } else if (action == 'readBook') {
             if (options.liberamaReady && options.submitUrl) {
                 options.submitUrl(href);
@@ -146,7 +140,7 @@ export async function runBookAction(vm, book, action, format = '', options = {})
 
             const bookReadLink = config.bookReadLink;
             if (!bookReadLink) {
-                root.stdDialog.alert(t('Встроенная читалка пока поддерживает только FB2.'), t('Информация'));
+                root.stdDialog.alert(t('common.builtReaderCurrentlySupports'), t('common.information'));
                 return null;
             }
 
@@ -161,7 +155,7 @@ export async function runBookAction(vm, book, action, format = '', options = {})
             window.open(url, '_blank');
         }
     } catch(e) {
-        root.stdDialog.alert(await errorMessage(e), t('Ошибка'));
+        root.stdDialog.alert(await errorMessage(e), t('common.error'));
     }
 
     return null;
@@ -177,10 +171,10 @@ export async function markBooksRead(vm, bookUids = [], read = true) {
     try {
         const result = await vm.$root.api.markReaderBooksRead(normalized, read);
         const count = (result && result.changedBooks) || normalized.length;
-        vm.$root.notify.success(read ? t('Помечено прочитанными: {n}', {n: count}) : t('Отметка снята: {n}', {n: count}));
+        vm.$root.notify.success(read ? t('list.markedRead', {n: count}) : t('common.unmarked', {n: count}));
         return true;
     } catch (e) {
-        vm.$root.stdDialog.alert(e.message, t('Ошибка'));
+        vm.$root.stdDialog.alert(e.message, t('common.error'));
         return false;
     }
 }

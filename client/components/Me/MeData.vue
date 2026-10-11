@@ -2,17 +2,17 @@
     <div class="card-stack">
         <section class="card">
             <h2 class="card-title">
-                {{ $t('Бэкап профиля') }}
+                {{ $t('profiles.profileBackupTitle') }}
             </h2>
             <div class="card-hint">
-                {{ $t('Сохраняет личные списки, прогресс чтения, закладки, скрытые книги и настройки читалки. Пароль профиля не экспортируется.') }}
+                {{ $t('profiles.profileBackupHint') }}
             </div>
             <div class="card-actions">
                 <q-btn outline color="primary" no-caps icon="la la-file-export" :loading="busy" @click="exportBackup">
-                    {{ $t('Скачать JSON') }}
+                    {{ $t('profiles.exportProfileBackup') }}
                 </q-btn>
                 <q-btn outline color="primary" no-caps icon="la la-file-import" :loading="busy" @click="openImport">
-                    {{ $t('Восстановить JSON') }}
+                    {{ $t('profiles.importProfileBackup') }}
                 </q-btn>
                 <input ref="importInput" type="file" accept="application/json,.json" style="display: none" @change="onImportSelected" />
             </div>
@@ -56,9 +56,9 @@ class MeData {
                 .replace(/[^a-z0-9._-]+/gi, '-')
                 .replace(/^-+|-+$/g, '') || 'profile';
             this.downloadJson(data, `inpx-shelf-profile-${login}-${stamp}.json`);
-            this.$root.notify.success(t('Бэкап профиля скачан'));
+            this.$root.notify.success(t('profiles.profileBackupReady'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.busy = false;
         }
@@ -79,8 +79,8 @@ class MeData {
             return;
 
         const confirmed = await this.$root.stdDialog.confirm(
-            t('Восстановить JSON-бэкап в текущий профиль? Списки, прогресс, закладки и личные настройки будут добавлены или обновлены.'),
-            t('Бэкап профиля'),
+            t('profiles.profileBackupImportConfirm'),
+            t('profiles.profileBackupTitle'),
         );
         if (!confirmed) {
             input.value = '';
@@ -91,9 +91,9 @@ class MeData {
         try {
             await this.api.importReadingLists(JSON.parse(await file.text()));
             await this.api.updateConfig();
-            this.$root.notify.success(t('Бэкап профиля восстановлен'));
+            this.$root.notify.success(t('profiles.profileBackupImported'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('Ошибка'));
+            this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.busy = false;
             input.value = '';

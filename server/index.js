@@ -215,12 +215,17 @@ function logQueries(app) {
 async function main() {
     const log = new (require('./core/AppLogger'))().log;//singleton
 
+    //язык интерфейса для запросов (см. server/core/i18n.js)
+    const i18n = require('./core/i18n');
+    i18n.setDefaultLang(config);
+
     //server
     const app = express();
     // First, so every request is logged, not only unmatched ones.
     // The development build has its own request logger.
     if (config.logQueries && branch !== 'development')
         logQueries(app);
+    app.use(i18n.httpMiddleware(config));
     const security = new (require('./core/Security'))(config);
     await security.init();
     if (config.trustProxy)

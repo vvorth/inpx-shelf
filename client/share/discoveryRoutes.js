@@ -29,7 +29,7 @@ export function isDiscoveryRouteEnabled(route, config = {}, settings = {}) {
 
 export function discoveryRouteLabel(route, config = {}, settings = {}) {
     if (route === 'bestsellers')
-        return externalDiscovery(config, settings).name || t('Внешний источник');
+        return externalDiscovery(config, settings).name || t('common.externalSource');
     return route;
 }
 
