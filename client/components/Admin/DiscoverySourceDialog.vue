@@ -189,6 +189,8 @@ class DiscoverySourceDialog {
     }
 
     async okClick() {
+        //удаление источника скрывает вкладку: при новом включении показываем её снова
+        const enabling = (String(this.discoveryConfig.externalSource || 'none') === 'none' && this.discoveryExternalSource !== 'none');
         try {
             await this.api.updateSharedDiscoveryConfig({
                 externalSource: this.discoveryExternalSource,
@@ -196,6 +198,8 @@ class DiscoverySourceDialog {
                 externalTtlMinutes: this.discoveryExternalTtlMinutes,
             });
             await this.api.updateConfig();
+            if (enabling)
+                this.commit('setSettings', {showDiscoveryExternal: true});
             this.loadSettings();
             this.dialogVisible = false;
         } catch (e) {
