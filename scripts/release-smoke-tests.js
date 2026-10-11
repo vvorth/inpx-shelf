@@ -1290,6 +1290,25 @@ async function testReaderHomeKeepsUnavailableProgressVisible() {
     assert.doesNotMatch(xml, /\/book\?uid=(?:missing-\d+|finished|hidden)/, 'Unavailable books must not expose broken acquisition links');
 }
 
+//Какая позиция открывается: новее - сервер, недавняя копия дальше по книге - браузер, после сброса - ничего старого
+async function testReaderProgressChoice() {
+    const readerProgress = require('../client/share/readerProgress');
+    const at = minutes => new Date(Date.UTC(2026, 0, 1, 12, minutes)).toISOString();
+    const server = {percent: 0.5, pageIndex: 50, updatedAt: at(30)};
+
+    assert.strictEqual(readerProgress.merge(server, {percent: 0.2, pageIndex: 20, updatedAt: at(10)}).pageIndex, 50, 'Newer server position wins');
+    assert.strictEqual(readerProgress.merge(server, {percent: 0.6, pageIndex: 60, updatedAt: at(29)}, {preferSecondaryRecentForward: true}).pageIndex, 60,
+        'A local copy under 2 minutes older but further on wins');
+    assert.strictEqual(readerProgress.merge(server, {percent: 0.6, pageIndex: 60, updatedAt: at(20)}, {preferSecondaryRecentForward: true}).pageIndex, 50,
+        'An older local copy loses even if further on');
+    assert.strictEqual(readerProgress.shouldUpload(server, {percent: 0.6, pageIndex: 60, updatedAt: at(31)}), true);
+    assert.strictEqual(readerProgress.shouldUpload(server, {percent: 0.6, pageIndex: 60, updatedAt: at(29)}), false);
+
+    assert.strictEqual(readerProgress.afterReset({pageIndex: 5, generation: 1}, '', 2), null, 'A reset generation discards older progress');
+    assert.strictEqual(readerProgress.afterReset({pageIndex: 5, updatedAt: at(10)}, at(20), 0), null, 'Progress before resetAt is discarded');
+    assert.strictEqual(readerProgress.normalize({}, 3).generation, 3);
+}
+
 async function testReaderProgressResetAndHiddenState() {
     await withTempDir(async(dir) => {
         const ReadingListStore = require('../server/core/ReadingListStore');
@@ -1963,6 +1982,7 @@ const tests = [
     testAdminSettingsRestoreKeepsSecrets,
     testAdminBackupArchiveAndDownload,
     testUserBackupExportsAndRestoresReaderState,
+    testReaderProgressChoice,
     testReaderProgressResetAndHiddenState,
     testProfileReadingSummaryLeavesOutReadBooks,
     testReaderHomeKeepsUnavailableProgressVisible,
