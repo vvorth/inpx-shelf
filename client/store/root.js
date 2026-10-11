@@ -33,6 +33,8 @@ const state = {
         showDiscoveryExternal: true,
         showDiscoverySimilar: true,
         showDiscoveryUnreadOnly: false,
+        listsView: 'table',
+        listsSort: '',
         compactDiscoveryCards: false,
         discoveryNewestLimit: 8,
         discoveryPopularLimit: 8,

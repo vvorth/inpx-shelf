@@ -140,46 +140,87 @@
                         <div v-else-if="!books.length" class="page-empty page-empty--inline">
                             {{ $t('lists.thisListIsEmpty') }}
                         </div>
-                        <div v-else class="table-wrap">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th class="col-check">
-                                            {{ $t('common.read') }}
-                                        </th>
-                                        <th>{{ $t('opds.book') }}</th>
-                                        <th class="hide-narrow">
-                                            {{ $t('opds.file') }}
-                                        </th>
-                                        <th />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="book in books" :key="book.bookUid">
-                                        <td class="col-check">
-                                            <q-checkbox :model-value="book.read" dense :aria-label="$t('common.read')" @update:model-value="toggleRead(book, $event)" />
-                                        </td>
-                                        <td>
-                                            <router-link class="book-title" :to="bookLink(book.bookUid)">
-                                                {{ book.title || $t('common.untitled') }}
-                                            </router-link>
-                                            <div class="book-meta">
-                                                {{ bookMeta(book) }}
-                                            </div>
-                                        </td>
-                                        <td class="hide-narrow book-meta num">
-                                            {{ fileMeta(book) }}
-                                        </td>
-                                        <td class="col-actions">
-                                            <q-btn flat dense no-caps color="primary" icon="la la-book-open" @click="openReader(book.bookUid)">
-                                                {{ $t('common.readBook') }}
-                                            </q-btn>
-                                            <q-btn flat dense round icon="la la-times" :aria-label="$t('lists.removeFromList')" @click="removeBook(book)" />
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        <template v-else>
+                            <div class="lists-tools">
+                                <q-input v-model="filterText" class="lists-filter" dense outlined clearable :placeholder="$t('lists.filter')">
+                                    <template #prepend>
+                                        <q-icon name="la la-search" size="18px" />
+                                    </template>
+                                </q-input>
+                                <q-toggle v-model="unreadOnly" :label="$t('discovery.unreadOnly')" />
+                                <q-space />
+                                <q-btn-toggle
+                                    :model-value="view"
+                                    :options="viewOptions"
+                                    dense
+                                    no-caps
+                                    unelevated
+                                    toggle-color="primary"
+                                    @update:model-value="setSetting('listsView', $event)"
+                                />
+                            </div>
+
+                            <div v-if="!visibleBooks.length" class="page-empty page-empty--inline">
+                                {{ $t('lists.nothingMatches') }}
+                            </div>
+                            <BookCollection v-else-if="view === 'covers'" :books="visibleBooks.map(book => book.record)" view="covers" />
+                            <div v-else class="table-wrap">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-check">
+                                                {{ $t('common.read') }}
+                                            </th>
+                                            <th v-for="column in columns" :key="column.key" :class="column.class">
+                                                <button type="button" class="sort-head" :class="{'is-sorted': sort.key === column.key}" @click="sortBy(column.key)">
+                                                    {{ column.label }}
+                                                    <q-icon v-if="sort.key === column.key" :name="sort.desc ? 'la la-arrow-down' : 'la la-arrow-up'" size="14px" />
+                                                </button>
+                                            </th>
+                                            <th />
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="book in visibleBooks" :key="book.bookUid">
+                                            <td class="col-check">
+                                                <q-checkbox :model-value="book.read" dense :aria-label="$t('common.read')" @update:model-value="toggleRead(book, $event)" />
+                                            </td>
+                                            <td>
+                                                <router-link class="book-title" :to="bookLink(book.bookUid)">
+                                                    {{ book.title || $t('common.untitled') }}
+                                                </router-link>
+                                                <div class="book-meta show-narrow">
+                                                    {{ bookMeta(book) }}
+                                                </div>
+                                            </td>
+                                            <td class="hide-narrow">
+                                                <template v-for="(name, index) in book.authors" :key="name">
+                                                    <router-link :to="authorLink(name)">
+                                                        {{ name }}
+                                                    </router-link><span v-if="index < book.authors.length - 1">, </span>
+                                                </template>
+                                            </td>
+                                            <td class="hide-narrow">
+                                                <router-link v-if="book.series" :to="seriesLink(book.series)">
+                                                    {{ book.series }}
+                                                </router-link><span v-if="book.series && book.serno" class="num"> #{{ book.serno }}</span>
+                                            </td>
+                                            <td class="hide-narrow book-meta num col-file">
+                                                {{ fileMeta(book) }}
+                                            </td>
+                                            <td class="col-actions">
+                                                <q-btn flat dense round color="primary" icon="la la-book-open" :aria-label="$t('common.readBook')" @click="openReader(book.bookUid)">
+                                                    <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
+                                                </q-btn>
+                                                <q-btn flat dense round icon="la la-times" :aria-label="$t('lists.removeFromList')" @click="removeBook(book)">
+                                                    <q-tooltip>{{ $t('lists.removeFromList') }}</q-tooltip>
+                                                </q-btn>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
                     </template>
                 </section>
             </div>
@@ -191,13 +232,29 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
+import BookCollection from '../Library/BookCollection.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {refreshReadingLists} from '../../share/readingLists';
+import {bookAuthors} from '../../share/bookActions';
 
 const readingNowId = '__reading__';
+const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
+const normalize = value => String(value || '').toLowerCase().replace(/ё/g, 'е');//i18n-ignore: поиск без учёта ё
+
+//ключи сортировки колонок; без сортировки книги идут в порядке добавления в список
+const sortKeys = {
+    title: book => [book.title],
+    author: book => [book.author, book.series, Number(book.serno) || 0, book.title],
+    //книги без серии - в конце
+    series: book => [book.series ? 0 : 1, book.series, Number(book.serno) || 0, book.title],
+    file: book => [book.ext, book.size],
+};
 
 const componentOptions = {
+    components: {
+        BookCollection,
+    },
     watch: {
         '$store.state.config'() {
             if (this.isActive)
@@ -217,6 +274,8 @@ class ListsPage {
     booksLoading = false;
     newListName = '';
     koboDevices = [];
+    filterText = '';
+    unreadOnly = false;
 
     created() {
         this.api = this.$root.api;
@@ -285,6 +344,7 @@ class ListsPage {
     async select(id) {
         this.selectedId = id;
         this.books = [];
+        this.filterText = '';
         if (this.selectedList)
             await this.loadBooks();
     }
@@ -299,21 +359,98 @@ class ListsPage {
             const response = await this.api.getReadingList(list.id);
             if (list.id !== this.selectedId)
                 return;
-            this.books = (response && Array.isArray(response.books) ? response.books : []).map(book => ({
+            this.books = (response && Array.isArray(response.books) ? response.books : []).map((book, order) => ({
                 bookUid: String(book.bookUid || book._uid || '').trim(),
                 title: String(book.title || '').trim(),
                 author: String(book.author || '').trim(),
+                authors: bookAuthors(book),
                 series: String(book.series || '').trim(),
                 serno: book.serno || '',
                 ext: book.ext || '',
                 size: Number(book.size || 0),
                 read: !!(book._readingListRead || book.read),
+                order,
+                record: book,
             }));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
             this.booksLoading = false;
         }
+    }
+
+    get settings() {
+        return this.$store.state.settings;
+    }
+
+    get view() {
+        return (this.settings.listsView === 'covers' ? 'covers' : 'table');
+    }
+
+    get viewOptions() {
+        return [
+            {icon: 'la la-list', value: 'table', attrs: {'aria-label': t('lists.asTable'), title: t('lists.asTable')}},
+            {icon: 'la la-th', value: 'covers', attrs: {'aria-label': t('mePreferences.asCovers'), title: t('mePreferences.asCovers')}},
+        ];
+    }
+
+    get columns() {
+        return [
+            {key: 'title', label: t('common.title')},
+            {key: 'author', label: t('search.author'), class: 'hide-narrow'},
+            {key: 'series', label: t('common.series'), class: 'hide-narrow'},
+            {key: 'file', label: t('opds.file'), class: 'hide-narrow'},
+        ];
+    }
+
+    //сортировка хранится строкой: 'author' - по возрастанию, '-author' - по убыванию
+    get sort() {
+        const value = String(this.settings.listsSort || '');
+        const key = value.replace(/^-/, '');
+        return (sortKeys[key] ? {key, desc: value.startsWith('-')} : {key: '', desc: false});
+    }
+
+    get visibleBooks() {
+        const words = normalize(this.filterText).split(/\s+/).filter(Boolean);
+        const books = this.books.filter((book) => {
+            if (this.unreadOnly && book.read)
+                return false;
+            const text = normalize(`${book.title} ${book.author} ${book.series}`);
+            return words.every(word => text.includes(word));
+        });
+
+        const {key, desc} = this.sort;
+        if (!key)
+            return books;
+        const keyOf = sortKeys[key];
+        return books.sort((a, b) => {
+            const left = keyOf(a);
+            const right = keyOf(b);
+            for (let i = 0; i < left.length; i++) {
+                const cmp = (typeof left[i] === 'number' ? left[i] - right[i] : collator.compare(left[i] || '', right[i] || ''));
+                if (cmp)
+                    return (desc ? -cmp : cmp);
+            }
+            return a.order - b.order;
+        });
+    }
+
+    setSetting(name, value) {
+        this.$store.commit('setSettings', {[name]: value});
+    }
+
+    //повторный щелчок меняет направление, третий - возвращает порядок добавления
+    sortBy(key) {
+        const {key: current, desc} = this.sort;
+        this.setSetting('listsSort', (current !== key ? key : (desc ? '' : `-${key}`)));
+    }
+
+    authorLink(name) {
+        return `/author/${encodeURIComponent(name || '')}`;
+    }
+
+    seriesLink(name) {
+        return `/series/${encodeURIComponent(name || '')}`;
     }
 
     bookMeta(book) {
@@ -620,7 +757,44 @@ export default vueComponent(ListsPage);
 }
 
 .col-check {
-    width: 90px;
+    width: 64px;
+}
+
+.lists-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+}
+
+.lists-filter {
+    flex: 0 1 320px;
+}
+
+.sort-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+}
+
+.col-file {
+    white-space: nowrap;
+}
+
+.sort-head.is-sorted {
+    color: var(--app-text);
+}
+
+.show-narrow {
+    display: none;
 }
 
 .col-progress {
@@ -684,6 +858,10 @@ export default vueComponent(ListsPage);
 
     .hide-narrow {
         display: none;
+    }
+
+    .show-narrow {
+        display: block;
     }
 }
 </style>

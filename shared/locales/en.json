@@ -909,9 +909,12 @@
         "markedRead": "Marked as read: {n}"
     },
     "lists": {
+        "asTable": "As a table",
         "booksRead": "{read} / {total} books read",
         "booksWithSavedProgress": "Books with saved progress. A removed book comes back when you open it again.",
+        "filter": "Filter by title, author or series",
         "noBooksInProgress": "No books in progress yet.",
+        "nothingMatches": "No books match the filter.",
         "readingNow": "Reading now",
         "removeFromList": "Remove from list",
         "showInOpds": "Show in OPDS",
