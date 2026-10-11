@@ -10,12 +10,11 @@ const outDir = `${distDir}/release`;
 
 async function makeRelease(target) {
     const srcDir = `${distDir}/${target}`;
+    if (!await fs.pathExists(srcDir))
+        throw new Error(`Build not found: ${srcDir}`);
 
-    if (await fs.pathExists(srcDir)) {
-        const zipFile = `${outDir}/${pckg.name}-${pckg.version}-${target}.zip`;
-
-        execSync(`zip -r ${zipFile} .`, {cwd: srcDir, stdio: 'inherit'});
-    }
+    const zipFile = `${outDir}/${pckg.name}-${pckg.version}-${target}.zip`;
+    execSync(`zip -r ${zipFile} .`, {cwd: srcDir, stdio: 'inherit'});
 }
 
 async function main() {
