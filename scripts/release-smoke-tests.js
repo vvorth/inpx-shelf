@@ -1251,8 +1251,8 @@ async function testAuthorEnglishNames() {
 
 async function testReaderHomeKeepsUnavailableProgressVisible() {
     const worker = makeWorker();
-    worker.getBookRecordByUid = async(uid) => uid === 'available'
-        ? {title: 'Доступная книга', author: 'Автор', ext: 'fb2'} : null;
+    worker.catalogSearch = {getBooksByUids: async(uids) => uids.includes('available')
+        ? [{_uid: 'available', title: 'Доступная книга', author: 'Автор', ext: 'fb2'}] : []};
     const user = {readerProgress: Object.fromEntries(Array.from({length: 12}, (_, i) => [
         `missing-${i}`, {percent: (i + 1) / 100, hidden: false, updatedAt: `2026-01-${String(i + 1).padStart(2, '0')}`},
     ]))};

@@ -1987,9 +1987,13 @@ class WebWorker {
         const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
         const readBookUids = (context && context.readBookUids ? new Set(context.readBookUids) : new Set());
         const seriesState = new Map();
+        const booksByUid = await this.getBookRecordsByUids([
+            ...Object.keys(progressMap),
+            ...lists.flatMap(list => this.readingListStore.normalizeEntries(list.books).filter(entry => entry.read).map(entry => entry.bookUid)),
+        ]);
 
         for (const [bookUid, progress] of Object.entries(progressMap)) {
-            const book = await this.getBookRecordByUid(bookUid);
+            const book = booksByUid.get(String(bookUid || '').trim());
             if (!book || !book.series || !book.serno)
                 continue;
 
@@ -2018,7 +2022,7 @@ class WebWorker {
                     continue;
 
                 readBookUids.add(entry.bookUid);
-                const book = await this.getBookRecordByUid(entry.bookUid);
+                const book = booksByUid.get(entry.bookUid);
                 if (!book || !book.series || !book.serno)
                     continue;
 
@@ -2779,6 +2783,13 @@ class WebWorker {
         return (rows.length ? rows[0] : null);
     }
 
+    //Записи по набору _uid одним запросом к потоку БД: Map _uid -> запись
+    async getBookRecordsByUids(bookUids = []) {
+        const uids = Array.from(new Set(bookUids.map(uid => String(uid || '').trim()).filter(Boolean)));
+        const rows = (uids.length ? await this.catalogSearch.getBooksByUids(uids) : []);
+        return new Map(rows.map(row => [row._uid, row]));
+    }
+
     // Records by `sourceId:libid` (the key Kobo ids are derived from), for list entries whose _uid
     // changed in a re-index. Indexed in the library DB.
     async findBookRecordsByStableKeys(keys = []) {
@@ -2878,8 +2889,9 @@ class WebWorker {
             .filter((item) => item && (state === 'all' || item.state === state));
 
         const items = [];
+        const booksByUid = await this.getBookRecordsByUids(rows.map(item => item.bookUid));
         for (const item of rows) {
-            const book = await this.getBookRecordByUid(item.bookUid);
+            const book = booksByUid.get(item.bookUid) || null;
             const metadata = book || {};
 
             const resultItem = {
@@ -4015,8 +4027,9 @@ class WebWorker {
 
         const listEntries = this.readingListStore.normalizeEntries(item.books);
         const books = [];
+        const booksByUid = await this.getBookRecordsByUids(listEntries.map(entry => entry.bookUid));
         for (const entry of listEntries) {
-            const book = await this.getBookRecordByUid(entry.bookUid);
+            const book = booksByUid.get(entry.bookUid);
             if (book) {
                 book._readingListRead = !!entry.read;
                 books.push(book);
@@ -4122,11 +4135,9 @@ class WebWorker {
         if (!normalized.length)
             throw new Error('bookUids is empty');
 
-        for (const bookUid of normalized) {
-            const book = await this.getBookRecordByUid(bookUid);
-            if (!book)
-                throw new Error('404 Файл не найден');
-        }
+        const booksByUid = await this.getBookRecordsByUids(normalized);
+        if (normalized.some(bookUid => !booksByUid.has(bookUid)))
+            throw new Error('404 Файл не найден');
 
         return await this.readingListStore.setBooksRead(userId, normalized, read, options);
     }
