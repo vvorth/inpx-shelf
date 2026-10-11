@@ -39,11 +39,9 @@ const state = {
         discoveryExternalLimit: 12,
         discoveryExternalSource: '',
         discoveryExternalName: '',
-        discoveryExternalUrl: '',
         discoveryExternalTtlMinutes: 1440,
         discoveryExternalFilter: 'books',
         discoveryExternalGenreUrl: '',
-        discoveryExternalGenreName: '',
     },    
 };
 

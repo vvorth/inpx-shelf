@@ -531,10 +531,8 @@ class WebSocketController {
             externalLimit: req.externalLimit,
             externalSource: req.externalSource,
             externalName: req.externalName,
-            externalUrl: req.externalUrl,
             externalTtlMinutes: req.externalTtlMinutes,
             externalBrowseUrl: req.externalBrowseUrl,
-            externalBrowseName: req.externalBrowseName,
         });
 
         this.send(result, req, ws);

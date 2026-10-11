@@ -56,7 +56,7 @@
 
             <div v-if="kind === 'bestsellers' && genreOptions.length > 1" class="external-tools">
                 <q-select
-                    :model-value="settings.discoveryExternalGenreUrl || ''"
+                    :model-value="activeAward"
                     dense
                     outlined
                     emit-value
@@ -326,10 +326,8 @@ class DiscoveryPage {
                 externalLimit: Math.max(12, Math.min(120, parseInt(this.settings.discoveryExternalLimit, 10) || 24)),
                 externalSource: external.source,
                 externalName: external.name,
-                externalUrl: external.url,
                 externalTtlMinutes: Math.max(1440, parseInt(this.settings.discoveryExternalTtlMinutes || (this.config.discovery || {}).externalTtlMinutes, 10) || 1440),
                 externalBrowseUrl: this.settings.discoveryExternalGenreUrl || '',
-                externalBrowseName: this.settings.discoveryExternalGenreName || '',
             });
             if (seq !== this.requestSeq)
                 return;
@@ -369,9 +367,7 @@ class DiscoveryPage {
             });
         }
         if (this.kind === 'bestsellers') {
-            return shelves.filter(shelf => shelf.source === 'external').map(shelf => Object.assign({}, shelf, {
-                items: (shelf.items || []).filter(book => String(book.discoveryItemKind || 'book').toLowerCase() !== 'genre'),
-            }));
+            return shelves.filter(shelf => shelf.source === 'external');
         }
         return [];
     }
@@ -420,16 +416,22 @@ class DiscoveryPage {
 
     get genreOptions() {
         const shelf = this.rawShelves.find(item => item && item.source === 'external') || {};
-        const result = [{label: t('search.allGenres'), value: ''}];
+        const result = [{label: t('discovery.allAwards'), value: ''}];
         const seen = new Set(['']);
         for (const option of (shelf.genreOptions || [])) {
             const value = String(option && option.value || '').trim();
             if (value && !seen.has(value)) {
                 seen.add(value);
-                result.push({label: String(option.label || value), value});
+                result.push({label: tm(option.label) || value, value});
             }
         }
         return result;
+    }
+
+    //в настройках могла остаться ссылка на жанр прежней веб-витрины
+    get activeAward() {
+        const value = this.settings.discoveryExternalGenreUrl || '';
+        return (this.genreOptions.some(option => option.value === value) ? value : '');
     }
 
     hideSetting(shelf) {
@@ -456,10 +458,8 @@ class DiscoveryPage {
     }
 
     setExternalGenre(value) {
-        const option = this.genreOptions.find(item => item.value === value);
         this.$store.commit('setSettings', {
             discoveryExternalGenreUrl: value || '',
-            discoveryExternalGenreName: (value && option ? option.label : ''),
             discoveryExternalLimit: 24,
         });
     }

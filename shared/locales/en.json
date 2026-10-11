@@ -245,7 +245,6 @@
         "hide": "Hide",
         "information": "Information",
         "keywords": "Keywords",
-        "limit": "Limit",
         "loadingAuthorInformation": "Loading author information...",
         "login": "Login",
         "nameRequired": "Name must not be empty",
@@ -296,7 +295,7 @@
         "authors": "Authors: {n}",
         "buildingShowcase": "Building showcase...",
         "dontUseForTastes": "Don't use for my taste",
-        "externalShowcaseGenre": "External showcase genre",
+        "externalShowcaseGenre": "Award",
         "externalSource": "External source",
         "favoriteAuthors": "Favorite authors",
         "favoriteGenres": "Favorite genres",
@@ -311,7 +310,6 @@
         "match": {
             "exact": "Exact match",
             "external": "External showcase match",
-            "genre": "External catalog genre",
             "missingLocal": "Not in the local library",
             "title": "Title match",
             "titleAuthor": "Title and author match",
@@ -325,7 +323,7 @@
         "noveltyCareful": "Careful · 10%",
         "noveltyMore": "More new · 25%",
         "openCatalog": "Open catalog",
-        "picksFromAnExternal": "Picks from an external site; books that aren't in the library open on the source site",
+        "picksFromAnExternal": "Literary award winners from Wikidata, newest first; books that aren't in the library open on Wikidata",
         "reason": {
             "basedOnLibrary": "Based on your library",
             "chosenAuthor": "You chose the author: {author}",
@@ -354,7 +352,7 @@
             "continueReadingSubtitle": "Books you opened recently",
             "externalCounts": "In library {inLibrary} · not in library {notInLibrary}",
             "externalEmpty": "Nothing found in the external source yet.",
-            "externalGenreCounts": "Genre: {genre} · In library {inLibrary} · not in library {notInLibrary}",
+            "externalGenreCounts": "{genre} · In library {inLibrary} · not in library {notInLibrary}",
             "externalUnavailable": "External source is temporarily unavailable",
             "fromLists": "From your lists",
             "fromListsEmpty": "Add books to personal lists and they will appear here.",
@@ -380,19 +378,29 @@
         "unreadOnly": "Unread only",
         "updated": "Updated {time}",
         "whatDoLikeRead": "What do you like to read?",
-        "youCanSetYour": "You can set your tastes later with “Set up tastes” on the home page."
+        "youCanSetYour": "You can set your tastes later with “Set up tastes” on the home page.",
+        "allAwards": "All awards",
+        "award": {
+            "hugo": "Hugo Award for Best Novel",
+            "nebula": "Nebula Award for Best Novel",
+            "worldFantasy": "World Fantasy Award for Best Novel",
+            "locus": "Locus Award for Best Science Fiction Novel",
+            "clarke": "Arthur C. Clarke Award",
+            "booker": "Booker Prize",
+            "pulitzer": "Pulitzer Prize for Fiction",
+            "goncourt": "Prix Goncourt"
+        }
     },
     "discoverySource": {
         "deleteSource": "Delete source",
-        "examplePartnerShowcase": "For example: Partner showcase",
         "ifDeleteSourceTab": "If you delete the source, the tab and showcase will disappear until an administrator sets up a new source.",
         "n24Hours": "24 hours",
         "n3Days": "3 days",
         "n7Days": "7 days",
         "refreshInterval": "Refresh interval",
-        "showcaseUrl": "Showcase URL",
         "sourceType": "Source type",
-        "webShowcase": "Web showcase"
+        "wikidataAwards": "Award winners (Wikidata)",
+        "exampleAwardWinners": "For example: Award winners"
     },
     "errors": {
         "adminOnlyProfiles": "Only the administrator can manage profiles",
@@ -446,7 +454,6 @@
         "epubUnsupportedImage": "Unsupported EPUB image format: {name}",
         "externalReadFailed": "Could not read the external showcase",
         "externalUpdateFailed": "Could not update the external source \"{name}\"{details}",
-        "externalUrlMissing": "External showcase URL is not set",
         "fb2UnsupportedEncoding": "Unsupported FB2 encoding: {encoding}",
         "fileNotFound": "404 File not found",
         "fileTooLarge": "File is too large",
@@ -503,7 +510,6 @@
         "telegramTokenMissing": "Telegram bot token is not set",
         "telegramTokenRejected": "The Telegram API rejected the token",
         "unknownCache": "Unknown cache to clean",
-        "unknownShowcaseSource": "Unknown showcase source: {source}",
         "unknownTestType": "Unknown test type",
         "unsupportedDeliveryFormat": "Unsupported delivery format: {format}",
         "userLoginExists": "A user with this login already exists",
@@ -1413,7 +1419,6 @@
         "added": "Added",
         "afterTheLibraryIs": "After the library is updated, the server builds a search index: it reads every book and builds a dictionary for typo-tolerant search. On a large library this takes a few minutes; the page updates by itself.",
         "allAuthors": "All authors ({n})",
-        "allGenres": "All genres",
         "allSeries": "All series ({n})",
         "author": "Author",
         "authorAppearLessOften": "This author will appear less often in recommendations.",
@@ -1676,8 +1681,8 @@
         "system": "System",
         "thursday": "Thursday",
         "tuesday": "Tuesday",
-        "webShowcase": "{name} · web showcase",
-        "wednesday": "Wednesday"
+        "wednesday": "Wednesday",
+        "awardsShowcase": "{name} · award winners"
     },
     "shellUserMenu": {
         "devicesOpdsAndKobo": "Devices: OPDS and Kobo",

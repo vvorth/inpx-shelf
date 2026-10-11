@@ -461,10 +461,8 @@ class ReadingListStore {
     normalizeSharedDiscoveryConfig(value = {}) {
         const sourceValue = String(value.externalSource || 'none').trim().toLowerCase();
         return {
-            externalSource: (sourceValue && sourceValue !== 'none' ? 'web-page' : 'none'),
+            externalSource: (sourceValue && sourceValue !== 'none' ? 'wikidata-awards' : 'none'),
             externalName: String(value.externalName || '').trim(),
-            externalUrl: String(value.externalUrl || '').trim(),
-            externalLimit: Math.max(1, Math.min(parseInt(value.externalLimit, 10) || 8, 24)),
             externalTtlMinutes: Math.max(1440, Math.min(parseInt(value.externalTtlMinutes, 10) || 1440, 10080)),
         };
     }

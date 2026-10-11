@@ -149,8 +149,6 @@ module.exports = {
         shelfLimit: parseInt(process.env.INPX_DISCOVERY_LIMIT || '8', 10) || 8,
         externalSource: String(process.env.INPX_DISCOVERY_EXTERNAL_SOURCE || 'none').trim().toLowerCase(),
         externalName: String(process.env.INPX_DISCOVERY_EXTERNAL_NAME || '').trim(),
-        externalLimit: parseInt(process.env.INPX_DISCOVERY_EXTERNAL_LIMIT || '8', 10) || 8,
-        externalUrl: String(process.env.INPX_DISCOVERY_EXTERNAL_URL || '').trim(),
         externalTtlMinutes: parseInt(process.env.INPX_DISCOVERY_EXTERNAL_TTL_MINUTES || '1440', 10) || 1440,
     },
 

@@ -1,4 +1,4 @@
-//Внешняя витрина (подборка с сайта-источника) и её пункт в меню.
+//Внешняя витрина (лауреаты литературных премий из Викиданных) и её пункт в меню.
 //Персональные подборки показываются на главной.
 import {t} from './i18n';
 import {isAdmin} from './session';
@@ -11,9 +11,8 @@ export function externalDiscovery(config = {}, settings = {}) {
     const pick = (local, shared) => String(own ? (local || shared || '') : (shared || '')).trim();
     const source = pick(settings.discoveryExternalSource, discovery.externalSource).toLowerCase();
     return {
-        source: (source && source !== 'none' ? 'web-page' : 'none'),
+        source: (source && source !== 'none' ? 'wikidata-awards' : 'none'),
         name: pick(settings.discoveryExternalName, discovery.externalName),
-        url: pick(settings.discoveryExternalUrl, discovery.externalUrl),
     };
 }
 

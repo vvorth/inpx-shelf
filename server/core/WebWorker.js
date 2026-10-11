@@ -49,7 +49,7 @@ const stateToText = {
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
 const personalDiscoveryCacheTtl = 10*60*1000;
-const externalDiscoveryCacheVersion = 'v4';
+const externalDiscoveryCacheVersion = 'v5';
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
 const bookInfoVersion = 'fb2-encoding-v8';
@@ -334,164 +334,71 @@ function resolveReleaseChannel(config = {}) {
     return (isRcReleaseTag(config.version) ? 'rc' : 'stable');
 }
 
-function decodeExternalText(value = '') {
-    return _.unescape(String(value || ''))
-        .replace(/\u00a0/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function stripExternalHtml(value = '') {
-    return decodeExternalText(String(value || '')
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' '));
-}
-
-function toAbsoluteExternalUrl(baseUrl = '', value = '') {
-    const raw = String(value || '').trim();
-    if (!raw)
-        return '';
-
-    try {
-        return new URL(raw, baseUrl).toString();
-    } catch (e) {
-        return raw;
-    }
-}
-
-function getExternalItemKind(sourceUrl = '', itemUrl = '') {
-    const absoluteUrl = String(itemUrl || '').trim();
-    if (!absoluteUrl)
-        return '';
-
-    try {
-        const source = new URL(String(sourceUrl || '').trim() || absoluteUrl);
-        const target = new URL(absoluteUrl, source);
-        const hostname = String(target.hostname || '').toLowerCase();
-        const pathname = String(target.pathname || '').toLowerCase();
-
-        if (hostname.endsWith('litres.ru')) {
-            if (/\/book\//.test(pathname))
-                return 'book';
-            if (/\/genre\//.test(pathname))
-                return 'genre';
-            return '';
-        }
-
-        return 'book';
-    } catch (e) {
-        return 'book';
-    }
-}
-
-function sanitizeExternalBrowseUrl(baseUrl = '', browseUrl = '') {
-    const rawBaseUrl = String(baseUrl || '').trim();
-    const rawBrowseUrl = String(browseUrl || '').trim();
-    if (!rawBaseUrl || !rawBrowseUrl)
-        return '';
-
-    try {
-        const base = new URL(rawBaseUrl);
-        const target = new URL(rawBrowseUrl, base);
-        if (String(base.hostname || '').toLowerCase() !== String(target.hostname || '').toLowerCase())
-            return '';
-
-        target.hash = '';
-        return target.toString();
-    } catch (e) {
-        return '';
-    }
-}
-
-function buildExternalFlagsByUrl(sourceUrl = '') {
-    const normalized = String(sourceUrl || '').trim().toLowerCase();
-    return {
-        isNew: /\/showroom\/new\/|\/catalog\/new\/|\/novinki\/|\/new\/|[?&]new\b/.test(normalized),
-        isBestseller: /\/popular\/|\/bestsellers?\/|best[_-]?seller|хиты|popular/.test(normalized),//i18n-ignore: разбор данных
-    };
-}
-
 function buildExternalFeedIdentity(item = {}) {
     const title = normalizeDiscoveryText(item.title || '');
     if (!title)
         return '';
 
-    const kind = String(item.kind || 'book').trim().toLowerCase() || 'book';
     const author = normalizeAuthorText(item.author || '');
-    if (author)
-        return `${kind}|${title}|${author}`;
-
-    const url = String(item.url || '').trim().toLowerCase();
-    return `${kind}|${title}|${url}`;
+    return `${title}|${author || String(item.url || '').trim().toLowerCase()}`;
 }
 
-function dedupeExternalFeedItems(items = [], limit = 8) {
-    const result = [];
-    const seen = new Set();
+//Премии, у которых в Викиданных победители отмечены на самих произведениях.
+//Русские премии (Большая книга, Русский Букер, НОС) там почти не заполнены.
+const wikidataAwards = [
+    {id: 'Q255032', label: 'discovery.award.hugo'},
+    {id: 'Q266012', label: 'discovery.award.nebula'},
+    {id: 'Q898527', label: 'discovery.award.worldFantasy'},
+    {id: 'Q2576795', label: 'discovery.award.locus'},
+    {id: 'Q708830', label: 'discovery.award.clarke'},
+    {id: 'Q160082', label: 'discovery.award.booker'},
+    {id: 'Q833633', label: 'discovery.award.pulitzer'},
+    {id: 'Q187300', label: 'discovery.award.goncourt'},
+];
+const wikidataEntityUrl = 'https://www.wikidata.org/wiki/';
 
-    for (const item of items) {
-        const title = decodeExternalText(item.title || '');
-        const url = String(item.url || '').trim();
-        if (!title || !url)
-            continue;
-
-        const key = buildExternalFeedIdentity(Object.assign({}, item, {title}))
-            || `${title.toLowerCase()}|${url.toLowerCase()}`;
-        if (seen.has(key))
-            continue;
-        seen.add(key);
-        result.push(Object.assign({}, item, {title}));
-        if (result.length >= limit)
-            break;
-    }
-
-    return result;
+function findWikidataAward(url = '') {
+    return wikidataAwards.find(award => wikidataEntityUrl + award.id === String(url || '').trim()) || null;
 }
 
-function buildExternalGenreOptions(items = [], sourceUrl = '') {
+function buildWikidataAwardsQuery(awardIds = []) {
+    const values = awardIds.map(id => `wd:${id}`).join(' ');
+    const label = (subject, name, lang) => `OPTIONAL { ${subject} rdfs:label ?${name} FILTER(LANG(?${name}) = "${lang}") }`;
+    return `SELECT ?work (SAMPLE(?ru) AS ?titleRu) (SAMPLE(?en) AS ?titleEn)
+        (GROUP_CONCAT(DISTINCT ?authorRuLabel; separator=", ") AS ?authorRu)
+        (GROUP_CONCAT(DISTINCT ?authorEnLabel; separator=", ") AS ?authorEn)
+        (MAX(YEAR(?date)) AS ?year)
+    WHERE {
+        VALUES ?award { ${values} }
+        ?work p:P166 ?statement. ?statement ps:P166 ?award.
+        OPTIONAL { ?statement pq:P585 ?date }
+        ?work wdt:P50 ?author.
+        ${label('?work', 'ru', 'ru')} ${label('?work', 'en', 'en')}
+        ${label('?author', 'authorRuLabel', 'ru')} ${label('?author', 'authorEnLabel', 'en')}
+    } GROUP BY ?work ORDER BY DESC(?year)`;
+}
+
+//ответ SPARQL -> книги для сопоставления: русское название, английское - запасным вариантом
+function parseWikidataAwardWinners(data = {}) {
+    const value = (binding, name) => String(((binding || {})[name] || {}).value || '').trim();
     const result = [];
-    const seen = new Set();
-
-    for (const item of (Array.isArray(items) ? items : [])) {
-        if (String(item && item.kind || '').trim().toLowerCase() !== 'genre')
+    for (const binding of (((data || {}).results || {}).bindings || [])) {
+        const titleRu = value(binding, 'titleRu');
+        const titleEn = value(binding, 'titleEn');
+        const authorRu = value(binding, 'authorRu');
+        const authorEn = value(binding, 'authorEn');
+        const title = titleRu || titleEn;
+        if (!title)
             continue;
 
-        const label = decodeExternalText(item.title || item.name || '');
-        const url = sanitizeExternalBrowseUrl(sourceUrl, item.url || item.link || '');
-        if (!label || !url || seen.has(url))
-            continue;
-
-        seen.add(url);
         result.push({
-            label,
-            value: url,
+            title,
+            author: (titleRu ? authorRu || authorEn : authorEn || authorRu),
+            url: value(binding, 'work').replace(/^https?:\/\/www\.wikidata\.org\/entity\//, wikidataEntityUrl),
+            alternates: (titleRu && titleEn && titleEn !== titleRu ? [{title: titleEn, author: authorEn || authorRu}] : []),
         });
     }
-
     return result;
-}
-
-function limitExternalFeedItemsByBooks(items = [], bookLimit = 8) {
-    const result = [];
-    const maxBooks = Math.max(1, parseInt(bookLimit, 10) || 8);
-    let bookCount = 0;
-    let hasMore = false;
-
-    for (const item of (Array.isArray(items) ? items : [])) {
-        const kind = String(item && item.kind || 'book').trim().toLowerCase() || 'book';
-        if (kind !== 'genre') {
-            if (bookCount >= maxBooks) {
-                hasMore = true;
-                break;
-            }
-            bookCount++;
-        }
-
-        result.push(item);
-    }
-
-    return {items: result, hasMore};
 }
 
 function buildReleaseCheckRequest(checkReleaseLink = '', channel = 'stable') {
@@ -585,15 +492,6 @@ function extractDiscoveryAuthorTokens(author = '') {
             .map(token => token.trim())
             .filter(token => token.length >= 3)
     ));
-}
-
-function getPrimaryDiscoveryAuthor(persons = []) {
-    const list = (Array.isArray(persons) ? persons : [])
-        .filter(person => person && String(person.role || '').toLowerCase() === 'author')
-        .map(person => String(person.full_name || '').trim())
-        .filter(Boolean);
-
-    return (list.length ? list[0] : '');
 }
 
 function flibraryAuthorHash(author) {
@@ -901,25 +799,19 @@ class WebWorker {
             enabled: true,
             shelfLimit: 8,
             externalSource: 'none',
-            externalLimit: 8,
-            externalUrl: '',
             externalName: '',
             externalTtlMinutes: 1440,
             externalBrowseUrl: '',
-            externalBrowseName: '',
         }, this.config.discovery || {}, this.sharedDiscoveryConfig || {}, options || {});
 
         discovery.enabled = (discovery.enabled !== false);
         discovery.shelfLimit = Math.max(1, Math.min(parseInt(discovery.shelfLimit, 10) || 8, 24));
-        discovery.externalLimit = Math.max(1, Math.min(parseInt(discovery.externalLimit, 10) || discovery.shelfLimit, 120));
         discovery.externalSource = String(discovery.externalSource || 'none').trim().toLowerCase();
         if (discovery.externalSource && discovery.externalSource !== 'none')
-            discovery.externalSource = 'web-page';
-        discovery.externalUrl = String(discovery.externalUrl || '').trim();
+            discovery.externalSource = 'wikidata-awards';
         discovery.externalName = String(discovery.externalName || '').trim();
         discovery.externalTtlMinutes = Math.max(1440, Math.min(parseInt(discovery.externalTtlMinutes, 10) || 1440, 10080));
-        discovery.externalBrowseUrl = sanitizeExternalBrowseUrl(discovery.externalUrl, discovery.externalBrowseUrl || '');
-        discovery.externalBrowseName = (discovery.externalBrowseUrl ? String(discovery.externalBrowseName || '').trim() : '');
+        discovery.externalBrowseUrl = (findWikidataAward(discovery.externalBrowseUrl) ? String(discovery.externalBrowseUrl).trim() : '');
 
         return discovery;
     }
@@ -935,7 +827,6 @@ class WebWorker {
         const hasAdminExternalOverrides = (
             Object.prototype.hasOwnProperty.call(requestOptions, 'externalSource')
             || Object.prototype.hasOwnProperty.call(requestOptions, 'externalName')
-            || Object.prototype.hasOwnProperty.call(requestOptions, 'externalUrl')
             || Object.prototype.hasOwnProperty.call(requestOptions, 'externalTtlMinutes')
         );
 
@@ -947,7 +838,6 @@ class WebWorker {
         } catch (e) {
             delete requestOptions.externalSource;
             delete requestOptions.externalName;
-            delete requestOptions.externalUrl;
             delete requestOptions.externalTtlMinutes;
         }
 
@@ -966,8 +856,6 @@ class WebWorker {
                 return msg('discovery.match.titlePartial');
             case 'missing-local':
                 return msg('discovery.match.missingLocal');
-            case 'genre':
-                return msg('discovery.match.genre');
             default:
                 return msg('discovery.match.external');
         }
@@ -1054,359 +942,6 @@ class WebWorker {
         } finally {
             this.discoveryPending.delete(key);
         }
-    }
-
-    parseExternalFeedItemsFromNextData(html = '', sourceUrl = '', limit = 8) {
-        const nextDataMatch = String(html || '').match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i);
-        if (!nextDataMatch)
-            return [];
-
-        let nextData = null;
-        try {
-            nextData = JSON.parse(nextDataMatch[1]);
-        } catch (e) {
-            return [];
-        }
-
-        let initialState = ((((nextData || {}).props || {}).pageProps || {}).initialState || {});
-        if (typeof initialState === 'string') {
-            try {
-                initialState = JSON.parse(initialState || '{}');
-            } catch (e) {
-                initialState = {};
-            }
-        }
-
-        const queries = (((initialState || {}).rtkqApi || {}).queries || {});
-        const candidates = [];
-        const collectRows = (value, result = []) => {
-            if (!value)
-                return result;
-
-            if (Array.isArray(value)) {
-                if (value.some(item => item && typeof item === 'object' && (item.title || item.name) && (item.url || item.link)))
-                    result.push(value);
-
-                for (const item of value) {
-                    if (item && typeof item === 'object')
-                        collectRows(item, result);
-                }
-
-                return result;
-            }
-
-            if (typeof value === 'object') {
-                for (const nestedValue of Object.values(value))
-                    collectRows(nestedValue, result);
-            }
-
-            return result;
-        };
-
-        for (const query of Object.values(queries)) {
-            const rowGroups = collectRows((query || {}).data || {});
-            for (const rows of rowGroups) {
-                for (const item of rows) {
-                    if (!item || (!item.title && !item.name) || (!item.url && !item.link))
-                        continue;
-
-                    const itemUrl = toAbsoluteExternalUrl(sourceUrl, item.url || item.link);
-                    const itemKind = getExternalItemKind(sourceUrl, itemUrl);
-                    if (!itemKind)
-                        continue;
-
-                    const authors = Array.isArray(item.authors)
-                        ? item.authors
-                            .map(author => decodeExternalText(author && typeof author === 'object' ? author.name : author))
-                            .filter(Boolean)
-                        : [];
-
-                    const cover = item.cover_url
-                        || (((item.cover || {}).large) || ((item.cover || {}).small))
-                        || (((item.picture || {}).large) || ((item.picture || {}).small))
-                        || (((item.image || {}).large) || ((item.image || {}).small))
-                        || item.image
-                        || '';
-
-                    candidates.push({
-                        kind: itemKind,
-                        title: decodeExternalText(item.title || item.name),
-                        author: decodeExternalText(authors.join(', ') || getPrimaryDiscoveryAuthor(item.persons)),
-                        url: itemUrl,
-                        cover: toAbsoluteExternalUrl(sourceUrl, cover),
-                        rating: (((item.rating || {}).rated_avg) || item.rating || 0),
-                        isBestseller: !!(
-                            ((item.labels || {}).is_bestseller)
-                            || ((item.labels || {}).is_sales_hit)
-                            || ((item.specialTypes || {}).best)
-                            || ((item.specialTypes || {}).bestseller)
-                        ),
-                        isNew: !!(
-                            ((item.labels || {}).is_new)
-                            || ((item.specialTypes || {}).new)
-                            || ((item.specialTypes || {}).soon)
-                        ),
-                    });
-                }
-            }
-        }
-
-        return dedupeExternalFeedItems(candidates, Math.max(limit * 3, limit));
-    }
-
-    parseLitresFeedItemsFromHtml(html = '', sourceUrl = '', limit = 8) {
-        const coverByUrl = new Map();
-        const bookPathByUrl = new Map();
-        const flags = buildExternalFlagsByUrl(sourceUrl);
-        const normalizedHtml = String(html || '');
-
-        for (const match of normalizedHtml.matchAll(/<a[^>]+href="((?:\/|https:\/\/www\.litres\.ru\/)book\/[^"]+\/?)"[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)="([^"]+)"[^>]*>/gi)) {
-            const bookUrl = toAbsoluteExternalUrl(sourceUrl, match[1]);
-            const coverUrl = toAbsoluteExternalUrl(sourceUrl, match[2]);
-            if (bookUrl && coverUrl && !coverByUrl.has(bookUrl))
-                coverByUrl.set(bookUrl, coverUrl);
-        }
-
-        const items = [];
-        let lastBook = null;
-
-        for (const match of normalizedHtml.matchAll(/<a[^>]+href="((?:\/|https:\/\/www\.litres\.ru\/)(?:book|author)\/[^"]+\/?)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-            const href = toAbsoluteExternalUrl(sourceUrl, match[1]);
-            const text = stripExternalHtml(match[2]);
-            if (!href)
-                continue;
-
-            if (/\/book\//i.test(href)) {
-                if (!text)
-                    continue;
-
-                const item = {
-                    kind: 'book',
-                    title: text,
-                    author: '',
-                    url: href,
-                    cover: (coverByUrl.get(href) || ''),
-                    rating: 0,
-                    isBestseller: flags.isBestseller,
-                    isNew: flags.isNew,
-                };
-
-                items.push(item);
-                lastBook = item;
-                bookPathByUrl.set(href, item);
-                if (items.length >= Math.max(limit * 3, limit))
-                    break;
-                continue;
-            }
-
-            if (/\/author\//i.test(href) && lastBook && !lastBook.author && text)
-                lastBook.author = text;
-        }
-
-        return dedupeExternalFeedItems(items, Math.max(limit * 3, limit));
-    }
-
-    parseJsonLdProductFeedItems(html = '', sourceUrl = '', limit = 8) {
-        const items = [];
-        const flags = buildExternalFlagsByUrl(sourceUrl);
-        const scriptMatches = String(html || '').matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-
-        for (const match of scriptMatches) {
-            const raw = String(match[1] || '').trim();
-            if (!raw)
-                continue;
-
-            let data = null;
-            try {
-                data = JSON.parse(raw);
-            } catch (e) {
-                continue;
-            }
-
-            const queue = (Array.isArray(data) ? [...data] : [data]);
-            while (queue.length) {
-                const node = queue.shift();
-                if (!node || typeof node !== 'object')
-                    continue;
-
-                const type = String(node['@type'] || '').trim();
-                if (type === 'Product') {
-                    const title = decodeExternalText(node.name || ((node.offers || {}).name) || '');
-                    const url = toAbsoluteExternalUrl(sourceUrl, ((node.offers || {}).url) || node.url || '');
-                    const image = Array.isArray(node.image) ? node.image[0] : node.image;
-                    if (title && url) {
-                        items.push({
-                            kind: 'book',
-                            title,
-                            author: decodeExternalText(((node.author || {}).name) || node.author || ''),
-                            url,
-                            cover: toAbsoluteExternalUrl(sourceUrl, image || ((node.offers || {}).image) || ''),
-                            rating: 0,
-                            isBestseller: flags.isBestseller,
-                            isNew: flags.isNew,
-                        });
-                    }
-                }
-
-                for (const value of Object.values(node)) {
-                    if (Array.isArray(value))
-                        queue.push(...value);
-                    else if (value && typeof value === 'object')
-                        queue.push(value);
-                }
-            }
-        }
-
-        return dedupeExternalFeedItems(items, Math.max(limit * 3, limit));
-    }
-
-    parseMifFeedItemsFromHtml(html = '', sourceUrl = '', limit = 8) {
-        const items = [];
-        const flags = buildExternalFlagsByUrl(sourceUrl);
-        const normalizedHtml = String(html || '');
-
-        for (const match of normalizedHtml.matchAll(/<div[^>]+class="[^"]*lego-book[^"]*"[\s\S]{0,5000}?<a href="([^"]*\/catalog\/product\/[^"]+)"[^>]*>[\s\S]{0,2500}?<(?:img|source)[^>]+(?:data-original|src)="([^"]+)"[\s\S]{0,2500}?<div class="lego-book__cover-loading-title">([\s\S]{0,400}?)<\/div>/gi)) {
-            const titleBlock = match[3] || '';
-            const titleParts = Array.from(titleBlock.matchAll(/<p>([\s\S]*?)<\/p>/gi))
-                .map(item => stripExternalHtml(item[1]))
-                .filter(Boolean);
-
-            const title = decodeExternalText(titleParts[0] || '');
-            const author = decodeExternalText(titleParts[1] || '');
-            const url = toAbsoluteExternalUrl(sourceUrl, match[1]);
-            const cover = toAbsoluteExternalUrl(sourceUrl, match[2]);
-            if (!title || !url)
-                continue;
-
-            items.push({
-                title,
-                author,
-                url,
-                cover,
-                rating: 0,
-                isBestseller: flags.isBestseller,
-                isNew: flags.isNew || /Новинка/.test(titleBlock),//i18n-ignore: разбор данных
-            });
-
-            if (items.length >= Math.max(limit * 3, limit))
-                break;
-        }
-
-        return dedupeExternalFeedItems(items, Math.max(limit * 3, limit));
-    }
-
-    parseAlpinaFeedItemsFromHtml(html = '', sourceUrl = '', limit = 8) {
-        const items = [];
-        const flags = buildExternalFlagsByUrl(sourceUrl);
-        const normalizedHtml = String(html || '');
-
-        for (const match of normalizedHtml.matchAll(/data-book-name="([^"]+)"[\s\S]{0,4000}?<a href="([^"]*\/catalog\/book-[^"]+\/)"[\s\S]{0,2500}?<(?:img|source)[^>]+(?:data-src|src)="([^"]+)"[\s\S]{0,2500}?<div class="book-item-authors[\s\S]{0,2000}?<\/div>/gi)) {
-            const block = match[0];
-            const title = decodeExternalText(match[1]);
-            const url = toAbsoluteExternalUrl(sourceUrl, match[2]);
-            const cover = toAbsoluteExternalUrl(sourceUrl, match[3]);
-            const authors = [];
-
-            for (const authorMatch of block.matchAll(/book-item-authors__item[\s\S]{0,300}?<span[^>]*itemprop="name"[^>]*>([\s\S]*?)<\/span>/gi)) {
-                const author = stripExternalHtml(authorMatch[1]);
-                if (author)
-                    authors.push(author);
-            }
-
-            if (!title || !url)
-                continue;
-
-            items.push({
-                title,
-                author: authors.join(', '),
-                url,
-                cover,
-                rating: 0,
-                isBestseller: flags.isBestseller || /book-item-labels__item[^>]*>[\s\S]*?Бестселлер/i.test(block),//i18n-ignore: разбор данных
-                isNew: flags.isNew || /book-item-labels__item[^>]*>[\s\S]*?Новинка/i.test(block),//i18n-ignore: разбор данных
-            });
-
-            if (items.length >= Math.max(limit * 3, limit))
-                break;
-        }
-
-        return dedupeExternalFeedItems(items, Math.max(limit * 3, limit));
-    }
-
-    async fetchExternalFeedItems(limit = 8, url = '') {
-        const sourceUrl = String(url || '').trim();
-        if (!sourceUrl)
-            throw new Error(t('errors.externalUrlMissing'));
-
-        const requestPageHtml = async(pageUrl = '') => {
-            const response = await axios.get(pageUrl, {
-                responseType: 'text',
-                timeout: 20000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-                    'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.7',
-                },
-            });
-
-            return String(response.data || '');
-        };
-
-        const requestedItems = Math.max(1, parseInt(limit, 10) || 8);
-        const parserLimit = Math.max(requestedItems + 24, requestedItems);
-        const host = (() => {
-            try {
-                return new URL(sourceUrl).hostname.toLowerCase();
-            } catch (e) {
-                return '';
-            }
-        })();
-
-        const parseItemsFromHtml = (html = '', pageUrl = sourceUrl) => {
-            const parserChain = [
-                () => this.parseExternalFeedItemsFromNextData(html, pageUrl, parserLimit),
-            ];
-
-            if (host.includes('litres.ru'))
-                parserChain.push(() => this.parseLitresFeedItemsFromHtml(html, pageUrl, parserLimit));
-            if (host.includes('mann-ivanov-ferber.ru'))
-                parserChain.push(
-                    () => this.parseMifFeedItemsFromHtml(html, pageUrl, parserLimit),
-                    () => this.parseJsonLdProductFeedItems(html, pageUrl, parserLimit),
-                );
-            if (host.includes('alpinabook.ru'))
-                parserChain.push(() => this.parseAlpinaFeedItemsFromHtml(html, pageUrl, parserLimit));
-
-            parserChain.push(
-                () => this.parseJsonLdProductFeedItems(html, pageUrl, parserLimit),
-                () => this.parseMifFeedItemsFromHtml(html, pageUrl, parserLimit),
-                () => this.parseLitresFeedItemsFromHtml(html, pageUrl, parserLimit),
-                () => this.parseAlpinaFeedItemsFromHtml(html, pageUrl, parserLimit),
-            );
-
-            for (const parseItems of parserChain) {
-                const items = dedupeExternalFeedItems(parseItems(), parserLimit);
-                if (items.length)
-                    return items;
-            }
-
-            return [];
-        };
-
-        let items = [];
-        let hasMore = false;
-        let genreOptions = [];
-
-        const html = await requestPageHtml(sourceUrl);
-        const parsedItems = parseItemsFromHtml(html, sourceUrl);
-        const limited = limitExternalFeedItemsByBooks(parsedItems, requestedItems);
-        items = limited.items;
-        hasMore = limited.hasMore;
-        genreOptions = buildExternalGenreOptions(parsedItems, sourceUrl);
-
-        if (!items.length)
-            throw new Error(t('errors.externalReadFailed'));
-
-        return {sourceUrl, items, hasMore, genreOptions};
     }
 
     externalDiscoverySearchQueries(item = {}, limit = 32) {
@@ -1526,15 +1061,8 @@ class WebWorker {
             libid: '',
             file: '',
             discoveryUrl: String(item.url || '').trim(),
-            discoveryCoverUrl: String(item.cover || '').trim(),
-            discoveryRating: item.rating,
-            discoveryMatchType: (item.kind === 'genre' ? 'genre' : 'missing-local'),
+            discoveryMatchType: 'missing-local',
             discoveryMissingLocal: true,
-            discoveryItemKind: String(item.kind || 'book').trim().toLowerCase() || 'book',
-            discoveryFlags: {
-                bestseller: !!item.isBestseller,
-                isNew: !!item.isNew,
-            },
         };
     }
 
@@ -1544,31 +1072,31 @@ class WebWorker {
         const seenExternalItems = new Set();
         let matchedCount = 0;
         let missingCount = 0;
+        let processed = 0;
 
-        for (let index = 0; index < items.length; index++) {
+        for (let index = 0; index < items.length && result.length < limit; index++) {
             const item = items[index];
+            processed = index + 1;
             const externalKey = buildExternalFeedIdentity(item);
             if (externalKey && seenExternalItems.has(externalKey))
                 continue;
             if (externalKey)
                 seenExternalItems.add(externalKey);
 
-            const candidates = await this.findExternalDiscoveryCandidates(item, 32);
-            const match = this.pickDiscoveryBookMatchV2(item, candidates);
+            //переведённая книга может лежать в библиотеке под любым из названий
+            let match = null;
+            for (const variant of [item, ...(item.alternates || [])]) {
+                match = this.pickDiscoveryBookMatchV2(variant, await this.findExternalDiscoveryCandidates(variant, 32));
+                if (match)
+                    break;
+            }
 
             if (match && match.book) {
                 if (!seenBookUids.has(match.book._uid)) {
                     seenBookUids.add(match.book._uid);
                     result.push(Object.assign({}, match.book, {
                         discoveryUrl: item.url,
-                        discoveryCoverUrl: item.cover,
-                        discoveryRating: item.rating,
                         discoveryMatchType: match.kind,
-                        discoveryItemKind: String(item.kind || 'book').trim().toLowerCase() || 'book',
-                        discoveryFlags: {
-                            bestseller: !!item.isBestseller,
-                            isNew: !!item.isNew,
-                        },
                     }));
                     matchedCount++;
                 }
@@ -1577,9 +1105,6 @@ class WebWorker {
                 missingCount++;
             }
 
-            if (result.length >= limit)
-                break;
-
             await utils.processLoop();
         }
 
@@ -1587,13 +1112,26 @@ class WebWorker {
             items: result,
             matchedCount,
             missingCount,
+            hasMore: processed < items.length,
         };
     }
 
-    async fetchExternalDiscoveryItemsV2(discovery = {}) {
+    async fetchWikidataAwardWinners(discovery = {}) {
+        const award = findWikidataAward(discovery.externalBrowseUrl);
         try {
-            const targetUrl = (discovery.externalBrowseUrl || discovery.externalUrl);
-            return await this.fetchExternalFeedItems(discovery.externalLimit, targetUrl);
+            const response = await axios.get('https://query.wikidata.org/sparql', {
+                params: {query: buildWikidataAwardsQuery(award ? [award.id] : wikidataAwards.map(item => item.id))},
+                timeout: 60000,
+                headers: {
+                    //Викиданные требуют User-Agent с контактом
+                    'User-Agent': `${this.config.name}/${this.config.version} (https://github.com/vvorth/inpx-shelf)`,
+                    'Accept': 'application/sparql-results+json',
+                },
+            });
+            const items = parseWikidataAwardWinners(response.data);
+            if (!items.length)
+                throw new Error(t('errors.externalReadFailed'));
+            return {award, items};
         } catch (e) {
             const details = String(e && e.message || '').trim();
             const suffix = details ? `: ${details}` : '';
@@ -1606,41 +1144,34 @@ class WebWorker {
         if (discovery.externalSource === 'none')
             return null;
 
-        if (discovery.externalSource !== 'web-page')
-            throw new Error(t('errors.unknownShowcaseSource', {source: discovery.externalSource}));
-
-        const feed = await this.fetchExternalDiscoveryItemsV2(discovery);
-        const feedBooks = (Array.isArray(feed.items) ? feed.items : [])
-            .filter(item => String(item && item.kind || 'book').trim().toLowerCase() !== 'genre');
-        const matched = await this.matchExternalItemsToLocalBooksV2(feedBooks, limit);
+        const {award, items: winners} = await this.fetchWikidataAwardWinners(discovery);
+        const matched = await this.matchExternalItemsToLocalBooksV2(winners, limit);
+        const sourceName = (discovery.externalName || msg('discovery.externalSource'));
         const items = matched.items
             .map((book) => this.decorateDiscoveryBook(book, {
-                discoverySource: (discovery.externalName || msg('discovery.externalSource')),
+                discoverySource: sourceName,
                 matchKind: book.discoveryMatchType,
             }));
-        const sourceName = (discovery.externalName || msg('discovery.externalSource'));
-        const activeGenreName = String(discovery.externalBrowseName || '').trim();
         const libraryCounts = {inLibrary: matched.matchedCount, notInLibrary: matched.missingCount};
 
         return {
             id: 'external-source',
             title: sourceName,
-            subtitle: (activeGenreName
-                ? msg('discovery.shelf.externalGenreCounts', {genre: activeGenreName, ...libraryCounts})
+            subtitle: (award
+                ? msg('discovery.shelf.externalGenreCounts', {genre: msg(award.label), ...libraryCounts})
                 : msg('discovery.shelf.externalCounts', libraryCounts)),
             source: 'external',
             sourceName,
-            sourceUrl: feed.sourceUrl,
+            sourceUrl: (award ? wikidataEntityUrl + award.id : ''),
             updatedAt: Date.now(),
             discoveryStale: false,
-            discoveryHasMore: !!feed.hasMore,
-            genreOptions: (feed.genreOptions || []),
-            activeGenreUrl: (discovery.externalBrowseUrl || ''),
-            activeGenreName,
+            discoveryHasMore: matched.hasMore,
+            genreOptions: wikidataAwards.map(item => ({label: msg(item.label), value: wikidataEntityUrl + item.id})),
             items,
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
     }
+
     async getDiscoveryShelvesV2(options = {}) {
         this.checkMyState();
 
@@ -1668,7 +1199,7 @@ class WebWorker {
         if (section !== 'personal' && discovery.externalSource !== 'none') {
             try {
                 const externalShelf = await this.rememberPersistedDiscovery(
-                    `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${discovery.externalLimit}:${externalShelfLimit}:${discovery.externalUrl}:${discovery.externalBrowseUrl}:${discovery.externalBrowseName}:${discovery.externalTtlMinutes}`,
+                    `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${externalShelfLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}`,
                     () => this.buildExternalDiscoveryShelfV2(externalShelfLimit, options),
                     discovery.externalTtlMinutes * 60 * 1000,
                     {forceRefresh: options.forceRefresh === true},
@@ -1682,7 +1213,6 @@ class WebWorker {
                     subtitle: msg('discovery.shelf.externalUnavailable'),
                     source: 'external',
                     sourceName: (discovery.externalName || msg('discovery.externalSource')),
-                    sourceUrl: (discovery.externalUrl || ''),
                     items: [],
                     emptyMessage: e.message,
                 });

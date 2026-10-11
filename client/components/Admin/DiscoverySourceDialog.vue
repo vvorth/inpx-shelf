@@ -30,33 +30,7 @@
                     outlined
                     dense
                     clearable
-                    :placeholder="$t('discoverySource.examplePartnerShowcase')"
-                />
-            </div>
-
-            <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('discoverySource.showcaseUrl') }}</div>
-                <q-input
-                    v-model="discoveryExternalUrl"
-                    class="bg-white col"
-                    outlined
-                    dense
-                    clearable
-                    placeholder="https://..."
-                />
-            </div>
-
-            <div v-if="externalDiscoveryEnabled" class="row items-center q-mt-sm">
-                <div class="q-mr-sm dialog-label">{{ $t('common.limit') }}</div>
-                <q-select
-                    v-model="discoveryExternalLimit"
-                    :options="discoveryLimitOptions"
-                    class="bg-white"
-                    dropdown-icon="la la-angle-down la-sm"
-                    outlined
-                    dense
-                    emit-value
-                    map-options
+                    :placeholder="$t('discoverySource.exampleAwardWinners')"
                 />
             </div>
 
@@ -121,17 +95,13 @@ const componentOptions = {
             this.loadSettings();
         },
         discoveryExternalSource(newValue) {
-            const normalizedValue = (String(newValue || '').trim().toLowerCase() === 'none' ? 'none' : 'web-page');
+            const normalizedValue = (String(newValue || '').trim().toLowerCase() === 'none' ? 'none' : 'wikidata-awards');
             if (normalizedValue === 'none') {
                 this.discoveryExternalName = '';
-                this.discoveryExternalUrl = '';
-                this.discoveryExternalLimit = 8;
                 this.discoveryExternalTtlMinutes = 1440;
                 this.commit('setSettings', {
                     discoveryExternalSource: 'none',
                     discoveryExternalName: '',
-                    discoveryExternalUrl: '',
-                    discoveryExternalLimit: 8,
                     discoveryExternalTtlMinutes: 1440,
                     showDiscoveryExternal: false,
                 });
@@ -142,12 +112,6 @@ const componentOptions = {
         },
         discoveryExternalName(newValue) {
             this.commit('setSettings', {discoveryExternalName: newValue});
-        },
-        discoveryExternalUrl(newValue) {
-            this.commit('setSettings', {discoveryExternalUrl: newValue});
-        },
-        discoveryExternalLimit(newValue) {
-            this.commit('setSettings', {discoveryExternalLimit: newValue});
         },
         discoveryExternalTtlMinutes(newValue) {
             const normalizedValue = Math.max(1440, parseInt(newValue, 10) || 1440);
@@ -169,20 +133,7 @@ class DiscoverySourceDialog {
     dialogVisible = false;
     discoveryExternalSource = 'none';
     discoveryExternalName = '';
-    discoveryExternalUrl = '';
-    discoveryExternalLimit = 8;
     discoveryExternalTtlMinutes = 1440;
-
-    discoveryLimitOptions = [
-        {label: '4', value: 4},
-        {label: '6', value: 6},
-        {label: '8', value: 8},
-        {label: '10', value: 10},
-        {label: '12', value: 12},
-        {label: '16', value: 16},
-        {label: '20', value: 20},
-        {label: '24', value: 24},
-    ];
 
     get discoveryTtlOptions() {
         return [
@@ -213,7 +164,7 @@ class DiscoverySourceDialog {
     get externalSourceOptions() {
         return [
             {label: t('common.no'), value: 'none'},
-            {label: t('discoverySource.webShowcase'), value: 'web-page'},
+            {label: t('discoverySource.wikidataAwards'), value: 'wikidata-awards'},
         ];
     }
 
@@ -225,10 +176,8 @@ class DiscoverySourceDialog {
         const settings = this.settings;
         this.discoveryExternalSource = (String(settings.discoveryExternalSource || this.discoveryConfig.externalSource || 'none').trim().toLowerCase() === 'none'
             ? 'none'
-            : 'web-page');
+            : 'wikidata-awards');
         this.discoveryExternalName = String(settings.discoveryExternalName || this.discoveryConfig.externalName || '').trim();
-        this.discoveryExternalUrl = String(settings.discoveryExternalUrl || this.discoveryConfig.externalUrl || '').trim();
-        this.discoveryExternalLimit = parseInt(settings.discoveryExternalLimit, 10) || 8;
         this.discoveryExternalTtlMinutes = Math.max(
             1440,
             parseInt(settings.discoveryExternalTtlMinutes, 10) || parseInt(this.discoveryConfig.externalTtlMinutes, 10) || 1440,
@@ -244,8 +193,6 @@ class DiscoverySourceDialog {
             await this.api.updateSharedDiscoveryConfig({
                 externalSource: this.discoveryExternalSource,
                 externalName: this.discoveryExternalName,
-                externalUrl: this.discoveryExternalUrl,
-                externalLimit: this.discoveryExternalLimit,
                 externalTtlMinutes: this.discoveryExternalTtlMinutes,
             });
             await this.api.updateConfig();

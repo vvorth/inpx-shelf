@@ -1558,36 +1558,66 @@ async function testExternalDiscoveryMultiSourceSearch() {
     assert.strictEqual(calls.length, 6);
 }
 
-async function testExternalDiscoverySingleFetch() {
-    const worker = makeWorker();
-    const calls = [];
-    worker.fetchExternalFeedItems = async(limit, url) => {
-        calls.push({limit, url});
-        return {items: [], sourceUrl: url};
+async function testWikidataAwardsShelf() {
+    const axios = require('axios');
+    const originalGet = axios.get;
+    const queries = [];
+    const literal = value => ({type: 'literal', value});
+    axios.get = async(url, options) => {
+        queries.push(options.params.query);
+        return {data: {results: {bindings: [
+            {
+                work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q25217632'},
+                titleRu: literal('Пятое время года'), titleEn: literal('The Fifth Season'),//i18n-ignore: тестовые данные
+                authorRu: literal('Нора Джемисин'), authorEn: literal('N. K. Jemisin'),//i18n-ignore: тестовые данные
+            },
+            {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q100540380'}, titleEn: literal('Network Effect'), authorEn: literal('Martha Wells')},
+            {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q123300220'}, authorEn: literal('Emily Tesh')},
+        ]}}};
     };
 
-    const result = await worker.fetchExternalDiscoveryItemsV2({
-        externalLimit: 12,
-        externalUrl: 'https://example.test/root',
-        externalBrowseUrl: 'https://example.test/genre',
-        externalName: 'Example',
-    });
+    try {
+        const worker = makeWorker();
+        worker.discoveryCache = new Map();
+        //в библиотеке книга только под английским названием
+        worker.bookSearch = async(query) => ({
+            found: (query.title.includes('Fifth Season') ? [{_uid: 'local-1', title: 'The Fifth Season', author: 'Jemisin N. K.'}] : []),
+        });
 
-    assert.strictEqual(result.sourceUrl, 'https://example.test/genre');
-    assert.deepStrictEqual(calls, [{limit: 12, url: 'https://example.test/genre'}]);
-
-    worker.fetchExternalFeedItems = async() => {
-        throw new Error('HTTP 404');
-    };
-    await assert.rejects(
-        () => worker.fetchExternalDiscoveryItemsV2({
-            externalLimit: 12,
-            externalUrl: 'https://example.test/root',
-            externalBrowseUrl: 'https://example.test/missing-genre',
+        const shelf = await worker.buildExternalDiscoveryShelfV2(8, {
+            externalSource: 'wikidata-awards',
             externalName: 'Example',
-        }),
-        /Example.+HTTP 404/
-    );
+            externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032',
+        });
+        assert.match(queries[0], /VALUES \?award \{ wd:Q255032 \}/);
+        assert.strictEqual(shelf.sourceUrl, 'https://www.wikidata.org/wiki/Q255032');
+        assert.strictEqual(shelf.genreOptions.length, 8);
+        assert.deepStrictEqual(shelf.items.map(book => book._uid.split(':')[0]), ['local-1', 'external']);
+        assert.strictEqual(shelf.items[0].discoveryUrl, 'https://www.wikidata.org/wiki/Q25217632');
+        assert.strictEqual(shelf.items[1].title, 'Network Effect');
+        assert.strictEqual(shelf.items[1].discoveryMissingLocal, true);
+        assert.strictEqual(shelf.discoveryHasMore, false);
+
+        //ссылка на жанр прежней веб-витрины не выбирает премию
+        const all = await worker.buildExternalDiscoveryShelfV2(1, {
+            externalSource: 'web-page',
+            externalBrowseUrl: 'https://www.litres.ru/genre/fantastika/',
+        });
+        assert.match(queries[1], /wd:Q255032 wd:Q266012/);
+        assert.strictEqual(all.sourceUrl, '');
+        assert.strictEqual(all.items.length, 1);
+        assert.strictEqual(all.discoveryHasMore, true);
+
+        axios.get = async() => {
+            throw new Error('HTTP 429');
+        };
+        await assert.rejects(
+            () => worker.buildExternalDiscoveryShelfV2(8, {externalSource: 'wikidata-awards', externalName: 'Example'}),
+            /Example.+HTTP 429/
+        );
+    } finally {
+        axios.get = originalGet;
+    }
 }
 
 async function testConfiguredConverterPathsHavePriority() {
@@ -1616,7 +1646,7 @@ async function testDiscoveryShelvesBuildOnlyRequestedSection() {
     worker.getDiscoveryConfigForRequest = async() => ({
         enabled: true,
         shelfLimit: 8,
-        externalSource: 'web-page',
+        externalSource: 'wikidata-awards',
         externalTtlMinutes: 60,
     });
     worker.dbConfig = async() => ({inpxHash: 'test-hash'});
@@ -1996,7 +2026,7 @@ const tests = [
     testCacheRotationUsesTargetWatermark,
     testCacheRotationAlignsToServerClock,
     testExternalDiscoveryMultiSourceSearch,
-    testExternalDiscoverySingleFetch,
+    testWikidataAwardsShelf,
     testConfiguredConverterPathsHavePriority,
     testDiscoveryShelvesBuildOnlyRequestedSection,
     testOpdsIndexQueries,

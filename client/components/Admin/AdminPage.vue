@@ -507,7 +507,6 @@ class AdminPage {
     isActive = false;
     discoveryExternalSource = '';
     discoveryExternalName = '';
-    discoveryExternalUrl = '';
     discoverySourceDialogVisible = false;
     integrationSaveLoading = false;
     smtpTestLoading = false;
@@ -808,7 +807,7 @@ class AdminPage {
                 ? (this.discoveryExternalSource || this.discoveryConfig.externalSource || '')
                 : (this.discoveryConfig.externalSource || ''),
         ).trim().toLowerCase();
-        return (value && value !== 'none' ? 'web-page' : 'none');
+        return (value && value !== 'none' ? 'wikidata-awards' : 'none');
     }
 
     get effectiveExternalDiscoveryName() {
@@ -828,7 +827,7 @@ class AdminPage {
             return t('settings.notConfigured');
 
         const name = this.effectiveExternalDiscoveryName || t('common.externalSource');
-        return t('settings.webShowcase', {name});
+        return t('settings.awardsShowcase', {name});
     }
 
     makeDefaultIntegrations() {
@@ -878,27 +877,24 @@ class AdminPage {
         const settings = this.settings;
         const configExternalSource = (String(this.discoveryConfig.externalSource || 'none').trim().toLowerCase() === 'none'
             ? 'none'
-            : 'web-page');
+            : 'wikidata-awards');
         const hasStoredExternalSettings = !!(
             String(settings.discoveryExternalSource || '').trim()
             || String(settings.discoveryExternalName || '').trim()
-            || String(settings.discoveryExternalUrl || '').trim()
         );
 
         if (!hasStoredExternalSettings && configExternalSource !== 'none') {
             this.commit('setSettings', {
                 discoveryExternalSource: configExternalSource,
                 discoveryExternalName: String(this.discoveryConfig.externalName || '').trim(),
-                discoveryExternalUrl: String(this.discoveryConfig.externalUrl || '').trim(),
                 discoveryExternalTtlMinutes: Math.max(1440, parseInt(this.discoveryConfig.externalTtlMinutes, 10) || 1440),
             });
         }
 
         this.discoveryExternalSource = (String(settings.discoveryExternalSource || this.discoveryConfig.externalSource || 'none').trim().toLowerCase() === 'none'
             ? 'none'
-            : 'web-page');
+            : 'wikidata-awards');
         this.discoveryExternalName = String(settings.discoveryExternalName || this.discoveryConfig.externalName || '').trim();
-        this.discoveryExternalUrl = String(settings.discoveryExternalUrl || this.discoveryConfig.externalUrl || '').trim();
         this.loadIntegrations();
         this.loadOpdsSettings();
     }

@@ -249,7 +249,6 @@
         "hide": "Скрыть",
         "information": "Информация",
         "keywords": "Ключевые слова",
-        "limit": "Лимит",
         "loadingAuthorInformation": "Загрузка информации об авторе...",
         "login": "Логин",
         "nameRequired": "Название не должно быть пустым",
@@ -300,7 +299,7 @@
         "authors": "Авторов: {n}",
         "buildingShowcase": "Собираю витрину...",
         "dontUseForTastes": "Не учитывать во вкусах",
-        "externalShowcaseGenre": "Жанр внешней витрины",
+        "externalShowcaseGenre": "Премия",
         "externalSource": "Внешний источник",
         "favoriteAuthors": "Любимые авторы",
         "favoriteGenres": "Любимые жанры",
@@ -315,7 +314,6 @@
         "match": {
             "exact": "Точное совпадение",
             "external": "Совпадение с внешней витриной",
-            "genre": "Жанр внешнего каталога",
             "missingLocal": "Нет в локальной библиотеке",
             "title": "Совпадение по названию",
             "titleAuthor": "Совпадение по названию и автору",
@@ -329,7 +327,7 @@
         "noveltyCareful": "Осторожно · 10%",
         "noveltyMore": "Больше нового · 25%",
         "openCatalog": "Открыть каталог",
-        "picksFromAnExternal": "Подборка с внешнего сайта: книги, которых нет в библиотеке, открываются на сайте источника",
+        "picksFromAnExternal": "Лауреаты литературных премий из Викиданных, сначала новые: книги, которых нет в библиотеке, открываются в Викиданных",
         "reason": {
             "basedOnLibrary": "На основе вашей библиотеки",
             "chosenAuthor": "Вы выбрали автора: {author}",
@@ -358,7 +356,7 @@
             "continueReadingSubtitle": "Книги, которые вы открывали недавно",
             "externalCounts": "В библиотеке {inLibrary} · вне библиотеки {notInLibrary}",
             "externalEmpty": "Во внешнем источнике пока ничего не найдено.",
-            "externalGenreCounts": "Жанр: {genre} · В библиотеке {inLibrary} · вне библиотеки {notInLibrary}",
+            "externalGenreCounts": "{genre} · В библиотеке {inLibrary} · вне библиотеки {notInLibrary}",
             "externalUnavailable": "Внешний источник временно недоступен",
             "fromLists": "Из ваших списков",
             "fromListsEmpty": "Добавьте книги в личные списки, и они появятся здесь.",
@@ -384,19 +382,29 @@
         "unreadOnly": "Только непрочитанное",
         "updated": "Обновлено {time}",
         "whatDoLikeRead": "Что вам нравится читать?",
-        "youCanSetYour": "Вкусы можно настроить позже кнопкой «Настроить вкусы» на главной."
+        "youCanSetYour": "Вкусы можно настроить позже кнопкой «Настроить вкусы» на главной.",
+        "allAwards": "Все премии",
+        "award": {
+            "hugo": "Хьюго за лучший роман",
+            "nebula": "Небьюла за лучший роман",
+            "worldFantasy": "Всемирная премия фэнтези за лучший роман",
+            "locus": "Локус за лучший научно-фантастический роман",
+            "clarke": "Премия Артура Кларка",
+            "booker": "Букеровская премия",
+            "pulitzer": "Пулитцеровская премия за художественную книгу",
+            "goncourt": "Гонкуровская премия"
+        }
     },
     "discoverySource": {
         "deleteSource": "Удалить источник",
-        "examplePartnerShowcase": "Например: Партнёрская витрина",
         "ifDeleteSourceTab": "Если удалить источник, вкладка и витрина исчезнут, пока администратор не настроит новый источник.",
         "n24Hours": "24 часа",
         "n3Days": "3 дня",
         "n7Days": "7 дней",
         "refreshInterval": "Обновление",
-        "showcaseUrl": "URL витрины",
         "sourceType": "Тип источника",
-        "webShowcase": "Веб-витрина"
+        "wikidataAwards": "Лауреаты премий (Викиданные)",
+        "exampleAwardWinners": "Например: Лауреаты премий"
     },
     "errors": {
         "adminOnlyProfiles": "Только администратор может управлять профилями",
@@ -450,7 +458,6 @@
         "epubUnsupportedImage": "Неподдерживаемый формат изображения EPUB: {name}",
         "externalReadFailed": "Не удалось прочитать внешнюю витрину",
         "externalUpdateFailed": "Не удалось обновить внешний источник \"{name}\"{details}",
-        "externalUrlMissing": "Не задан URL внешней витрины",
         "fb2UnsupportedEncoding": "Неподдерживаемая кодировка FB2: {encoding}",
         "fileNotFound": "404 Файл не найден",
         "fileTooLarge": "Файл слишком большой",
@@ -511,7 +518,6 @@
         "telegramTokenMissing": "Telegram bot token не указан",
         "telegramTokenRejected": "Telegram API не принял токен",
         "unknownCache": "Неизвестный кэш для очистки",
-        "unknownShowcaseSource": "Неизвестный источник витрины: {source}",
         "unknownTestType": "Неизвестный тип проверки",
         "unsupportedDeliveryFormat": "Неподдерживаемый формат отправки: {format}",
         "userLoginExists": "Пользователь с таким логином уже существует",
@@ -1424,7 +1430,6 @@
         "added": "Поступления",
         "afterTheLibraryIs": "После обновления библиотеки сервер строит поисковый индекс: читает все книги и составляет словарь для поиска с опечатками. На большой библиотеке это занимает несколько минут, страница обновится сама.",
         "allAuthors": "Все авторы ({n})",
-        "allGenres": "Все жанры",
         "allSeries": "Все серии ({n})",
         "author": "Автор",
         "authorAppearLessOften": "Автор будет реже появляться в рекомендациях.",
@@ -1702,8 +1707,8 @@
         "system": "Система",
         "thursday": "Четверг",
         "tuesday": "Вторник",
-        "webShowcase": "{name} · веб-витрина",
-        "wednesday": "Среда"
+        "wednesday": "Среда",
+        "awardsShowcase": "{name} · лауреаты премий"
     },
     "shellUserMenu": {
         "devicesOpdsAndKobo": "Устройства: OPDS и Kobo",
