@@ -12,7 +12,6 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 | `scripts/` | Tests and maintenance scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |
 | `docs/` | Project docs, research, plans | [docs/AGENTS.md](docs/AGENTS.md) |
 | `build/` | Webpack configs, pkg packaging, release, Windows installer | |
-| `tts/silero/` | Optional Silero text-to-speech container (Python) | |
 | `README.md` | User documentation (Russian) | |
 | `CHANGELOG.md` | Release notes (Russian), newest first | |
 | `CHANGELOG-inpx-web.md` | Upstream history before the fork. Frozen, do not edit | |

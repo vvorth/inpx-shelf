@@ -30,10 +30,6 @@ jobs:
             context: .
             target: runtime
             suffix: ''
-          - component: silero
-            context: tts/silero
-            target: ''
-            suffix: -silero
     steps:
       - uses: actions/checkout@v5
         with:
@@ -47,7 +43,6 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: sudo apt-get update && sudo apt-get install -y p7zip-full
       - run: npm run test:release
-      - run: npm run test:tts
       - name: Verify release version
         id: version
         env:
@@ -106,27 +101,6 @@ jobs:
         env:
           IMAGE: ${{ steps.version.outputs.image }}
         run: node scripts/binary-smoke-test.js --image "$IMAGE"
-      - name: Test Silero text preparation and real audio
-        if: matrix.component == 'silero'
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-        run: |
-          docker run --rm -v "$PWD/tts/silero/test_server.py:/app/test_server.py:ro" "$IMAGE" python -m unittest -v test_server
-          docker run -d --name silero-test -p 127.0.0.1:18080:8000 -v "$RUNNER_TEMP/inpx-silero-models:/models" "$IMAGE"
-          trap 'docker logs silero-test; docker rm -f silero-test' EXIT
-          for i in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:18080/health; then break; fi
-            sleep 2
-          done
-          node scripts/reader-speech-tests.js --silero-url http://127.0.0.1:18080
-          docker stop silero-test
-          docker rm silero-test
-          docker run -d --name silero-test -p 127.0.0.1:18080:8000 -e SILERO_STRESS_ENABLED=false -v "$RUNNER_TEMP/inpx-silero-models:/models" "$IMAGE"
-          for i in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:18080/health; then break; fi
-            sleep 2
-          done
-          node scripts/reader-speech-tests.js --silero-url http://127.0.0.1:18080
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:

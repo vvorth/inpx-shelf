@@ -139,6 +139,4 @@ async function main() {
     }
 }
 
-module.exports = {createFixture, unusedPort};
-if (require.main === module)
-    main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -3,7 +3,7 @@
 Tests and maintenance scripts.
 
 - `release-smoke-tests.js` — the test suite (`npm run test:release`). It runs its own tests and the test lists exported by `*-tests.js` modules; standalone scripts such as `opds-index-tests.js` are run from it as a child process.
-- `i18n-check.js` — missing English translations (`npm run test:i18n`). `reader-speech-tests.js` — `npm run test:tts`.
+- `i18n-check.js` — missing English translations (`npm run test:i18n`).
 - `binary-smoke-test.js`, `proxmox-lxc-install.sh`, `bundle-windows-tools.ps1` — packaging and installation.
 
 ## Rules

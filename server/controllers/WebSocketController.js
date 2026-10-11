@@ -6,7 +6,6 @@ const WebWorker = require('../core/WebWorker');//singleton
 const log = new (require('../core/AppLogger'))().log;//singleton
 const utils = require('../core/utils');
 const runtimeMetrics = require('../core/RuntimeMetrics');
-const {getReaderSpeech} = require('../core/ReaderSpeech');
 
 const cleanPeriod = 1*60*1000;//1 минута
 const closeSocketOnIdle = 5*60*1000;//5 минут
@@ -204,14 +203,6 @@ class WebSocketController {
                     await this.getBookInfo(req, ws); break;
                 case 'get-reader-state':
                     await this.getReaderState(req, ws); break;
-                case 'prepare-reader-audio':
-                    await this.prepareReaderAudio(req, ws); break;
-                case 'get-reader-audio-status':
-                    await this.getReaderAudioStatus(req, ws); break;
-                case 'get-reader-audio-plan':
-                    await this.getReaderAudioPlan(req, ws); break;
-                case 'preview-reader-voice':
-                    await this.previewReaderVoice(req, ws); break;
                 case 'get-user-reading-library':
                     await this.getUserReadingLibrary(req, ws); break;
                 case 'update-reader-progress':
@@ -345,8 +336,6 @@ class WebSocketController {
             'import-admin-settings',
             'import-admin-backup',
             'update-reader-progress',
-            'prepare-reader-audio',
-            'preview-reader-voice',
             'delete-reader-progress',
             'clear-reader-progress',
             'update-reader-preferences',
@@ -423,7 +412,6 @@ class WebSocketController {
             return;
         }
         const config = _.pick(this.config, this.config.webConfigParams);
-        config.ttsEnabled = Boolean(this.config.ttsEnabled && this.config.ttsUrl);
         config.profileLoginRequired = this.config.allowAnonymousAccess === false;
         config.profileBoundId = req.profileBoundId || '';
         config.librarySources = (Array.isArray(this.config.librarySources) ? this.config.librarySources : []).map(source => ({
@@ -760,34 +748,6 @@ class WebSocketController {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getReaderState(user.id, req.bookUid);
         this.send(result, req, ws);
-    }
-
-    async prepareReaderAudio(req, ws) {
-        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const speech = getReaderSpeech(this.config);
-        if (!speech.enabled) throw new Error('Серверная озвучка не настроена.');
-        if (!req.bookUid) throw new Error('bookUid is empty');
-        const {bookInfo} = await this.webWorker.getBookInfo(req.bookUid);
-        const result = req.mode ? await speech.preparePart(user.id, req.bookUid, bookInfo, req.speaker || 'xenia', req.mode, req.chapterIndex, req.options)
-            : await speech.prepare(user.id, req.bookUid, bookInfo, req.speaker || 'xenia', req.options);
-        this.send(result, req, ws);
-    }
-
-    async getReaderAudioPlan(req, ws) {
-        await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        if (!req.bookUid) throw new Error('bookUid is empty');
-        const {bookInfo} = await this.webWorker.getBookInfo(req.bookUid);
-        this.send(await getReaderSpeech(this.config).plan(bookInfo, req.mode || 'online'), req, ws);
-    }
-
-    async previewReaderVoice(req, ws) {
-        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(await getReaderSpeech(this.config).preview(user.id, req.speaker || 'xenia', req.options, req.sampleText), req, ws);
-    }
-
-    async getReaderAudioStatus(req, ws) {
-        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(getReaderSpeech(this.config).status(user.id, req.jobId), req, ws);
     }
 
     async getUserReadingLibrary(req, ws) {

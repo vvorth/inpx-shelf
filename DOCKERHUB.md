@@ -26,7 +26,6 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 | `beta` | Newest pre-release (`-alpha.N`, `-beta.N` or `-rc.N`). |
 | `dev`, `dev-<commit>` | Development build, published on every push to the `develop` branch after the tests pass. Unstable: for testing, not for your main library. |
 | `1.0.0-beta.1` | Full image with fb2cng, MuPDF, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
-| `1.0.0-beta.1-silero`, `latest-silero`, `beta-silero` | Optional Silero text-to-speech service for the reader, see `docker-compose.silero.yml`. |
 
 ## Quick Start
 
