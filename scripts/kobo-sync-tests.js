@@ -370,6 +370,21 @@ async function testKoboDevicesAreScopedAndRevocable() {
     });
 }
 
+// A failed mutation must not leave half-applied changes in memory that the file does not have.
+async function testKoboFailedMutationKeepsFileState() {
+    await fixture({}, async({service, token, call}) => {
+        const before = JSON.stringify(service.store.data);
+        await assert.rejects(service.store.mutate((data) => {
+            data.devices[0].name = 'changed';
+            data.devices = [];
+            throw new Error('boom');
+        }), /boom/);
+        assert.strictEqual(JSON.stringify(service.store.data), before);
+        assert.ok(service.store.findDeviceByToken(token), 'Token index matches the file again');
+        assert.strictEqual((await call('/v1/initialization')).status, 200);
+    });
+}
+
 async function testKoboRefusesDevicesOfDeletedProfiles() {
     await fixture({}, async({service, store, listA, endpoint}) => {
         await store.addBooks('default', listA.id, ['epub-uid']);
@@ -1074,6 +1089,7 @@ async function withFb2cngConfig(fn) {
 
 module.exports = [
     testKoboSyncListsAndDownloads,
+    testKoboFailedMutationKeepsFileState,
     testKoboReadStateBothWays,
     testKoboFinishedReachesOtherDevices,
     testKoboFinishedIsNotUndoneWhenTheListUpdateFails,

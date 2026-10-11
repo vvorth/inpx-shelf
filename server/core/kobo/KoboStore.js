@@ -140,10 +140,17 @@ class KoboStore {
     async mutate(task) {
         await this.load();
         return await withFileTransaction(this.file, async() => {
-            const result = await task(this.data);
-            this.rebuildIndex();
-            await writeFileAtomic(this.file, JSON.stringify(this.data, null, 2));
-            return result;
+            try {
+                const result = await task(this.data);
+                this.rebuildIndex();
+                await writeFileAtomic(this.file, JSON.stringify(this.data, null, 2));
+                return result;
+            } catch (e) {
+                // The task changes data in place: after a failed task or write, take the file's state back.
+                this.data = null;
+                await this.load().catch(() => {});
+                throw e;
+            }
         });
     }
 
