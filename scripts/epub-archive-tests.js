@@ -148,11 +148,8 @@ async function testCompressedEpubDownloadsRestoreImagesAndInvalidateCache() {
         const record = {_uid: 'epub-fixture', author: 'Fixture Author', title: 'Compressed EPUB', file: '12345',
             ext: 'epub', folder: 'collection.zip', sourceLibDir: source};
         let fileHash = {hash: 'old-cache'};
-        worker.db = {
-            esc: value => JSON.stringify(value),
-            select: async({table}) => table === 'book' ? [record] : fileHash ? [fileHash] : [],
-            insert: async({rows}) => { fileHash = rows[0]; },
-        };
+        worker.catalogSearch = {getBooksByUids: async() => [record]};
+        worker.stateStore = {getBookFiles: () => (fileHash ? [fileHash] : []), putBookFile: (row) => { fileHash = row; }};
         const cached = path.join(dir, 'cached-without-images.epub');
         await archive(cached, contents);
         await utils.gzipFile(cached, path.join(bookDir, 'old-cache'));
@@ -320,12 +317,10 @@ async function testSameFilenameEpubAndFb2KeepTheirOwnAssetsAndDownloads() {
         hashes.set(epubUid, {id: epubUid, hash: 'rc4-wrong-cover'});
         await utils.gzipFile(inner, path.join(config.bookDir, 'rc4-wrong-cover'));
         await fs.writeJson(path.join(config.bookDir, 'rc4-wrong-cover.d.json'), {assetVersion: 'fblibrary-assets-v4'});
-        worker.db = {
-            esc: value => JSON.stringify(value),
-            select: async({table, where}) => table === 'book'
-                ? records.filter(book => where.includes(JSON.stringify(book._uid)))
-                : [...hashes.values()].filter(row => where.includes(JSON.stringify(row.id))),
-            insert: async({rows}) => rows.forEach(row => hashes.set(row.id, row)),
+        worker.catalogSearch = {getBooksByUids: async(uids) => records.filter(book => uids.includes(book._uid))};
+        worker.stateStore = {
+            getBookFiles: (uids) => [...hashes.values()].filter(row => uids.includes(row.id)),
+            putBookFile: (row) => hashes.set(row.id, row),
         };
         let restores = 0;
         const restore = worker.restoreBook.bind(worker);
@@ -472,7 +467,8 @@ async function testEpubReusesImageArchiveReadersAndClosesOnFailure() {
             const worker = Object.create(require('../server/core/WebWorker').prototype);
             worker.config = config; worker.checkMyState = () => {}; worker.scheduleCacheClean = () => {};
             const record = {_uid: folder, author: 'Fixture Author', title: 'Images', file: '12345', ext: 'epub', folder};
-            worker.db = {esc: JSON.stringify, select: async({table}) => table === 'book' ? [record] : [], insert: async() => {}};
+            worker.catalogSearch = {getBooksByUids: async() => [record]};
+            worker.stateStore = {getBookFiles: () => [], putBookFile: () => {}};
             const opened = [];
             const original = ZipReader.prototype.open;
             ZipReader.prototype.open = async function(file, ...args) {

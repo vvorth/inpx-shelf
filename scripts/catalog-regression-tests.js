@@ -6,6 +6,15 @@ const crypto = require('crypto');
 const {JembaDb} = require('jembadb');
 const DbSearcher = require('../server/core/DbSearcher');
 
+async function withTempDir(task) {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-catalog-test-'));
+    try {
+        await task(dir);
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
 async function database(task) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-catalog-test-'));
     const db = new JembaDb();
@@ -60,25 +69,27 @@ async function testCatalogLanguageListsAndCollidingBookNumbers() {
 }
 
 async function testPreparedBookSizeAppearsInCatalogAcrossRestart() {
-    await database(async(dir, db) => {
+    await withTempDir(async(dir) => {
+        const StateStore = require('../server/core/StateStore');
         const bytes = Buffer.from('Original restored EPUB fixture. '.repeat(4096));
         const hash = crypto.createHash('sha256').update(bytes).digest('hex');
         const book = {_uid: 'epub-size', file: '504942', folder: 'usr-500000-504999.zip', ext: 'epub', size: 42};
-        await db.insert({table: 'book', rows: [book]});
-        // RC6 cache rows did not yet store the restored size in file_hash.
-        await db.insert({table: 'file_hash', rows: [{id: book._uid, hash}]});
+        // RC6 cache rows did not yet store the restored size.
+        const store = new StateStore({dataDir: dir});
+        store.putBookFile({id: book._uid, hash, size: 0, assetVersion: ''});
         const bookDir = path.join(dir, 'book');
         const descriptor = path.join(bookDir, `${hash}.d.json`);
         await fs.outputJson(descriptor, {size: bytes.length, assetVersion: 'fblibrary-assets-v5'});
         const make = () => {
             const worker = Object.create(require('../server/core/WebWorker').prototype);
-            worker.config = {bookDir}; worker.db = db;
+            worker.config = {bookDir};
+            worker.stateStore = new StateStore({dataDir: dir});
             worker.readingListStore = {getMetadataOverrides: async() => ({})};
             worker.resetLibraryAssetCaches();
             return worker;
         };
         const result = async worker => worker.applyMetadataOverridesToSearchResult({
-            found: [{books: await db.select({table: 'book'})}], books: await db.select({table: 'book'}),
+            found: [{books: [{...book}]}], books: [{...book}],
         });
         for (const worker of [make(), make()]) {
             const response = await result(worker);
@@ -87,14 +98,15 @@ async function testPreparedBookSizeAppearsInCatalogAcrossRestart() {
                 assert.strictEqual(row.inpxSize, 42);
             }
         }
-        assert.strictEqual((await db.select({table: 'book'}))[0].size, 42, 'The INPX-derived record must stay intact');
+        assert.strictEqual(book.size, 42, 'The INPX-derived record must stay intact');
         await fs.writeJson(descriptor, {size: 1, assetVersion: 'fblibrary-assets-v4'});
         assert.strictEqual((await result(make())).books[0].size, 42, 'Obsolete book caches must not supply sizes');
         await fs.writeFile(descriptor, 'broken json');
         assert.strictEqual((await result(make())).books[0].size, 42);
         await fs.remove(descriptor);
-        await db.insert({table: 'file_hash', replace: true, rows: [{id: book._uid, hash, size: bytes.length, assetVersion: 'fblibrary-assets-v5'}]});
+        store.putBookFile({id: book._uid, hash, size: bytes.length, assetVersion: 'fblibrary-assets-v5'});
         assert.strictEqual((await result(make())).books[0].size, bytes.length, 'The measured size survives removal of the file cache');
+        store.close();
     });
 }
 

@@ -12,6 +12,7 @@ const { JembaDb, JembaDbThread } = require('jembadb');
 const DbCreator = require('./DbCreator');
 const DbSearcher = require('./DbSearcher');
 const CatalogSearch = require('./search/CatalogSearch');
+const StateStore = require('./StateStore');
 const InpxHashCreator = require('./InpxHashCreator');
 const RemoteLib = require('./RemoteLib');//singleton
 const FileDownloader = require('./FileDownloader');
@@ -637,6 +638,7 @@ class WebWorker {
             this.config = config;
             this.workerState = new WorkerState();
             this.catalogSearch = new CatalogSearch(config, this);
+            this.stateStore = new StateStore(config);
 
             this.remoteLib = null;
             if (config.remoteLib) {
@@ -909,6 +911,10 @@ class WebWorker {
     async dbConfig() {
         this.checkMyState();
 
+        //сведения о библиотеке хранятся в БД библиотеки; пока она строится - в основной БД
+        if (this.catalogSearch && this.catalogSearch.ready)
+            return this.catalogSearch.libraryConfig();
+
         const db = this.db;
         if (!db.wwCache.config) {
             const rows = await db.select({table: 'config'});
@@ -954,12 +960,11 @@ class WebWorker {
         return await this.dbSearcher.opdsQuery(from, query);
     }
 
-    async getAuthorBookList(authorId, author, query = {}) {
+    async getAuthorBookList(authorId, author) {
         this.checkMyState();
 
-        const result = await this.dbSearcher.getAuthorBookList(authorId, author, query);
-        await this.applyMetadataOverridesToSearchResult(result);
-        return result;
+        //книги ищутся по имени автора; id авторов прежней БД больше не используются
+        return await this.catalogSearch.authorBooks(author || '');
     }
 
     async getAuthorSeriesList(authorId, query = {}) {
@@ -968,12 +973,10 @@ class WebWorker {
         return await this.dbSearcher.getAuthorSeriesList(authorId, query);
     }
 
-    async getSeriesBookList(series, query = {}) {
+    async getSeriesBookList(series) {
         this.checkMyState();
 
-        const result = await this.dbSearcher.getSeriesBookList(series, query);
-        await this.applyMetadataOverridesToSearchResult(result);
-        return result;
+        return {books: (series ? await this.catalogSearch.seriesBooks(series) : [])};
     }
 
     async getGenreTree() {
@@ -982,8 +985,8 @@ class WebWorker {
         const config = await this.dbConfig();
 
         let result;
-        const db = this.db;
-        if (!db.wwCache.genreTree) {
+        const cacheKey = String(config.inpxHash || '');
+        if (!this.genreTreeCache || this.genreTreeCache.key !== cacheKey) {
             const genres = _.cloneDeep(genreTree);
             const last = genres[genres.length - 1];
 
@@ -993,14 +996,14 @@ class WebWorker {
                     genreValues.add(g.value);
             }
 
-            //добавим к жанрам те, что нашлись при парсинге
+            //добавим к жанрам те, что нашлись в библиотеке
+            const values = await this.catalogSearch.facetValues();
             const genreParsed = new Set();
-            let rows = await db.select({table: 'genre', map: `(r) => ({value: r.value})`});
-            for (const row of rows) {
-                genreParsed.add(row.value);
+            for (const value of new Set(values.genre.map(item => item.toLowerCase()))) {
+                genreParsed.add(value);
 
-                if (!genreValues.has(row.value))
-                    last.value.push({name: row.value, value: row.value});
+                if (!genreValues.has(value))
+                    last.value.push({name: value, value});
             }
 
             //уберем те, которые не нашлись при парсинге
@@ -1016,13 +1019,8 @@ class WebWorker {
                     genres.splice(j--, 1);
             }
 
-            // langs
-            rows = await db.select({table: 'lang', map: `(r) => ({value: r.value})`});
-            const langs = rows.map(r => r.value);            
-
-            // exts
-            rows = await db.select({table: 'ext', map: `(r) => ({value: r.value})`});
-            const exts = rows.map(r => r.value);            
+            const langs = [...values.lang].sort();
+            const exts = [...values.ext].sort();
 
             result = {
                 genreTree: genres,
@@ -1031,9 +1029,9 @@ class WebWorker {
                 inpxHash: (config.inpxHash ? config.inpxHash : ''),
             };
 
-            db.wwCache.genreTree = result;
+            this.genreTreeCache = {key: cacheKey, result};
         } else {
-            result = db.wwCache.genreTree;
+            result = this.genreTreeCache.result;
         }
 
         return result;
@@ -1042,23 +1040,17 @@ class WebWorker {
     async getGenreMap() {
         this.checkMyState();
 
-        let result;
-        const db = this.db;
-        if (!db.wwCache.genreMap) {
-            const genreTree = await this.getGenreTree();
-
-            result = new Map();
+        const genreTree = await this.getGenreTree();
+        if (!this.genreMapCache || this.genreMapCache.tree !== genreTree) {
+            const result = new Map();
             for (const section of genreTree.genreTree) {
                 for (const g of section.value)
                     result.set(g.value, g.name);
             }
-
-            db.wwCache.genreMap = result;
-        } else {
-            result = db.wwCache.genreMap;
+            this.genreMapCache = {tree: genreTree, result};
         }
 
-        return result;
+        return this.genreMapCache.result;
     }
 
     getDiscoveryConfig(options = {}) {
@@ -2577,7 +2569,7 @@ class WebWorker {
     }
 
     //Кандидаты «Похожих» из индекса каталога: лучшие id по оценке, затем записи книг из основной БД.
-    //null - индекс недоступен, вызывающий использует проход по основной БД.
+    //null - БД библиотеки ещё строится.
     async similarCandidatesFromIndex(profile, weights, limit) {
         const catalog = this.catalogSearch;
         if (!catalog || !catalog.ready)
@@ -2648,114 +2640,13 @@ class WebWorker {
             .reduce((sum, char) => ((sum * 31) + char.charCodeAt(0)) % 9973, Math.floor(Date.now() / 86400000));
 
         const candidateLimit = Math.max(probeLimit * 16 + 64, 192);
-        //индекс каталога считает оценки по колонкам в своём потоке и не занимает основную БД;
-        //пока он строится, работает проход по основной БД
+        //оценки считаются по колонкам БД библиотеки в её потоке; пока она строится, полка пуста
         let candidates = await this.similarCandidatesFromIndex(profile, {
             preferredAuthors, preferredSeries, preferredGenres, preferredKeywords, preferredLanguages,
             rejectedAuthors, rejectedSeries, rejectedGenres, rejectedKeywords, rotationSeed,
         }, candidateLimit);
-        if (!candidates) {
-            const rows = await this.db.select({
-                table: 'book',
-                rawResult: true,
-                where: `
-                    const knownBookUids = new Set(${this.db.esc(Array.from(profile.knownBookUids))});
-                    const preferredAuthors = ${this.db.esc(preferredAuthors)};
-                    const preferredSeries = ${this.db.esc(preferredSeries)};
-                    const preferredGenres = ${this.db.esc(preferredGenres)};
-                    const preferredKeywords = ${this.db.esc(preferredKeywords)};
-                    const preferredLanguages = ${this.db.esc(preferredLanguages)};
-                    const rejectedAuthors = ${this.db.esc(rejectedAuthors)};
-                    const rejectedSeries = ${this.db.esc(rejectedSeries)};
-                    const rejectedGenres = ${this.db.esc(rejectedGenres)};
-                    const rejectedKeywords = ${this.db.esc(rejectedKeywords)};
-                    const limit = ${this.db.esc(candidateLimit)};
-                    const rotationSeed = ${this.db.esc(rotationSeed)};
-
-                    //держим только лучшие кандидаты: иначе на большой библиотеке почти каждая книга
-                    //попадает в «новое для разнообразия» и копия всей таблицы не помещается в память
-                    const byScore = (a, b) => (b.score - a.score) || (a.row.id - b.row.id);
-                    const keepTop = (list) => {
-                        if (list.length >= limit * 2) {
-                            list.sort(byScore);
-                            list.length = limit;
-                        }
-                    };
-                    const result = [];
-                    const explorationResult = [];
-                    for (const id of @all()) {
-                        const row = @unsafeRow(id);
-                        if (!row || row.del || !row.title || !row._uid || knownBookUids.has(row._uid))
-                            continue;
-
-                        let score = 0;
-                        const authorKey = String(row.author || '').trim().toLowerCase();
-                        const seriesKey = String(row.series || '').trim().toLowerCase();
-                        const genreKeys = String(row.genre || '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
-                        const keywordKeys = String(row.keywords || '').split(/[,;|]/).map(item => item.trim().toLowerCase()).filter(item => item.length >= 3);
-                        const languageKey = String(row.lang || '').trim().toLowerCase();
-
-                        if (authorKey && preferredAuthors[authorKey])
-                            score += preferredAuthors[authorKey] * 32;
-                        if (seriesKey && preferredSeries[seriesKey])
-                            score += preferredSeries[seriesKey] * 36;
-                        for (const genreKey of genreKeys) {
-                            if (preferredGenres[genreKey])
-                                score += preferredGenres[genreKey] * 26;
-                        }
-                        for (const keywordKey of keywordKeys) {
-                            if (preferredKeywords[keywordKey])
-                                score += preferredKeywords[keywordKey] * 20;
-                        }
-
-                        const discoveryExplore = !score;
-                        if (discoveryExplore)
-                            score = 22;
-
-                        if (languageKey && preferredLanguages[languageKey])
-                            score += Math.min(8, preferredLanguages[languageKey] * 2);
-                        if (authorKey && rejectedAuthors[authorKey])
-                            score -= rejectedAuthors[authorKey] * 28;
-                        if (seriesKey && rejectedSeries[seriesKey])
-                            score -= rejectedSeries[seriesKey] * 24;
-                        for (const genreKey of genreKeys) {
-                            if (rejectedGenres[genreKey])
-                                score -= rejectedGenres[genreKey] * 18;
-                        }
-                        for (const keywordKey of keywordKeys) {
-                            if (rejectedKeywords[keywordKey])
-                                score -= rejectedKeywords[keywordKey] * 12;
-                        }
-                        if (score <= 0)
-                            continue;
-
-                        if (row.librate)
-                            score += Math.max(0, Math.min(5, Number(row.librate) || 0)) * 4;
-                        if (row.date) {
-                            const bookTime = Date.parse(row.date);
-                            if (Number.isFinite(bookTime)) {
-                                const ageDays = Math.max(0, Math.floor((Date.now() - bookTime) / 86400000));
-                                score += Math.max(0, 12 - (Math.min(ageDays, 365) * 12 / 365));
-                            }
-                        }
-
-                        const stableHash = String(row._uid || row.id || '')
-                            .split('')
-                            .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + rotationSeed) % 9973, rotationSeed);
-                        score += (stableHash / 9973) * 8;
-
-                        const target = (discoveryExplore ? explorationResult : result);
-                        target.push({row, score});
-                        keepTop(target);
-                    }
-
-                    const finish = (list, explore) => list.sort(byScore).slice(0, limit)
-                        .map(item => Object.assign({}, item.row, {_similarityScore: item.score, _discoveryExplore: explore}));
-                    return finish(result, false).concat(finish(explorationResult, true));
-                `
-            });
-            candidates = ((rows[0] && rows[0].rawResult) ? rows[0].rawResult : []);
-        }
+        if (!candidates)
+            candidates = [];
 
         const rawItems = candidates
             .map(book => Object.assign({}, book, {
@@ -3023,34 +2914,14 @@ class WebWorker {
     }
 
     async getBookRecordByUid(bookUid) {
-        const rows = await this.db.select({table: 'book', where: `@@hash('_uid', ${this.db.esc(bookUid)})`});
+        const rows = await this.catalogSearch.getBooksByUids([String(bookUid || '')]);
         return (rows.length ? rows[0] : null);
     }
 
     // Records by `sourceId:libid` (the key Kobo ids are derived from), for list entries whose _uid
-    // changed in a re-index. There is no libid index, so this is one scan for all keys.
+    // changed in a re-index. Indexed in the library DB.
     async findBookRecordsByStableKeys(keys = []) {
-        if (!keys.length)
-            return {};
-        const rows = await this.db.select({
-            table: 'book',
-            rawResult: true,
-            where: `
-                const keys = new Set(${this.db.esc(keys)});
-                const found = {};
-                for (const id of @all()) {
-                    const row = @unsafeRow(id);
-                    const libid = String((row && row.libid) || '').trim();
-                    if (!libid)
-                        continue;
-                    const key = (row.sourceId || '') + ':' + libid;
-                    if (keys.has(key))
-                        (found[key] = found[key] || []).push(row);
-                }
-                return found;
-            `,
-        });
-        return ((rows[0] && rows[0].rawResult) ? rows[0].rawResult : {});
+        return await this.catalogSearch.getBooksByStableKeys(keys);
     }
 
     sortReadingListBooks(books = [], order = []) {
@@ -4401,7 +4272,7 @@ class WebWorker {
         if (!seriesName)
             throw new Error('series is empty');
 
-        const result = await this.dbSearcher.getSeriesBookList(seriesName);
+        const result = await this.getSeriesBookList(seriesName);
         const bookUids = (result.books || []).map((book) => book._uid).filter(Boolean);
         const markResult = await this.readingListStore.setBooksRead(userId, bookUids, read);
 
@@ -4417,7 +4288,7 @@ class WebWorker {
         if (!seriesName)
             throw new Error('series is empty');
 
-        const result = await this.dbSearcher.getSeriesBookList(seriesName);
+        const result = await this.getSeriesBookList(seriesName);
         const bookUids = (result.books || []).map((book) => book._uid).filter(Boolean);
         const added = await this.readingListStore.addBooks(userId, listId, bookUids);
         if (this.koboService)
@@ -4993,12 +4864,8 @@ class WebWorker {
     }
 
     async getAuthorInfo(authorId, author) {
-        let authorName = author || '';
-        if (!authorName && authorId) {
-            const rows = await this.db.select({table: 'author', where: `@@id(${this.db.esc(authorId)})`});
-            if (rows.length)
-                authorName = rows[0].value;
-        }
+        //авторы ищутся по имени: id авторов прежней БД больше не используются
+        const authorName = author || '';
 
         const normalized = normalizeAuthorText(authorName);
         if (!normalized)
@@ -5085,8 +4952,6 @@ class WebWorker {
     }
 
     async restoreBook(bookUid, libFolder, libFile, downFileName, sourceLibDir = '') {
-        const db = this.db;
-
         let extractedFile = '';
         let hash = '';
 
@@ -5150,13 +5015,7 @@ class WebWorker {
         await fs.writeFile(bookFileDesc, JSON.stringify({libFolder, libFile, sourceLibDir, downFileName, size, assetVersion}));
         this.scheduleCacheClean('после подготовки книги');
 
-        await db.insert({
-            table: 'file_hash',
-            replace: true,
-            rows: [
-                {id: bookUid, hash, size, assetVersion},
-            ]
-        });
+        this.stateStore.putBookFile({id: bookUid, hash, size, assetVersion});
 
         return link;
     }
@@ -5165,16 +5024,14 @@ class WebWorker {
         this.checkMyState();
 
         try {
-            const db = this.db;
             let link = '';
             let size = 0;
 
             //найдем downFileName, libFolder, libFile
-            let rows = await db.select({table: 'book', where: `@@hash('_uid', ${db.esc(bookUid)})`});
-            if (!rows.length)
+            const book = await this.getBookRecordByUid(bookUid);
+            if (!book)
                 throw new Error('404 Файл не найден');
 
-            const book = rows[0];
             let downFileName = book.file;
             const authors = book.author.split(',');
             let author = authors[0];
@@ -5201,7 +5058,7 @@ class WebWorker {
             const sourceLibDir = book.sourceLibDir || this.config.libDir;
 
             //найдем хеш
-            rows = await db.select({table: 'file_hash', where: `@@id(${db.esc(bookUid)})`});
+            const rows = this.stateStore.getBookFiles([bookUid]);
             if (rows.length) {//хеш найден по bookUid
                 const hash = rows[0].hash;
                 const bookFile = `${this.config.bookDir}/${hash}`;
@@ -5257,14 +5114,14 @@ class WebWorker {
         await utils.touchFile(gzipFile);
         await utils.touchFile(rawFile);
 
-        let rows = await this.db.select({table: 'book', where: `@@hash('_uid', ${this.db.esc(bookUid)})`});
-        if (!rows.length)
+        const book = await this.getBookRecordByUid(bookUid);
+        if (!book)
             throw new Error('404 Файл не найден');
 
         let preparedFile = rawFile;
         let preparedFileName = downFileName;
         const targetFormat = String(format || '').toLowerCase();
-        const sourceFormat = String(rows[0].ext || '').toLowerCase();
+        const sourceFormat = String(book.ext || '').toLowerCase();
 
         if (targetFormat && targetFormat !== sourceFormat) {
             const prepared = await bookConverter.prepareConvertedFile({
@@ -5288,7 +5145,7 @@ class WebWorker {
             this.scheduleCacheClean('после обновления книжного кэша');
 
         return {
-            book: rows[0],
+            book,
             rawFile: preparedFile,
             downFileName: preparedFileName,
         };
@@ -5469,11 +5326,11 @@ class WebWorker {
     async applyPreparedBookSizesToRows(rows = []) {
         const books = rows.flatMap(row => [row, ...(Array.isArray(row.books) ? row.books : [])])
             .filter(book => this.metadataBookUid(book));
-        if (!books.length || !this.db || !this.config.bookDir)
+        if (!books.length || !this.config.bookDir)
             return;
         const ids = Array.from(new Set(books.map(book => this.metadataBookUid(book))));
         const versions = new Map(books.map(book => [this.metadataBookUid(book), assetVersionFor(book.ext)]));
-        const hashes = await this.db.select({table: 'file_hash', where: `@@id(${this.db.esc(ids)})`});
+        const hashes = this.stateStore.getBookFiles(ids);
         const sizes = new Map();
         if (!this.preparedBookSizes)
             this.preparedBookSizes = new Map();
@@ -5629,17 +5486,15 @@ class WebWorker {
         this.checkMyState();
 
         try {
-            const db = this.db;
-
             let bookInfo = await this.getBookLink(bookUid);
             const hash = path.basename(bookInfo.link);
             const bookFile = `${this.config.bookDir}/${hash}`;
             const bookFileInfo = `${bookFile}.i.json`;
 
-            let rows = await db.select({table: 'book', where: `@@hash('_uid', ${db.esc(bookUid)})`});
-            if (!rows.length)
+            const found = await this.getBookRecordByUid(bookUid);
+            if (!found)
                 throw new Error('404 Файл не найден');
-            const book = {...rows[0]};
+            const book = {...found};
             this.applyPreparedBookSize(book, bookInfo.size);
             const reviewState = await this.getReviewArchiveState(book.sourceLibDir);
             const refreshReviews = async(info) => {

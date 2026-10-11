@@ -248,6 +248,23 @@ class CatalogSearch {
         return (uids.length ? await this.getThread().call('getBooksByUids', uids) : []);
     }
 
+    //Книги автора и серии с правками метаданных
+    async authorBooks(name = '') {
+        this.checkReady();
+        const result = await this.getThread().call('authorBooks', name);
+        return {author: result.author, books: await this.loadBooks(result.ids)};
+    }
+
+    async seriesBooks(name = '') {
+        this.checkReady();
+        return await this.loadBooks(await this.getThread().call('seriesBooks', name));
+    }
+
+    async facetValues() {
+        this.checkReady();
+        return await this.getThread().call('facetValues');
+    }
+
     async getBooksByStableKeys(keys = []) {
         this.checkReady();
         return (keys.length ? await this.getThread().call('getBooksByStableKeys', keys) : {});

@@ -996,8 +996,20 @@ class CatalogIndex {
             const author = String(row.author || '');
             const series = String(row.series || '');
             db.exec('BEGIN');
-            //исходные поля записи не меняются: правка накладывается при выдаче, здесь - только поиск
+            //исходные поля записи не меняются: правка накладывается при выдаче, здесь - поиск и связи с авторами
             db.prepare('UPDATE book SET title_norm = ?, series_norm = ? WHERE id = ?').run(normalize(title), normalize(series), id);
+            db.prepare('DELETE FROM book_author WHERE book_id = ?').run(id);
+            const findAuthor = db.prepare('SELECT id FROM author WHERE name_norm = ?');
+            for (const name of splitAuthors(author)) {
+                let found = findAuthor.get(normalize(name));
+                if (!found) {
+                    const authorId = Number(db.prepare('INSERT INTO author(name, name_norm, books) VALUES (?, ?, 1)').run(name, normalize(name)).lastInsertRowid);
+                    const nameId = db.prepare(`INSERT INTO name(kind, ref, name_norm, books) VALUES ('author', ?, ?, 1)`).run(authorId, normalize(name)).lastInsertRowid;
+                    db.prepare('INSERT INTO name_tri(rowid, name_norm) VALUES (?, ?)').run(nameId, normalize(name));
+                    found = {id: authorId};
+                }
+                db.prepare('INSERT INTO book_author(book_id, author_id) VALUES (?, ?)').run(id, found.id);
+            }
             db.prepare('DELETE FROM book_fts WHERE rowid = ?').run(id);
             db.prepare('INSERT INTO book_fts(rowid, title, author, series, keywords) VALUES (?, ?, ?, ?, ?)')
                 .run(id, normalize(title), normalize(author), normalize(series), normalize(row.keywords));
@@ -1035,6 +1047,34 @@ class CatalogIndex {
         if (!this.db)
             throw new Error('catalog_index_not_ready');
         return this.bookRows('uid IN (SELECT value FROM json_each(?))', JSON.stringify(uids.map(String)));
+    }
+
+    //Книги автора по имени (с учётом правок метаданных): {author: имя из библиотеки, ids}
+    authorBooks(name = '') {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        const author = this.db.prepare('SELECT id, name FROM author WHERE name_norm = ?').get(normalize(name));
+        if (!author)
+            return {author: '', ids: []};
+        const ids = this.db.prepare('SELECT book_id AS id FROM book_author WHERE author_id = ? ORDER BY book_id').all(author.id).map(row => row.id);
+        return {author: author.name, ids};
+    }
+
+    seriesBooks(name = '') {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        const value = normalize(name);
+        return (value ? this.db.prepare('SELECT id FROM book WHERE series_norm = ? ORDER BY id').all(value).map(row => row.id) : []);
+    }
+
+    //Значения фильтров, встречающиеся в библиотеке
+    facetValues() {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        if (!this.columns)
+            this.loadColumns();
+        const {lang, ext, genre} = this.columns.dicts;
+        return {lang: lang.filter(Boolean), ext: ext.filter(Boolean), genre: genre.filter(Boolean)};
     }
 
     //Записи по ключам «источник:libid» (так выводятся id книг Kobo): {ключ: [записи]}

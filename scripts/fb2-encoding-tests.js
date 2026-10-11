@@ -51,8 +51,8 @@ async function testFb2DownloadsNormalizeEncodingAndRepairLegacyCache() {
         worker.config = config; worker.fb2Helper = new Fb2Helper(); worker.checkMyState = () => {}; worker.scheduleCacheClean = () => {};
         worker.getFblibraryImages = async() => []; worker.getFblibraryCover = async() => null;
         let fileHash = {hash: 'old-broken'};
-        worker.db = {esc: value => JSON.stringify(value), select: async({table}) => table === 'book' ? [record] : [fileHash],
-            insert: async({rows}) => {fileHash = rows[0];}};
+        worker.catalogSearch = {getBooksByUids: async() => [record]};
+        worker.stateStore = {getBookFiles: () => [fileHash], putBookFile: (row) => {fileHash = row;}};
         await fs.writeFile(path.join(bookDir, 'old-broken'), await utils.gzipBuffer(Buffer.from('старые кракозябры')));
         await fs.writeJson(path.join(bookDir, 'old-broken.d.json'), {assetVersion: 'fblibrary-assets-v5'});
         const app = require('express')();

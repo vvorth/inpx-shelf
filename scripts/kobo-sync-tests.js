@@ -533,7 +533,7 @@ async function testKoboPrewarmsBooksAddedToBoundLists() {
     await fixture({slowUid: 'late-uid'}, async({service, store, worker, listA, sync, prepareCalls, output}) => {
         const WebWorker = require('../server/core/WebWorker');
         Object.assign(worker, {checkMyState() {}, koboService: service,
-            dbSearcher: {getSeriesBookList: async() => ({books: [{_uid: 'epub-uid'}]})}});
+            getSeriesBookList: async() => ({books: [{_uid: 'epub-uid'}]})});
         const call = (name, ...args) => WebWorker.prototype[name].call(worker, ...args);
         const idle = async() => {
             while (service.prewarmRunning)
@@ -669,27 +669,29 @@ async function testKoboRekeysOrphansByLibid() {
 }
 
 async function testKoboFindsRecordsByStableKeyInDb() {
-    const {JembaDb} = require('jembadb');
+    const CatalogIndex = require('../server/core/search/CatalogIndex');
     const WebWorker = require('../server/core/WebWorker');
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kobo-db-'));
-    const db = new JembaDb();
-    await fs.ensureDir(path.join(dir, 'db'));
-    await db.lock({dbPath: path.join(dir, 'db')});
+    const index = new CatalogIndex();
+    const file = path.join(dir, 'library.sqlite');
     try {
-        await db.create({table: 'book', hash: {field: '_uid', unique: true, type: 'string'}});
-        await db.insert({table: 'book', rows: [
-            {id: 1, _uid: 'a', libid: '101', sourceId: 'main', ext: 'fb2'},
-            {id: 2, _uid: 'b', libid: '102', sourceId: 'main', ext: 'fb2'},
-            {id: 3, _uid: 'c', libid: '102', sourceId: 'main', ext: 'epub'},
-            {id: 4, _uid: 'd', libid: '101', sourceId: 'other', ext: 'fb2'},
-            {id: 5, _uid: 'e', libid: '', sourceId: 'main', ext: 'fb2'},
-        ]});
-        const found = await WebWorker.prototype.findBookRecordsByStableKeys.call({db}, ['main:101', 'main:102', 'main:999']);
+        index.beginBuild(file);
+        index.insertBooks([
+            {id: 1, _uid: 'a', libid: '101', sourceId: 'main', ext: 'fb2', title: 'A'},
+            {id: 2, _uid: 'b', libid: '102', sourceId: 'main', ext: 'fb2', title: 'B'},
+            {id: 3, _uid: 'c', libid: '102', sourceId: 'main', ext: 'epub', title: 'C'},
+            {id: 4, _uid: 'd', libid: '101', sourceId: 'other', ext: 'fb2', title: 'D'},
+            {id: 5, _uid: 'e', libid: '', sourceId: 'main', ext: 'fb2', title: 'E'},
+        ]);
+        index.finishBuild({});
+        index.open(file);
+        const catalogSearch = {getBooksByStableKeys: async keys => index.getBooksByStableKeys(keys)};
+        const found = await WebWorker.prototype.findBookRecordsByStableKeys.call({catalogSearch}, ['main:101', 'main:102', 'main:999']);
         assert.deepStrictEqual(Object.keys(found).sort(), ['main:101', 'main:102']);
         assert.deepStrictEqual(found['main:101'].map(row => row._uid), ['a']);
         assert.deepStrictEqual(found['main:102'].map(row => row._uid).sort(), ['b', 'c']);
     } finally {
-        await db.unlock();
+        index.close();
         await fs.remove(dir);
     }
 }

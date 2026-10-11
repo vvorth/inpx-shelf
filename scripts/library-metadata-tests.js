@@ -91,7 +91,7 @@ async function testBookInfoRefreshesChangedReviewsWithoutReparsingBook() {
         const make = () => {
             const value = worker(config);
             value.checkMyState = () => true;
-            value.db = {esc: JSON.stringify, select: async() => [book]};
+            value.catalogSearch = {getBooksByUids: async() => [book]};
             value.getBookLink = async() => ({link: '/book/hash', downFileName: 'fixture.fb2'});
             value.readingListStore = {getMetadataOverrides: async() => ({})};
             value.fb2Helper = {getDescAndCover: async() => {

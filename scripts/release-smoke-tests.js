@@ -1918,13 +1918,13 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
         },
     };
     await withTempDir(async dir => {
-        const db = new JembaDb();
-        const dbPath = path.join(dir, 'db');
-        await fs.ensureDir(dbPath);
-        await db.lock({dbPath});
+        //кандидаты считаются по БД библиотеки, как на сервере
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        index.beginBuild(file);
         try {
-            await db.create({table: 'book'});
-            await db.insert({table: 'book', rows: [
+            index.insertBooks([
                 {_uid: 'same-1', title: 'Same 1', author: 'Favorite Author', series: 'Saga A', genre: 'sf_fantasy', keywords: 'magic', lang: 'ru'},
                 {_uid: 'same-2', title: 'Same 2', author: 'Favorite Author', series: 'Saga B', genre: 'sf_fantasy', keywords: 'magic', lang: 'ru'},
                 {_uid: 'same-3', title: 'Same 3', author: 'Favorite Author', series: 'Saga C', genre: 'sf_fantasy', keywords: 'magic', lang: 'ru'},
@@ -1932,8 +1932,14 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
                 {_uid: 'same-series', title: 'Same Series', author: 'Third Author', series: 'Saga A', genre: 'sf_fantasy', keywords: 'magic', lang: 'ru'},
                 {_uid: 'explore-1', title: 'Explore History', author: 'History Author', series: '', genre: 'history', keywords: 'rome', lang: 'ru', librate: 5},
                 {_uid: 'explore-2', title: 'Explore Detective', author: 'Detective Author', series: '', genre: 'detective', keywords: 'crime', lang: 'ru', librate: 4},
-            ]});
-            worker.db = db;
+            ].map((row, i) => Object.assign({id: i + 1, date: '2026-01-01', sourceId: 'main'}, row)));
+            index.finishBuild({});
+            index.open(file);
+            worker.catalogSearch = {
+                ready: true,
+                similarCandidates: async request => index.similarCandidates(request),
+                loadBooks: async ids => index.getBooks(ids),
+            };
             const shelf = await worker.buildSimilarBooksShelfV2(user, 4, {
                 lists: [],
                 progressMap: user.readerProgress,
@@ -1957,7 +1963,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
             });
             assert.strictEqual(dismissedShelf.discoveryNeedsTasteSetup, false);
         } finally {
-            await db.unlock();
+            index.close();
         }
     });
 }

@@ -41,7 +41,9 @@ async function fixture(test, options = {}) {
         const cache = new Map(); searcher.getCached = async key => cache.has(key) ? cache.get(key) : null; searcher.putCached = async(key, value) => cache.set(key, value);
         const worker = Object.create(require('../server/core/WebWorker').prototype);
         Object.assign(worker, {config, db, dbSearcher: searcher, fb2Helper: new Fb2Helper(), checkMyState: () => {},
-            readingListStore: {getMetadataOverrides: async() => ({})}, dbConfig: async() => ({})});
+            readingListStore: {getMetadataOverrides: async() => ({})}, dbConfig: async() => ({}),
+            catalogSearch: {getBooksByUids: async uids => books.filter(book => uids.includes(book._uid))},
+            stateStore: {getBookFiles: () => [], putBookFile: () => {}}});
         let extractions = 0; let coverLoads = 0;
         const extractBook = worker.extractBook.bind(worker);
         worker.extractBook = async(...args) => {extractions++; return extractBook(...args);};
