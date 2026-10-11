@@ -9,7 +9,7 @@ inpx-shelf
 
 ## Что это за проект
 
-inpx-shelf — веб-каталог для self-hosted INPX-библиотек (Флибуста, Либрусек и др.). Проект вырос из [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) 1.7.9-rc.8, форка [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web), и развивается отдельно: новый интерфейс каталога, персональные полки, синхронизация с Kobo. История изменений inpx-web до разделения — в [docs/CHANGELOG-inpx-web.md](./docs/CHANGELOG-inpx-web.md).
+inpx-shelf — веб-каталог для self-hosted INPX-библиотек (Флибуста, Либрусек и др.). Проект вырос из [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) 1.7.9-rc.8, форка [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web), и развивается отдельно: новый интерфейс каталога, персональные полки, синхронизация с Kobo. История изменений inpx-web до разделения — в [CHANGELOG-inpx-web.md](./CHANGELOG-inpx-web.md).
 
 Каталог рассчитан на self-hosted библиотеки с упором на большие `.7z` / `.zip` / `fLibrary` коллекции, Docker-развёртывание и обновлённую встроенную FB2-читалку. README ниже в первую очередь описывает сценарий `Docker / сервер`, но также покрывает standalone-бинарники и запуск из исходников через Node.js.
 
@@ -648,7 +648,7 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 
 Ссылка содержит секретный токен устройства, поэтому при доступе из интернета используйте HTTPS. Токен работает только для маршрутов `/kobo/<токен>/` этого устройства и не требует SSO; остальной интерфейс, OPDS и скачивание по-прежнему защищены обычными настройками авторизации. Состояние синхронизации хранится в `kobo-sync.json` в каталоге данных; сам токен там не хранится, только его хеш. В журналах запросов токен заменяется на `***`.
 
-Подробности протокола и устройства синхронизации: [docs/kobo-sync-integration.md](./docs/kobo-sync-integration.md).
+Протокол синхронизации: [docs/kobo-protocol.md](./docs/kobo-protocol.md).
 
 ## Провайдер метаданных Audiobookshelf
 

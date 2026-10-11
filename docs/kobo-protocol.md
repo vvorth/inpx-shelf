@@ -3,8 +3,7 @@
 What a Kobo e-reader expects from a sync server, as learned from Calibre-Web's implementation
 (`cps/kobo.py`, `cps/kobo_auth.py`, `cps/services/SyncToken.py` in
 [janeczku/calibre-web](https://github.com/janeczku/calibre-web)). inpx-shelf's implementation in
-`server/core/kobo/` follows this protocol. The design, decisions and phase status are in
-[kobo-sync-integration.md](./kobo-sync-integration.md).
+`server/core/kobo/` follows this protocol.
 
 Sections 1–9 describe the protocol (what any server must do). Section 10 summarises how Calibre-Web
 built it. Section 11 lists its quirks and how inpx-shelf handles each one.

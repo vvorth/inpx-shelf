@@ -6,7 +6,7 @@ which is itself a fork of [bookpauk/inpx-web](https://github.com/bookpauk/inpx-w
 inpx-shelf split off from AceAsket/inpx-web at version 1.7.9-rc.8 (commit `1a768e0`) and has been
 developed separately since then, with its own name and version numbers starting at 1.0.0. The full
 history of both upstream projects is kept in this repository's git history, and the inpx-web
-changelog up to the split is in [docs/CHANGELOG-inpx-web.md](docs/CHANGELOG-inpx-web.md).
+changelog up to the split is in [CHANGELOG-inpx-web.md](CHANGELOG-inpx-web.md).
 
 Thanks to AceAsket and Book Pauk for the work this project is built on.
 

@@ -1,6 +1,6 @@
 1.0.0-beta.1 / не выпущено
 
-Первый выпуск inpx-shelf. Проект основан на [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) 1.7.9-rc.8, который в свою очередь основан на [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web). История изменений до этой версии — в [docs/CHANGELOG-inpx-web.md](docs/CHANGELOG-inpx-web.md).
+Первый выпуск inpx-shelf. Проект основан на [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) 1.7.9-rc.8, который в свою очередь основан на [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web). История изменений до этой версии — в [CHANGELOG-inpx-web.md](CHANGELOG-inpx-web.md).
 
 - Проект переименован в inpx-shelf: свои версии (начиная с 1.0.0), релизы, Docker-образ `vvorth/inpx-shelf` и проверка обновлений по релизам `vvorth/inpx-shelf`. Конфиги, в которых сохранены адреса релизов bookpauk/inpx-web или AceAsket/inpx-web, переключаются на новый адрес при запуске.
 - Совместимость с установками inpx-web: если рядом с программой уже есть каталог `.inpx-web`, а `.inpx-shelf` нет, используется прежний каталог. Путь данных в Docker-образе остался `/usr/local/bin/.inpx-web`, имена cookie, ключей браузерного хранилища и метрик Prometheus (`inpx_web_*`) не менялись, поэтому вход, настройки и дашборды сохраняются.

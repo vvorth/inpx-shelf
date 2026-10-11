@@ -1,4 +1,4 @@
-История изменений inpx-web (AceAsket/inpx-web) до форка inpx-shelf. Изменения inpx-shelf — в [CHANGELOG.md](../CHANGELOG.md).
+История изменений inpx-web (AceAsket/inpx-web) до форка inpx-shelf. Изменения inpx-shelf — в [CHANGELOG.md](CHANGELOG.md).
 
 1.7.9-rc.8 / 2026-10-08
 
