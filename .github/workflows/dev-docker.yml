@@ -1,10 +1,10 @@
 name: Dev Docker image
 
-# Every push to develop publishes vvorth/inpx-shelf:dev (newest develop build) and
+# Every push to dev publishes vvorth/inpx-shelf:dev (newest dev build) and
 # vvorth/inpx-shelf:dev-<commit> (that exact build). Releases stay on version tags.
 on:
   push:
-    branches: [develop]
+    branches: [dev]
 
 permissions:
   contents: read
