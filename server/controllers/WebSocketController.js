@@ -126,14 +126,8 @@ class WebSocketController {
                     await this.getConfig(req, ws); break;
                 case 'get-worker-state':
                     await this.getWorkerState(req, ws); break;
-                case 'search':
-                    await this.search(req, ws); break;
-                case 'bookSearch':
-                    await this.bookSearch(req, ws); break;
                 case 'get-author-book-list':
                     await this.getAuthorBookList(req, ws); break;
-                case 'get-author-series-list':
-                    await this.getAuthorSeriesList(req, ws); break;
                 case 'get-author-info':
                     await this.getAuthorInfo(req, ws); break;
                 case 'get-series-book-list':
@@ -500,38 +494,10 @@ class WebSocketController {
         this.send((state ? state : {}), req, ws);
     }
 
-    async search(req, ws) {
-        if (!req.query)
-            throw new Error(`query is empty`);
-        if (!req.from)
-            throw new Error(`from is empty`);
-
-        const result = await this.webWorker.search(req.from, req.query);
-
-        this.send(result, req, ws);
-    }
-
-    async bookSearch(req, ws) {
-        if (!this.config.extendedSearch)
-            throw new Error('config.extendedSearch disabled');
-        if (!req.query)
-            throw new Error(`query is empty`);
-
-        const result = await this.webWorker.bookSearch(req.query);
-
-        this.send(result, req, ws);
-    }
-
     async getAuthorBookList(req, ws) {
         //без authorId автор ищется по точному имени (страница автора)
         const author = (req.authorId ? undefined : String(req.author || '').trim());
         const result = await this.webWorker.getAuthorBookList(req.authorId, author, req.query);
-
-        this.send(result, req, ws);
-    }
-
-    async getAuthorSeriesList(req, ws) {
-        const result = await this.webWorker.getAuthorSeriesList(req.authorId, req.query);
 
         this.send(result, req, ws);
     }

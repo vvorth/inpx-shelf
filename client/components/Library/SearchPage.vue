@@ -1,15 +1,7 @@
 <template>
     <div class="page">
         <div class="page-body search-body">
-            <div v-if="searchDisabled" class="card">
-                <h2 class="card-title">
-                    {{ $t('Поиск по каталогу выключен') }}
-                </h2>
-                <div class="card-hint">
-                    {{ $t('Индекс каталога отключён параметром INPX_CATALOG_SEARCH=false (catalogSearch в config.json). Книги по-прежнему доступны на страницах авторов и серий, в витринах и в OPDS.') }}
-                </div>
-            </div>
-            <div v-else-if="notReady" class="card index-progress">
+            <div v-if="notReady" class="card index-progress">
                 <h2 class="card-title">
                     {{ $t('Готовлю поиск') }}
                 </h2>
@@ -401,9 +393,6 @@ class SearchPage {
         return Number((this.config.catalogSearch || {}).progress || 0);
     }
 
-    get searchDisabled() {
-        return (this.config.catalogSearch || {}).enabled === false;
-    }
 
     get tab() {
         return (['authors', 'series'].includes(this.query.tab) ? this.query.tab : 'books');
@@ -588,10 +577,6 @@ class SearchPage {
         this.loading = true;
         this.error = '';
         this.$root.setAppTitle(this.q ? t('Поиск: «{q}»', {q: this.q}) : t('Поиск'));
-        if (this.searchDisabled) {
-            this.loading = false;
-            return;
-        }
         if (this.namesTotalsKey !== this.q)
             this.loadNameTotals(this.q);
         const booksTab = (this.tab === 'books');

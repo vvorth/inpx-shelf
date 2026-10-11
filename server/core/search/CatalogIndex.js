@@ -252,9 +252,14 @@ class CatalogIndex {
 
             //порядки сортировки считаются один раз и хранятся готовыми списками id
             const insertOrder = db.prepare('INSERT INTO sort_order(name, ids) VALUES (?, ?)');
+            //id читаются потоком в типизированный массив: без 700 тыс. объектов строк на каждый порядок
+            const bookTotal = db.prepare('SELECT COUNT(*) AS n FROM book').get().n;
             for (const [name, sql] of Object.entries(sortOrderSql)) {
-                const ids = Uint32Array.from(db.prepare(sql).all(), row => row.id);
-                insertOrder.run(name, Buffer.from(ids.buffer));
+                const ids = new Uint32Array(bookTotal);
+                let n = 0;
+                for (const row of db.prepare(sql).iterate())
+                    ids[n++] = row.id;
+                insertOrder.run(name, Buffer.from(ids.buffer, 0, n * 4));
             }
 
             //ключ копий и имя автора нужны только для расчётов выше
@@ -473,16 +478,19 @@ class CatalogIndex {
         }
 
         //жанры: для книги id её жанры лежат в genreList[genreStart[id] .. genreStart[id + 1])
+        //два прохода потоком вместо загрузки всех строк book_genre объектами
         const genreCount = new Uint32Array(size + 1);
-        const genreRows = db.prepare('SELECT book_id, genre FROM book_genre').all();
-        for (const row of genreRows)
+        let genreTotal = 0;
+        for (const row of db.prepare('SELECT book_id FROM book_genre').iterate()) {
             genreCount[row.book_id + 1]++;
+            genreTotal++;
+        }
         for (let i = 1; i <= size; i++)
             genreCount[i] += genreCount[i - 1];
         c.genreStart = genreCount;
-        c.genreList = new Uint16Array(genreRows.length);
+        c.genreList = new Uint16Array(genreTotal);
         const fill = new Uint32Array(size);
-        for (const row of genreRows)
+        for (const row of db.prepare('SELECT book_id, genre FROM book_genre').iterate())
             c.genreList[genreCount[row.book_id] + fill[row.book_id]++] = code('genre', row.genre);
         return c;
     }

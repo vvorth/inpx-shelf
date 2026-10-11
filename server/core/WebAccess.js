@@ -1,4 +1,4 @@
-const { JembaDbThread } = require('jembadb');
+const StateStore = require('./StateStore');
 const utils = require('../core/utils');
 const log = new (require('../core/AppLogger'))().log;//singleton
 const asyncExit = new (require('./AsyncExit'))();
@@ -20,59 +20,25 @@ class WebAccess {
     }
 
     async init() {
-        const config = this.config;
-        const dbPath = `${config.dataDir}/web-access`;
-        const db = new JembaDbThread();//в отдельном потоке
-        await db.lock({
-            dbPath,
-            create: true,
-            softLock: true,
+        const store = new StateStore(this.config);
 
-            tableDefaults: {
-                cacheSize: config.dbCacheSize,
-            },
-        });
-
-        try {
-            //открываем таблицы
-            await db.openAll();
-        } catch(e) {
-            if (
-                e.message.indexOf('corrupted') >= 0 
-                || e.message.indexOf('Unexpected token') >= 0
-                || e.message.indexOf('invalid stored block lengths') >= 0
-            ) {
-                log(LM_ERR, `DB ${dbPath} corrupted`);
-                log(`Open "${dbPath}" with auto repair`);
-                await db.openAll({autoRepair: true});
-            } else {
-                throw e;
-            }
-        }
-
-        await db.create({table: 'access', quietIfExists: true});
-        //проверим, нужно ли обнулить таблицу access
+        //пароль сменился в конфиге - прежние сессии недействительны
         const pass = utils.getBufHash(this.config.accessPassword, 'sha256', 'hex');
-        await db.create({table: 'config', quietIfExists: true});
-        let rows = await db.select({table: 'config', where: `@@id('pass')`});
-
-        if (!rows.length || rows[0].value !== pass) {
-            //пароль сменился в конфиге, обнуляем токены
-            await db.truncate({table: 'access'});
-            await db.insert({table: 'config', replace: true, rows: [{id: 'pass', value: pass}]});
+        if (store.getSetting('accessPass') !== pass) {
+            store.clearAccess();
+            store.setSetting('accessPass', pass);
         }
 
         //загрузим токены сессий
-        rows = await db.select({table: 'access'});
-        for (const row of rows)
+        for (const row of store.getAccessRows())
             this.accessMap.set(row.id, row.value);
 
-        this.db = db;
+        this.db = store;
     }
 
     async closeDb() {
         if (this.db) {
-            await this.db.unlock();
+            this.db.close();
             this.db = null;
         }
     }
@@ -125,7 +91,7 @@ class WebAccess {
     }
 
     async deleteAccess(accessToken) {
-        await this.db.delete({table: 'access', where: `@@id(${this.db.esc(accessToken)})`});
+        this.db.deleteAccess(accessToken);
         this.accessMap.delete(accessToken);
     }
 
@@ -135,11 +101,7 @@ class WebAccess {
             return;
 
         value.saved = true;
-        await this.db.insert({
-            table: 'access',
-            replace: true,
-            rows: [{id: accessToken, value}]
-        });
+        this.db.putAccess(accessToken, value);
     }
 
     newToken() {

@@ -153,6 +153,9 @@ async function testReindexReloadsAuthorAndArchiveCaches() {
         value.setMyState = state => { value.myState = state; };
         value.logServerStats = () => {};
         value.inpxHashCreator = new (require('../server/core/InpxHashCreator'))(config);
+        value.readingListStore = {getMetadataOverrides: async() => ({})};
+        value.catalogSearch = new (require('../server/core/search/CatalogSearch'))(config, value);
+        value.stateStore = new (require('../server/core/StateStore'))(config);
         const app = require('express')();
         require('../server/static')(app, config, value);
         const server = require('http').createServer(app);
@@ -172,7 +175,7 @@ async function testReindexReloadsAuthorAndArchiveCaches() {
             await inpx([60000, 70000, 80000]);
             await value.recreateDb();
             assert.strictEqual(value.myState, 'normal');
-            assert.strictEqual((await value.db.select({table: 'book'})).length, 3);
+            assert.strictEqual((await value.dbConfig()).stats.bookCount, 3);
             assert.strictEqual((await value.getAuthorInfo(null, name)).authorInfo.text, 'Updated author biography');
             assert.strictEqual((await value.getFblibraryArchives('covers', 70000)).length, 1);
             for (const id of [70000, 80000]) {
@@ -183,7 +186,6 @@ async function testReindexReloadsAuthorAndArchiveCaches() {
         } finally {
             server.closeAllConnections();
             await new Promise(resolve => server.close(resolve));
-            if (value.dbSearcher) await value.dbSearcher.close();
             await value.closeDb();
         }
     });

@@ -115,6 +115,10 @@ try {
     assert.deepStrictEqual(index.opdsNames('title', {title: '=мастер и маргарита', del: '0', genre: 'sf'}).found, []);
     assert.strictEqual(index.opdsNames('title', {del: '0'}).totalFound, 7);
 
+    //поиск в одной библиотеке
+    assert.deepStrictEqual(sorted({title: '*мастер', sourceId: 'main'}), [1, 6]);
+    assert.deepStrictEqual(sorted({title: '*мастер', sourceId: 'other'}), []);
+
     console.log('ok opds-index-tests');
 } catch (e) {
     console.error(e && e.stack || e);

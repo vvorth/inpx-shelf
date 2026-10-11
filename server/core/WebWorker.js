@@ -8,9 +8,6 @@ const axios = require('axios');
 
 const ZipReader = require('./ZipReader');
 const WorkerState = require('./WorkerState');//singleton
-const { JembaDb, JembaDbThread } = require('jembadb');
-const DbCreator = require('./DbCreator');
-const DbSearcher = require('./DbSearcher');
 const CatalogSearch = require('./search/CatalogSearch');
 const StateStore = require('./StateStore');
 const InpxHashCreator = require('./InpxHashCreator');
@@ -658,8 +655,6 @@ class WebWorker {
 
             this.wState = this.workerState.getControl('server_state');
             this.myState = '';
-            this.db = null;
-            this.dbSearcher = null;
             this.adminEvents = [];
             const cpuUsage = process.cpuUsage();
             this.adminCpuSnapshot = {
@@ -693,7 +688,7 @@ class WebWorker {
 
     async getIndexStatus() {
         const workerState = this.wState.get() || {};
-        const ready = this.myState === ssNormal && !!this.db && !!this.dbSearcher;
+        const ready = this.myState === ssNormal && this.catalogSearch.ready;
         const result = {
             ready,
             state: this.myState || workerState.state || '',
@@ -705,8 +700,8 @@ class WebWorker {
             progress: workerState.progress || 0,
             recsLoaded: workerState.recsLoaded || 0,
             inpxFileHash: this.inpxFileHash || '',
-            dbLoaded: !!this.db,
-            searchReady: !!this.dbSearcher,
+            dbLoaded: this.catalogSearch.ready,
+            searchReady: this.catalogSearch.ready,
             version: this.config.version,
             sources: (Array.isArray(this.config.librarySources) ? this.config.librarySources : []).map(source => ({
                 id: source.id,
@@ -741,159 +736,67 @@ class WebWorker {
     async closeDb() {
         if (this.catalogSearch)
             await this.catalogSearch.close();
-        if (this.db) {
-            await this.db.unlock();
-            this.db = null;
-        }
+        if (this.stateStore)
+            this.stateStore.close();
     }
 
-    async createDb(dbPath) {
-        this.setMyState(ssDbCreating);
-        log('Searcher DB create start');
-
+    //Открывает БД библиотеки или строит её из INPX. Пока строится впервые - сервер занят;
+    //пересборка готовой БД (переиндексирование, новый INPX) идёт в фоне, прежняя БД отвечает до замены.
+    async loadOrCreateDb(recreate = false) {
         const config = this.config;
-
-        if (await fs.pathExists(dbPath))
-            throw new Error(`createDb.pathExists: ${dbPath}`);
-
-        const db = new JembaDbThread();
-        await db.lock({
-            dbPath,
-            create: true,
-            softLock: true,
-
-            tableDefaults: {
-                cacheSize: config.dbCacheSize,
-            },
-        });
-
-        try {
-            const dbCreator = new DbCreator(config);        
-
-            await dbCreator.run(db, (state) => {
-                this.setMyState(ssDbCreating, state);
-
-                if (state.fileName)
-                    log(`  load ${state.fileName}`);
-                if (state.recsLoaded)
-                    log(`  processed ${state.recsLoaded} records`);
-                if (state.job)
-                    log(`  ${state.job}`);
-            });
-
-            log('Searcher DB successfully created');
-        } finally {
-            await db.unlock();
-        }
-    }
-
-    async loadOrCreateDb(recreate = false, iteration = 0) {
-        this.setMyState(ssDbLoading);
-
-        try {
-            const config = this.config;
-            const dbPath = `${config.dataDir}/db`;
-
-            this.inpxFileHash = await this.inpxHashCreator.getInpxFileHash();
-
-            //проверим полный InxpHash (включая фильтр и версию БД)
-            //для этого заглянем в конфиг внутри БД, если он есть
-            if (!(config.recreateDb || recreate) && await fs.pathExists(dbPath)) {
-                const newInpxHash = await this.inpxHashCreator.getHash();
-
-                const tmpDb = new JembaDb();
-                await tmpDb.lock({dbPath, softLock: true});
-
-                try {
-                    await tmpDb.open({table: 'config'});
-                    const rows = await tmpDb.select({table: 'config', where: `@@id('inpxHash')`});
-
-                    if (!rows.length || newInpxHash !== rows[0].value)
-                        throw new Error('inpx file: changes found on start, recreating DB');
-                } catch (e) {
-                    log(LM_WARN, e.message);
-                    recreate = true;
-                } finally {
-                    await tmpDb.unlock();
-                }
-            }
-
-            //удалим БД если нужно
-            if (config.recreateDb || recreate)
-                await fs.remove(dbPath);
-
-            //пересоздаем БД из INPX если нужно
-            if (!await fs.pathExists(dbPath)) {
-                await this.createDb(dbPath);
-                utils.freeMemory();
-            }
-
-            //загружаем БД
+        const firstLoad = !this.catalogSearch.ready;
+        if (firstLoad)
             this.setMyState(ssDbLoading);
-            log('Searcher DB loading');
 
-            const db = new JembaDbThread();//в отдельном потоке
-            await db.lock({
-                dbPath,
-                softLock: true,
+        let progressTimer = null;
+        try {
+            this.inpxFileHash = await this.inpxHashCreator.getInpxFileHash();
+            const inpxHash = await this.inpxHashCreator.getHash();
 
-                tableDefaults: {
-                    cacheSize: config.dbCacheSize,
-                },
-            });
-
-            try {
-                //открываем таблицы
-                await db.openAll({exclude: ['author_id', 'series_id', 'title_id', 'book']});
-
-                const bookCacheSize = 500;
-                await db.open({
-                    table: 'book',
-                    cacheSize: (config.lowMemoryMode || config.dbCacheSize > bookCacheSize ? config.dbCacheSize : bookCacheSize)
-                });
-            } catch(e) {
-                log(LM_ERR, `Database error: ${e.message}`);
-                if (iteration < 1) {
-                    log('Recreating DB');
-                    await this.loadOrCreateDb(true, iteration + 1);
-                } else
-                    throw e;
-                return;
+            if (firstLoad) {
+                progressTimer = setInterval(() => {
+                    if (this.catalogSearch.building)
+                        this.setMyState(ssDbCreating, {job: 'build library', jobMessage: 'Загрузка INPX', jobStep: 1, jobStepCount: 1, progress: this.catalogSearch.progress});
+                }, 500);
             }
 
-            //поисковый движок
-            this.dbSearcher = new DbSearcher(config, db);
-            await this.dbSearcher.init();
-
-            //stuff
-            db.wwCache = {};            
-            this.db = db;
+            const ok = await this.catalogSearch.ensure(inpxHash, {force: !!(config.recreateDb || recreate), keepReady: !firstLoad});
+            config.recreateDb = false;
+            if (!ok)
+                throw new Error('Library database is not available');
 
             this.resetLibraryAssetCaches();
-            this.setMyState(ssNormal);
-
-            log('Searcher DB ready');
-            this.logServerStats();
-
-            //индекс каталога строится в фоне; до готовности работает старый поиск
-            if (this.catalogSearch)
-                this.catalogSearch.ensure(db, String((await this.dbConfig()).inpxHash || ''));//no await
+            if (firstLoad) {
+                this.setMyState(ssNormal);
+                log('Library DB ready');
+                this.logServerStats();
+                await this.removeLegacyDb();
+            }
         } catch (e) {
-            log(LM_FATAL, e.message);            
+            if (!firstLoad) {
+                log(LM_ERR, `Library DB rebuild: ${e.message}`);
+                return;
+            }
+            log(LM_FATAL, e.message);
             asyncExit.exit(1);
+        } finally {
+            clearInterval(progressTimer);
+        }
+    }
+
+    //Данные прежних версий: основная БД, её сессии доступа и индекс поиска. Всё перестроено в library.sqlite и state.sqlite.
+    async removeLegacyDb() {
+        const dataDir = this.config.dataDir;
+        for (const name of ['db', 'web-access', 'catalog-index.sqlite', 'catalog-index.sqlite.tmp']) {
+            const file = path.join(dataDir, name);
+            if (await fs.pathExists(file)) {
+                await fs.remove(file);
+                log(`Removed legacy data: ${name}`);
+            }
         }
     }
 
     async recreateDb() {
-        this.setMyState(ssDbCreating);
-
-        if (this.dbSearcher) {
-            await this.dbSearcher.close();
-            this.dbSearcher = null;
-        }
-
-        await this.closeDb();
-
         await this.loadOrCreateDb(true);
     }
 
@@ -910,54 +813,18 @@ class WebWorker {
 
     async dbConfig() {
         this.checkMyState();
-
-        //сведения о библиотеке хранятся в БД библиотеки; пока она строится - в основной БД
-        if (this.catalogSearch && this.catalogSearch.ready)
-            return this.catalogSearch.libraryConfig();
-
-        const db = this.db;
-        if (!db.wwCache.config) {
-            const rows = await db.select({table: 'config'});
-            const config = {};
-
-            for (const row of rows) {
-                config[row.id] = row.value;
-            }
-
-            db.wwCache.config = config;
-        }
-
-        return db.wwCache.config;
+        return this.catalogSearch.libraryConfig();
     }
 
-    async search(from, query) {
-        this.checkMyState();
-
-        const result = await this.dbSearcher.search(from, query);
-        await this.applyMetadataOverridesToSearchResult(result);
-
-        const config = await this.dbConfig();
-        result.inpxHash = (config.inpxHash ? config.inpxHash : '');
-
-        return result;
-    }
-
+    //Поиск книг по полям с пометками прежнего поиска («=» точно, «*» подстрока, «~» RegExp...):
+    //Audiobookshelf, сопоставление внешней витрины. Ответ: {found: записи с правками, totalFound}
     async bookSearch(query) {
         this.checkMyState();
 
-        const result = await this.dbSearcher.bookSearch(query);
-        await this.applyMetadataOverridesToSearchResult(result);
-
-        const config = await this.dbConfig();
-        result.inpxHash = (config.inpxHash ? config.inpxHash : '');
-
+        const {ids, totalFound} = await this.catalogSearch.call('findBooks', query);
+        const result = {found: await this.catalogSearch.loadBooks(ids), totalFound};
+        result.inpxHash = (await this.dbConfig()).inpxHash || '';
         return result;
-    }
-
-    async opdsQuery(from, query) {
-        this.checkMyState();
-
-        return await this.dbSearcher.opdsQuery(from, query);
     }
 
     async getAuthorBookList(authorId, author) {
@@ -965,12 +832,6 @@ class WebWorker {
 
         //книги ищутся по имени автора; id авторов прежней БД больше не используются
         return await this.catalogSearch.authorBooks(author || '');
-    }
-
-    async getAuthorSeriesList(authorId, query = {}) {
-        this.checkMyState();
-
-        return await this.dbSearcher.getAuthorSeriesList(authorId, query);
     }
 
     async getSeriesBookList(series) {
@@ -1639,7 +1500,7 @@ class WebWorker {
         const found = [];
         const seen = new Set();
         for (const query of this.externalDiscoverySearchQueries(item, limit)) {
-            const response = await this.dbSearcher.bookSearch(query);
+            const response = await this.bookSearch(query);
             for (const book of (response.found || [])) {
                 const key = String(book._uid || book.id || '').trim();
                 if (key && seen.has(key))
@@ -3351,6 +3212,11 @@ class WebWorker {
             return result;
 
         result.exists = true;
+        //путь к файлу (например, БД библиотеки) - его размер
+        const own = await fs.stat(dir).catch(() => null);
+        if (own && own.isFile())
+            return Object.assign(result, {size: own.size, files: 1});
+
         const stack = [dir];
         while (stack.length) {
             const current = stack.pop();
@@ -3547,13 +3413,13 @@ class WebWorker {
             stats: (dbConfig && dbConfig.stats) || (index && index.stats) || {},
             paths: {
                 dataDir: this.config.dataDir,
-                db: `${this.config.dataDir}/db`,
+                db: this.catalogSearch.file,
                 bookCache: this.config.bookDir,
                 coverCache: coverDir,
                 tempDir: this.config.tempDir,
             },
             sizes: {
-                db: await this.dirSize(`${this.config.dataDir}/db`),
+                db: await this.dirSize(this.catalogSearch.file),
                 bookCache: await this.dirSize(this.config.bookDir),
                 coverCache: coverSize,
                 tempDir: await this.dirSize(this.config.tempDir, 5000),

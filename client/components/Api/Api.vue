@@ -38,20 +38,6 @@ import {t, tMessage} from '../../share/i18n';
 // renaming them would sign users out and drop their saved preferences.
 const profileSessionStorageKey = 'inpx-web-profile-session';
 const profileLoginHistoryStorageKey = 'inpx-web-profile-login-history';
-const stepBound = [
-    0,
-    0,// jobStep = 1
-    40,// jobStep = 2
-    50,// jobStep = 3
-    54,// jobStep = 4
-    58,// jobStep = 5
-    69,// jobStep = 6
-    69,// jobStep = 7
-    70,// jobStep = 8
-    95,// jobStep = 9
-    100,// jobStep = 10
-];
-
 const componentOptions = {
     components: {
     },
@@ -304,13 +290,8 @@ class Api {
 
                     //this.jsonMessage = server;
 
-                    const jStep = server.jobStep;
-
-                    if (jStep && stepBound[jStep] !== undefined) {
-                        const sp = server.progress || 0;
-                        const delta = stepBound[jStep + 1] - stepBound[jStep];
-                        this.progress = (stepBound[jStep] + sp*delta)/100;
-                    }
+                    //БД библиотеки строится одним шагом: прогресс сервера и есть общий
+                    this.progress = Math.max(0, Math.min(1, Number(server.progress) || 0));
                 } else {
                     break;
                 }
@@ -387,24 +368,8 @@ class Api {
         }
     }
 
-    async search(from, query) {
-        return await this.request({action: 'search', from, query}, 30);
-    }
-
-    async bookSearch(query) {
-        return await this.request({action: 'bookSearch', query}, 30);
-    }
-
-    async getAuthorBookList(authorId, query = {}) {
-        return await this.request({action: 'get-author-book-list', authorId, query});
-    }
-
     async getAuthorBooksByName(author, query = {}) {
         return await this.request({action: 'get-author-book-list', authorId: 0, author, query}, 60);
-    }
-
-    async getAuthorSeriesList(authorId, query = {}) {
-        return await this.request({action: 'get-author-series-list', authorId, query});
     }
 
     async getAuthorInfo(authorId, author) {

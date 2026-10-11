@@ -4,8 +4,7 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const {pipeline} = require('stream/promises');
-const {JembaDb} = require('jembadb');
-const DbSearcher = require('../server/core/DbSearcher');
+const CatalogIndex = require('../server/core/search/CatalogIndex');
 const Security = require('../server/core/Security');
 const provider = require('../server/core/AudiobookshelfProvider');
 const Fb2Helper = require('../server/core/fb2/Fb2Helper');
@@ -15,13 +14,11 @@ const fb2 = '<?xml version="1.0" encoding="windows-1251"?><FictionBook><descript
 
 async function fixture(test, options = {}) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-abs-test-'));
-    const db = new JembaDb(); let server;
+    const index = new CatalogIndex(); let server;
     try {
         const config = {dataDir: dir, libDir: path.join(dir, 'source'), tempDir: path.join(dir, 'tmp'), bookDir: path.join(dir, 'book'),
             publicFilesDir: path.join(dir, 'public-files'), rootPathStatic: '', absEnabled: true, absToken: 'fixture-abs-token', ...options};
-        await Promise.all([config.libDir, config.tempDir, config.bookDir, path.join(dir, 'db')].map(value => fs.ensureDir(value)));
-        await db.lock({dbPath: path.join(dir, 'db')});
-        await db.create({table: 'book', hash: {field: '_uid', unique: true, type: 'string'}}); await db.create({table: 'file_hash'});
+        await Promise.all([config.libDir, config.tempDir, config.bookDir].map(value => fs.ensureDir(value)));
         await fs.writeFile(path.join(config.libDir, '1.fb2'), require('iconv-lite').encode(fb2, 'windows-1251'));
         const zip = new(require('yazl').ZipFile)();
         const done = pipeline(zip.outputStream, fs.createWriteStream(path.join(config.libDir, '2.epub')));
@@ -34,15 +31,20 @@ async function fixture(test, options = {}) {
             {...common, id: 2, _uid: 'epub-uid', file: '2', ext: 'epub'},
             {...common, id: 3, _uid: 'other-author', file: 'missing', ext: 'fb2', author: 'Другой Автор'},
             {...common, id: 4, _uid: 'deleted', file: 'deleted', ext: 'fb2', del: 1}];
-        await db.insert({table: 'book', rows: books});
-        const searcher = Object.create(DbSearcher.prototype);
-        Object.assign(searcher, {db, closed: false, searchFlag: 0, recStruct: ['author', 'title', 'file', 'ext', 'lang', 'folder'].map(field => ({field, type: 'S'}))});
-        searcher.recStruct.push({field: 'del', type: 'N'});
-        const cache = new Map(); searcher.getCached = async key => cache.has(key) ? cache.get(key) : null; searcher.putCached = async(key, value) => cache.set(key, value);
+        //БД библиотеки как на сервере: поиск ABS идёт через findBooks
+        const file = path.join(dir, 'library.sqlite');
+        index.beginBuild(file, [], [{id: 'main', name: 'Main', libDir: config.libDir}]);
+        index.insertBooks(books);
+        index.finishBuild({});
+        index.open(file);
         const worker = Object.create(require('../server/core/WebWorker').prototype);
-        Object.assign(worker, {config, db, dbSearcher: searcher, fb2Helper: new Fb2Helper(), checkMyState: () => {},
+        Object.assign(worker, {config, fb2Helper: new Fb2Helper(), checkMyState: () => {},
             readingListStore: {getMetadataOverrides: async() => ({})}, dbConfig: async() => ({}),
-            catalogSearch: {getBooksByUids: async uids => books.filter(book => uids.includes(book._uid))},
+            catalogSearch: {
+                call: async(action, ...args) => index[action](...args),
+                loadBooks: async ids => index.getBooks(ids),
+                getBooksByUids: async uids => index.getBooksByUids(uids),
+            },
             stateStore: {getBookFiles: () => [], putBookFile: () => {}}});
         let extractions = 0; let coverLoads = 0;
         const extractBook = worker.extractBook.bind(worker);
@@ -62,7 +64,7 @@ async function fixture(test, options = {}) {
         await test({dir, config, worker, metadata, security, request, base, root, count: () => ({extractions, coverLoads})});
     } finally {
         if (server) {server.closeAllConnections(); await new Promise(resolve => server.close(resolve));}
-        await db.unlock(); await fs.remove(dir);
+        index.close(); await fs.remove(dir);
     }
 }
 

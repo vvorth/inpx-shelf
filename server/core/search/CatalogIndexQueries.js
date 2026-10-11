@@ -48,7 +48,7 @@ function requireDb(index) {
 const fields = {
     author: {norm: 'a.name_norm', raw: 'a.name'},
     series: {norm: 's.name_norm', raw: 's.name'},
-    title: {norm: 'b.title_norm', raw: 'b.title_norm'},
+    title: {norm: 'b.title_norm', raw: 'b.title'},
 };
 
 //Условие по значению с маркером: нет - префикс, = точно, * содержит, # содержит и не начинается с буквы ru/en, ~ RegExp
@@ -166,6 +166,11 @@ function bookWhere(index, query, params) {
         if (cond)
             where.push(cond);
     }
+    //поиск по одной библиотеке (сопоставление внешней витрины по источникам)
+    if (query.sourceId) {
+        params.push(String(query.sourceId));
+        where.push('b.source = ?');
+    }
     if (hasBookFilter(query)) {
         currentMask = bookMask(index, query);
         where.push('catalog_ok(b.id)');
@@ -244,7 +249,7 @@ module.exports = {
     },
 
     //Группы имён по первым depth символам: [{id, name, value, count, bookCount}] по возрастанию value.
-    //Для названий id - id одной из книг группы, name не заполняется (названия берутся из основной БД)
+    //Для названий id - id одной из книг группы, name не заполняется (название берётся из записи книги)
     opdsGroups(from, query = {}) {
         if (!fields[from])
             throw new Error(`Unknown value for param 'from'`);
@@ -292,7 +297,7 @@ module.exports = {
     },
 
     //Имена, подходящие под запрос, по алфавиту: {found: [{id, author|series, bookCount}], totalFound}.
-    //Для названий id - id книги с этим названием, самого названия в ответе нет
+    //Для названий id - id книги с этим названием, само название берётся из записи книги
     opdsNames(from, query = {}) {
         if (!fields[from])
             throw new Error(`Unknown value for param 'from'`);

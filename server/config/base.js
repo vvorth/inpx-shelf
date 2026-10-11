@@ -43,7 +43,6 @@ module.exports = {
     allowUnsafeFilter: false,
     accessPassword: '',
     accessTimeout: 0,
-    extendedSearch: true,
     bookReadLink: '',
     loggingEnabled: true,
     logServerStats: false,
@@ -70,10 +69,9 @@ module.exports = {
     koboEnabled: process.env.INPX_KOBO_ENABLED === 'true',
     koboPublicUrl: String(process.env.INPX_KOBO_PUBLIC_URL || '').trim(),
 
-    // Поправить в случае, если были критические изменения в DbCreator или InpxParser,
-    // иначе будет рассинхронизация по кэшу между сервером и клиентом на уровне БД.
+    // Поправить при критических изменениях разбора INPX (InpxParser, LibraryImport):
+    // входит в хеш библиотеки, и БД библиотеки будет перестроена.
     dbVersion: '13',
-    dbCacheSize: 5,
 
     maxPayloadSize: 500,//in MB
     wsMessageLimitMb: numberFromEnv('INPX_WS_MESSAGE_LIMIT_MB', 1),
@@ -83,21 +81,14 @@ module.exports = {
     maxFilesDirSize: defaultBookCacheSize,//legacy alias for bookCacheSize
     bookCacheSize: defaultBookCacheSize,
     coverCacheSize: defaultCoverCacheSize,
-    queryCacheEnabled: true,
-    //индекс каталога на SQLite: поиск с опечатками, раскладкой и счётчиками фильтров
-    catalogSearch: process.env.INPX_CATALOG_SEARCH !== 'false',
-    queryCacheMemSize: 50,
-    queryCacheDiskSize: 500,
     cacheCleanInterval: numberFromEnv('INPX_CACHE_CLEAN_INTERVAL_MINUTES', 24*60),//minutes
     cacheCleanSchedule: '0 0 * * *',
     cacheCleanTargetRatio: numberFromEnv('INPX_CACHE_CLEAN_TARGET_RATIO', 0.8),
     adminEventLogEnabled: true,
     adminEventLogSize: 300,
     inpxCheckInterval: 60,//minutes
-    lowMemoryMode: false,
-    fullOptimization: false,
 
-    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'extendedSearch', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled'],
+    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled'],
 
     allowRemoteLib: false,
     remoteLib: false,

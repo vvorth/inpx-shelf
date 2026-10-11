@@ -129,39 +129,6 @@ async function testConfigSecretsSurviveRestart() {
     }
 }
 
-async function testTitleSearchKeepsIndexedPrefixFallbacks() {
-    const DbSearcher = require('../server/core/DbSearcher');
-    const searcher = Object.create(DbSearcher.prototype);
-    searcher.db = {esc: JSON.stringify};
-
-    const candidates = searcher.getTitleSearchPrefixCandidates('night');
-    assert.ok(candidates.includes('night'));
-    assert.ok(candidates.includes('«night'));
-    assert.ok(candidates.includes('"night'));
-    assert.ok(candidates.includes('(night'));
-    assert.deepStrictEqual(searcher.getTitleSearchPrefixCandidates('*night'), ['*night']);
-
-    const where = searcher.getWhere('Night', {looseTitlePrefix: true});
-    assert.match(where, /@dirtyIndexLR\('value', "night"/);
-    assert.match(where, /@dirtyIndexLR\('value', "«night"/);
-    assert.doesNotMatch(where, /@indexIter/);
-
-    const preparedWhere = `async(__tr) => { const ids = ${where}; return Array.from(ids); }`
-        .replace(/@@/g, 'return await __tr.')
-        .replace(/@/g, 'await __tr.');
-    const whereFunc = new Function(`'use strict'; return ${preparedWhere}`)();
-    const ids = await whereFunc({
-        dirtyIndexLR: async(_field, from) => {
-            if (from === 'night')
-                return [1, 2];
-            if (from === '\u00abnight')
-                return [2, 3];
-            return [];
-        },
-    });
-    assert.deepStrictEqual(ids, [1, 2, 3]);
-}
-
 function testConvertedBookFileNames() {
     const bookConverter = require('../server/core/BookConverter');
 
@@ -1558,15 +1525,13 @@ async function testExternalDiscoveryMultiSourceSearch() {
     assert.deepStrictEqual(queries.map(item => item.sourceId), ['one', 'one', 'two', 'two', 'three', 'three']);
 
     const calls = [];
-    multiSourceWorker.dbSearcher = {
-        async bookSearch(query) {
-            calls.push(query);
-            return {
-                found: query.sourceId === 'three'
-                    ? [{_uid: 'three:1', title: 'Night Watch'}]
-                    : [],
-            };
-        },
+    multiSourceWorker.bookSearch = async(query) => {
+        calls.push(query);
+        return {
+            found: query.sourceId === 'three'
+                ? [{_uid: 'three:1', title: 'Night Watch'}]
+                : [],
+        };
     };
     const candidates = await multiSourceWorker.findExternalDiscoveryCandidates({title: 'Night Watch'}, 7);
     assert.strictEqual(candidates.length, 1);
@@ -1900,7 +1865,6 @@ async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
 
 async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
     const worker = makeWorker();
-    const {JembaDb} = require('jembadb');
     const favorite = {
         _uid: 'favorite', author: 'Favorite Author', genre: 'sf_fantasy', keywords: 'magic', lang: 'ru',
     };
@@ -1968,6 +1932,11 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
     });
 }
 
+//Запросы OPDS к БД библиотеки: отдельный скрипт, запускается как есть
+function testOpdsIndexQueries() {
+    require('child_process').execFileSync(process.execPath, [path.join(__dirname, 'opds-index-tests.js')], {stdio: 'pipe'});
+}
+
 const tests = [
     ...require('./fb2-encoding-tests'),
     ...require('./audiobookshelf-tests'),
@@ -1982,7 +1951,6 @@ const tests = [
     ...require('./kobo-sync-tests'),
     testConfigSecretsSurviveRestart,
     testAppCacheRecoveryBootstrapAndRoute,
-    testTitleSearchKeepsIndexedPrefixFallbacks,
     testFb2ContentsExcludeNotesBodies,
     testReaderAnnotationStaysOutsideReadingFlow,
     testReaderBookNotesMenuAndReturnLayout,
@@ -2011,6 +1979,7 @@ const tests = [
     testExternalDiscoverySingleFetch,
     testConfiguredConverterPathsHavePriority,
     testDiscoveryShelvesBuildOnlyRequestedSection,
+    testOpdsIndexQueries,
     testPersonalDiscoveryCacheAndSingleFlight,
     testPersonalDiscoveryUsesColdStartTaste,
     testPersonalDiscoveryUsesEngagementTopicsAndDismissals,

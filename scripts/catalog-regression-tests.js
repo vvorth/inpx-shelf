@@ -3,8 +3,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const {JembaDb} = require('jembadb');
-const DbSearcher = require('../server/core/DbSearcher');
 
 async function withTempDir(task) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-catalog-test-'));
@@ -13,59 +11,6 @@ async function withTempDir(task) {
     } finally {
         await fs.remove(dir);
     }
-}
-
-async function database(task) {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-catalog-test-'));
-    const db = new JembaDb();
-    const dbPath = path.join(dir, 'db');
-    await fs.ensureDir(dbPath);
-    await db.lock({dbPath});
-    try {
-        await db.create({table: 'book', hash: {field: '_uid', unique: true, type: 'string'}});
-        await db.create({table: 'file_hash'});
-        await task(dir, db);
-    } finally {
-        await db.unlock();
-        await fs.remove(dir);
-    }
-}
-
-function searcher(db) {
-    const value = Object.create(DbSearcher.prototype);
-    Object.assign(value, {db, closed: false, searchFlag: 0});
-    value.recStruct = ['author', 'title', 'folder', 'file', 'ext', 'lang', 'libid'].map(field => ({field, type: 'S'}));
-    value.recStruct.push({field: 'del', type: 'N'});
-    const cache = new Map();
-    value.getCached = async key => cache.has(key) ? cache.get(key) : null;
-    value.putCached = async(key, data) => cache.set(key, data);
-    return value;
-}
-
-async function testCatalogLanguageListsAndCollidingBookNumbers() {
-    await database(async(dir, db) => {
-        const base = {author: 'Huh Christopher', title: 'Keeping My Hope', series: '', serno: 0, size: 42,
-            librate: 0, del: 0, sourceId: 'main', insno: 0};
-        await db.insert({table: 'book', rows: [
-            {...base, id: 1, _uid: 'epub', folder: 'usr-500000-504999.zip', file: '504942', libid: '504942', ext: 'epub', lang: 'en'},
-            {...base, id: 2, _uid: 'fb2-collision', folder: 'f.fb2-502689-505100.zip', file: '504942', libid: '504942',
-                author: 'Гудман Элисон', title: 'Клуб «Темные времена»', ext: 'fb2', lang: 'ru', librate: 5},
-            {...base, id: 3, _uid: 'fb2-format', folder: 'fb2-500000-504999.zip', file: '504943', libid: '504943', ext: 'fb2', lang: 'en'},
-            {...base, id: 4, _uid: 'french', folder: 'usr-500000-504999.zip', file: '504944', libid: '504944', ext: 'epub', lang: 'fr'},
-            {...base, id: 5, _uid: 'unknown-language', folder: 'usr-500000-504999.zip', file: '504945', libid: '504945', ext: 'epub', lang: ''},
-        ]});
-        const value = searcher(db);
-        const find = async query => (await value.bookSearch(query)).found.map(book => book._uid).sort();
-        assert.deepStrictEqual(await find({file: '=504942'}), ['epub', 'fb2-collision']);
-        assert.deepStrictEqual(await find({libid: '=504942'}), ['epub', 'fb2-collision']);
-        assert.deepStrictEqual(await find({title: 'Keeping My Hope', lang: 'ru,en'}), ['epub', 'fb2-format']);
-        assert.deepStrictEqual(await find({title: 'Keeping My Hope', lang: 'ru,en', ext: 'fb2,epub'}), ['epub', 'fb2-format']);
-        assert.deepStrictEqual(await find({title: 'Keeping My Hope', lang: 'en,?', ext: 'epub'}), ['epub', 'unknown-language']);
-        assert.deepStrictEqual(await find({title: 'Keeping My Hope', lang: 'ru,en', hideCopies: true}), ['fb2-format']);
-        assert.deepStrictEqual(await find({title: 'Keeping My Hope', lang: '~^(en|ru)$'}), ['epub', 'fb2-format']);
-        // Cached queries must retain the same complete set of files.
-        assert.deepStrictEqual(await find({file: '=504942'}), ['epub', 'fb2-collision']);
-    });
 }
 
 async function testPreparedBookSizeAppearsInCatalogAcrossRestart() {
@@ -112,16 +57,25 @@ async function testPreparedBookSizeAppearsInCatalogAcrossRestart() {
 
 // JS regular expressions cannot be interrupted: patterns that backtrack per title are refused.
 async function testRegExpSearchRefusesBacktrackingPatterns() {
-    await database(async(dir, db) => {
-        await db.insert({table: 'book', rows: [{id: 1, _uid: 'hope', author: 'Huh Christopher', title: 'Keeping My Hope',
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        index.beginBuild(file);
+        index.insertBooks([{id: 1, _uid: 'hope', author: 'Huh Christopher', title: 'Keeping My Hope',
             series: '', serno: 0, size: 42, librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: '1',
-            libid: '1', ext: 'epub', lang: 'en'}]});
-        const value = searcher(db);
-        assert.deepStrictEqual((await value.bookSearch({title: '~^keeping.*hope$'})).found.map(book => book._uid), ['hope']);
-        for (const title of ['~.*.*hope', '~(.*.*)*q', '~(a|a)+q', '~(k)\\1'])
-            await assert.rejects(value.bookSearch({title}), /слишком сложное/, title);
-        await assert.rejects(value.bookSearch({author: 'huh', title: '~.{0,99}.{0,99}q'}), /слишком сложное/);
+            libid: '1', ext: 'epub', lang: 'en'}]);
+        index.finishBuild({});
+        index.open(file);
+        try {
+            assert.deepStrictEqual(index.findBooks({title: '~^keeping.*hope$'}).ids, [1]);
+            for (const title of ['~.*.*hope', '~(.*.*)*q', '~(a|a)+q', '~(k)\\1'])
+                assert.throws(() => index.findBooks({title}), /слишком сложное/, title);
+            assert.throws(() => index.findBooks({author: 'huh', title: '~.{0,99}.{0,99}q'}), /слишком сложное/);
+        } finally {
+            index.close();
+        }
     });
 }
 
-module.exports = [testRegExpSearchRefusesBacktrackingPatterns, testCatalogLanguageListsAndCollidingBookNumbers, testPreparedBookSizeAppearsInCatalogAcrossRestart];
+module.exports = [testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];

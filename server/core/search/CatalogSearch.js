@@ -1,29 +1,21 @@
 //БД библиотеки на SQLite: импорт из INPX, записи книг, поиск, подсказки.
-//Пока индекс строится или недоступен (нет node:sqlite), ready = false и страница поиска показывает ход сборки.
+//Пока БД строится впервые, ready = false и сервер занят; при пересборке прежняя БД отвечает до замены.
 const fs = require('fs-extra');
 
 const log = new (require('../AppLogger'))().log;//singleton
+const utils = require('../utils');
 const AuthorNames = require('./AuthorNames');
 const InpxParser = require('../InpxParser');
 const {getEnabledLibrarySources} = require('../LibrarySources');
 const {loadInpxFilter, makeRecordFilter, makeInpxInfo} = require('./LibraryImport');
 
 
-function sqliteAvailable() {
-    try {
-        require('node:sqlite');
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
 class CatalogSearch {
     constructor(config, worker) {
         this.config = config;
         this.worker = worker;
-        this.file = `${config.dataDir}/catalog-index.sqlite`;
-        this.enabled = (config.catalogSearch !== false) && sqliteAvailable();
+        this.file = `${config.dataDir}/library.sqlite`;
+        this.enabled = true;
         this.thread = null;
         this.ready = false;
         this.building = false;
@@ -47,57 +39,56 @@ class CatalogSearch {
         return this.thread;
     }
 
-    //Открыть готовый индекс или перестроить его для текущей БД. Без await: строится в фоне.
-    //keepReady: та же библиотека, меняются только имена авторов - старый индекс отвечает, пока строится новый
-    ensure(db, inpxHash, options = {}) {
-        if (!this.enabled)
-            return Promise.resolve(false);
-
+    //Открыть готовую БД библиотеки или построить её из INPX.
+    //keepReady: прежняя БД отвечает, пока строится новая; force: строить, даже если хеш INPX не изменился
+    ensure(inpxHash, options = {}) {
         const generation = ++this.generation;
         this.inpxHash = inpxHash;
         if (!options.keepReady)
             this.ready = false;
-        this.buildPromise = this.ensureInner(db, inpxHash, generation)
+        this.buildPromise = this.ensureInner(inpxHash, generation, !!options.force)
             .catch((e) => {
-                log(LM_ERR, `Catalog index: ${e.message}`);
+                log(LM_ERR, `Library DB: ${e.message}`);
                 return false;
             });
         return this.buildPromise;
     }
 
-    async ensureInner(db, inpxHash, generation) {
+    async ensureInner(inpxHash, generation, force) {
         const thread = this.getThread();
-        if (await fs.pathExists(this.file)) {
+        if (!force && await fs.pathExists(this.file)) {
             try {
                 const meta = await thread.call('open', this.file);
                 const names = await this.authorNames.readEntries();
                 if (meta.inpxHash === inpxHash && String(meta.aliasesStamp || '') === names.updatedAt) {
                     this.meta = meta;
                     this.ready = (generation === this.generation);
-                    log(`Catalog index ready: ${meta.books} books`);
+                    log(`Library DB ready: ${meta.books} books`);
                     thread.call('warmUp').catch(() => {});
                     return true;
                 }
-                log(meta.inpxHash === inpxHash ? 'Catalog index: author names changed, rebuilding' : 'Catalog index: library changed, rebuilding');
+                log(meta.inpxHash === inpxHash ? 'Library DB: author names changed, rebuilding' : 'Library DB: library changed, rebuilding');
             } catch (e) {
-                log(LM_WARN, `Catalog index: ${e.message}, rebuilding`);
+                log(LM_WARN, `Library DB: ${e.message}, rebuilding`);
             }
         }
 
-        return await this.rebuild(db, inpxHash, generation);
+        return await this.rebuild(inpxHash, generation);
     }
 
     //Импорт всех включённых библиотек из INPX во временный файл; готовый файл заменяет прежний.
     //Отбор, пропуск повторов _uid и порядок id - как у прежнего создания основной БД.
-    async rebuild(db, inpxHash, generation) {
-        const thread = this.getThread();
+    async rebuild(inpxHash, generation) {
+        //строит отдельный поток: поток запросов продолжает отвечать по прежней БД до замены файла
+        const CatalogIndexThread = require('./CatalogIndexThread');
+        const thread = new CatalogIndexThread();
         const tmpFile = `${this.file}.tmp`;
         await fs.remove(tmpFile);
 
         this.building = true;
         this.progress = 0;
         const started = Date.now();
-        log('Catalog index build start');
+        log('Library DB build start');
         try {
             const config = this.config;
             const sources = getEnabledLibrarySources(config);
@@ -149,20 +140,27 @@ class CatalogSearch {
                 inpxHash, aliasesStamp: names.updatedAt, aliases: 0, recsLoaded,
                 inpxInfo: JSON.stringify(makeInpxInfo(parserInfos, inpxFilter)),
             });
-            await thread.call('close');
+            //в Linux и macOS открытая прежняя БД остаётся читаемой после замены файла: запросы не прерываются;
+            //Windows не даёт заменить открытый файл
+            const reader = this.getThread();
+            if (process.platform === 'win32')
+                await reader.call('close');
             await fs.move(tmpFile, this.file, {overwrite: true});
-            this.meta = await thread.call('open', this.file);
+            this.meta = await reader.call('open', this.file);
             this.progress = 1;
             this.ready = (generation === this.generation);
-            log(`Catalog index built in ${((Date.now() - started) / 1000).toFixed(1)}s: ${counts.books} books, ${counts.authors} authors, ${counts.series} series, ${counts.aliases} English author names`);
-            thread.call('warmUp').catch(() => {});
+            log(`Library DB built in ${((Date.now() - started) / 1000).toFixed(1)}s: ${counts.books} books, ${counts.authors} authors, ${counts.series} series, ${counts.aliases} English author names`);
+            reader.call('warmUp').catch(() => {});
             return true;
         } catch (e) {
             await thread.call('abortBuild').catch(() => {});
             await fs.remove(tmpFile).catch(() => {});
             throw e;
         } finally {
+            await thread.terminate().catch(() => {});
             this.building = false;
+            //разбор INPX оставляет много мусора: освобождаем память сразу, как прежнее создание БД
+            utils.freeMemory();
         }
     }
 
@@ -181,8 +179,8 @@ class CatalogSearch {
     //Скачивание английских имён авторов (администратор); по окончании индекс перестраивается
     startAuthorNamesDownload() {
         return this.authorNames.start(async() => {
-            if (this.worker.db && this.enabled)
-                await this.ensure(this.worker.db, this.inpxHash, {keepReady: this.ready});
+            if (this.ready)
+                await this.ensure(this.inpxHash, {keepReady: true});
         });
     }
 
@@ -279,7 +277,7 @@ class CatalogSearch {
                 lang: row.lang, librate: row.librate, keywords: row.keywords,
             });
         } catch (e) {
-            log(LM_WARN, `Catalog index update: ${e.message}`);
+            log(LM_WARN, `Library DB update: ${e.message}`);
         }
     }
 
