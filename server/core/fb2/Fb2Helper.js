@@ -33,6 +33,10 @@ class Fb2Helper {
             // FLibrary can retain a legacy declaration on UTF-8 bytes. Validate
             // the bytes first; otherwise honour XML instead of guessing by prose.
             if (isUtf8(data)) {
+                // Already normalized UTF-8: decoding and encoding again would return the same bytes
+                // and costs ~0.3 s on a 14 MB book.
+                if (data[0] === 0x3c && (!/^<\?xml\b/i.test(head) || (declaration && (!declared || declared[0] === 'encoding="utf-8"'))))
+                    return data;
                 encoding = 'utf-8';
             } else if (declared && !/^utf-?8$/i.test(declared[2])) {
                 if (!iconv.encodingExists(declared[2]))

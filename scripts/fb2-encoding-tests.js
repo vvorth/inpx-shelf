@@ -109,4 +109,20 @@ async function testFb2CoverAfterBinaryWithoutAttributes() {
     }
 }
 
-module.exports = [testFb2CoverAfterBinaryWithoutAttributes, testFb2XmlEncodingDeclarationsAndByteOrder, testFb2DownloadsNormalizeEncodingAndRepairLegacyCache];
+// Normalized UTF-8 skips the decode/encode round trip; anything else is still rewritten.
+async function testFb2NormalizedUtf8IsReturnedAsIs() {
+    const helper = new Fb2Helper();
+    const body = '<FictionBook><body><p>Ёж</p></body></FictionBook>';
+    for (const text of [`<?xml version="1.0" encoding="utf-8"?>${body}`, body, `<?xml version="1.0"?>${body}`]) {
+        const data = Buffer.from(text);
+        assert.strictEqual(helper.checkEncoding(data), data, text);
+    }
+    for (const [input, expected] of [
+        [`<?xml version="1.0" encoding="UTF-8"?>${body}`, `<?xml version="1.0" encoding="utf-8"?>${body}`],
+        [`<?xml version="1.0" encoding='utf-8'?>${body}`, `<?xml version="1.0" encoding="utf-8"?>${body}`],
+        [`\uFEFF  <?xml version="1.0" encoding="utf-8"?>${body}`, `<?xml version="1.0" encoding="utf-8"?>${body}`],
+    ])
+        assert.strictEqual(helper.checkEncoding(Buffer.from(input)).toString(), expected, input);
+}
+
+module.exports = [testFb2NormalizedUtf8IsReturnedAsIs, testFb2CoverAfterBinaryWithoutAttributes, testFb2XmlEncodingDeclarationsAndByteOrder, testFb2DownloadsNormalizeEncodingAndRepairLegacyCache];
