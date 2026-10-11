@@ -76,7 +76,7 @@ class Fb2Helper {
                 for (const node of parser.$$array('/binary')) {
                     let attrs = node.attrs();
                     if (!attrs)
-                        return;
+                        continue;
 
                     if (attrs.id === binaryId) {
                         let coverType = attrs['content-type'];

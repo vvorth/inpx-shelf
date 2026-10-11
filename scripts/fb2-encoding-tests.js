@@ -92,4 +92,21 @@ async function testFb2DownloadsNormalizeEncodingAndRepairLegacyCache() {
     }
 }
 
-module.exports = [testFb2XmlEncodingDeclarationsAndByteOrder, testFb2DownloadsNormalizeEncodingAndRepairLegacyCache];
+// A <binary> without attributes before the cover must not abort the cover search.
+async function testFb2CoverAfterBinaryWithoutAttributes() {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-fb2-cover-'));
+    try {
+        const file = path.join(dir, 'book.fb2');
+        await fs.writeFile(file, '<?xml version="1.0" encoding="utf-8"?><FictionBook xmlns:l="http://www.w3.org/1999/xlink">'
+            + '<description><title-info><coverpage><image l:href="#c.jpg"/></coverpage></title-info></description>'
+            + '<body><p>x</p></body><binary>QUFB</binary><binary id="c.jpg" content-type="image/jpeg">QkJC</binary></FictionBook>');
+        const result = await new Fb2Helper().getDescAndCover(file);
+        assert.ok(result && result.fb2, 'Result must not be undefined');
+        assert.strictEqual(result.cover.toString(), 'BBB');
+        assert.strictEqual(result.coverExt, '.jpg');
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
+module.exports = [testFb2CoverAfterBinaryWithoutAttributes, testFb2XmlEncodingDeclarationsAndByteOrder, testFb2DownloadsNormalizeEncodingAndRepairLegacyCache];
