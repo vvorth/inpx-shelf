@@ -1545,7 +1545,7 @@ import readerContent from '../../../server/core/fb2/ReaderContent';
 import _ from 'lodash';
 import he from 'he';
 const readerProgress = require('../../share/readerProgress');
-import {t, tm, getLocale} from '../../share/i18n';
+import {t, tm, formatDateTime} from '../../share/i18n';
 
 const readerPreferencesStorageKey = 'inpx.reader.preferences.v1';
 const readerProgressStorageKey = 'inpx.reader.progress.v1';
@@ -2284,7 +2284,7 @@ class Reader {
 
     updateStatusClock() {
         const date = new Date();
-        this.statusClockText = date.toLocaleTimeString(getLocale(), {
+        this.statusClockText = formatDateTime(date, {
             hour: '2-digit',
             minute: '2-digit',
         });
@@ -10182,15 +10182,7 @@ class Reader {
     }
 
     formatBookmarkDate(value = '') {
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime()))
-            return '';
-        return date.toLocaleString(getLocale(), {
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
+        return formatDateTime(value);
     }
 
     handleReaderProgressGenerationResponse(rawResponseProgress = {}) {

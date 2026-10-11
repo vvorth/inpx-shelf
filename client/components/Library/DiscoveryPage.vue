@@ -149,7 +149,7 @@ import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
 import TastePanel from './TastePanel.vue';
 
-import {t, tm, getLocale} from '../../share/i18n';
+import {t, tm, formatDateTime} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {bookUid} from '../../share/bookActions';
 import {bookView, bookViewOptions} from '../../share/bookView';
@@ -443,8 +443,7 @@ class DiscoveryPage {
     }
 
     formatTime(value) {
-        const date = new Date(Number(value) || value);
-        return (Number.isNaN(date.getTime()) ? '' : date.toLocaleString(getLocale(), {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}));
+        return formatDateTime(value);
     }
 
     setSetting(name, value) {

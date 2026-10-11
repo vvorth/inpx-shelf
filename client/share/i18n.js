@@ -44,6 +44,13 @@ export function getLocale() {
     return locales[state.lang] || locales[i18n.fallbackLang];
 }
 
+//Дата и время - в региональном формате браузера (12/24 часа, порядок дня и месяца),
+//а не языка интерфейса: английский интерфейс не означает американский формат.
+export function formatDateTime(value, options = {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) {
+    const date = (value instanceof Date ? value : new Date(Number(value) || value));
+    return (Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, options));
+}
+
 export function t(key, params) {
     return i18n.translate(state.lang, key, params);
 }
@@ -55,9 +62,12 @@ export function tk(key) {
 }
 
 //Текст, пришедший с сервера: описание сообщения {key, params, fallback} (витрины, журнал событий),
+//время {time} (форматируется в браузере),
 //ключ перевода или обычная строка (она возвращается как есть).
 //Параметры тоже могут быть описаниями или массивами описаний (склеиваются через запятую).
 export function tm(message) {
+    if (message && typeof message === 'object' && message.time)
+        return formatDateTime(message.time);
     if (message && typeof message === 'object' && message.key) {
         const params = {};
         for (const [name, value] of Object.entries(message.params || {}))

@@ -1692,17 +1692,10 @@ class WebWorker {
         return {shelves};
     }
 
-    formatPersonalDiscoveryDate(value = '') {
+    //время в подписи витрины форматирует браузер: в своём часовом поясе и региональном формате
+    personalDiscoveryTime(value = '') {
         const time = Date.parse(String(value || ''));
-        if (!Number.isFinite(time))
-            return '';
-
-        return new Date(time).toLocaleString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
+        return (Number.isFinite(time) ? {time: new Date(time).toISOString()} : null);
     }
 
 
@@ -1761,7 +1754,7 @@ class WebWorker {
                 continue;
 
             const percent = Math.max(0, Math.min(100, Math.round((Number(item.progress.percent || 0) || 0) * 100)));
-            const updatedLabel = this.formatPersonalDiscoveryDate(item.progress.updatedAt);
+            const updatedLabel = this.personalDiscoveryTime(item.progress.updatedAt);
             items.push(Object.assign({}, book, {
                 discoveryReasons: [msg('discovery.reason.progress', {percent})].concat(updatedLabel ? [msg('discovery.reason.openedAt', {time: updatedLabel})] : []),
                 discoveryRead: readBookUids.has(item.bookUid),
@@ -1965,7 +1958,7 @@ class WebWorker {
                 continue;
 
             seenBookUids.add(nextBook._uid);
-            const updatedLabel = this.formatPersonalDiscoveryDate(state.updatedAt);
+            const updatedLabel = this.personalDiscoveryTime(state.updatedAt);
             items.push(Object.assign({}, nextBook, {
                 discoveryReasons: [(state.lastTitle ? msg('discovery.reason.nextAfter', {title: state.lastTitle}) : msg('discovery.reason.nextAfterPrevious'))]
                     .concat(updatedLabel ? [msg('discovery.reason.seriesUpdatedAt', {time: updatedLabel})] : []),

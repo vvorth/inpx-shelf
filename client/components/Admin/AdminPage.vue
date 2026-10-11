@@ -483,7 +483,7 @@ import vueComponent from '../vueComponent.js';
 import DiscoverySourceDialog from './DiscoverySourceDialog.vue';
 import AdminUsers from './AdminUsers.vue';
 import AdminAuthorNames from './AdminAuthorNames.vue';
-import {t, getLocale} from '../../share/i18n';
+import {t, formatDateTime} from '../../share/i18n';
 import {isAdmin} from '../../share/session';
 
 const componentOptions = {
@@ -1174,7 +1174,7 @@ class AdminPage {
             return '';
 
         try {
-            return new Date(value).toLocaleString(getLocale(), {
+            return formatDateTime(value, {
                 timeZone: timeZone || undefined,
                 day: '2-digit',
                 month: '2-digit',
