@@ -692,13 +692,9 @@ class CatalogIndex {
 
         const preferredAuthors = authorWeights(request.preferredAuthors);
         const preferredSeries = seriesWeights(request.preferredSeries);
-        const rejectedAuthors = authorWeights(request.rejectedAuthors);
-        const rejectedSeries = seriesWeights(request.rejectedSeries);
         const preferredGenres = dictWeights('genre', request.preferredGenres);
-        const rejectedGenres = dictWeights('genre', request.rejectedGenres);
         const preferredLanguages = dictWeights('lang', request.preferredLanguages);
         const keywordPlus = keywordScores(request.preferredKeywords, 20);
-        const keywordMinus = keywordScores(request.rejectedKeywords, 12);
 
         const yearMs = 365 * 86400000;
         const byScore = (a, b) => (b.score - a.score) || (a.id - b.id);
@@ -718,22 +714,13 @@ class CatalogIndex {
             let score = (preferredAuthors.get(id) || 0) * 32
                 + (preferredSeries.get(id) || 0) * 36
                 + (keywordPlus.get(id) || 0);
-            let genrePenalty = 0;
-            for (let i = c.genreStart[id]; i < c.genreStart[id + 1]; i++) {
+            for (let i = c.genreStart[id]; i < c.genreStart[id + 1]; i++)
                 score += preferredGenres[c.genreList[i]] * 26;
-                genrePenalty += rejectedGenres[c.genreList[i]] * 18;
-            }
 
             const isExplore = !score;
             if (isExplore)
                 score = 22;
             score += Math.min(8, preferredLanguages[c.lang[id]] * 2);
-            score -= (rejectedAuthors.get(id) || 0) * 28
-                + (rejectedSeries.get(id) || 0) * 24
-                + genrePenalty
-                + (keywordMinus.get(id) || 0);
-            if (score <= 0)
-                continue;
 
             score += Math.min(5, c.librate[id]) * 4;
             const date = c.date[id];

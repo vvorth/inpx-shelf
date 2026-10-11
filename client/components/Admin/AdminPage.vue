@@ -141,11 +141,6 @@
                                 <div class="admin-stat-hint">{{ $t('settings.metricSaves', {n: discoveryMetric('save')}) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.metricNegative') }}</div>
-                                <div class="admin-stat-value">{{ discoveryRateText('negativeFeedback') }}</div>
-                                <div class="admin-stat-hint">{{ $t('settings.metricReactions', {n: discoveryMetric('feedback')}) }}</div>
-                            </div>
-                            <div class="admin-stat">
                                 <div class="admin-stat-label">{{ $t('settings.metricSetUpTastes') }}</div>
                                 <div class="admin-stat-value">{{ adminDiscovery.configuredProfiles || 0 }}</div>
                                 <div class="admin-stat-hint">{{ $t('settings.metricTastesHint') }}</div>

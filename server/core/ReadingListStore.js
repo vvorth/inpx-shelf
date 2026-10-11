@@ -350,13 +350,6 @@ class ReadingListStore {
             'start',
             'save',
             'download',
-            'feedback',
-            'more_like_this',
-            'not_interested',
-            'dislike_author',
-            'dislike_genre',
-            'already_read',
-            'ignore_for_taste',
         ];
         const normalizeCounts = (row = {}) => Object.fromEntries(
             validMetricKeys.map(key => [key, Math.max(0, Math.min(1000000000, parseInt(row && row[key], 10) || 0))])
@@ -383,35 +376,6 @@ class ReadingListStore {
     }
 
     normalizeDiscoveryPreferences(value = {}) {
-        const hiddenBooks = Array.from(new Set(
-            (Array.isArray(value.hiddenBooks) ? value.hiddenBooks : [])
-                .map((bookUid) => this.normalizeBookUid(bookUid))
-                .filter(Boolean)
-        )).slice(0, 5000);
-        const validFeedbackKinds = new Set([
-            'more_like_this',
-            'not_interested',
-            'dislike_author',
-            'dislike_genre',
-            'already_read',
-            'ignore_for_taste',
-        ]);
-        const feedback = Object.fromEntries(
-            Object.entries(value.feedback && typeof(value.feedback) === 'object' ? value.feedback : {})
-                .map(([bookUid, row]) => {
-                    const normalizedBookUid = this.normalizeBookUid(bookUid);
-                    const kind = String(row && row.kind || '').trim().toLowerCase();
-                    if (!normalizedBookUid || !validFeedbackKinds.has(kind))
-                        return null;
-                    return [normalizedBookUid, {
-                        kind,
-                        updatedAt: String(row && row.updatedAt || '').trim(),
-                    }];
-                })
-                .filter(Boolean)
-                .sort((a, b) => String(a[1].updatedAt || '').localeCompare(String(b[1].updatedAt || '')))
-                .slice(-5000)
-        );
         const events = Object.fromEntries(
             Object.entries(value.events && typeof(value.events) === 'object' ? value.events : {})
                 .map(([bookUid, row]) => {
@@ -450,8 +414,6 @@ class ReadingListStore {
         };
 
         return {
-            hiddenBooks,
-            feedback,
             events,
             taste,
             metrics: this.normalizeDiscoveryMetrics(value.metrics),
@@ -1175,8 +1137,6 @@ class ReadingListStore {
             throw new Error(t('errors.userNotFound'));
 
         const current = this.normalizeDiscoveryPreferences(target.discoveryPreferences);
-        let hiddenBooks = Array.from(current.hiddenBooks || []);
-        const feedback = Object.assign({}, current.feedback || {});
         const events = Object.assign({}, current.events || {});
         const metrics = this.normalizeDiscoveryMetrics(current.metrics);
         let taste = Object.assign({}, current.taste || {});
@@ -1198,58 +1158,7 @@ class ReadingListStore {
             }).taste;
         }
 
-        if (utilsHasProp(patch, 'hiddenBooks'))
-            hiddenBooks = this.normalizeDiscoveryPreferences({hiddenBooks: patch.hiddenBooks}).hiddenBooks;
-
-        if (Array.isArray(patch.hiddenBooksAdd)) {
-            const additions = this.normalizeDiscoveryPreferences({hiddenBooks: patch.hiddenBooksAdd}).hiddenBooks;
-            hiddenBooks = Array.from(new Set(hiddenBooks.concat(additions)));
-        }
-
-        if (Array.isArray(patch.hiddenBooksRemove) && patch.hiddenBooksRemove.length) {
-            const removals = new Set(this.normalizeDiscoveryPreferences({hiddenBooks: patch.hiddenBooksRemove}).hiddenBooks);
-            hiddenBooks = hiddenBooks.filter((bookUid) => !removals.has(bookUid));
-            removals.forEach(bookUid => delete feedback[bookUid]);
-        }
-
-        if (Array.isArray(patch.feedbackSet)) {
-            const validFeedbackKinds = new Set([
-                'more_like_this',
-                'not_interested',
-                'dislike_author',
-                'dislike_genre',
-                'already_read',
-                'ignore_for_taste',
-            ]);
-            for (const item of patch.feedbackSet.slice(0, 200)) {
-                const bookUid = this.normalizeBookUid(item && (item.bookUid || item._uid));
-                const kind = String(item && item.kind || '').trim().toLowerCase();
-                if (!bookUid || !validFeedbackKinds.has(kind))
-                    continue;
-                feedback[bookUid] = {kind, updatedAt: this.nowIso()};
-                const shelfId = String(item && item.shelfId || 'similar-books').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 80) || 'similar-books';
-                const incrementMetric = (key) => {
-                    metrics.totals[key] = Math.min(1000000000, (metrics.totals[key] || 0) + 1);
-                    const shelf = Object.assign({}, metrics.shelves[shelfId] || {});
-                    shelf[key] = Math.min(1000000000, (shelf[key] || 0) + 1);
-                    shelf.lastEventAt = this.nowIso();
-                    metrics.shelves[shelfId] = shelf;
-                };
-                incrementMetric('feedback');
-                incrementMetric(kind);
-                if (kind === 'more_like_this' || kind === 'ignore_for_taste')
-                    hiddenBooks = hiddenBooks.filter(hiddenBookUid => hiddenBookUid !== bookUid);
-                else if (!hiddenBooks.includes(bookUid))
-                    hiddenBooks.push(bookUid);
-            }
-        }
-
-        if (Array.isArray(patch.feedbackRemove)) {
-            for (const bookUid of patch.feedbackRemove.map(item => this.normalizeBookUid(item)).filter(Boolean))
-                delete feedback[bookUid];
-        }
-
-        target.discoveryPreferences = this.normalizeDiscoveryPreferences({hiddenBooks, feedback, events, taste, metrics});
+        target.discoveryPreferences = this.normalizeDiscoveryPreferences({events, taste, metrics});
         target.updatedAt = this.nowIso();
         await this.save(data);
         return target.discoveryPreferences;
@@ -1311,8 +1220,6 @@ class ReadingListStore {
             return {recorded: 0};
 
         target.discoveryPreferences = this.normalizeDiscoveryPreferences({
-            hiddenBooks: preferences.hiddenBooks,
-            feedback: preferences.feedback,
             events,
             taste: preferences.taste,
             metrics,
@@ -1362,11 +1269,6 @@ class ReadingListStore {
                 ctr: rate(result.totals.open),
                 start: rate(result.totals.start),
                 save: rate(result.totals.save),
-                negativeFeedback: rate(
-                    (result.totals.not_interested || 0)
-                    + (result.totals.dislike_author || 0)
-                    + (result.totals.dislike_genre || 0)
-                ),
             },
         });
     }

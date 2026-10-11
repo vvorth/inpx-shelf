@@ -485,11 +485,6 @@ function normalizeDiscoveryText(value) {
         .trim();
 }
 
-function isSensitiveDiscoveryGenre(value = '') {
-    const normalized = String(value || '').trim().toLowerCase();
-    return /(?:erotic|erotica|sex|adult|porn|hentai|bdsm|18\+|эрот|секс|порн|интим)/i.test(normalized);//i18n-ignore: разбор данных
-}
-
 function extractDiscoveryAuthorTokens(author = '') {
     return Array.from(new Set(
         normalizeDiscoveryText(author)
@@ -850,38 +845,6 @@ class WebWorker {
         return this.getDiscoveryConfig(requestOptions);
     }
 
-    getDiscoveryMatchLabel(kind = '') {
-        switch (String(kind || '').trim()) {
-            case 'exact':
-                return msg('discovery.match.exact');
-            case 'title-author':
-                return msg('discovery.match.titleAuthor');
-            case 'title':
-                return msg('discovery.match.title');
-            case 'title-partial':
-                return msg('discovery.match.titlePartial');
-            case 'missing-local':
-                return msg('discovery.match.missingLocal');
-            default:
-                return msg('discovery.match.external');
-        }
-    }
-
-    decorateDiscoveryBook(book = {}, options = {}) {
-        const result = Object.assign({}, book);
-        const reasons = [];
-
-        if (options.discoverySource) {
-            const matchLabel = this.getDiscoveryMatchLabel(options.matchKind);
-            if (options.matchKind === 'missing-local')
-                reasons.unshift(options.discoverySource, matchLabel);
-            else
-                reasons.unshift(msg('discovery.reason.source', {source: options.discoverySource}), matchLabel);
-        }
-
-        result.discoveryReasons = reasons;
-        return result;
-    }
     async getDiscoveryDiskCache() {
         if (this.discoveryDiskCache)
             return this.discoveryDiskCache;
@@ -1067,7 +1030,6 @@ class WebWorker {
             libid: '',
             file: '',
             discoveryUrl: String(item.url || '').trim(),
-            discoveryMatchType: 'missing-local',
             discoveryMissingLocal: true,
         };
     }
@@ -1102,7 +1064,6 @@ class WebWorker {
                     seenBookUids.add(match.book._uid);
                     result.push(Object.assign({}, match.book, {
                         discoveryUrl: item.url,
-                        discoveryMatchType: match.kind,
                     }));
                     matchedCount++;
                 }
@@ -1165,11 +1126,6 @@ class WebWorker {
             limit,
         );
         const sourceName = (discovery.externalName || msg('discovery.externalSource'));
-        const items = matched.items
-            .map((book) => this.decorateDiscoveryBook(book, {
-                discoverySource: sourceName,
-                matchKind: book.discoveryMatchType,
-            }));
         const libraryCounts = {inLibrary: matched.matchedCount, notInLibrary: matched.missingCount};
 
         return {
@@ -1185,7 +1141,7 @@ class WebWorker {
             discoveryStale: false,
             discoveryHasMore: matched.hasMore,
             genreOptions: wikidataAwards.map(item => ({label: msg(item.label), value: wikidataEntityUrl + item.id})),
-            items,
+            items: matched.items,
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
     }
@@ -1267,21 +1223,6 @@ class WebWorker {
         return {shelves};
     }
 
-    //время в подписи витрины форматирует браузер: в своём часовом поясе и региональном формате
-    personalDiscoveryTime(value = '') {
-        const time = Date.parse(String(value || ''));
-        return (Number.isFinite(time) ? {time: new Date(time).toISOString()} : null);
-    }
-
-
-    getHiddenDiscoveryBooks(user = null) {
-        const hiddenBooks = (((user || {}).discoveryPreferences || {}).hiddenBooks || []);
-        return new Set(
-            (Array.isArray(hiddenBooks) ? hiddenBooks : [])
-                .map((bookUid) => String(bookUid || '').trim())
-                .filter(Boolean)
-        );
-    }
 
     getPersonalReadBookSet(user = null, lists = []) {
         const readBookUids = new Set();
@@ -1306,7 +1247,6 @@ class WebWorker {
     }
 
     async buildContinueReadingShelfV2(user = null, limit = 8, context = null) {
-        const hiddenBookUids = this.getHiddenDiscoveryBooks(user);
         const progressMap = (context && context.progressMap
             ? context.progressMap
             : (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}));
@@ -1317,7 +1257,7 @@ class WebWorker {
                 bookUid: String(bookUid || '').trim(),
                 progress: Object.assign({percent: 0, sectionId: '', updatedAt: ''}, progress || {}),
             }))
-            .filter((item) => item.bookUid && item.progress.hidden !== true && !hiddenBookUids.has(item.bookUid) && Number(item.progress.percent || 0) < 0.999)
+            .filter((item) => item.bookUid && item.progress.hidden !== true && Number(item.progress.percent || 0) < 0.999)
             .sort((a, b) => String(b.progress.updatedAt || '').localeCompare(String(a.progress.updatedAt || '')));
 
         const items = [];
@@ -1328,10 +1268,7 @@ class WebWorker {
             if (!book)
                 continue;
 
-            const percent = Math.max(0, Math.min(100, Math.round((Number(item.progress.percent || 0) || 0) * 100)));
-            const updatedLabel = this.personalDiscoveryTime(item.progress.updatedAt);
             items.push(Object.assign({}, book, {
-                discoveryReasons: [msg('discovery.reason.progress', {percent})].concat(updatedLabel ? [msg('discovery.reason.openedAt', {time: updatedLabel})] : []),
                 discoveryRead: readBookUids.has(item.bookUid),
             }));
 
@@ -1353,7 +1290,6 @@ class WebWorker {
     }
 
     async buildFromReadingListsShelfV2(user = null, limit = 8, context = null) {
-        const hiddenBookUids = this.getHiddenDiscoveryBooks(user);
         if (!user || !user.id) {
             return {
                 id: 'from-your-lists',
@@ -1402,7 +1338,7 @@ class WebWorker {
         const seenBookUids = new Set();
 
         for (const item of candidates) {
-            if (!item.bookUid || hiddenBookUids.has(item.bookUid) || seenBookUids.has(item.bookUid))
+            if (!item.bookUid || seenBookUids.has(item.bookUid))
                 continue;
 
             const book = await this.getBookRecordByUid(item.bookUid);
@@ -1411,7 +1347,6 @@ class WebWorker {
 
             seenBookUids.add(item.bookUid);
             items.push(Object.assign({}, book, {
-                discoveryReasons: [msg('discovery.reason.basedOnLibrary')],
                 discoveryRead: (item.read || readBookUids.has(item.bookUid)),
             }));
 
@@ -1432,7 +1367,6 @@ class WebWorker {
     }
 
     async buildUnfinishedSeriesShelfV2(user = null, limit = 8, context = null) {
-        const hiddenBookUids = this.getHiddenDiscoveryBooks(user);
         if (!user || !user.id) {
             return {
                 id: 'unfinished-series',
@@ -1527,16 +1461,13 @@ class WebWorker {
                         return sernoCmp;
                     return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
                 })
-                .find((book) => book && book._uid && !hiddenBookUids.has(book._uid) && !readBookUids.has(book._uid) && !seenBookUids.has(book._uid));
+                .find((book) => book && book._uid && !readBookUids.has(book._uid) && !seenBookUids.has(book._uid));
 
             if (!nextBook)
                 continue;
 
             seenBookUids.add(nextBook._uid);
-            const updatedLabel = this.personalDiscoveryTime(state.updatedAt);
             items.push(Object.assign({}, nextBook, {
-                discoveryReasons: [(state.lastTitle ? msg('discovery.reason.nextAfter', {title: state.lastTitle}) : msg('discovery.reason.nextAfterPrevious'))]
-                    .concat(updatedLabel ? [msg('discovery.reason.seriesUpdatedAt', {time: updatedLabel})] : []),
                 discoveryRead: false,
             }));
 
@@ -1581,7 +1512,6 @@ class WebWorker {
     }
 
     async buildPersonalDiscoveryTasteProfile(user = null, context = null) {
-        const hiddenBookUids = this.getHiddenDiscoveryBooks(user);
         const progressMap = (context && context.progressMap
             ? context.progressMap
             : (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}));
@@ -1591,15 +1521,6 @@ class WebWorker {
         const discoveryPreferences = (user && user.discoveryPreferences && typeof(user.discoveryPreferences) === 'object'
             ? user.discoveryPreferences
             : {});
-        const feedback = (discoveryPreferences.feedback && typeof(discoveryPreferences.feedback) === 'object'
-            ? discoveryPreferences.feedback
-            : {});
-        const ignoredTasteBookUids = new Set(
-            Object.entries(feedback)
-                .filter(([, item]) => String(item && item.kind || '').trim().toLowerCase() === 'ignore_for_taste')
-                .map(([bookUid]) => String(bookUid || '').trim())
-                .filter(Boolean)
-        );
         const discoveryEvents = (discoveryPreferences.events && typeof(discoveryPreferences.events) === 'object'
             ? discoveryPreferences.events
             : {});
@@ -1626,16 +1547,12 @@ class WebWorker {
             genreWeights: new Map(),
             keywordWeights: new Map(),
             languageWeights: new Map(),
-            rejectedAuthorWeights: new Map(),
-            rejectedSeriesWeights: new Map(),
-            rejectedGenreWeights: new Map(),
-            rejectedKeywordWeights: new Map(),
             discoveryEvents,
             taste,
             explicitTasteAuthors: new Set(taste.authors.map(item => String(item || '').trim().toLowerCase()).filter(Boolean)),
             explicitTasteGenres: new Set(taste.genres),
             explicitTasteLanguages: new Set(taste.languages),
-            knownBookUids: new Set(hiddenBookUids),
+            knownBookUids: new Set(),
             signalCount: 0,
             updatedAt: 0,
         };
@@ -1660,7 +1577,7 @@ class WebWorker {
             if (!normalizedBookUid)
                 return;
             profile.knownBookUids.add(normalizedBookUid);
-            if (!Number(amount) || hiddenBookUids.has(normalizedBookUid) || ignoredTasteBookUids.has(normalizedBookUid))
+            if (!Number(amount))
                 return;
 
             const current = signals.get(normalizedBookUid) || {amount: 0, stamp: ''};
@@ -1695,24 +1612,6 @@ class WebWorker {
             addWeight(profile.languageWeights, book.lang, 0.25 * weightedAmount);
             profile.updatedAt = Math.max(profile.updatedAt, Date.parse(String(signal.stamp || '')) || 0);
         };
-        const applyRejectedBook = (book, kind = 'not_interested') => {
-            if (!book)
-                return;
-            if (kind === 'already_read' || kind === 'more_like_this' || kind === 'ignore_for_taste')
-                return;
-
-            const authorAmount = (kind === 'dislike_author' ? 4 : (kind === 'dislike_genre' ? 0.15 : 1.5));
-            const seriesAmount = (kind === 'dislike_author' ? 1 : (kind === 'dislike_genre' ? 0.15 : 1));
-            const genreAmount = (kind === 'dislike_genre' ? 3 : (kind === 'dislike_author' ? 0.25 : 1));
-            const keywordAmount = (kind === 'dislike_genre' ? 1 : (kind === 'dislike_author' ? 0.15 : 0.7));
-            addWeight(profile.rejectedAuthorWeights, book.author, authorAmount);
-            addWeight(profile.rejectedSeriesWeights, book.series, seriesAmount);
-            this.getPersonalDiscoveryFeatureKeys(book.genre)
-                .forEach(genre => addWeight(profile.rejectedGenreWeights, genre, genreAmount));
-            this.getPersonalDiscoveryFeatureKeys(book.keywords, 'keywords')
-                .forEach(keyword => addWeight(profile.rejectedKeywordWeights, keyword, keywordAmount));
-        };
-
         for (const [bookUid, progress] of Object.entries(progressMap)) {
             const normalizedBookUid = String(bookUid || '').trim();
             profile.knownBookUids.add(normalizedBookUid);
@@ -1735,13 +1634,6 @@ class WebWorker {
             }
         }
 
-        for (const [bookUid, item] of Object.entries(feedback)) {
-            const kind = String(item && item.kind || '').trim().toLowerCase();
-            profile.knownBookUids.add(String(bookUid || '').trim());
-            if (kind === 'more_like_this')
-                rememberSignal(bookUid, 4, item && item.updatedAt);
-        }
-
         for (const [bookUid, item] of Object.entries(discoveryEvents)) {
             if ((Number(item && item.startCount) || 0) > 0)
                 profile.knownBookUids.add(String(bookUid || '').trim());
@@ -1755,16 +1647,6 @@ class WebWorker {
         taste.genres.forEach(genre => addWeight(profile.genreWeights, genre, 4));
         taste.languages.forEach(language => addWeight(profile.languageWeights, language, 2));
         profile.updatedAt = Math.max(profile.updatedAt, Date.parse(String(taste.updatedAt || taste.completedAt || '')) || 0);
-
-        // A long-lived profile may contain thousands of dismissed books. Recent
-        // feedback is enough to adjust taste without turning a shelf request into
-        // thousands of random reads from the book index.
-        const feedbackEntries = Object.entries(feedback).slice(-200);
-        const feedbackBookUids = new Set(feedbackEntries.map(([bookUid]) => bookUid));
-        for (const [bookUid, item] of feedbackEntries)
-            applyRejectedBook(await loadBook(bookUid), String(item && item.kind || 'not_interested'));
-        for (const bookUid of Array.from(hiddenBookUids).filter(item => !feedbackBookUids.has(item)).slice(-200))
-            applyRejectedBook(await loadBook(bookUid), 'not_interested');
 
         return profile;
     }
@@ -1793,12 +1675,6 @@ class WebWorker {
 
         let score = contentScore;
         score += Math.min(8, getWeight(profile.languageWeights, languageKey) * 2);
-        score -= getWeight(profile.rejectedAuthorWeights, authorKey) * 28;
-        score -= getWeight(profile.rejectedSeriesWeights, seriesKey) * 24;
-        genreKeys.forEach(key => score -= getWeight(profile.rejectedGenreWeights, key) * 18);
-        keywordKeys.forEach(key => score -= getWeight(profile.rejectedKeywordWeights, key) * 12);
-        if (score <= 0)
-            return 0;
 
         const discoveryEvent = ((profile.discoveryEvents || {})[bookUid] || {});
         const impressionCount = Math.max(0, Number(discoveryEvent.impressionCount) || 0);
@@ -1834,23 +1710,8 @@ class WebWorker {
     }
 
     scorePersonalDiscoveryExplorationCandidate(book = {}, profile = {}, rotationSeed = 0) {
-        const getWeight = (map, key) => {
-            const normalizedKey = String(key || '').trim().toLowerCase();
-            return normalizedKey ? (Number(map instanceof Map ? map.get(normalizedKey) : (map || {})[normalizedKey]) || 0) : 0;
-        };
-        const authorKey = String(book.author || '').trim().toLowerCase();
-        const seriesKey = String(book.series || '').trim().toLowerCase();
-        const genreKeys = this.getPersonalDiscoveryFeatureKeys(book.genre);
-        const keywordKeys = this.getPersonalDiscoveryFeatureKeys(book.keywords, 'keywords');
         const languageKey = String(book.lang || '').trim().toLowerCase();
         const bookUid = String(book._uid || book.bookUid || '').trim();
-
-        if (getWeight(profile.rejectedAuthorWeights, authorKey) > 0 || getWeight(profile.rejectedSeriesWeights, seriesKey) > 0)
-            return 0;
-        if (genreKeys.some(key => getWeight(profile.rejectedGenreWeights, key) >= 1))
-            return 0;
-        if (keywordKeys.some(key => getWeight(profile.rejectedKeywordWeights, key) >= 1))
-            return 0;
 
         const discoveryEvent = ((profile.discoveryEvents || {})[bookUid] || {});
         const impressionCount = Math.max(0, Number(discoveryEvent.impressionCount) || 0);
@@ -1882,23 +1743,6 @@ class WebWorker {
             .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + numericSeed) % 9973, numericSeed);
         score += (stableHash / 9973) * 10;
         return Math.max(0, score);
-    }
-
-    getPersonalDiscoveryGenreReason(genres = [], profile = {}) {
-        const matchedGenres = (Array.isArray(genres) ? genres : [])
-            .map(genre => String(genre || '').trim())
-            .filter(Boolean);
-        if (!matchedGenres.length)
-            return null;
-        if (matchedGenres.some(isSensitiveDiscoveryGenre))
-            return msg('discovery.reason.readingInterests');
-
-        const explicitGenres = (profile.explicitTasteGenres instanceof Set ? profile.explicitTasteGenres : new Set());
-        //названия жанров переводятся в браузере по коду
-        const genreNames = matchedGenres.slice(0, 2).map(code => ({key: `genres.${code}`, fallback: code}));
-        return matchedGenres.some(genre => explicitGenres.has(genre.toLowerCase()))
-            ? msg('discovery.reason.chosenGenre', {genres: genreNames})
-            : msg('discovery.reason.similarGenres', {genres: genreNames});
     }
 
     //Кандидаты «Похожих» из индекса каталога: лучшие id по оценке, затем записи книг из основной БД.
@@ -1947,10 +1791,6 @@ class WebWorker {
         const preferredGenres = Object.fromEntries(profile.genreWeights);
         const preferredKeywords = Object.fromEntries(profile.keywordWeights);
         const preferredLanguages = Object.fromEntries(profile.languageWeights);
-        const rejectedAuthors = Object.fromEntries(profile.rejectedAuthorWeights);
-        const rejectedSeries = Object.fromEntries(profile.rejectedSeriesWeights);
-        const rejectedGenres = Object.fromEntries(profile.rejectedGenreWeights);
-        const rejectedKeywords = Object.fromEntries(profile.rejectedKeywordWeights);
         const displayLimit = Math.max(1, Math.min(parseInt(limit, 10) || 8, 96));
         const probeLimit = displayLimit + 1;
         if (!Object.keys(preferredAuthors).length && !Object.keys(preferredSeries).length && !Object.keys(preferredGenres).length && !Object.keys(preferredKeywords).length && !Object.keys(preferredLanguages).length) {
@@ -1975,8 +1815,7 @@ class WebWorker {
         const candidateLimit = Math.max(probeLimit * 16 + 64, 192);
         //оценки считаются по колонкам БД библиотеки в её потоке; пока она строится, полка пуста
         let candidates = await this.similarCandidatesFromIndex(profile, {
-            preferredAuthors, preferredSeries, preferredGenres, preferredKeywords, preferredLanguages,
-            rejectedAuthors, rejectedSeries, rejectedGenres, rejectedKeywords, rotationSeed,
+            preferredAuthors, preferredSeries, preferredGenres, preferredKeywords, preferredLanguages, rotationSeed,
         }, candidateLimit);
         if (!candidates)
             candidates = [];
@@ -2032,37 +1871,10 @@ class WebWorker {
             const [book] = remaining.splice(bestIndex, 1);
             const authorKey = String(book.author || '').trim().toLowerCase();
             const seriesKey = String(book.series || '').trim().toLowerCase();
-            const reasons = [];
-            if (book._discoveryExplore) {
-                reasons.push(msg('discovery.reason.exploration'));
-                if (Number(book.librate) >= 4)
-                    reasons.push(msg('discovery.reason.highRating'));
+            if (book._discoveryExplore)
                 explorationCount++;
-            } else if (authorKey && profile.authorWeights.has(authorKey)) {
-                reasons.push(profile.explicitTasteAuthors.has(authorKey)
-                    ? msg('discovery.reason.chosenAuthor', {author: book.author})
-                    : msg('discovery.reason.similarAuthor', {author: book.author}));
-            }
-            if (seriesKey && profile.seriesWeights.has(seriesKey))
-                reasons.push(msg('discovery.reason.series', {series: book.series}));
-
-            const matchedGenres = String(book.genre || '')
-                .split(',')
-                .map(item => item.trim())
-                .filter(Boolean)
-                .filter((genre) => profile.genreWeights.has(String(genre || '').trim().toLowerCase()));
-            const genreReason = this.getPersonalDiscoveryGenreReason(matchedGenres, profile);
-            if (genreReason)
-                reasons.push(genreReason);
-
-            const matchedKeywords = this.getPersonalDiscoveryFeatureKeys(book.keywords, 'keywords')
-                .filter(keyword => profile.keywordWeights.has(keyword));
-            if (matchedKeywords.length)
-                reasons.push(msg('discovery.reason.topics', {topics: matchedKeywords.slice(0, 2).join(', ')}));
 
             items.push(Object.assign({}, book, {
-                discoveryReasons: (reasons.length ? reasons : [msg('discovery.shelf.similar')]),
-                discoveryExploration: book._discoveryExplore === true,
                 discoveryRead: readBookUids.has(String(book._uid || '').trim()),
             }));
 
@@ -2093,37 +1905,6 @@ class WebWorker {
         };
     }
 
-    async buildHiddenDiscoveryShelfV2(user = null, limit = 8, context = null) {
-        const hiddenBookUids = Array.from(this.getHiddenDiscoveryBooks(user));
-        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, []));
-        const items = [];
-
-        for (const bookUid of hiddenBookUids.slice().reverse()) {
-            const book = await this.getBookRecordByUid(bookUid);
-            if (!book)
-                continue;
-
-            items.push(Object.assign({}, book, {
-                discoveryReasons: [msg('discovery.reason.hidden')],
-                discoveryRead: readBookUids.has(bookUid),
-            }));
-
-            if (items.length >= limit)
-                break;
-        }
-
-        return {
-            id: 'hidden-books',
-            title: msg('discovery.shelf.hidden'),
-            subtitle: msg('discovery.shelf.hiddenSubtitle'),
-            source: 'personal',
-            sourceName: msg('discovery.sourceForYou'),
-            updatedAt: Date.now(),
-            items,
-            emptyMessage: msg('discovery.shelf.hiddenEmpty'),
-        };
-    }
-
     //Подпись данных, от которых зависят персональные полки. Показы (impression) не входят:
     //они пишутся при каждом открытии главной и сбрасывали бы кеш; их влияние обновится по TTL
     personalDiscoverySignature(user, lists, extra = {}) {
@@ -2135,8 +1916,6 @@ class WebWorker {
             extra,
             (lists || []).map(list => [list.id, list.books]),
             user.readerProgress || {},
-            preferences.hiddenBooks || [],
-            preferences.feedback || {},
             preferences.taste || {},
             events,
         ])).digest('hex');
@@ -2202,8 +1981,6 @@ class WebWorker {
 
         if (similarEnabled)
             shelves.push(await this.buildSimilarBooksShelfV2(user, similarLimit, context));
-
-        shelves.push(await this.buildHiddenDiscoveryShelfV2(user, limit, context));
 
         return shelves;
     }

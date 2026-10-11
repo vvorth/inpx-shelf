@@ -1006,7 +1006,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
                     }],
                 },
                 discoveryPreferences: {
-                    hiddenBooks: ['source:book:2'],
+                    taste: {genres: ['sf']},
                 },
             }, {
                 id: 'reader-b',
@@ -1027,7 +1027,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(exported.user.readerPreferences.theme, 'sepia');
         assert.strictEqual(exported.user.readerProgress['source:book:1'].percent, 0.75);
         assert.strictEqual(exported.user.readerBookmarks['source:book:1'][0].id, 'bookmark-a');
-        assert.deepStrictEqual(exported.user.discoveryPreferences.hiddenBooks, ['source:book:2']);
+        assert.deepStrictEqual(exported.user.discoveryPreferences.taste.genres, ['sf']);
         assert.strictEqual(exported.lists[0].books[0].read, true);
 
         const imported = await store.importData('reader-b', exported);
@@ -1042,7 +1042,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(restored.user.readerPreferences.fontFamily, 'sans');
         assert.strictEqual(restored.user.readerProgress['source:book:1'].sectionId, 'chapter-3');
         assert.strictEqual(restored.user.readerBookmarks['source:book:1'][0].note, 'Note');
-        assert.deepStrictEqual(restored.user.discoveryPreferences.hiddenBooks, ['source:book:2']);
+        assert.deepStrictEqual(restored.user.discoveryPreferences.taste.genres, ['sf']);
     });
 }
 
@@ -1166,16 +1166,15 @@ async function testCatalogIndexSearch() {
         assert.deepStrictEqual(index.listNames({kind: 'series', q: 'пол'}).items, [{name: 'Мир Полудня', books: 1}]);
         assert.strictEqual(index.listNames({kind: 'author', q: 'xyz'}).total, 0);
 
-        //«Похожие»: книги автора из вкуса и любимого жанра - в совпадениях, отвергнутый жанр и удалённые не попадают
+        //«Похожие»: книги автора из вкуса и любимого жанра - в совпадениях, остальные - в «новом», удалённые не попадают
         const similar = index.similarCandidates({
             preferredAuthors: {'булгаков михаил афанасьевич': 1},
             preferredGenres: {sf: 1},
-            rejectedGenres: {dramaturgy: 2},
             limit: 10,
             now: Date.parse('2020-06-01'),
         });
         assert.deepStrictEqual(similar.affinity.map(item => item.id).sort(), [1, 2, 3, 6]);
-        assert.deepStrictEqual(similar.explore.map(item => item.id), [5]);
+        assert.deepStrictEqual(similar.explore.map(item => item.id).sort(), [4, 5]);
         assert.ok(similar.affinity[0].score >= similar.affinity[3].score);
 
         const suggest = index.suggest({q: 'струг'});
@@ -1724,7 +1723,7 @@ async function testPersonalDiscoveryCacheAndSingleFlight() {
     assert.strictEqual(builds, 3, 'forceRefresh rebuilds');
 }
 
-async function testDiscoveryFeedbackAndEventsPersist() {
+async function testDiscoveryPreferencesAndEventsPersist() {
     await withTempDir(async(dir) => {
         const ReadingListStore = require('../server/core/ReadingListStore');
         const store = new ReadingListStore({
@@ -1741,7 +1740,7 @@ async function testDiscoveryFeedbackAndEventsPersist() {
             lists: [],
         });
 
-        let preferences = await store.updateDiscoveryPreferences('reader-feedback', {
+        const preferences = await store.updateDiscoveryPreferences('reader-feedback', {
             taste: {
                 genres: ['sf_fantasy'],
                 authors: ['Favorite Author'],
@@ -1749,19 +1748,7 @@ async function testDiscoveryFeedbackAndEventsPersist() {
                 explorationRatio: 0.25,
                 completedAt: '2026-07-13T00:00:00.000Z',
             },
-            feedbackSet: [
-                {bookUid: 'book:liked', kind: 'more_like_this', shelfId: 'similar-books'},
-                {bookUid: 'book:author', kind: 'dislike_author', shelfId: 'similar-books'},
-                {bookUid: 'book:read', kind: 'already_read', shelfId: 'similar-books'},
-                {bookUid: 'book:ignored-taste', kind: 'ignore_for_taste', shelfId: 'similar-books'},
-            ],
         });
-        assert.strictEqual(preferences.feedback['book:liked'].kind, 'more_like_this');
-        assert.ok(!preferences.hiddenBooks.includes('book:liked'));
-        assert.ok(preferences.hiddenBooks.includes('book:author'));
-        assert.ok(preferences.hiddenBooks.includes('book:read'));
-        assert.strictEqual(preferences.feedback['book:ignored-taste'].kind, 'ignore_for_taste');
-        assert.ok(!preferences.hiddenBooks.includes('book:ignored-taste'));
         assert.deepStrictEqual(preferences.taste.genres, ['sf_fantasy']);
         assert.deepStrictEqual(preferences.taste.authors, ['Favorite Author']);
         assert.strictEqual(preferences.taste.explorationRatio, 0.25);
@@ -1783,18 +1770,9 @@ async function testDiscoveryFeedbackAndEventsPersist() {
         const metrics = await store.getDiscoveryMetrics();
         assert.strictEqual(metrics.totals.impression, 2);
         assert.strictEqual(metrics.totals.open, 1);
-        assert.strictEqual(metrics.totals.feedback, 4);
-        assert.strictEqual(metrics.totals.ignore_for_taste, 1);
         assert.strictEqual(metrics.shelves['similar-books'].impression, 2);
         assert.strictEqual(metrics.rates.ctr, 0.5);
         assert.strictEqual(metrics.configuredProfiles, 1);
-
-        preferences = await store.updateDiscoveryPreferences('reader-feedback', {
-            hiddenBooksRemove: ['book:author'],
-            feedbackRemove: ['book:author'],
-        });
-        assert.ok(!preferences.hiddenBooks.includes('book:author'));
-        assert.strictEqual(preferences.feedback['book:author'], undefined);
 
         const dismissedPreferences = await store.updateDiscoveryPreferences('reader-dismiss', {
             tastePromptDismissedAt: '2026-07-14T00:00:00.000Z',
@@ -1843,17 +1821,6 @@ async function testPersonalDiscoveryUsesColdStartTaste() {
     assert.ok(worker.scorePersonalDiscoveryExplorationCandidate({
         _uid: 'explore', author: 'New Author', genre: 'history', lang: 'ru', title: 'Explore', librate: 5,
     }, profile, 5) > 0);
-
-    const i18n = require('../server/core/i18n');
-    assert.deepStrictEqual(
-        worker.getPersonalDiscoveryGenreReason(['love_erotica'], profile),
-        {key: 'discovery.reason.readingInterests'}
-    );
-    const genreReason = worker.getPersonalDiscoveryGenreReason(['sf_fantasy'], profile);
-    assert.strictEqual(genreReason.key, 'discovery.reason.chosenGenre');
-    assert.strictEqual(i18n.run('ru', () => i18n.render(genreReason)), 'Вы выбрали жанр: Фэнтези');
-    assert.strictEqual(i18n.run('en', () => i18n.render(genreReason)), 'You chose the genre: Fantasy');
-
 }
 
 async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
@@ -1865,12 +1832,6 @@ async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
         favorite: {
             _uid: 'favorite', author: 'Favorite Author', genre: 'sf_fantasy', keywords: 'dragons, magic', lang: 'ru',
         },
-        dismissed: {
-            _uid: 'dismissed', author: 'Dismissed Author', genre: 'sf_horror', keywords: 'grim', lang: 'ru',
-        },
-        ignored: {
-            _uid: 'ignored', author: 'Ignored Author', genre: 'history', keywords: 'rome', lang: 'ru',
-        },
     };
     worker.readingListStore = {
         getLists: async() => [],
@@ -1880,16 +1841,9 @@ async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
 
     const profile = await worker.buildPersonalDiscoveryTasteProfile({
         id: 'reader',
-        discoveryPreferences: {
-            hiddenBooks: ['dismissed'],
-            feedback: {
-                ignored: {kind: 'ignore_for_taste', updatedAt: '2024-01-03T00:00:00.000Z'},
-            },
-        },
         readerProgress: {
             glance: {percent: 0.01, updatedAt: '2024-01-01T00:00:00.000Z'},
             favorite: {percent: 1, updatedAt: '2024-01-02T00:00:00.000Z'},
-            ignored: {percent: 1, updatedAt: '2024-01-03T00:00:00.000Z'},
         },
     }, {lists: []});
 
@@ -1897,12 +1851,8 @@ async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
     assert.ok(profile.authorWeights.get('favorite author') > 0);
     assert.ok(profile.keywordWeights.get('dragons') > 0);
     assert.ok(profile.keywordWeights.get('magic') > 0);
-    assert.ok(profile.rejectedAuthorWeights.get('dismissed author') > 0);
     assert.ok(profile.knownBookUids.has('glance'));
-    assert.ok(profile.knownBookUids.has('ignored'));
-    assert.strictEqual(profile.authorWeights.has('ignored author'), false);
     assert.strictEqual(profile.genreWeights.has('history'), false);
-    assert.strictEqual(profile.rejectedAuthorWeights.has('ignored author'), false);
 
     const topicalScore = worker.scorePersonalDiscoveryCandidate({
         _uid: 'topic', author: 'New Author', genre: 'sf_fantasy', keywords: 'dragons', lang: 'ru',
@@ -1910,12 +1860,8 @@ async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
     const unrelatedScore = worker.scorePersonalDiscoveryCandidate({
         _uid: 'unrelated', author: 'Another Author', genre: 'history', keywords: 'rome', lang: 'ru',
     }, profile, 7);
-    const dismissedAuthorScore = worker.scorePersonalDiscoveryCandidate({
-        _uid: 'dismissed-author', author: 'Dismissed Author', genre: 'sf_fantasy', keywords: 'dragons', lang: 'ru',
-    }, profile, 7);
 
     assert.ok(topicalScore > unrelatedScore);
-    assert.ok(dismissedAuthorScore < topicalScore);
 
     profile.discoveryEvents.topic = {
         impressionCount: 3,
@@ -1944,7 +1890,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
 
     const user = {
         id: 'reader',
-        discoveryPreferences: {hiddenBooks: []},
+        discoveryPreferences: {},
         readerProgress: {
             favorite: {percent: 1, updatedAt: '2024-01-02T00:00:00.000Z'},
         },
@@ -1981,8 +1927,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
             const sagaACount = shelf.items.filter(book => book.series === 'Saga A').length;
 
             assert.ok(shelf.items.some(book => book.author !== 'Favorite Author'));
-            assert.ok(shelf.items.some(book => book.discoveryExploration === true));
-            assert.ok(shelf.items.find(book => book.discoveryExploration === true).discoveryReasons.some(reason => reason.key === 'discovery.reason.exploration'));
+            assert.ok(shelf.items.some(book => book._discoveryExplore === true));
             assert.strictEqual(shelf.discoveryNeedsTasteSetup, true);
             assert.ok(favoriteAuthorCount <= 2);
             assert.ok(sagaACount <= 1);
@@ -2040,7 +1985,7 @@ const tests = [
     testBookPageRecordAndReaderStates,
     testCatalogIndexSearch,
     testAuthorEnglishNames,
-    testDiscoveryFeedbackAndEventsPersist,
+    testDiscoveryPreferencesAndEventsPersist,
     testCoverCacheRoutesAndCleaner,
     testCacheRotationUsesTargetWatermark,
     testCacheRotationAlignsToServerClock,

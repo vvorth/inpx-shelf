@@ -165,8 +165,6 @@
         "converted": "converted",
         "copyLink": "Copy link",
         "couldNotOpenThe": "Could not open the book file, so the annotation is unavailable.",
-        "dislikeAuthor": "I don't like this author",
-        "dislikeGenre": "Not my genre",
         "goToCatalog": "Go to catalog",
         "inYourLists": "In your lists:",
         "list": "To list",
@@ -192,9 +190,6 @@
         "editDetails": "Edit details",
         "readingTheBookFile": "Reading the book file: contents, FB2 details and reviews will appear in a few seconds.",
         "reviews": "Reviews"
-    },
-    "bookFeedbackMenu": {
-        "feedbackOnThisPick": "Feedback on this pick"
     },
     "bookInfo": {
         "added": "Added",
@@ -250,7 +245,6 @@
         "nameRequired": "Name must not be empty",
         "no": "No",
         "noRating": "No rating",
-        "notInterested": "Not interested",
         "password": "Password",
         "passwordRequired": "Password must not be empty",
         "profile": "Profile",
@@ -262,7 +256,6 @@
         "removeBookList": "Remove the book “{title}” from the list “{list}”?",
         "renameList": "Rename list",
         "reset": "Reset",
-        "restore": "Restore",
         "save": "Save",
         "series": "Series",
         "seriesPlural": "Series",
@@ -291,10 +284,8 @@
     },
     "discovery": {
         "afterYouSignIn": "After you sign in, this page shows the books you're reading, your lists and picks based on your taste.",
-        "alreadyRead": "Already read",
         "authors": "Authors: {n}",
         "buildingShowcase": "Building showcase...",
-        "dontUseForTastes": "Don't use for my taste",
         "externalShowcaseGenre": "Award",
         "externalSource": "External source",
         "favoriteAuthors": "Favorite authors",
@@ -307,15 +298,6 @@
         "home": "Home",
         "howMuchNewTry": "How much new to try",
         "loadMore": "Load more",
-        "match": {
-            "exact": "Exact match",
-            "external": "External showcase match",
-            "missingLocal": "Not in the local library",
-            "title": "Title match",
-            "titleAuthor": "Title and author match",
-            "titlePartial": "Partial title match"
-        },
-        "moreLikeThis": "More like this",
         "moreRecommendations": "More recommendations",
         "notNow": "Not now",
         "nothingHereYet": "Nothing here yet.",
@@ -324,25 +306,6 @@
         "noveltyMore": "More new · 25%",
         "openCatalog": "Open catalog",
         "picksFromAnExternal": "Literary award winners from Wikidata, newest first; books that aren't in the library open on Wikidata",
-        "reason": {
-            "basedOnLibrary": "Based on your library",
-            "chosenAuthor": "You chose the author: {author}",
-            "chosenGenre": "You chose the genre: {genres}",
-            "exploration": "Something new for variety",
-            "hidden": "Hidden from personal showcases",
-            "highRating": "Highly rated",
-            "nextAfter": "Next volume after “{title}”",
-            "nextAfterPrevious": "Next volume after the previous book",
-            "openedAt": "Opened {time}",
-            "progress": "Progress {percent}%",
-            "readingInterests": "Based on your reading interests",
-            "series": "Series: {series}",
-            "seriesUpdatedAt": "Series updated {time}",
-            "similarAuthor": "Similar author: {author}",
-            "similarGenres": "Similar genres: {genres}",
-            "source": "Source {source}",
-            "topics": "Topics: {topics}"
-        },
         "saveTastes": "Save tastes",
         "series": "Series: {n}",
         "setUpTastes": "Set up tastes",
@@ -358,9 +321,6 @@
             "fromListsEmpty": "Add books to personal lists and they will appear here.",
             "fromListsSubtitle": "Books from your personal reading lists",
             "fromListsUnreadSubtitle": "Unread books from your reading lists",
-            "hidden": "Hidden recommendations",
-            "hiddenEmpty": "Books you marked as not interesting will appear here.",
-            "hiddenSubtitle": "Books you hid from personal showcases",
             "selectProfileFirst": "Select a reading profile first.",
             "similar": "Similar to what you read",
             "similarEmpty": "Not enough data for recommendations yet. Read a bit more or add books to lists.",
@@ -1421,13 +1381,8 @@
         "allAuthors": "All authors ({n})",
         "allSeries": "All series ({n})",
         "author": "Author",
-        "authorAppearLessOften": "This author will appear less often in recommendations.",
         "authorStartsWithThe": "author starts with the word",
         "bestMatch": "Best match",
-        "bookHiddenPersonalShowcases": "Book hidden from personal showcases.",
-        "bookNoLongerAffects": "The book no longer affects your tastes and remains available in the library.",
-        "bookRemovedRecommendations": "Book removed from recommendations.",
-        "bookReturnedPersonalShowcases": "Book returned to personal showcases.",
         "booksFound": "Books found: {n}",
         "byRating": "By rating",
         "clearFilters": "Clear filters",
@@ -1436,7 +1391,6 @@
         "excludeAGenre": "exclude a genre",
         "filters": "Filters",
         "filtersApplyToBooks": "Filters apply to books: choosing one opens the Books tab.",
-        "genreAppearLessOften": "This genre will appear less often in recommendations.",
         "gettingReady": "Getting ready...",
         "hideCopies": "Hide copies",
         "language": "Language",
@@ -1461,7 +1415,6 @@
         "showcaseError": "Showcase error: {message}",
         "showingResultsFor": "Showing results for",
         "tastesSavedPersonalPicks": "Tastes saved. Personal picks updated.",
-        "weShowMoreSimilar": "We will show more similar books.",
         "whatToSearch": "What to search",
         "youCanNameFields": "You can name fields in the search box:"
     },
@@ -1605,7 +1558,6 @@
         },
         "manage": "Manage",
         "metricImpressions": "Impressions",
-        "metricNegative": "Negative feedback",
         "metricOpenCtr": "Open CTR",
         "metricOpens": {
             "one": "{n} open",
@@ -1614,10 +1566,6 @@
         "metricProfiles": {
             "one": "{n} profile with events",
             "other": "{n} profiles with events"
-        },
-        "metricReactions": {
-            "one": "{n} reaction in total",
-            "other": "{n} reactions in total"
         },
         "metricSaved": "Saved",
         "metricSaves": {

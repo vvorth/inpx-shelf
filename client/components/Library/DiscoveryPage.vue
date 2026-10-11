@@ -126,10 +126,7 @@
                     :books="shelf.items"
                     :states="states"
                     :view="view"
-                    discovery
                     @interaction="recordInteraction"
-                    @feedback="sendFeedback"
-                    @restore="restoreBook"
                 />
                 <div v-else class="card-hint">
                     {{ shelf.emptyMessage ? $tm(shelf.emptyMessage) : $t('discovery.nothingHereYet') }}
@@ -155,7 +152,7 @@ import {bookUid} from '../../share/bookActions';
 import {bookView, bookViewOptions} from '../../share/bookView';
 import {myLanguages, languageMatches} from '../../share/languages';
 import {externalDiscovery, discoveryRouteLabel} from '../../share/discoveryRoutes';
-import {isExternalOnly, feedbackMessage} from '../../share/discovery';
+import {isExternalOnly} from '../../share/discovery';
 
 const kinds = ['home', 'bestsellers'];
 const shelfSettings = {
@@ -344,28 +341,21 @@ class DiscoveryPage {
         }
     }
 
-    //полки текущей страницы, с отметками для отзывов и фильтром «Моих языков»
+    //полки текущей страницы, с отметкой полки для учёта показов и открытий
     get preparedShelves() {
         const shelves = this.rawShelves.filter(Boolean);
         if (this.kind === 'home') {
-            const allowed = new Set(['hidden-books']);
+            const allowed = new Set();
             for (const [id, setting] of Object.entries(shelfSettings)) {
                 if (this.settings[setting] !== false)
                     allowed.add(id);
             }
-            return shelves.filter(shelf => allowed.has(String(shelf.id || ''))).map((shelf) => {
-                const hidden = shelf.id === 'hidden-books';
-                return Object.assign({}, shelf, {
-                    discoveryHasMore: (shelf.id === 'similar-books' && this.similarExhausted ? false : shelf.discoveryHasMore),
-                    items: (shelf.items || [])
-                        .filter(book => !(this.settings.showDiscoveryUnreadOnly === true && book.discoveryRead === true && !hidden))
-                        .map(book => Object.assign({}, book, {
-                            discoveryShelfId: String(shelf.id || ''),
-                            discoveryDismissible: !hidden,
-                            discoveryRestoreable: hidden,
-                        })),
-                });
-            });
+            return shelves.filter(shelf => allowed.has(String(shelf.id || ''))).map(shelf => Object.assign({}, shelf, {
+                discoveryHasMore: (shelf.id === 'similar-books' && this.similarExhausted ? false : shelf.discoveryHasMore),
+                items: (shelf.items || [])
+                    .filter(book => !(this.settings.showDiscoveryUnreadOnly === true && book.discoveryRead === true))
+                    .map(book => Object.assign({}, book, {discoveryShelfId: String(shelf.id || '')})),
+            }));
         }
         if (this.kind === 'bestsellers') {
             return shelves.filter(shelf => shelf.source === 'external');
@@ -499,7 +489,6 @@ class DiscoveryPage {
         if (this.kind !== 'home' || !this.signedIn)
             return;
         const events = this.shelves
-            .filter(shelf => shelf.id !== 'hidden-books')
             .flatMap(shelf => shelf.items.map(book => ({bookUid: bookUid(book), type: 'impression', shelfId: String(shelf.id || '')})))
             .filter(event => event.bookUid);
         const key = JSON.stringify(events.map(event => event.bookUid));
@@ -514,29 +503,6 @@ class DiscoveryPage {
         if (!uid || !type || !book.discoveryShelfId || !this.signedIn)
             return;
         this.api.recordDiscoveryEvents([{bookUid: uid, type, shelfId: book.discoveryShelfId}]).catch(() => {});
-    }
-
-    async sendFeedback({book, kind}) {
-        try {
-            await this.api.updateDiscoveryPreferences({
-                feedbackSet: [{bookUid: bookUid(book), kind, shelfId: String(book.discoveryShelfId || 'similar-books')}],
-            });
-            this.similarExhausted = false;
-            this.$root.notify.success(feedbackMessage(kind));
-            await this.load(true);
-        } catch (e) {
-            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
-        }
-    }
-
-    async restoreBook(book) {
-        try {
-            await this.api.updateDiscoveryPreferences({hiddenBooksRemove: [bookUid(book)], feedbackRemove: [bookUid(book)]});
-            this.$root.notify.success(t('search.bookReturnedPersonalShowcases'));
-            await this.load(true);
-        } catch (e) {
-            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
-        }
     }
 
     async saveTaste(taste) {

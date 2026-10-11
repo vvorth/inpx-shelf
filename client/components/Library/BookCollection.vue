@@ -40,10 +40,6 @@
                     <div v-if="!isExternal(book)" class="book-line book-line--muted num">
                         {{ fileLine(book) }}
                     </div>
-                    <div v-if="discovery && reasonOf(book)" class="reason" :class="{'reason--explore': book.discoveryExploration}">
-                        <q-icon :name="book.discoveryExploration ? 'la la-compass' : 'la la-lightbulb'" size="15px" />
-                        <span>{{ reasonOf(book) }}</span>
-                    </div>
                     <div class="wide-card-foot">
                         <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
                         <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
@@ -51,7 +47,6 @@
                         <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                         <div class="foot-actions">
                             <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
-                            <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
                         </div>
                     </div>
                 </div>
@@ -83,10 +78,6 @@
                     <div class="book-line book-line--muted book-line--small num">
                         {{ [genresOf(book), isExternal(book) ? '' : fileLine(book)].filter(Boolean).join(' · ') }}
                     </div>
-                    <div v-if="discovery && reasonOf(book)" class="reason reason--small" :class="{'reason--explore': book.discoveryExploration}">
-                        <q-icon :name="book.discoveryExploration ? 'la la-compass' : 'la la-lightbulb'" size="14px" />
-                        <span>{{ reasonOf(book) }}</span>
-                    </div>
                 </div>
                 <div class="row-side">
                     <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
@@ -95,7 +86,6 @@
                     <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                     <div class="row-actions">
                         <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
-                        <BookFeedbackMenu v-if="feedbackFor(book)" :restore="!!book.discoveryRestoreable" @feedback="$emit('feedback', {book, kind: $event})" @restore="$emit('restore', book)" />
                     </div>
                 </div>
             </li>
@@ -111,8 +101,7 @@ import vueComponent from '../vueComponent.js';
 import BookCard from './BookCard.vue';
 import BookCover from './BookCover.vue';
 import BookQuickActions from './BookQuickActions.vue';
-import BookFeedbackMenu from './BookFeedbackMenu.vue';
-import {isExternalOnly, discoveryReason} from '../../share/discovery';
+import {isExternalOnly} from '../../share/discovery';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {isSignedIn} from '../../share/session';
@@ -120,18 +109,17 @@ import {bookAuthors, bookUid} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 
 const componentOptions = {
-    emits: ['interaction', 'feedback', 'restore'],
+    emits: ['interaction'],
     components: {
         BookCard,
         BookCover,
         BookQuickActions,
-        BookFeedbackMenu,
         AddToListDialog,
     },
 };
 
 //Список книг в одном из трёх видов. Используется везде, где показываются книги:
-//поиск, страница автора, витрины. События interaction/feedback/restore нужны витринам.
+//поиск, страница автора, витрины. Событие interaction нужно витринам.
 class BookCollection {
     _options = componentOptions;
     _props = {
@@ -140,8 +128,6 @@ class BookCollection {
         view: {type: String, default: 'covers'},
         showSerno: Boolean,
         coverMeta: {type: Function, default: null},
-        //витрина: причины рекомендаций и отзывы на них
-        discovery: Boolean,
     };
 
     genresReady = 0;
@@ -176,15 +162,6 @@ class BookCollection {
 
     opened(book) {
         this.$emit('interaction', {book, type: 'open'});
-    }
-
-    reasonOf(book) {
-        void this.genresReady;
-        return discoveryReason(book);
-    }
-
-    feedbackFor(book) {
-        return !!(this.discovery && this.signedIn && (book.discoveryDismissible || book.discoveryRestoreable));
     }
 
     stateOf(book) {
@@ -326,31 +303,6 @@ export default vueComponent(BookCollection);
     display: flex;
     align-items: center;
     margin-left: auto;
-}
-
-.reason {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    margin-top: 4px;
-    color: var(--app-primary);
-    font-size: 12px;
-    line-height: 1.35;
-}
-
-.reason--explore {
-    color: var(--app-accent);
-}
-
-.reason--small {
-    margin-top: 2px;
-}
-
-.reason span {
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
 }
 
 .row-actions {
