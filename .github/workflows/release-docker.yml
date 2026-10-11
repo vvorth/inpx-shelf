@@ -19,17 +19,9 @@ concurrency:
 
 jobs:
   publish:
-    name: Build, test and publish ${{ matrix.component }}
+    name: Build, test and publish image
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - component: web
-            context: .
-            target: runtime
-            suffix: ''
     steps:
       - uses: actions/checkout@v5
         with:
@@ -47,7 +39,6 @@ jobs:
         id: version
         env:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-          SUFFIX: ${{ matrix.suffix }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -82,22 +73,15 @@ jobs:
           const channel = newest ? (prerelease ? 'beta' : 'latest') : '';
 
           const image = 'vvorth/inpx-shelf';
-          const suffix = process.env.SUFFIX;
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=${image}:${version}${suffix}\n`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `channel_image=${channel ? `${image}:${channel}${suffix}` : ''}\n`);
-          console.log(channel ? `Also publishing ${image}:${channel}${suffix}` : `${version} is not the newest release; channel tags stay as they are`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=${image}:${version}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `channel_image=${channel ? `${image}:${channel}` : ''}\n`);
+          console.log(channel ? `Also publishing ${image}:${channel}` : `${version} is not the newest release; channel tags stay as they are`);
           NODE
       - name: Build image
         env:
           IMAGE: ${{ steps.version.outputs.image }}
-          CONTEXT: ${{ matrix.context }}
-          TARGET: ${{ matrix.target }}
-        run: |
-          args=()
-          if [ -n "$TARGET" ]; then args+=(--target "$TARGET"); fi
-          docker build "${args[@]}" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$IMAGE" "$CONTEXT"
+        run: docker build --target runtime --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$IMAGE" .
       - name: Test packaged web application
-        if: matrix.component == 'web'
         env:
           IMAGE: ${{ steps.version.outputs.image }}
         run: node scripts/binary-smoke-test.js --image "$IMAGE"
