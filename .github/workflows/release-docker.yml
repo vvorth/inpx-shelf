@@ -38,6 +38,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
+          # All release tags are needed to tell whether this is the newest release.
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -54,11 +56,41 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const {execFileSync} = require('child_process');
+          const versionPattern = /^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/;
           const version = require('./package.json').version;
-          if (process.env.RELEASE_TAG !== `v${version}` || !/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(version)) {
+          if (process.env.RELEASE_TAG !== `v${version}` || !versionPattern.test(version)) {
             throw new Error('Tag and package version must match');
           }
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=vvorth/inpx-shelf:${version}${process.env.SUFFIX}\n`);
+
+          // SemVer order: 1.0.0-beta.2 < 1.0.0-rc.1 < 1.0.0 < 1.0.1.
+          const parse = value => {
+            const [main, pre] = value.split('-');
+            return {main: main.split('.').map(Number), pre: pre ? pre.split('.') : null};
+          };
+          const compare = (left, right) => {
+            const a = parse(left), b = parse(right);
+            for (let i = 0; i < 3; i++)
+              if (a.main[i] !== b.main[i]) return a.main[i] - b.main[i];
+            if (!a.pre || !b.pre) return (a.pre ? -1 : 0) + (b.pre ? 1 : 0);
+            if (a.pre[0] !== b.pre[0]) return a.pre[0] < b.pre[0] ? -1 : 1;
+            return Number(a.pre[1]) - Number(b.pre[1]);
+          };
+
+          // latest follows the newest stable release, beta the newest pre-release. Rebuilding
+          // an older tag by hand only refreshes its own version tag.
+          const prerelease = version.includes('-');
+          const newest = execFileSync('git', ['tag', '--list', 'v*'], {encoding: 'utf8'})
+            .split('\n').map(tag => tag.trim().replace(/^v/, ''))
+            .filter(tag => versionPattern.test(tag) && tag.includes('-') === prerelease)
+            .every(tag => compare(tag, version) <= 0);
+          const channel = newest ? (prerelease ? 'beta' : 'latest') : '';
+
+          const image = 'vvorth/inpx-shelf';
+          const suffix = process.env.SUFFIX;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=${image}:${version}${suffix}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `channel_image=${channel ? `${image}:${channel}${suffix}` : ''}\n`);
+          console.log(channel ? `Also publishing ${image}:${channel}${suffix}` : `${version} is not the newest release; channel tags stay as they are`);
           NODE
       - name: Build image
         env:
@@ -104,3 +136,11 @@ jobs:
         env:
           IMAGE: ${{ steps.version.outputs.image }}
         run: docker push "$IMAGE"
+      - name: Publish latest or beta tag
+        if: steps.version.outputs.channel_image != ''
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          CHANNEL_IMAGE: ${{ steps.version.outputs.channel_image }}
+        run: |
+          docker tag "$IMAGE" "$CHANNEL_IMAGE"
+          docker push "$CHANNEL_IMAGE"
