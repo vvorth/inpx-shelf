@@ -1095,4 +1095,5 @@ class CatalogIndex {
     }
 }
 
+Object.assign(CatalogIndex.prototype, require('./CatalogIndexQueries'));
 module.exports = CatalogIndex;

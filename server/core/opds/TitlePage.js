@@ -31,10 +31,10 @@ class TitlePage extends BasePage {
         const entry = [];
         if (query.title && query.title[0] == '=') {
             //книги по названию
-            const res = await this.webWorker.search('title', query);
+            const res = await this.webWorker.catalogSearch.call('findBooks', {title: query.title, genre: query.genre, del: query.del, limit: 1000});
+            const books = await this.webWorker.catalogSearch.loadBooks(res.ids);
 
-            if (res.found.length) {
-                const books = res.found[0].books || [];
+            if (books.length) {
                 const filtered = this.filterBooks(books, query);
 
                 for (const book of filtered) {

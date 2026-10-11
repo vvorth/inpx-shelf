@@ -292,6 +292,11 @@ class CatalogSearch {
             this.thread = null;
         }
     }
+
+    async call(action, ...args) {
+        this.checkReady();
+        return await this.getThread().call(action, ...args);
+    }
 }
 
 module.exports = CatalogSearch;

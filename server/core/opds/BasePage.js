@@ -176,9 +176,21 @@ class BasePage {
     }
 
     // -- stuff -------------------------------------------
+    //у названий в индексе есть только id книги: само название берётся из основной БД
+    async fillTitles(rows, key) {
+        if (!rows.length)
+            return;
+        const books = await this.webWorker.catalogSearch.loadBooks(rows.map(row => row.id));
+        const titles = new Map(books.map(book => [book.id, book.title || '']));
+        for (const row of rows)
+            row[key] = titles.get(row.id) || '';
+    }
+
     async search(from, query) {
         const result = [];
-        const queryRes = await this.webWorker.search(from, query);
+        const queryRes = await this.webWorker.catalogSearch.call('opdsNames', from, query);
+        if (from === 'title')
+            await this.fillTitles(queryRes.found, 'title');
 
         for (const row of queryRes.found) {
             const rec = {
@@ -195,7 +207,7 @@ class BasePage {
     }
 
     async opdsQuery(from, query, otherTitle = t('[Другие]'), prevLen = 0) {
-        const queryRes = await this.webWorker.opdsQuery(from, query);
+        const queryRes = await this.webWorker.catalogSearch.call('opdsGroups', from, query);
         let count = 0;
         for (const row of queryRes.found)
             count += row.count;
@@ -206,6 +218,9 @@ class BasePage {
             //конец навигации
             return await this.search(from, query);
         } else {
+            if (from === 'title')
+                await this.fillTitles(queryRes.found.filter(row => row.count == 1), 'name');
+
             let len = 0;
             const enResult = [];
             for (const row of queryRes.found) {

@@ -26,8 +26,8 @@ class SearchPage extends BasePage {
         const seen = new Set();
 
         for (const query of queries) {
-            const res = await this.webWorker.bookSearch(query);
-            for (const book of (res.found || [])) {
+            const res = await this.webWorker.catalogSearch.call('findBooks', query);
+            for (const book of await this.webWorker.catalogSearch.loadBooks(res.ids)) {
                 if (!book || seen.has(book._uid))
                     continue;
 
@@ -109,11 +109,11 @@ class SearchPage extends BasePage {
                     const offset = (page - 1)*limit;
 
                     const searchQuery = {[from]: query.term, genre: query.genre, del: '0', offset, limit};
-                    let queryRes = await this.webWorker.search(from, searchQuery);
+                    let queryRes = await this.webWorker.catalogSearch.call('opdsNames', from, searchQuery);
                     
                     if (queryRes.totalFound === 0) {
                         searchQuery[from] = iconv.encode(query.term, 'ISO-8859-1').toString();
-                        queryRes = await this.webWorker.search(from, searchQuery);
+                        queryRes = await this.webWorker.catalogSearch.call('opdsNames', from, searchQuery);
                     }
 
                     const found = queryRes.found;
