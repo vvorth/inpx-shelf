@@ -28,8 +28,6 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 | `1.0.0-beta.1` | Full image with fb2cng, MuPDF, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
 | `1.0.0-beta.1-silero`, `latest-silero`, `beta-silero` | Optional Silero text-to-speech service for the reader, see `docker-compose.silero.yml`. |
 
-The default image does not include Calibre. Calibre is available only when building the `runtime-calibre` target from the repository Dockerfile.
-
 ## Quick Start
 
 Single library source:

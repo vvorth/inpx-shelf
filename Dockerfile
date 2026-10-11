@@ -51,7 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Runtime stages are split into "*-tools" layers (OS packages, external
 # converters) and thin final stages that only add the app binary on top.
 # A JS/TS change then only rebuilds the last COPY instead of re-running the
-# MuPDF/Calibre apt installs that would otherwise sit above the binary.
+# MuPDF apt installs that would otherwise sit above the binary.
 FROM ${RUNTIME_IMAGE} AS base-tools
 
 ENV LD_LIBRARY_PATH=/usr/local/lib
@@ -96,46 +96,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends mupdf-tools fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-FROM conversion-tools AS calibre-tools
-
-LABEL org.opencontainers.image.title="inpx-shelf-calibre" \
-      org.opencontainers.image.description="Full inpx-shelf image with fb2cng, MuPDF and Calibre fallback conversion" \
-      org.opencontainers.image.source="https://github.com/vvorth/inpx-shelf"
-
-ENV QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox
-ENV INPX_CONVERSION_FORMATS=epub,epub3,kepub,kfx,azw8,pdf
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update \
-    && apt-get install -y --no-install-recommends calibre \
-    && find /usr/lib /usr/share -type d -name __pycache__ -prune -exec rm -rf {} + \
-    && find /usr/lib /usr/share -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete \
-    && rm -rf \
-        /usr/share/doc \
-        /usr/share/info \
-        /usr/share/lintian \
-        /usr/share/locale \
-        /usr/share/man \
-        /usr/share/qt6/translations \
-        /usr/share/calibre/quick_start \
-        /usr/share/calibre/mathjax \
-        /usr/lib/python3.11/test \
-    && rm -rf /var/lib/apt/lists/*
-
 FROM conversion-tools AS runtime
 
 # --chmod avoids a follow-up chmod RUN that would duplicate the binary in a second layer.
 COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
 
-FROM calibre-tools AS runtime-calibre
-
-COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
-
 FROM base-tools AS runtime-lite
 
 LABEL org.opencontainers.image.title="inpx-shelf-lite" \
-      org.opencontainers.image.description="Lighter inpx-shelf image without Calibre conversion support" \
+      org.opencontainers.image.description="Lighter inpx-shelf image without conversion tools" \
       org.opencontainers.image.source="https://github.com/vvorth/inpx-shelf"
 
 ENV INPX_ENABLE_CONVERSION=false

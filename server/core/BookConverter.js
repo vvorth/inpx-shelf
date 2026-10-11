@@ -68,16 +68,6 @@ function mutoolCommandCandidates(converterPaths = null) {
     ].filter(Boolean);
 }
 
-function calibreCommandCandidates(converterPaths = null) {
-    return [
-        ...externalTools.configuredToolCandidates(externalTools.resolveConverterPaths(converterPaths), ['calibre', 'ebookConvert', 'ebook-convert']),
-        'ebook-convert',
-        '/usr/bin/ebook-convert',
-        '/usr/local/bin/ebook-convert',
-        'C:\\Program Files\\Calibre2\\ebook-convert.exe',
-    ].filter(Boolean);
-}
-
 function stableStringify(value) {
     if (Array.isArray(value))
         return `[${value.map(stableStringify).join(',')}]`;
@@ -199,27 +189,6 @@ function canConvertSourceTo(sourceExt, format) {
     return sourceExt === 'epub' && format === 'pdf';
 }
 
-async function buildCalibreEnv() {
-    const runtimeDir = path.join(require('os').tmpdir(), 'ebook-convert-runtime');
-    await fs.ensureDir(runtimeDir);
-    await fs.chmod(runtimeDir, 0o700);
-
-    const chromiumFlags = [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-    ].join(' ');
-
-    return {
-        ...process.env,
-        XDG_RUNTIME_DIR: runtimeDir,
-        QTWEBENGINE_DISABLE_SANDBOX: '1',
-        QTWEBENGINE_CHROMIUM_FLAGS: chromiumFlags,
-        QT_QPA_PLATFORM: (process.env.QT_QPA_PLATFORM || 'offscreen'),
-    };
-}
-
 async function runFirst(commands, args, options = {}) {
     let lastError = null;
 
@@ -235,10 +204,6 @@ async function runFirst(commands, args, options = {}) {
     }
 
     throw (lastError || new Error('converter not found'));
-}
-
-async function runCalibre(args, converterPaths = null) {
-    await runFirst(calibreCommandCandidates(converterPaths), args, {env: await buildCalibreEnv()});
 }
 
 async function convertWithFb2cng(inputFile, outputFile, format, converterPaths = null, fb2cngConfigPath = null) {
@@ -274,23 +239,6 @@ async function convertWithMutool(inputFile, outputFile, converterPaths = null) {
     await runFirst(mutoolCommandCandidates(converterPaths), ['convert', '-o', outputFile, inputFile]);
 }
 
-async function convertWithCalibre(inputFile, outputFile, format, converterPaths = null) {
-    let tempIntermediate = '';
-
-    try {
-        if (format === 'pdf' && path.extname(inputFile).toLowerCase() !== '.epub') {
-            tempIntermediate = `${outputFile}.intermediate.epub`;
-            await runCalibre([inputFile, tempIntermediate], converterPaths);
-            await runCalibre([tempIntermediate, outputFile], converterPaths);
-        } else {
-            await runCalibre([inputFile, outputFile], converterPaths);
-        }
-    } finally {
-        if (tempIntermediate)
-            await fs.remove(tempIntermediate);
-    }
-}
-
 async function convertPrepared(convertInput, outputFile, format, converterPaths = null, fb2cngConfigPath = null) {
     if (fb2cngFormats.has(format) && path.extname(convertInput).toLowerCase() === '.fb2') {
         await convertWithFb2cng(convertInput, outputFile, format, converterPaths, fb2cngConfigPath);
@@ -302,7 +250,7 @@ async function convertPrepared(convertInput, outputFile, format, converterPaths 
         return;
     }
 
-    await convertWithCalibre(convertInput, outputFile, format, converterPaths);
+    throw new Error(`Unsupported convert format: ${path.extname(convertInput) || 'unknown'} -> ${format}`);
 }
 
 async function convert({inputFile, outputFile, format, sourceFileName = '', converterPaths = null, fb2cngConfigPath = null}) {
@@ -395,7 +343,6 @@ module.exports = {
     canConvertSourceTo,
     fb2cngCommandCandidates,
     mutoolCommandCandidates,
-    calibreCommandCandidates,
     convert,
     prepareConvertedFile,
     readFb2cngConfig,
