@@ -1,11 +1,13 @@
-//Поиск по каталогу через индекс SQLite: построение индекса из основной БД, поиск, подсказки.
+//БД библиотеки на SQLite: импорт из INPX, записи книг, поиск, подсказки.
 //Пока индекс строится или недоступен (нет node:sqlite), ready = false и страница поиска показывает ход сборки.
 const fs = require('fs-extra');
 
 const log = new (require('../AppLogger'))().log;//singleton
 const AuthorNames = require('./AuthorNames');
+const InpxParser = require('../InpxParser');
+const {getEnabledLibrarySources} = require('../LibrarySources');
+const {loadInpxFilter, makeRecordFilter, makeInpxInfo} = require('./LibraryImport');
 
-const chunkSize = 5000;
 
 function sqliteAvailable() {
     try {
@@ -85,6 +87,8 @@ class CatalogSearch {
         return await this.rebuild(db, inpxHash, generation);
     }
 
+    //Импорт всех включённых библиотек из INPX во временный файл; готовый файл заменяет прежний.
+    //Отбор, пропуск повторов _uid и порядок id - как у прежнего создания основной БД.
     async rebuild(db, inpxHash, generation) {
         const thread = this.getThread();
         const tmpFile = `${this.file}.tmp`;
@@ -95,31 +99,56 @@ class CatalogSearch {
         const started = Date.now();
         log('Catalog index build start');
         try {
-            const dbConfig = await this.worker.dbConfig();
-            const total = Number((dbConfig.stats || {}).bookCountAll) || 0;
+            const config = this.config;
+            const sources = getEnabledLibrarySources(config);
+            const inpxFilter = await loadInpxFilter(config);
+            const filter = makeRecordFilter(config, inpxFilter);
             const overrides = await this.worker.readingListStore.getMetadataOverrides();
             const names = await this.authorNames.readEntries();
 
-            await thread.call('beginBuild', tmpFile, names.entries);
-            for (let from = 1; from <= total; from += chunkSize) {
-                if (generation !== this.generation || db !== this.worker.db)
-                    throw new Error('build cancelled: database reloaded');
+            const sourceRows = sources.map(source => ({id: source.id, name: source.name, libDir: source.libDir}));
+            await thread.call('beginBuild', tmpFile, names.entries, sourceRows);
+            const uids = new Set();
+            const parserInfos = [];
+            let id = 0;
+            let recsLoaded = 0;
+            for (const [index, source] of sources.entries()) {
+                let totalFiles = 0;
+                const onFile = async(state) => {
+                    if (state.totalFiles)
+                        totalFiles = state.totalFiles;
+                    if (totalFiles)
+                        this.progress = Math.min(0.9, (index + (state.current || 0) / totalFiles) / sources.length * 0.9);
+                };
+                const onChunk = async(chunk) => {
+                    if (generation !== this.generation)
+                        throw new Error('build cancelled: library reloaded');
+                    const rows = [];
+                    for (const rec of chunk) {
+                        rec.sourceId = source.id;
+                        if (!filter(rec) || uids.has(rec._uid))
+                            continue;
+                        uids.add(rec._uid);
+                        rec.id = ++id;
+                        if (overrides[rec._uid]) {
+                            const shown = this.worker.applyMetadataOverrideToBook(Object.assign({}, rec), overrides);
+                            rec.shown = {title: shown.title, author: shown.author, series: shown.series, serno: shown.serno};
+                        }
+                        rows.push(rec);
+                    }
+                    recsLoaded += chunk.length;
+                    await thread.call('insertBooks', rows);
+                };
 
-                const ids = [];
-                for (let id = from; id < from + chunkSize && id <= total; id++)
-                    ids.push(id);
-                const rows = await db.select({table: 'book', where: `@@id(${db.esc(ids)})`});
-                for (const row of rows)
-                    this.worker.applyMetadataOverrideToBook(row, overrides);
-                await thread.call('insertBooks', rows.map(row => ({
-                    id: row.id, _uid: row._uid, title: row.title, author: row.author, series: row.series, serno: row.serno,
-                    genre: row.genre, lang: row.lang, ext: row.ext, size: row.size, date: row.date, librate: row.librate,
-                    del: row.del, sourceId: row.sourceId, keywords: row.keywords,
-                })));
-                this.progress = Math.min(0.95, (from + chunkSize) / Math.max(1, total) * 0.95);
+                const parser = new InpxParser();
+                await parser.parse(source.inpxFile || source.inpx, onFile, onChunk);
+                parserInfos.push({id: source.id, name: source.name, inpx: source.inpxFile || source.inpx, libDir: source.libDir, info: parser.info});
             }
 
-            const counts = await thread.call('finishBuild', {inpxHash, aliasesStamp: names.updatedAt, aliases: 0});
+            const counts = await thread.call('finishBuild', {
+                inpxHash, aliasesStamp: names.updatedAt, aliases: 0, recsLoaded,
+                inpxInfo: JSON.stringify(makeInpxInfo(parserInfos, inpxFilter)),
+            });
             await thread.call('close');
             await fs.move(tmpFile, this.file, {overwrite: true});
             this.meta = await thread.call('open', this.file);
@@ -135,6 +164,18 @@ class CatalogSearch {
         } finally {
             this.building = false;
         }
+    }
+
+    //Сведения о библиотеке из БД: хеш INPX, коллекция, статистика
+    libraryConfig() {
+        const parse = (value) => {
+            try {
+                return JSON.parse(value || '{}');
+            } catch (e) {
+                return {};
+            }
+        };
+        return {inpxHash: this.meta.inpxHash || '', inpxInfo: parse(this.meta.inpxInfo), stats: parse(this.meta.stats)};
     }
 
     //Скачивание английских имён авторов (администратор); по окончании индекс перестраивается
@@ -192,16 +233,24 @@ class CatalogSearch {
         return result;
     }
 
-    //Записи книг из основной БД в порядке выдачи индекса, с правками метаданных
+    //Записи книг в порядке выдачи, с правками метаданных
     async loadBooks(ids = []) {
         if (!ids.length)
             return [];
-        const db = this.worker.db;
-        const rows = await db.select({table: 'book', where: `@@id(${db.esc(ids)})`});
-        const byId = new Map(rows.map(row => [row.id, row]));
-        const books = ids.map(id => byId.get(id)).filter(Boolean);
+        const books = await this.getThread().call('getBooks', ids);
         await this.worker.applyMetadataOverridesToSearchResult({books});
         return books;
+    }
+
+    //Записи по _uid (без правок метаданных: их накладывает вызывающий)
+    async getBooksByUids(uids = []) {
+        this.checkReady();
+        return (uids.length ? await this.getThread().call('getBooksByUids', uids) : []);
+    }
+
+    async getBooksByStableKeys(keys = []) {
+        this.checkReady();
+        return (keys.length ? await this.getThread().call('getBooksByStableKeys', keys) : {});
     }
 
     async updateBook(row) {

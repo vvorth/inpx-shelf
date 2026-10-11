@@ -1128,7 +1128,7 @@ async function testCatalogIndexSearch() {
         const file = path.join(dir, 'catalog.sqlite');
         const book = (id, title, author, extra = {}) => Object.assign({
             id, _uid: `u${id}`, title, author, series: '', serno: 0, genre: 'prose_classic', lang: 'ru', ext: 'fb2',
-            size: 1000, date: '2020-01-01', librate: 4, del: 0, sourceId: 'main', keywords: '',
+            size: 1000, date: '2020-01-01', librate: 4, del: 0, sourceId: 'main', keywords: '', libid: String(id),
         }, extra);
 
         const index = new CatalogIndex();
@@ -1144,6 +1144,25 @@ async function testCatalogIndexSearch() {
         ]);
         assert.deepStrictEqual(index.finishBuild({inpxHash: 'hash'}), {books: 7, authors: 5, series: 1, aliases: 0});
         assert.strictEqual(index.open(file).inpxHash, 'hash');
+
+        //записи книг: исходные поля, поиск по _uid и по ключу Kobo, статистика, колонки из файла
+        const [rec] = index.getBooks([3]);
+        assert.strictEqual(rec._uid, 'u3');
+        assert.strictEqual(rec.author, 'Стругацкий Аркадий Натанович,Стругацкий Борис Натанович');
+        assert.strictEqual(rec.series, 'Мир Полудня');
+        assert.strictEqual(rec.serno, 3);
+        assert.strictEqual(rec.sourceId, 'main');
+        assert.deepStrictEqual(index.getBooks([5, 1]).map(row => row.id), [5, 1], 'order of ids is kept');
+        assert.deepStrictEqual(index.getBooksByUids(['u2', 'nope']).map(row => row.id), [2]);
+        const byKey = index.getBooksByStableKeys(['main:1', 'main:none']);
+        assert.deepStrictEqual(Object.keys(byKey), ['main:1']);
+        assert.strictEqual(byKey['main:1'][0]._uid, 'u1');
+        const stats = JSON.parse(index.meta().stats);
+        assert.strictEqual(stats.bookCount, 6);
+        assert.strictEqual(stats.bookDelCount, 1);
+        assert.strictEqual(stats.seriesCount, 1);
+        index.close();
+        index.open(file);
 
         const search = (q, extra = {}) => index.search(Object.assign({q}, extra));
         assert.deepStrictEqual(search('булгаков').ids.sort(), [1, 2, 6]);

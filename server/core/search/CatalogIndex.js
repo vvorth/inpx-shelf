@@ -1,13 +1,13 @@
-//Поисковый индекс каталога на SQLite (node:sqlite) с полнотекстовым поиском FTS5.
-//Строится из таблицы book основной БД; работает синхронно, поэтому запускается в отдельном потоке
-//(см. CatalogIndexThread). Отвечает идентификаторами книг, сами записи берутся из основной БД.
+//БД библиотеки на SQLite (node:sqlite): записи книг, авторы, серии, жанры, полнотекстовый поиск FTS5.
+//Строится из INPX (см. CatalogSearch); работает синхронно, поэтому запускается в отдельном потоке
+//(см. CatalogIndexThread). Записи книг хранят исходные поля INPX, поиск и сортировка - с правками метаданных.
 const {DatabaseSync} = require('node:sqlite');
 
 const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = require('./textNorm');
 const {copyKey} = require('./copyKey');
 const {buildLookup, englishName} = require('./AuthorNames');
 
-const schemaVersion = '6';
+const schemaVersion = '7';
 const maxLimit = 200;
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
@@ -23,9 +23,14 @@ const powerFields = new Map([
 const schema = `
     CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE sort_order(name TEXT PRIMARY KEY, ids BLOB NOT NULL);
+    CREATE TABLE source(key TEXT PRIMARY KEY, name TEXT NOT NULL, lib_dir TEXT NOT NULL);
+    CREATE TABLE column_data(name TEXT PRIMARY KEY, data BLOB NOT NULL);
     CREATE TABLE book(
-        id INTEGER PRIMARY KEY, uid TEXT NOT NULL, title_norm TEXT, author_norm TEXT, series_norm TEXT, serno INTEGER, lang TEXT, ext TEXT, size INTEGER, date TEXT,
-        librate INTEGER, del INTEGER, source TEXT, copy_key TEXT, is_copy INTEGER DEFAULT 0, is_copy_src INTEGER DEFAULT 0
+        id INTEGER PRIMARY KEY, uid TEXT NOT NULL,
+        title TEXT NOT NULL, author TEXT NOT NULL, series TEXT NOT NULL, serno INTEGER, genre TEXT NOT NULL, keywords TEXT NOT NULL,
+        lang TEXT NOT NULL, ext TEXT NOT NULL, size INTEGER, date TEXT NOT NULL, librate INTEGER, del INTEGER,
+        file TEXT NOT NULL, folder TEXT NOT NULL, libid TEXT NOT NULL, insno INTEGER, source TEXT NOT NULL,
+        title_norm TEXT, author_norm TEXT, series_norm TEXT, copy_key TEXT, is_copy INTEGER DEFAULT 0, is_copy_src INTEGER DEFAULT 0
     );
     CREATE TABLE book_genre(book_id INTEGER NOT NULL, genre TEXT NOT NULL);
     CREATE TABLE author(id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
@@ -42,6 +47,8 @@ const schema = `
 
 //фильтры и сортировка работают по колонкам в памяти; индексы нужны только точным совпадениям и именам
 const postBuildSchema = `
+    CREATE UNIQUE INDEX book_uid ON book(uid);
+    CREATE INDEX book_source_libid ON book(source, libid);
     CREATE INDEX book_title_norm ON book(title_norm);
     CREATE INDEX book_series_norm ON book(series_norm);
     CREATE INDEX name_kind_norm ON name(kind, name_norm);
@@ -51,6 +58,12 @@ const postBuildSchema = `
     CREATE VIRTUAL TABLE term_tri USING fts5(term, content='term', content_rowid='id', tokenize='trigram');
     CREATE VIRTUAL TABLE name_tri USING fts5(name_norm, content='name', content_rowid='id', tokenize='trigram');
 `;
+
+const columnTypes = {
+    lang: Uint16Array, ext: Uint16Array, source: Uint16Array, librate: Uint8Array, flags: Uint8Array, date: Uint32Array,
+    genreStart: Uint32Array, genreList: Uint16Array,
+};
+const columnArrays = Object.keys(columnTypes);
 
 const sortOrderSql = {
     date: 'SELECT id FROM book ORDER BY date DESC, id DESC',
@@ -65,6 +78,11 @@ function splitAuthors(value = '') {
 
 function ftsPhrase(token, prefix = true) {
     return `"${token.replace(/"/g, '')}"${prefix && token.length >= 2 ? '*' : ''}`;
+}
+
+//Типизированный массив из BLOB: копия, чтобы не зависеть от выравнивания буфера
+function typedFromBlob(Type, bytes) {
+    return new Type(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
 function dateDaysAgo(days) {
@@ -91,6 +109,7 @@ class CatalogIndex {
             throw e;
         }
         this.db = db;
+        this.sources = new Map(db.prepare('SELECT key, name, lib_dir FROM source').all().map(row => [row.key, row]));
         return this.meta();
     }
 
@@ -113,7 +132,8 @@ class CatalogIndex {
 
     //---------- построение ----------
     //aliasEntries - пары [русское имя, английское имя] из Wikidata (см. AuthorNames)
-    beginBuild(file, aliasEntries = []) {
+    //sources - [{id, name, libDir}] включённых библиотек
+    beginBuild(file, aliasEntries = [], sources = []) {
         if (this.build)
             this.build.db.close();
 
@@ -121,6 +141,9 @@ class CatalogIndex {
         db.exec('PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -65536;');
         db.exec(schema);
         db.exec('BEGIN');
+        const insertSource = db.prepare('INSERT INTO source(key, name, lib_dir) VALUES (?, ?, ?)');
+        for (const source of sources)
+            insertSource.run(String(source.id || ''), String(source.name || ''), String(source.libDir || ''));
         this.build = {
             db,
             authors: new Map(),
@@ -128,8 +151,9 @@ class CatalogIndex {
             aliases: new Map(),
             series: new Map(),
             count: 0,
-            insertBook: db.prepare(`INSERT INTO book(id, uid, title_norm, author_norm, series_norm, serno, lang, ext, size, date, librate, del, source, copy_key)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+            insertBook: db.prepare(`INSERT INTO book(id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
+                file, folder, libid, insno, source, title_norm, author_norm, series_norm, copy_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
             insertGenre: db.prepare('INSERT INTO book_genre(book_id, genre) VALUES (?, ?)'),
             insertBookAuthor: db.prepare('INSERT INTO book_author(book_id, author_id) VALUES (?, ?)'),
             insertFts: db.prepare('INSERT INTO book_fts(rowid, title, author, series, keywords) VALUES (?, ?, ?, ?, ?)'),
@@ -146,13 +170,17 @@ class CatalogIndex {
             if (!id || !row._uid)
                 continue;
 
-            const title = String(row.title || '');
-            const author = String(row.author || '');
-            const series = String(row.series || '');
+            //shown - значения с правкой метаданных: по ним ищутся, сортируются и группируются книги
+            const shown = Object.assign({}, row, row.shown || {});
+            const title = String(shown.title || '');
+            const author = String(shown.author || '');
+            const series = String(shown.series || '');
             b.insertBook.run(
-                id, String(row._uid), normalize(title), normalize(author), normalize(series),
-                Number(row.serno) || 0, String(row.lang || '').trim().toLowerCase(), String(row.ext || '').toLowerCase(), Number(row.size) || 0,
-                String(row.date || ''), Number(row.librate) || 0, row.del ? 1 : 0, String(row.sourceId || ''), copyKey(row),
+                id, String(row._uid), String(row.title || ''), String(row.author || ''), String(row.series || ''), Number(row.serno) || 0,
+                String(row.genre || ''), String(row.keywords || ''), String(row.lang || '').trim().toLowerCase(), String(row.ext || ''),
+                Number(row.size) || 0, String(row.date || ''), Number(row.librate) || 0, row.del ? 1 : 0,
+                String(row.file || ''), String(row.folder || ''), String(row.libid || ''), Number(row.insno) || 0, String(row.sourceId || ''),
+                normalize(title), normalize(author), normalize(series), copyKey(shown),
             );
 
             for (const genre of String(row.genre || '').split(',').map(value => value.trim()).filter(Boolean))
@@ -232,13 +260,46 @@ class CatalogIndex {
             //ключ копий и имя автора нужны только для расчётов выше
             db.exec('UPDATE book SET copy_key = NULL, author_norm = NULL');
 
+            //статистика библиотеки (раньше считалась при создании основной БД)
+            const one = sql => db.prepare(sql).get().n;
+            const bookCount = one('SELECT COUNT(*) AS n FROM book WHERE del = 0');
+            const bookDelCount = one('SELECT COUNT(*) AS n FROM book WHERE del <> 0');
+            const authorCount = b.authors.size;
+            //файл удалён, если удалены все его записи
+            const files = db.prepare(`SELECT SUM(alive > 0) AS live, SUM(alive = 0) AS dead
+                FROM (SELECT SUM(del = 0) AS alive FROM book GROUP BY folder, file, ext)`).get();
+            const filesCount = files.live || 0;
+            const filesDelCount = files.dead || 0;
+            const stats = {
+                filesCount, filesCountAll: filesCount + filesDelCount, filesDelCount,
+                recsLoaded: Number(meta.recsLoaded) || b.count,
+                authorCount,
+                authorCountAll: authorCount + one(`SELECT COUNT(DISTINCT lower(author)) AS n FROM book WHERE author LIKE '%,%'`),
+                bookCount, bookCountAll: bookCount + bookDelCount, bookDelCount,
+                noAuthorBookCount: one(`SELECT COUNT(*) AS n FROM book WHERE del = 0 AND author = ''`),
+                titleCount: one('SELECT COUNT(DISTINCT lower(title)) AS n FROM book'),
+                seriesCount: b.series.size,
+                genreCount: one('SELECT COUNT(DISTINCT genre) AS n FROM book_genre'),
+                langCount: one('SELECT COUNT(DISTINCT lang) AS n FROM book'),
+            };
+            delete meta.recsLoaded;
+
+            //колонки фильтров сохраняются готовыми: открытие индекса не перебирает книги
+            const columns = this.computeColumns(db);
+            const insertColumn = db.prepare('INSERT INTO column_data(name, data) VALUES (?, ?)');
+            for (const name of columnArrays)
+                insertColumn.run(name, Buffer.from(columns[name].buffer, columns[name].byteOffset, columns[name].byteLength));
+            insertColumn.run('dicts', Buffer.from(JSON.stringify(columns.dicts)));
+
             db.exec(postBuildSchema);
             db.exec(`INSERT INTO term_tri(term_tri) VALUES ('rebuild')`);
             db.exec(`INSERT INTO name_tri(name_tri) VALUES ('rebuild')`);
 
             const insertMeta = db.prepare('INSERT INTO meta(key, value) VALUES (?, ?)');
             const aliasCount = [...b.aliases.values()].filter(Boolean).length;
-            const fullMeta = Object.assign({}, meta, {schemaVersion, books: String(b.count), aliases: String(aliasCount), builtAt: new Date().toISOString()});
+            const fullMeta = Object.assign({}, meta, {
+                schemaVersion, books: String(b.count), aliases: String(aliasCount), builtAt: new Date().toISOString(), stats: JSON.stringify(stats),
+            });
             for (const [key, value] of Object.entries(fullMeta))
                 insertMeta.run(key, String(value));
 
@@ -358,6 +419,30 @@ class CatalogIndex {
     //---------- колонки в памяти: фильтры, счётчики фильтров и сортировка без проходов по SQLite ----------
     loadColumns() {
         const db = this.db;
+        const stored = new Map(db.prepare('SELECT name, data FROM column_data').all().map(row => [row.name, row.data]));
+        let c;
+        if (stored.has('dicts')) {
+            const dicts = JSON.parse(Buffer.from(stored.get('dicts')).toString());
+            const codes = {};
+            for (const [field, values] of Object.entries(dicts))
+                codes[field] = new Map(values.map((value, index) => [value, index]));
+            c = {dicts, codes};
+            for (const name of columnArrays)
+                c[name] = typedFromBlob(columnTypes[name], stored.get(name));
+            c.maxId = c.flags.length - 1;
+        } else {
+            c = this.computeColumns(db);
+        }
+
+        c.order = {};
+        for (const row of db.prepare('SELECT name, ids FROM sort_order').all())
+            c.order[row.name] = typedFromBlob(Uint32Array, row.ids);
+        c.pass = new Uint8Array(c.maxId + 1);
+        this.columns = c;
+    }
+
+    //Колонки по таблицам книг: при построении (и для индексов без сохранённых колонок)
+    computeColumns(db) {
         const maxId = (db.prepare('SELECT MAX(id) AS m FROM book').get().m || 0);
         const size = maxId + 1;
         const dicts = {lang: [], ext: [], source: [], genre: []};
@@ -380,7 +465,7 @@ class CatalogIndex {
         for (const row of db.prepare('SELECT id, lang, ext, source, librate, del, is_copy, is_copy_src, date FROM book').iterate()) {
             const id = row.id;
             c.lang[id] = code('lang', row.lang || '');
-            c.ext[id] = code('ext', row.ext || '');
+            c.ext[id] = code('ext', String(row.ext || '').toLowerCase());
             c.source[id] = code('source', row.source || '');
             c.librate[id] = Math.max(0, Math.min(255, row.librate || 0));
             c.flags[id] = 1 | (row.del ? 2 : 0) | (row.is_copy ? 4 : 0) | (row.is_copy_src ? 8 : 0);
@@ -399,14 +484,7 @@ class CatalogIndex {
         const fill = new Uint32Array(size);
         for (const row of genreRows)
             c.genreList[genreCount[row.book_id] + fill[row.book_id]++] = code('genre', row.genre);
-
-        c.order = {};
-        for (const row of db.prepare('SELECT name, ids FROM sort_order').all()) {
-            const bytes = row.ids;
-            c.order[row.name] = new Uint32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-        }
-        c.pass = new Uint8Array(size);
-        this.columns = c;
+        return c;
     }
 
     //Условия запроса как проверки по колонкам. Фасетные поля проверяются отдельно,
@@ -918,9 +996,8 @@ class CatalogIndex {
             const author = String(row.author || '');
             const series = String(row.series || '');
             db.exec('BEGIN');
-            db.prepare(`UPDATE book SET title_norm = ?, series_norm = ?, serno = ?, lang = ?, librate = ?
-                WHERE id = ?`).run(normalize(title), normalize(series), Number(row.serno) || 0,
-                String(row.lang || '').trim().toLowerCase(), Number(row.librate) || 0, id);
+            //исходные поля записи не меняются: правка накладывается при выдаче, здесь - только поиск
+            db.prepare('UPDATE book SET title_norm = ?, series_norm = ? WHERE id = ?').run(normalize(title), normalize(series), id);
             db.prepare('DELETE FROM book_fts WHERE rowid = ?').run(id);
             db.prepare('INSERT INTO book_fts(rowid, title, author, series, keywords) VALUES (?, ?, ?, ?, ?)')
                 .run(id, normalize(title), normalize(author), normalize(series), normalize(row.keywords));
@@ -928,8 +1005,53 @@ class CatalogIndex {
         } finally {
             db.close();
         }
-        //колонки и порядки сортировки перечитаются при следующем поиске
-        this.columns = null;
+        //язык и оценка правкой не меняются: колонки в памяти остаются верными
+    }
+
+    //---------- записи книг ----------
+    //Поля записи как у разбора INPX, плюс сведения об источнике
+    bookRows(sql, ...params) {
+        return this.db.prepare(`SELECT id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
+            file, folder, libid, insno, source FROM book WHERE ${sql}`).all(...params).map((row) => {
+            const source = this.sources.get(row.source) || {};
+            return {
+                id: row.id, _uid: row.uid, author: row.author, genre: row.genre, title: row.title, series: row.series, serno: row.serno,
+                file: row.file, size: row.size, libid: row.libid, del: row.del, ext: row.ext, date: row.date, lang: row.lang,
+                librate: row.librate, keywords: row.keywords, folder: row.folder, insno: row.insno,
+                sourceId: row.source, sourceName: source.name || '', sourceLibDir: source.lib_dir || '',
+            };
+        });
+    }
+
+    //Записи по id в порядке запроса
+    getBooks(ids = []) {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        const byId = new Map(this.bookRows('id IN (SELECT value FROM json_each(?))', JSON.stringify(ids.map(Number))).map(row => [row.id, row]));
+        return ids.map(id => byId.get(Number(id))).filter(Boolean);
+    }
+
+    getBooksByUids(uids = []) {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        return this.bookRows('uid IN (SELECT value FROM json_each(?))', JSON.stringify(uids.map(String)));
+    }
+
+    //Записи по ключам «источник:libid» (так выводятся id книг Kobo): {ключ: [записи]}
+    getBooksByStableKeys(keys = []) {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        const result = {};
+        const select = `source = ? AND libid = ?`;
+        for (const key of keys) {
+            const at = String(key).indexOf(':');
+            if (at < 0)
+                continue;
+            const rows = this.bookRows(select, key.substring(0, at), key.substring(at + 1));
+            if (rows.length)
+                result[key] = rows;
+        }
+        return result;
     }
 }
 
