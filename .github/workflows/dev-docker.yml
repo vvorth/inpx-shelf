@@ -44,3 +44,55 @@ jobs:
             docker tag inpx-shelf:dev "vvorth/inpx-shelf:$tag"
             docker push "vvorth/inpx-shelf:$tag"
           done
+      - name: Remove old dev tags
+        # Deleting tags needs a Docker Hub token with the Delete permission. Without it this step
+        # warns and fails on its own, but the dev image above is already published.
+        continue-on-error: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          KEEP_DEV_TAGS: 10
+        run: |
+          node <<'NODE'
+          const api = 'https://hub.docker.com/v2';
+          const repo = 'vvorth/inpx-shelf';
+          const keep = Number(process.env.KEEP_DEV_TAGS);
+
+          async function call(url, options = {}) {
+            const response = await fetch(url, options);
+            if (!response.ok)
+              throw new Error(`${options.method || 'GET'} ${url}: ${response.status} ${await response.text()}`);
+            return (response.status === 204 ? null : response.json());
+          }
+
+          (async() => {
+            const {access_token: token} = await call(`${api}/auth/token`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({identifier: process.env.DOCKERHUB_USERNAME, secret: process.env.DOCKERHUB_TOKEN}),
+            });
+            const headers = {Authorization: `Bearer ${token}`};
+
+            const tags = [];
+            for (let url = `${api}/repositories/${repo}/tags?page_size=100`; url;) {
+              const page = await call(url, {headers});
+              tags.push(...page.results);
+              url = page.next;
+            }
+
+            // Only per-commit dev tags: dev, beta, latest and version tags are never removed.
+            const pushedAt = tag => Date.parse(tag.tag_last_pushed || tag.last_updated);
+            const old = tags
+              .filter(tag => /^dev-[0-9a-f]{7}$/.test(tag.name))
+              .sort((a, b) => pushedAt(b) - pushedAt(a))
+              .slice(keep);
+            for (const tag of old) {
+              await call(`${api}/repositories/${repo}/tags/${tag.name}/`, {method: 'DELETE', headers});
+              console.log(`Removed ${repo}:${tag.name}`);
+            }
+            console.log(`Kept the newest ${keep} dev-<commit> tags, removed ${old.length}`);
+          })().catch(error => {
+            console.log(`::warning::Old dev tags were not removed: ${error.message}`);
+            process.exitCode = 1;
+          });
+          NODE
