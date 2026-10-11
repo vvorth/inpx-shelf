@@ -268,6 +268,21 @@ async function testRootPathRewriteStaysInPublicDir() {
     });
 }
 
+// OPDS sends the password with every request: a repeated success must skip scrypt.
+async function testRepeatedPasswordCheckSkipsScrypt() {
+    const profilePassword = require('../server/core/ProfilePassword');
+    const stored = await profilePassword.hash('secret');
+    let started = Date.now();
+    assert.strictEqual(await profilePassword.verify(stored, 'user', 'secret'), true);
+    const first = Date.now() - started;
+    started = Date.now();
+    assert.strictEqual(await profilePassword.verify(stored, 'user', 'secret'), true);
+    assert.ok(Date.now() - started < first / 4, 'Second check must come from the cache');
+    assert.strictEqual(await profilePassword.verify(stored, 'user', 'wrong'), false);
+    assert.strictEqual(await profilePassword.verify(await profilePassword.hash('other'), 'user', 'secret'), false,
+        'A changed hash must not reuse the cached success');
+}
+
 async function testAdminGetsRandomPasswordByDefault() {
     await temporary(async(dataDir) => {
         const config = {dataDir, adminLogin: 'admin', adminPassword: ''};
@@ -320,6 +335,6 @@ async function testLibraryHtmlIsCleaned() {
         assert.ok(!/<(?!\/?(p|br|b|i|u|em|strong|h[1-6]|sub|sup|ul|ol|li|blockquote|div|span)>)/i.test(safeHtml(hostile)), hostile);
 }
 
-module.exports = [testBookRouteRejectsTraversal, testRootPathRewriteStaysInPublicDir, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testBookRouteRejectsTraversal, testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

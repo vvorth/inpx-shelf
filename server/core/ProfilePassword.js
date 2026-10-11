@@ -8,6 +8,18 @@ const options = {N: 16384, r: 8, p: 5, maxmem: 32*1024*1024};
 const maxPasswordBytes = 4096;
 let active = 0;
 
+// OPDS clients send the password with every request, and scrypt takes ~0.3 s inside the
+// profile store lock. Remember recent successes; the stored hash is part of the key, so a
+// password change drops them. HMAC with a process key: the cache is no offline shortcut.
+const verifiedKey = crypto.randomBytes(32);
+const verified = new Map();
+const verifiedTtlMs = 10*60*1000;
+const verifiedMax = 1000;
+
+function verifiedId(stored, password) {
+    return crypto.createHmac('sha256', verifiedKey).update(`${stored}\0${password}`).digest('hex');
+}
+
 function legacy(login, password) {
     return crypto.createHash('sha256').update(`${String(login || '').trim().toLowerCase()}::${String(password || '')}`).digest('hex');
 }
@@ -43,8 +55,17 @@ async function verify(stored, login, password) {
     const match = /^scrypt:v1:([a-f0-9]{32}):([a-f0-9]{64})$/.exec(stored);
     if (!match)
         return false;
+    const id = verifiedId(stored, String(password || ''));
+    if (verified.get(id) > Date.now())
+        return true;
     const key = await derive(password, Buffer.from(match[1], 'hex'));
-    return crypto.timingSafeEqual(key, Buffer.from(match[2], 'hex'));
+    if (!crypto.timingSafeEqual(key, Buffer.from(match[2], 'hex')))
+        return false;
+    verified.delete(id);
+    if (verified.size >= verifiedMax)
+        verified.delete(verified.keys().next().value);
+    verified.set(id, Date.now() + verifiedTtlMs);
+    return true;
 }
 
 module.exports = {hash, verify, isLegacy, legacy};
