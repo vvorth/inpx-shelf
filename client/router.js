@@ -79,9 +79,43 @@ const scrollPositions = new Map();
 const scrollKey = () => `${(window.history.state || {}).position}|${router.currentRoute.value.fullPath}`;
 
 document.addEventListener('scroll', (event) => {
-    if (event.target.classList && event.target.classList.contains('page'))
+    //прокрутка книги в окне поверх страницы не трогает положение самой страницы
+    if (event.target.classList && event.target.classList.contains('page') && !event.target.closest('.q-dialog'))
         scrollPositions.set(scrollKey(), event.target.scrollTop);
 }, true);
+
+//Книга, открытая из приложения, показывается окном поверх текущей страницы: адрес страницы
+//получает ?book=<uid>, поэтому страница под окном остаётся на своём маршруте, а «Назад» закрывает окно.
+//Прямая ссылка, новая вкладка, переход со страницы книги и «Назад»/«Вперёд» открывают обычную страницу книги.
+export function bookDialogUid(route) {
+    return (route.meta && route.meta.bare ? '' : String(route.query.book || ''));
+}
+
+function withoutBook(route) {
+    const query = Object.assign({}, route.query);
+    delete query.book;
+    return {path: route.path, query, hash: route.hash};
+}
+
+export function closeBookDialog() {
+    const current = router.currentRoute.value;
+    const target = withoutBook(current);
+    //окно открыто переходом с этой же страницы - закрываем шагом назад по истории, иначе убираем ?book
+    if ((window.history.state || {}).back === router.resolve(target).fullPath)
+        router.back();
+    else
+        router.replace(target);
+}
+
+export function pageFullPath(route) {
+    return router.resolve(withoutBook(route)).fullPath;
+}
+
+router.beforeEach((to, from) => {
+    if (!to.path.startsWith('/book/') || historyMove || !from.matched.length || from.path.startsWith('/book/') || (from.meta && from.meta.bare))
+        return true;
+    return Object.assign(withoutBook(from), {query: Object.assign(withoutBook(from).query, {book: to.params.uid})});
+});
 
 router.afterEach((to, from, failure) => {
     const restore = historyMove;

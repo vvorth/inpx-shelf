@@ -10,6 +10,7 @@
                     <component :is="Component" />
                 </keep-alive>
             </router-view>
+            <BookDialog />
         </AppShell>
     </div>
 </template>
@@ -26,6 +27,7 @@ import StdDialog from './share/StdDialog.vue';
 
 import Api from './Api/Api.vue';
 import AppShell from './Shell/AppShell.vue';
+import BookDialog from './Library/BookDialog.vue';
 
 const componentOptions = {
     components: {
@@ -34,6 +36,7 @@ const componentOptions = {
         StdDialog,
 
         AppShell,
+        BookDialog,
     },
     watch: {
         darkTheme(newValue) {

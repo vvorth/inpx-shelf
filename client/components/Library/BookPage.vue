@@ -215,14 +215,21 @@ const componentOptions = {
     },
     watch: {
         '$route.params.uid'() {
-            if (this.$route.path.startsWith('/book/'))
+            if (!this.dialogUid && this.$route.path.startsWith('/book/'))
                 this.load();
+        },
+        dialogUid() {
+            this.load();
         },
     },
 };
 
 class BookPage {
     _options = componentOptions;
+    _props = {
+        //книга в окне поверх страницы (BookDialog), иначе - из адреса /book/:uid
+        dialogUid: {type: String, default: ''},
+    };
 
     book = null;
     loading = false;
@@ -243,6 +250,11 @@ class BookPage {
         this.api = this.$root.api;
     }
 
+    mounted() {
+        if (this.dialogUid)
+            this.load();
+    }
+
     activated() {
         if (this.uid !== this.loadedUid)
             this.load();
@@ -251,7 +263,7 @@ class BookPage {
     }
 
     get uid() {
-        return String(this.$route.params.uid || '');
+        return this.dialogUid || String(this.$route.params.uid || '');
     }
 
     get config() {
@@ -347,7 +359,8 @@ class BookPage {
             if (uid !== this.uid)
                 return;
             this.book = result.book;
-            this.$root.setAppTitle(this.book.title);
+            if (!this.dialogUid)
+                this.$root.setAppTitle(this.book.title);
         } catch (e) {
             this.error = tm(e.message);
             return;

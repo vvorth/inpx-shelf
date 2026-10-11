@@ -149,7 +149,7 @@
                     <div v-if="result && result.corrected" class="notice">
                         <div>
                             {{ result.layout ? $t('search.looksLikeTheWrong') : $t('search.showingResultsFor') }}
-                            <router-link :to="{path: '/search', query: Object.assign({}, $route.query, {q: result.corrected, page: undefined})}">
+                            <router-link :to="{path: '/search', query: Object.assign({}, query, {q: result.corrected, page: undefined})}">
                                 <b>{{ result.corrected }}</b>
                             </router-link>.
                         </div>
@@ -308,8 +308,11 @@ class SearchPage {
         return isSignedIn(this.config);
     }
 
+    //?book открывает книгу окном поверх поиска и в запрос не входит
     get query() {
-        return this.$route.query || {};
+        const query = Object.assign({}, this.$route.query);
+        delete query.book;
+        return query;
     }
 
     //ключ запроса учитывает «Мои языки»: их смена перезапускает поиск

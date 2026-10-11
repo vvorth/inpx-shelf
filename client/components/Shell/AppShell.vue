@@ -138,6 +138,7 @@ import {enabledDiscoveryRoutes, discoveryRouteLabel} from '../../share/discovery
 import {newReleaseAvailable} from '../../share/release';
 import {myLanguages, langDefaultFor} from '../../share/languages';
 import {refreshReadingLists} from '../../share/readingLists';
+import {pageFullPath} from '../../router';
 
 const discoveryIcons = {
     'bestsellers': 'la la-globe',
@@ -175,7 +176,7 @@ const componentOptions = {
         },
         '$route'(to) {
             if (catalogRoutes.has(to.path))
-                this.lastCatalogPath = to.fullPath;
+                this.lastCatalogPath = pageFullPath(to);
         },
     },
 };
@@ -196,7 +197,7 @@ class AppShell {
             this.namesBannerDismissedAt = 0;
         }
         if (catalogRoutes.has(this.$route.path))
-            this.lastCatalogPath = this.$route.fullPath;
+            this.lastCatalogPath = pageFullPath(this.$route);
     }
 
     get config() {
