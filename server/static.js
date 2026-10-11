@@ -747,7 +747,9 @@ module.exports = (app, config, webWorker = null, security = null) => {
         } catch(e) {
             log(LM_ERR, e.message);
             if (bookConverter.canConvertTo(req.params.fileType)) {
-                res.status(500).send(e.message);
+                //текст конвертера с путями сервера остаётся в журнале; пользователю - только понятные причины
+                const known = String(e.code || '').startsWith('INPX_CONVERSION_');
+                res.status(500).send(known ? e.message : 'Не удалось конвертировать книгу, подробности в журнале сервера');
                 return;
             }
         }

@@ -245,6 +245,36 @@ async function testBookRouteRejectsTraversal() {
     });
 }
 
+// Converter stderr holds server paths: the download answer keeps them in the log only.
+async function testConversionErrorHidesConverterOutput() {
+    await temporary(async(dir) => {
+        const config = {dataDir: path.join(dir, 'data'), rootPathStatic: '', bookPathStatic: '/book',
+            publicDir: path.join(dir, 'data', 'public'), bookDir: path.join(dir, 'data', 'public-files', 'book'),
+            tempDir: path.join(dir, 'tmp'), conversionEnabled: true,
+            // node treats "convert" as a script path and fails, printing that path to stderr
+            converterPaths: {fb2cng: process.execPath}};
+        const hash = 'abcdef0123';
+        const book = Buffer.from('<FictionBook><body><p>x</p></body></FictionBook>');
+        await fs.ensureDir(config.bookDir);
+        await fs.ensureDir(config.tempDir);
+        await fs.writeFile(path.join(config.bookDir, hash), require('zlib').gzipSync(book));
+        await fs.writeJson(path.join(config.bookDir, `${hash}.d.json`), {downFileName: 'book.fb2', size: book.length});
+        const app = require('express')();
+        require('../server/static')(app, config);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const res = await fetch(`http://127.0.0.1:${server.address().port}/book/${hash}/epub`);
+            const text = await res.text();
+            assert.strictEqual(res.status, 500);
+            assert.ok(!text.includes(process.execPath) && !text.includes('exit code'), `Response must not contain converter output: ${text}`);
+            assert.match(text, /Не удалось конвертировать книгу/);
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+}
+
 async function testRootPathRewriteStaysInPublicDir() {
     await temporary(async(dir) => {
         const config = {dataDir: path.join(dir, 'data'), rootPathStatic: '/root', bookPathStatic: '/root/book',
@@ -345,6 +375,6 @@ async function testDialogsEscapeMessages() {
     assert.match(notify, /if \(!html\) \{\s*message = escapeHtml\(message\);\s*caption = \(caption \? escapeHtml\(caption\) : caption\);/);
 }
 
-module.exports = [testBookRouteRejectsTraversal, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];
