@@ -910,10 +910,6 @@ class ReadingListStore {
         return data;
     }
 
-    async withProgressMutation(task) {
-        return await task();
-    }
-
     async writeDataNow(data) {
         await writeFileAtomic(this.file, JSON.stringify(data, null, 2));
     }
@@ -1377,12 +1373,6 @@ class ReadingListStore {
     }
 
     async updateReaderProgress(userId = '', bookUid = '', patch = {}) {
-        return await this.withProgressMutation(
-            async() => await this.updateReaderProgressNow(userId, bookUid, patch)
-        );
-    }
-
-    async updateReaderProgressNow(userId = '', bookUid = '', patch = {}) {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
@@ -1455,12 +1445,6 @@ class ReadingListStore {
     }
 
     async deleteReaderProgress(userId = '', bookUid = '') {
-        return await this.withProgressMutation(
-            async() => await this.deleteReaderProgressNow(userId, bookUid)
-        );
-    }
-
-    async deleteReaderProgressNow(userId = '', bookUid = '') {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
@@ -1479,12 +1463,6 @@ class ReadingListStore {
     }
 
     async clearReaderProgress(userId = '') {
-        return await this.withProgressMutation(
-            async() => await this.clearReaderProgressNow(userId)
-        );
-    }
-
-    async clearReaderProgressNow(userId = '') {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
@@ -1754,12 +1732,6 @@ class ReadingListStore {
     }
 
     async setBooksRead(userId = '', bookUids = [], read = true, options = {}) {
-        return await this.withProgressMutation(
-            async() => await this.setBooksReadNow(userId, bookUids, read, options)
-        );
-    }
-
-    async setBooksReadNow(userId = '', bookUids = [], read = true, options = {}) {
         const {data, user} = await this.resolveUser(userId);
         const target = data.users.find((item) => item.id === user.id);
         if (!target)
@@ -1832,56 +1804,54 @@ class ReadingListStore {
     // (keeping order and the read flag), reader progress, bookmarks and the book's metadata edits
     // from old to new uids.
     async rekeyBooks(userId = '', mapping = {}) {
-        return await this.withProgressMutation(async() => {
-            const {data, user} = await this.resolveUser(userId);
-            const target = data.users.find((item) => item.id === user.id);
-            const pairs = new Map(Object.entries(mapping || {})
-                .map(([from, to]) => [this.normalizeBookUid(from), this.normalizeBookUid(to)])
-                .filter(([from, to]) => from && to && from !== to));
-            if (!target || !pairs.size)
-                return {lists: 0};
+        const {data, user} = await this.resolveUser(userId);
+        const target = data.users.find((item) => item.id === user.id);
+        const pairs = new Map(Object.entries(mapping || {})
+            .map(([from, to]) => [this.normalizeBookUid(from), this.normalizeBookUid(to)])
+            .filter(([from, to]) => from && to && from !== to));
+        if (!target || !pairs.size)
+            return {lists: 0};
 
-            let lists = 0;
-            for (const list of data.lists.filter((item) => item.userId === target.id)) {
-                const entries = this.normalizeEntries(list.books);
-                if (!entries.some((entry) => pairs.has(entry.bookUid)))
+        let lists = 0;
+        for (const list of data.lists.filter((item) => item.userId === target.id)) {
+            const entries = this.normalizeEntries(list.books);
+            if (!entries.some((entry) => pairs.has(entry.bookUid)))
+                continue;
+            const byUid = new Map();
+            list.books = [];
+            for (const entry of entries) {
+                const bookUid = pairs.get(entry.bookUid) || entry.bookUid;
+                const known = byUid.get(bookUid);
+                if (known) {
+                    known.read = known.read || entry.read;
                     continue;
-                const byUid = new Map();
-                list.books = [];
-                for (const entry of entries) {
-                    const bookUid = pairs.get(entry.bookUid) || entry.bookUid;
-                    const known = byUid.get(bookUid);
-                    if (known) {
-                        known.read = known.read || entry.read;
-                        continue;
-                    }
-                    const row = {bookUid, read: entry.read};
-                    byUid.set(bookUid, row);
-                    list.books.push(row);
                 }
-                list.updatedAt = this.nowIso();
-                lists++;
+                const row = {bookUid, read: entry.read};
+                byUid.set(bookUid, row);
+                list.books.push(row);
             }
-            // Admin metadata edits are keyed by uid too; the old uid no longer exists.
-            data.metadataOverrides = this.normalizeMetadataOverrides(data.metadataOverrides);
-            for (const [from, to] of pairs) {
-                if (utilsHasProp(data.metadataOverrides, from)) {
-                    if (!utilsHasProp(data.metadataOverrides, to))
-                        data.metadataOverrides[to] = data.metadataOverrides[from];
-                    delete data.metadataOverrides[from];
-                }
-                for (const field of ['readerProgress', 'readerBookmarks']) {
-                    const rows = target[field];
-                    if (!rows || typeof(rows) !== 'object' || !utilsHasProp(rows, from))
-                        continue;
-                    if (!utilsHasProp(rows, to))
-                        rows[to] = rows[from];
-                    delete rows[from];
-                }
+            list.updatedAt = this.nowIso();
+            lists++;
+        }
+        // Admin metadata edits are keyed by uid too; the old uid no longer exists.
+        data.metadataOverrides = this.normalizeMetadataOverrides(data.metadataOverrides);
+        for (const [from, to] of pairs) {
+            if (utilsHasProp(data.metadataOverrides, from)) {
+                if (!utilsHasProp(data.metadataOverrides, to))
+                    data.metadataOverrides[to] = data.metadataOverrides[from];
+                delete data.metadataOverrides[from];
             }
-            await this.save(data);
-            return {lists};
-        });
+            for (const field of ['readerProgress', 'readerBookmarks']) {
+                const rows = target[field];
+                if (!rows || typeof(rows) !== 'object' || !utilsHasProp(rows, from))
+                    continue;
+                if (!utilsHasProp(rows, to))
+                    rows[to] = rows[from];
+                delete rows[from];
+            }
+        }
+        await this.save(data);
+        return {lists};
     }
 
     async addBooks(userId = '', listId, bookUids = []) {

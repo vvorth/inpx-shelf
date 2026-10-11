@@ -557,30 +557,6 @@ function normalizeAuthorText(value) {
         .trim();
 }
 
-function buildAuthorVariants(author) {
-    const result = new Set();
-    const normalized = normalizeAuthorText(author);
-    if (normalized)
-        result.add(normalized);
-
-    const parts = (author || '')
-        .split(',')
-        .map(part => normalizeAuthorText(part))
-        .filter(Boolean);
-
-    if (parts.length) {
-        result.add(parts.join(' '));
-        result.add(parts.join(', '));
-    }
-
-    if (parts.length > 1)
-        result.add([...parts].reverse().join(' '));
-
-    return Array.from(result)
-        .filter(value => value.length >= 3)
-        .sort((a, b) => b.length - a.length);
-}
-
 function normalizeDiscoveryText(value) {
     return stripHtml(value)
         .toLowerCase()
@@ -1427,57 +1403,6 @@ class WebWorker {
         return {sourceUrl, items, hasMore, genreOptions};
     }
 
-    pickDiscoveryBookMatch(item, books = []) {
-        const title = normalizeDiscoveryText(item.title || '');
-        if (!title)
-            return null;
-
-        const authorTokens = extractDiscoveryAuthorTokens(item.author || '');
-        let best = null;
-        let bestScore = -Infinity;
-
-        for (const book of books) {
-            const bookTitle = normalizeDiscoveryText(book.title || '');
-            if (!bookTitle)
-                continue;
-
-            let score = -Infinity;
-            if (bookTitle === title) {
-                score = 1000;
-            } else if (bookTitle.startsWith(title) || title.startsWith(bookTitle)) {
-                score = 700;
-            } else if (bookTitle.includes(title) || title.includes(bookTitle)) {
-                score = 450;
-            } else {
-                continue;
-            }
-
-            const bookAuthor = normalizeDiscoveryText(book.author || '');
-            let authorScore = 0;
-            for (const token of authorTokens) {
-                if (bookAuthor.includes(token))
-                    authorScore += 90;
-            }
-
-            if (authorTokens.length && !authorScore)
-                score -= 180;
-
-            score += authorScore;
-            if (!book.del)
-                score += 15;
-            if (String(book.ext || '').toLowerCase() === 'fb2')
-                score += 12;
-            score += parseInt(book.librate || '0', 10) || 0;
-
-            if (score > bestScore) {
-                bestScore = score;
-                best = book;
-            }
-        }
-
-        return (bestScore >= 450 ? best : null);
-    }
-
     externalDiscoverySearchQueries(item = {}, limit = 32) {
         const title = String(item.title || '').trim();
         if (!title)
@@ -1514,42 +1439,6 @@ class WebWorker {
         }
 
         return found;
-    }
-
-    async matchExternalItemsToLocalBooks(items = [], limit = 8) {
-        const result = [];
-        const seenBookUids = new Set();
-        const seenExternalItems = new Set();
-
-        for (const item of items) {
-            const externalKey = buildExternalFeedIdentity(item);
-            if (externalKey && seenExternalItems.has(externalKey))
-                continue;
-            if (externalKey)
-                seenExternalItems.add(externalKey);
-
-            const candidates = await this.findExternalDiscoveryCandidates(item, 32);
-            const match = this.pickDiscoveryBookMatch(item, candidates);
-
-            if (match && !seenBookUids.has(match._uid)) {
-                seenBookUids.add(match._uid);
-                result.push(Object.assign({}, match, {
-                    discoveryUrl: item.url,
-                    discoveryRating: item.rating,
-                    discoveryFlags: {
-                        bestseller: !!item.isBestseller,
-                        isNew: !!item.isNew,
-                    },
-                }));
-            }
-
-            if (result.length >= limit)
-                break;
-
-            await utils.processLoop();
-        }
-
-        return result;
     }
 
     pickDiscoveryBookMatchV2(item, books = []) {
@@ -3006,11 +2895,7 @@ class WebWorker {
         if (sessionUserId)
             return await this.readingListStore.getUser(sessionUserId);
 
-        const requestedUser = await this.readingListStore.getUser(userId);
-        if (requestedUser && !requestedUser.passwordHash)
-            return requestedUser;
-
-        return requestedUser;
+        return await this.readingListStore.getUser(userId);
     }
 
     async requireAuthorizedUser(userId = '', profileAccessToken = '') {
@@ -3718,15 +3603,6 @@ class WebWorker {
         }, Math.max(60*1000, delay));
     }
 
-    async runAdminCacheClean(userId = '', profileAccessToken = '') {
-        await this.requireAdmin(userId, profileAccessToken);
-
-        return await this.runCacheClean('ручной запуск', {
-            kind: 'all',
-            forceTarget: true,
-        });
-    }
-
     async runAdminCacheCleanKind(userId = '', profileAccessToken = '', kind = 'all') {
         await this.requireAdmin(userId, profileAccessToken);
 
@@ -4405,10 +4281,6 @@ class WebWorker {
             result.sort((a, b) => a.from - b.from);
             this.fblibraryArchives[cacheKey] = result;
         }
-    }
-
-    async getFblibraryArchive(subDir, libid, sourceLibDir = '') {
-        return (await this.getFblibraryArchives(subDir, libid, sourceLibDir))[0];
     }
 
     async getFblibraryArchives(subDir, libid, sourceLibDir = '') {
@@ -5159,10 +5031,6 @@ class WebWorker {
             return cached;
         this.reviewArchiveStates.set(libDir, state);
         return state;
-    }
-
-    async getReviewArchives(sourceLibDir = '') {
-        return (await this.getReviewArchiveState(sourceLibDir)).archives;
     }
 
     metadataBookUid(book = {}) {
