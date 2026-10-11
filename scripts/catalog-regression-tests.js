@@ -94,4 +94,26 @@ async function testRegExpSearchRefusesBacktrackingPatterns() {
     });
 }
 
-module.exports = [testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];
+// Author and series pages look names up by name_norm: spellings that differ only in case or ё/е are one entry.
+async function testSpellingVariantsShareAuthorAndSeries() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        const book = (id, author, series) => ({id, _uid: `u${id}`, author, title: `Книга ${id}`, series, serno: id, size: 1, librate: 0, del: 0,
+            sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang: 'ru'});
+        index.beginBuild(file);
+        index.insertBooks([book(1, 'Семёнов Юлиан', 'Петровка'), book(2, 'Семенов Юлиан', 'петровка'), book(3, 'семенов юлиан', '')]);
+        index.finishBuild({});
+        index.open(file);
+        try {
+            assert.deepStrictEqual(index.authorBooks('Семенов Юлиан'), {author: 'Семёнов Юлиан', ids: [1, 2, 3]});
+            assert.deepStrictEqual(index.listNames({kind: 'author'}).items, [{name: 'Семёнов Юлиан', books: 3}]);
+            assert.deepStrictEqual(index.listNames({kind: 'series'}).items, [{name: 'Петровка', books: 2}]);
+        } finally {
+            index.close();
+        }
+    });
+}
+
+module.exports = [testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];

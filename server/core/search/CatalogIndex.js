@@ -7,7 +7,7 @@ const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = 
 const {copyKey} = require('./copyKey');
 const {buildLookup, englishName} = require('./AuthorNames');
 
-const schemaVersion = '7';
+const schemaVersion = '8';
 const maxLimit = 200;
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
@@ -192,10 +192,12 @@ class CatalogIndex {
                     b.aliases.set(name, englishName(b.aliasLookup, name));
                 if (b.aliases.get(name))
                     authorAliases.push(b.aliases.get(name));
-                let rec = b.authors.get(name);
+                //«Семёнов» и «семенов» - один автор (имя - первое написание): страницы ищут по name_norm
+                const key = normalize(name) || name;
+                let rec = b.authors.get(key);
                 if (!rec) {
-                    rec = {id: b.authors.size + 1, books: 0};
-                    b.authors.set(name, rec);
+                    rec = {id: b.authors.size + 1, name, books: 0};
+                    b.authors.set(key, rec);
                 }
                 if (!row.del)
                     rec.books++;
@@ -203,10 +205,11 @@ class CatalogIndex {
             }
 
             if (series) {
-                const rec = b.series.get(series) || {id: b.series.size + 1, books: 0};
+                const key = normalize(series) || series;
+                const rec = b.series.get(key) || {id: b.series.size + 1, name: series, books: 0};
                 if (!row.del)
                     rec.books++;
-                b.series.set(series, rec);
+                b.series.set(key, rec);
             }
 
             //английские имена авторов ищутся наравне с именами из библиотеки
@@ -223,23 +226,25 @@ class CatalogIndex {
             throw new Error('catalog index: build not started');
 
         const db = b.db;
+        let aliasCount = 0;
         try {
             const insertAuthor = db.prepare('INSERT INTO author(id, name, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertSeries = db.prepare('INSERT INTO series(id, name, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertName = db.prepare('INSERT INTO name(kind, ref, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertAlias = db.prepare('INSERT INTO author_alias(author_id, alias) VALUES (?, ?)');
-            for (const [name, rec] of b.authors) {
-                insertAuthor.run(rec.id, name, normalize(name), rec.books);
-                insertName.run('author', rec.id, normalize(name), rec.books);
+            for (const {id, name, books} of b.authors.values()) {
+                insertAuthor.run(id, name, normalize(name), books);
+                insertName.run('author', id, normalize(name), books);
                 const alias = b.aliases.get(name);
                 if (alias) {
-                    insertAlias.run(rec.id, alias);
-                    insertName.run('alias', rec.id, normalize(alias), rec.books);
+                    aliasCount++;
+                    insertAlias.run(id, alias);
+                    insertName.run('alias', id, normalize(alias), books);
                 }
             }
-            for (const [name, rec] of b.series) {
-                insertSeries.run(rec.id, name, normalize(name), rec.books);
-                insertName.run('series', rec.id, normalize(name), rec.books);
+            for (const {id, name, books} of b.series.values()) {
+                insertSeries.run(id, name, normalize(name), books);
+                insertName.run('series', id, normalize(name), books);
             }
 
             //словарь слов для исправления опечаток
@@ -301,7 +306,6 @@ class CatalogIndex {
             db.exec(`INSERT INTO name_tri(name_tri) VALUES ('rebuild')`);
 
             const insertMeta = db.prepare('INSERT INTO meta(key, value) VALUES (?, ?)');
-            const aliasCount = [...b.aliases.values()].filter(Boolean).length;
             const fullMeta = Object.assign({}, meta, {
                 schemaVersion, books: String(b.count), aliases: String(aliasCount), builtAt: new Date().toISOString(), stats: JSON.stringify(stats),
             });
@@ -317,7 +321,7 @@ class CatalogIndex {
             this.build = null;
         }
 
-        return {books: b.count, authors: b.authors.size, series: b.series.size, aliases: [...b.aliases.values()].filter(Boolean).length};
+        return {books: b.count, authors: b.authors.size, series: b.series.size, aliases: aliasCount};
     }
 
     abortBuild() {
@@ -970,8 +974,8 @@ class CatalogIndex {
     authorAliases(name = '') {
         if (!this.db)
             return [];
-        return this.db.prepare('SELECT aa.alias AS alias FROM author a JOIN author_alias aa ON aa.author_id = a.id WHERE a.name = ?')
-            .all(String(name || '')).map(row => row.alias);
+        return this.db.prepare('SELECT aa.alias AS alias FROM author a JOIN author_alias aa ON aa.author_id = a.id WHERE a.name_norm = ?')
+            .all(normalize(name)).map(row => row.alias);
     }
 
     //Подсказки при наборе: авторы, серии и книги
