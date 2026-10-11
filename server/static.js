@@ -769,10 +769,12 @@ module.exports = (app, config, webWorker = null, security = null) => {
                 const reqPath = (req.path == '/' ? '/index.html' : req.path);
                 const ext = path.extname(reqPath);
                 if (ext == '.html' || ext == '.js' || ext == '.css') {
-                    const reqFile = `${config.publicDir}${reqPath}`;
+                    const reqFile = path.resolve(config.publicDir, `.${reqPath}`);
                     const flagFile = `${reqFile}.replaced`;
 
-                    if (!await fs.pathExists(flagFile) && await fs.pathExists(reqFile)) {
+                    //req.path сохраняет "..": не выходим за пределы каталога WebApp
+                    if (reqFile.startsWith(path.resolve(config.publicDir) + path.sep)
+                        && !await fs.pathExists(flagFile) && await fs.pathExists(reqFile)) {
                         const content = await fs.readFile(reqFile, 'utf8');
                         const re = new RegExp(`/${webAppDir}`, 'g');
                         await fs.writeFile(reqFile, content.replace(re, `${config.rootPathStatic}/${webAppDir}`));

@@ -245,6 +245,29 @@ async function testBookRouteRejectsTraversal() {
     });
 }
 
+async function testRootPathRewriteStaysInPublicDir() {
+    await temporary(async(dir) => {
+        const config = {dataDir: path.join(dir, 'data'), rootPathStatic: '/root', bookPathStatic: '/root/book',
+            publicDir: path.join(dir, 'data', 'public'), bookDir: path.join(dir, 'data', 'public-files', 'book')};
+        await fs.ensureDir(config.bookDir);
+        await fs.ensureDir(config.publicDir);
+        const outside = path.join(dir, 'outside.js');
+        await fs.writeFile(outside, 'keep');
+        const app = require('express')();
+        require('../server/static')(app, config);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            // Express keeps ".." in req.path for raw request paths.
+            await new Promise((resolve, reject) => http.get({host: '127.0.0.1', port: server.address().port, path: '/root/../../outside.js'},
+                res => res.resume().on('end', resolve)).on('error', reject));
+            assert.strictEqual(await fs.pathExists(`${outside}.replaced`), false, 'No flag file outside publicDir');
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+}
+
 async function testAdminGetsRandomPasswordByDefault() {
     await temporary(async(dataDir) => {
         const config = {dataDir, adminLogin: 'admin', adminPassword: ''};
@@ -297,6 +320,6 @@ async function testLibraryHtmlIsCleaned() {
         assert.ok(!/<(?!\/?(p|br|b|i|u|em|strong|h[1-6]|sub|sup|ul|ol|li|blockquote|div|span)>)/i.test(safeHtml(hostile)), hostile);
 }
 
-module.exports = [testBookRouteRejectsTraversal, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testBookRouteRejectsTraversal, testRootPathRewriteStaysInPublicDir, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];
