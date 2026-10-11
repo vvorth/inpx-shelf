@@ -66,7 +66,7 @@ inpx-shelf — веб-каталог для self-hosted INPX-библиотек 
 
 ## Сборка Docker-контейнера
 
-Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий, например `vvorth/inpx-shelf:1.0.0-beta.1`. Тег `latest` указывает на последний стабильный релиз, `beta` — на последний предварительный (`-alpha`, `-beta`, `-rc`). Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
+Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий, например `vvorth/inpx-shelf:1.0.0-beta.1`. Тег `latest` указывает на последний стабильный релиз, `beta` — на последний предварительный (`-alpha`, `-beta`, `-rc`), `dev` — на сборку из ветки `develop` (собирается при каждом изменении ветки, только для тестирования). Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
 
 Образ можно запустить на данных inpx-web: путь данных в контейнере остался `/usr/local/bin/.inpx-web`, поэтому существующий volume подключается без изменений.
 
