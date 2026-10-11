@@ -3890,7 +3890,7 @@ class Reader {
             return;
 
         const profile = this.currentSelectedProfile || {};
-        const profileName = he.encode(String(profile.name || profile.login || this.uiText.profile).trim());
+        const profileName = String(profile.name || profile.login || this.uiText.profile).trim();
         const confirmed = await this.$root.stdDialog.confirm(
             this.uiText.resetReaderProgressConfirm.replace('{profile}', profileName),
             this.uiText.resetReaderProgress,

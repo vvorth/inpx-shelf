@@ -335,6 +335,16 @@ async function testLibraryHtmlIsCleaned() {
         assert.ok(!/<(?!\/?(p|br|b|i|u|em|strong|h[1-6]|sub|sup|ul|ol|li|blockquote|div|span)>)/i.test(safeHtml(hostile)), hostile);
 }
 
-module.exports = [testBookRouteRejectsTraversal, testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+// User names and book titles reach dialogs and notifications: they render text unless asked for HTML.
+async function testDialogsEscapeMessages() {
+    const dialog = await fs.readFile(path.resolve(__dirname, '../client/components/share/StdDialog.vue'), 'utf8');
+    assert.ok(!/v-html="(message|caption)"/.test(dialog), 'Dialog must not render raw message or caption');
+    assert.match(dialog, /get messageHtml\(\) \{\s*return \(this\.html \? this\.message : escapeHtml\(this\.message\)\);/);
+    assert.match(dialog, /get captionHtml\(\) \{\s*return \(this\.html \? this\.caption : escapeHtml\(this\.caption\)\);/);
+    const notify = await fs.readFile(path.resolve(__dirname, '../client/components/share/Notify.vue'), 'utf8');
+    assert.match(notify, /if \(!html\) \{\s*message = escapeHtml\(message\);\s*caption = \(caption \? escapeHtml\(caption\) : caption\);/);
+}
+
+module.exports = [testBookRouteRejectsTraversal, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

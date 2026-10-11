@@ -16,7 +16,7 @@
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="caption"></div>
+                    <div v-html="captionHtml"></div>
                 </div>
                 <div class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
@@ -26,7 +26,7 @@
             </div>
 
             <div class="q-mx-md">
-                <div v-html="message"></div>
+                <div v-html="messageHtml"></div>
             </div>
 
             <div class="buttons row justify-end q-pa-md">
@@ -41,7 +41,7 @@
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="caption"></div>
+                    <div v-html="captionHtml"></div>
                 </div>
                 <div class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
@@ -51,7 +51,7 @@
             </div>
 
             <div class="q-mx-md">
-                <div v-html="message"></div>
+                <div v-html="messageHtml"></div>
             </div>
 
             <div class="buttons row justify-end q-pa-md">
@@ -69,7 +69,7 @@
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="caption"></div>
+                    <div v-html="captionHtml"></div>
                 </div>
                 <div v-if="!noCancel" class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
@@ -79,7 +79,7 @@
             </div>
 
             <div class="q-mx-md">
-                <div v-html="message"></div>
+                <div v-html="messageHtml"></div>
                 <q-input ref="input" v-model="inputValue" class="q-mt-xs" outlined dense />
                 <div class="error">
                     <span v-show="error != ''">{{ error }}</span>
@@ -101,7 +101,7 @@
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="caption"></div>
+                    <div v-html="captionHtml"></div>
                 </div>
                 <div v-if="!noCancel" class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
@@ -111,7 +111,7 @@
             </div>
 
             <div class="q-mx-md">
-                <div v-html="message"></div>
+                <div v-html="messageHtml"></div>
                 <input type="text" name="username" autocomplete="username" :value="userName" hidden />
                 <q-input
                     ref="input"
@@ -154,7 +154,7 @@
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="caption"></div>
+                    <div v-html="captionHtml"></div>
                 </div>
                 <div v-if="!noCancel" class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
@@ -164,7 +164,7 @@
             </div>
 
             <div class="q-mx-md">
-                <div v-html="message"></div>
+                <div v-html="messageHtml"></div>
                 <q-input
                     ref="profileLoginInput"
                     v-model="inputValue"
@@ -216,7 +216,7 @@
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="caption"></div>
+                    <div v-html="captionHtml"></div>
                 </div>
                 <div class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('Закрыть')">
@@ -226,7 +226,7 @@
             </div>
 
             <div class="q-mx-md">
-                <div v-html="message"></div>
+                <div v-html="messageHtml"></div>
                 <div class="q-my-md text-center">
                     <div v-show="hotKeyCode == ''" class="text-grey-5">
                         {{ $t('Нет') }}
@@ -252,6 +252,7 @@
 import vueComponent from '../vueComponent.js';
 import * as utils from '../../share/utils';
 import {t, tMessage} from '../../share/i18n';
+const {escapeHtml} = require('../../../shared/safeHtml');
 
 const componentOptions = {
     watch: {
@@ -271,6 +272,8 @@ class StdDialog {
     _options = componentOptions;
     caption = '';
     message = '';
+    //сообщения - текст (имена, названия книг); разметка только с opts.html
+    html = false;
     active = false;
     type = '';
     inputValue = '';
@@ -287,6 +290,14 @@ class StdDialog {
     okButtonLabel = 'OK';
     dialogClass = '';
     dialogStyle = null;
+
+    get captionHtml() {
+        return (this.html ? this.caption : escapeHtml(this.caption));
+    }
+
+    get messageHtml() {
+        return (this.html ? this.message : escapeHtml(this.message));
+    }
 
     get dialogContentClass() {
         return ['std-dialog-card', 'bg-white', 'no-wrap', this.dialogClass].filter(Boolean);
@@ -319,6 +330,7 @@ class StdDialog {
     init(message, caption, opts) {
         this.caption = tMessage(caption);
         this.message = tMessage(message);
+        this.html = !!(opts && opts.html);
 
         this.ok = false;        
         this.type = '';

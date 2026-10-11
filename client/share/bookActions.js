@@ -137,7 +137,7 @@ export async function runBookAction(vm, book, action, format = '', options = {})
 <b>Пояснение</b>: вероятно, браузер запретил копирование, т.к. прошло<br>
 слишком много времени с момента нажатия на кнопку (инициация<br>
 пользовательского события). Сейчас ссылка уже закеширована,<br>
-поэтому повторная попытка должна быть успешной.`), t('Ошибка'));
+поэтому повторная попытка должна быть успешной.`), t('Ошибка'), {html: true});
         } else if (action == 'readBook') {
             if (options.liberamaReady && options.submitUrl) {
                 options.submitUrl(href);

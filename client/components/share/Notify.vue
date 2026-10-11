@@ -6,6 +6,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import {tMessage} from '../../share/i18n';
+const {escapeHtml} = require('../../../shared/safeHtml');
 
 class Notify {
     notify(opts) {
@@ -18,9 +19,15 @@ class Notify {
             message = '',
             messageColor = 'black',
             position = 'top-right',
+            html = false,
         } = opts;
 
+        //сообщения - текст (имена, названия книг); разметка только с opts.html
         message = tMessage(message);
+        if (!html) {
+            message = escapeHtml(message);
+            caption = (caption ? escapeHtml(caption) : caption);
+        }
         caption = (caption ? `<div style="font-size: 120%; color: ${captionColor}"><b>${caption}</b></div><br>` : '');
         return this.$q.notify({
             position,
