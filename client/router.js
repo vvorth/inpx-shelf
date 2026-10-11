@@ -62,7 +62,44 @@ const routes = [
     {path: '/:pathMatch(.*)*', redirect: '/'},
 ];
 
-export default createRouter({
+//Страницы прокручиваются в своём .page, а не в окне, и keep-alive при возврате сбрасывает прокрутку,
+//поэтому положение запоминается для каждой записи истории и восстанавливается по «Назад» и «Вперёд».
+//Обработчик popstate ставится до создания роутера: роутер завершает переход внутри своего обработчика.
+let historyMove = false;
+window.addEventListener('popstate', () => {
+    historyMove = true;
+});
+
+const router = createRouter({
     history: createWebHashHistory(),
     routes
 });
+
+const scrollPositions = new Map();
+const scrollKey = () => `${(window.history.state || {}).position}|${router.currentRoute.value.fullPath}`;
+
+document.addEventListener('scroll', (event) => {
+    if (event.target.classList && event.target.classList.contains('page'))
+        scrollPositions.set(scrollKey(), event.target.scrollTop);
+}, true);
+
+router.afterEach((to, from, failure) => {
+    const restore = historyMove;
+    historyMove = false;
+    const top = scrollPositions.get(scrollKey());
+    if (failure || !restore || !top)
+        return;
+
+    //страница может ещё догружать книги: пробуем, пока высоты не хватит, но не дольше 2 с
+    const started = Date.now();
+    const apply = () => {
+        const page = document.querySelector('.page');
+        if (page)
+            page.scrollTop = top;
+        if ((!page || page.scrollTop < top - 1) && Date.now() - started < 2000)
+            requestAnimationFrame(apply);
+    };
+    requestAnimationFrame(apply);
+});
+
+export default router;
