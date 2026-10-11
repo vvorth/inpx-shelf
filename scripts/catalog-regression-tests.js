@@ -116,4 +116,29 @@ async function testSpellingVariantsShareAuthorAndSeries() {
     });
 }
 
-module.exports = [testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];
+// A metadata edit moves the book between authors: their book counts follow.
+async function testMetadataEditKeepsAuthorCounts() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        const book = (id, author) => ({id, _uid: `u${id}`, author, title: `Книга ${id}`, series: '', serno: 0, size: 1, librate: 0, del: 0,
+            sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang: 'ru'});
+        index.beginBuild(file);
+        index.insertBooks([book(1, 'Автор Первый'), book(2, 'Автор Первый'), book(3, 'Автор Второй')]);
+        index.finishBuild({});
+        index.updateBook(file, {id: 1, title: 'Книга 1', author: 'Автор Второй', series: ''});
+        index.updateBook(file, {id: 3, title: 'Книга 3', author: 'Автор Третий,Автор Третий', series: ''});
+        index.open(file);
+        try {
+            assert.deepStrictEqual(index.listNames({kind: 'author'}).items,
+                [{name: 'Автор Второй', books: 1}, {name: 'Автор Первый', books: 1}, {name: 'Автор Третий', books: 1}]);
+            assert.deepStrictEqual(index.authorBooks('Автор Третий').ids, [3]);
+            assert.deepStrictEqual(index.matchNames('автор второй').authors, [{name: 'Автор Второй', books: 1}]);
+        } finally {
+            index.close();
+        }
+    });
+}
+
+module.exports = [testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];

@@ -1010,17 +1010,36 @@ class CatalogIndex {
             db.exec('BEGIN');
             //исходные поля записи не меняются: правка накладывается при выдаче, здесь - поиск и связи с авторами
             db.prepare('UPDATE book SET title_norm = ?, series_norm = ? WHERE id = ?').run(normalize(title), normalize(series), id);
+            //счётчики книг авторов (списки, поиск имён) считают только неудалённые книги
+            const counted = (db.prepare('SELECT del FROM book WHERE id = ?').get(id) || {}).del ? 0 : 1;
+            const before = new Set(db.prepare('SELECT author_id FROM book_author WHERE book_id = ?').all(id).map(r => r.author_id));
             db.prepare('DELETE FROM book_author WHERE book_id = ?').run(id);
             const findAuthor = db.prepare('SELECT id FROM author WHERE name_norm = ?');
+            const after = new Set();
             for (const name of splitAuthors(author)) {
                 let found = findAuthor.get(normalize(name));
                 if (!found) {
-                    const authorId = Number(db.prepare('INSERT INTO author(name, name_norm, books) VALUES (?, ?, 1)').run(name, normalize(name)).lastInsertRowid);
-                    const nameId = db.prepare(`INSERT INTO name(kind, ref, name_norm, books) VALUES ('author', ?, ?, 1)`).run(authorId, normalize(name)).lastInsertRowid;
+                    const authorId = Number(db.prepare('INSERT INTO author(name, name_norm, books) VALUES (?, ?, 0)').run(name, normalize(name)).lastInsertRowid);
+                    const nameId = db.prepare(`INSERT INTO name(kind, ref, name_norm, books) VALUES ('author', ?, ?, 0)`).run(authorId, normalize(name)).lastInsertRowid;
                     db.prepare('INSERT INTO name_tri(rowid, name_norm) VALUES (?, ?)').run(nameId, normalize(name));
                     found = {id: authorId};
                 }
+                if (after.has(found.id))
+                    continue;
+                after.add(found.id);
                 db.prepare('INSERT INTO book_author(book_id, author_id) VALUES (?, ?)').run(id, found.id);
+            }
+            const addBooks = (authorId, delta) => {
+                db.prepare('UPDATE author SET books = MAX(0, books + ?) WHERE id = ?').run(delta, authorId);
+                db.prepare(`UPDATE name SET books = MAX(0, books + ?) WHERE kind IN ('author', 'alias') AND ref = ?`).run(delta, authorId);
+            };
+            for (const authorId of before) {
+                if (!after.has(authorId))
+                    addBooks(authorId, -counted);
+            }
+            for (const authorId of after) {
+                if (!before.has(authorId))
+                    addBooks(authorId, counted);
             }
             db.prepare('DELETE FROM book_fts WHERE rowid = ?').run(id);
             db.prepare('INSERT INTO book_fts(rowid, title, author, series, keywords) VALUES (?, ?, ?, ?, ?)')
