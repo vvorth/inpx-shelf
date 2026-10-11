@@ -19,39 +19,51 @@ async function testPreparedBookSizeAppearsInCatalogAcrossRestart() {
         const bytes = Buffer.from('Original restored EPUB fixture. '.repeat(4096));
         const hash = crypto.createHash('sha256').update(bytes).digest('hex');
         const book = {_uid: 'epub-size', file: '504942', folder: 'usr-500000-504999.zip', ext: 'epub', size: 42};
-        // RC6 cache rows did not yet store the restored size.
-        const store = new StateStore({dataDir: dir});
-        store.putBookFile({id: book._uid, hash, size: 0, assetVersion: ''});
-        const bookDir = path.join(dir, 'book');
-        const descriptor = path.join(bookDir, `${hash}.d.json`);
-        await fs.outputJson(descriptor, {size: bytes.length, assetVersion: 'fblibrary-assets-v5'});
-        const make = () => {
-            const worker = Object.create(require('../server/core/WebWorker').prototype);
-            worker.config = {bookDir};
-            worker.stateStore = new StateStore({dataDir: dir});
-            worker.readingListStore = {getMetadataOverrides: async() => ({})};
-            worker.resetLibraryAssetCaches();
-            return worker;
+        //Every StateStore holds state.sqlite open in WAL mode: on Windows the directory
+        //cannot be removed until all of them are closed.
+        const stores = [];
+        const openStore = () => {
+            const store = new StateStore({dataDir: dir});
+            stores.push(store);
+            return store;
         };
-        const result = async worker => worker.applyMetadataOverridesToSearchResult({
-            found: [{books: [{...book}]}], books: [{...book}],
-        });
-        for (const worker of [make(), make()]) {
-            const response = await result(worker);
-            for (const row of [response.books[0], response.found[0].books[0]]) {
-                assert.strictEqual(row.size, bytes.length);
-                assert.strictEqual(row.inpxSize, 42);
+        try {
+            const store = openStore();
+            // RC6 cache rows did not yet store the restored size.
+            store.putBookFile({id: book._uid, hash, size: 0, assetVersion: ''});
+            const bookDir = path.join(dir, 'book');
+            const descriptor = path.join(bookDir, `${hash}.d.json`);
+            await fs.outputJson(descriptor, {size: bytes.length, assetVersion: 'fblibrary-assets-v5'});
+            const make = () => {
+                const worker = Object.create(require('../server/core/WebWorker').prototype);
+                worker.config = {bookDir};
+                worker.stateStore = openStore();
+                worker.readingListStore = {getMetadataOverrides: async() => ({})};
+                worker.resetLibraryAssetCaches();
+                return worker;
+            };
+            const result = async worker => worker.applyMetadataOverridesToSearchResult({
+                found: [{books: [{...book}]}], books: [{...book}],
+            });
+            for (const worker of [make(), make()]) {
+                const response = await result(worker);
+                for (const row of [response.books[0], response.found[0].books[0]]) {
+                    assert.strictEqual(row.size, bytes.length);
+                    assert.strictEqual(row.inpxSize, 42);
+                }
             }
+            assert.strictEqual(book.size, 42, 'The INPX-derived record must stay intact');
+            await fs.writeJson(descriptor, {size: 1, assetVersion: 'fblibrary-assets-v4'});
+            assert.strictEqual((await result(make())).books[0].size, 42, 'Obsolete book caches must not supply sizes');
+            await fs.writeFile(descriptor, 'broken json');
+            assert.strictEqual((await result(make())).books[0].size, 42);
+            await fs.remove(descriptor);
+            store.putBookFile({id: book._uid, hash, size: bytes.length, assetVersion: 'fblibrary-assets-v5'});
+            assert.strictEqual((await result(make())).books[0].size, bytes.length, 'The measured size survives removal of the file cache');
+        } finally {
+            for (const store of stores)
+                store.close();
         }
-        assert.strictEqual(book.size, 42, 'The INPX-derived record must stay intact');
-        await fs.writeJson(descriptor, {size: 1, assetVersion: 'fblibrary-assets-v4'});
-        assert.strictEqual((await result(make())).books[0].size, 42, 'Obsolete book caches must not supply sizes');
-        await fs.writeFile(descriptor, 'broken json');
-        assert.strictEqual((await result(make())).books[0].size, 42);
-        await fs.remove(descriptor);
-        store.putBookFile({id: book._uid, hash, size: bytes.length, assetVersion: 'fblibrary-assets-v5'});
-        assert.strictEqual((await result(make())).books[0].size, bytes.length, 'The measured size survives removal of the file cache');
-        store.close();
     });
 }
 
