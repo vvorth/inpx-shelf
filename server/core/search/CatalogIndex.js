@@ -150,6 +150,8 @@ class CatalogIndex {
             aliasLookup: buildLookup(aliasEntries),
             aliases: new Map(),
             series: new Map(),
+            uids: new Set(),
+            lastId: 0,
             count: 0,
             insertBook: db.prepare(`INSERT INTO book(id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
                 file, folder, libid, insno, source, title_norm, author_norm, series_norm, copy_key)
@@ -160,14 +162,18 @@ class CatalogIndex {
         };
     }
 
+    //id назначаются по порядку вызовов; повтор _uid (та же книга в другой библиотеке) пропускается
     insertBooks(rows = []) {
         const b = this.build;
         if (!b)
             throw new Error('catalog index: build not started');
 
         for (const row of rows) {
-            const id = Number(row.id);
-            if (!id || !row._uid)
+            if (b.uids.has(row._uid))
+                continue;
+            b.uids.add(row._uid);
+            const id = ++b.lastId;
+            if (!row._uid)
                 continue;
 
             //shown - значения с правкой метаданных: по ним ищутся, сортируются и группируются книги

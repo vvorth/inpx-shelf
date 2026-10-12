@@ -77,7 +77,7 @@ class CatalogSearch {
     }
 
     //Импорт всех включённых библиотек из INPX во временный файл; готовый файл заменяет прежний.
-    //Отбор, пропуск повторов _uid и порядок id - как у прежнего создания основной БД.
+    //Отбор здесь, пропуск повторов _uid и порядок id - в потоке сборки (insertBooks), как у прежнего создания основной БД.
     async rebuild(inpxHash, generation) {
         //строит отдельный поток: поток запросов продолжает отвечать по прежней БД до замены файла
         const CatalogIndexThread = require('./CatalogIndexThread');
@@ -99,9 +99,7 @@ class CatalogSearch {
 
             const sourceRows = sources.map(source => ({id: source.id, name: source.name, libDir: source.libDir}));
             await thread.call('beginBuild', tmpFile, names.entries, sourceRows);
-            const uids = new Set();
             const parserInfos = [];
-            let id = 0;
             let recsLoaded = 0;
             for (const [index, source] of sources.entries()) {
                 let totalFiles = 0;
@@ -117,10 +115,8 @@ class CatalogSearch {
                     const rows = [];
                     for (const rec of chunk) {
                         rec.sourceId = source.id;
-                        if (!filter(rec) || uids.has(rec._uid))
+                        if (!filter(rec))
                             continue;
-                        uids.add(rec._uid);
-                        rec.id = ++id;
                         if (overrides[rec._uid]) {
                             const shown = this.worker.applyMetadataOverrideToBook(Object.assign({}, rec), overrides);
                             rec.shown = {title: shown.title, author: shown.author, series: shown.series, serno: shown.serno};
