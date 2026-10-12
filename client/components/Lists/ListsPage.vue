@@ -163,7 +163,7 @@
                             <div v-if="!visibleBooks.length" class="page-empty page-empty--inline">
                                 {{ $t('lists.nothingMatches') }}
                             </div>
-                            <BookCollection v-else-if="view === 'covers'" :books="visibleBooks.map(book => book.record)" view="covers" />
+                            <BookCollection v-else-if="view !== 'table'" :books="visibleBooks.map(book => book.record)" :view="view" />
                             <div v-else class="table-wrap">
                                 <table class="data-table">
                                     <thead>
@@ -384,13 +384,14 @@ class ListsPage {
     }
 
     get view() {
-        return (this.settings.listsView === 'covers' ? 'covers' : 'table');
+        return (['covers', 'cards'].includes(this.settings.listsView) ? this.settings.listsView : 'table');
     }
 
     get viewOptions() {
         return [
             {icon: 'la la-list', value: 'table', attrs: {'aria-label': t('lists.asTable'), title: t('lists.asTable')}},
             {icon: 'la la-th', value: 'covers', attrs: {'aria-label': t('mePreferences.asCovers'), title: t('mePreferences.asCovers')}},
+            {icon: 'la la-th-large', value: 'cards', attrs: {'aria-label': t('mePreferences.asCards'), title: t('mePreferences.asCards')}},
         ];
     }
 
