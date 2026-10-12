@@ -7,7 +7,11 @@ Node.js 24 server. Entry: `index.js`.
 - `config/` — `base.js` defaults; `index.js` `propsToSave` lists the keys read from and written to `config.json`. `application_env` = `development` runs webpack inside the server: measure memory and speed without it (the release binary runs in production mode).
 - `controllers/WebSocketController.js` — WebSocket API: one `switch` on `action`, handlers call `WebWorker` methods. Read-only actions are listed in `readOnlyActions`; every other action needs the CSRF token.
 - `static.js` — HTTP routes for books, covers, downloads. `core/opds/` — OPDS feed. `core/kobo/` — Kobo sync: `index.js` (service, routes, sync phases) with mixins `Preparation`, `Covers`, `StoreProxy`. `core/HealthRoutes.js` — health and metrics.
-- `core/WebWorker.js` — the application service: library access, books, reader, shelves, admin. `AdminBackup.js` is mixed into it.
+- `core/WebWorker.js` — the application service (`webWorker` everywhere): library DB state, books and prepared files, reader, reading lists. Mixins in their own files add methods to `WebWorker.prototype` (`this` is the worker):
+  - `ProfileSessions.js` — profile login, sessions, `requireAdmin`; `AdminService.js` — admin dashboard, events, sources, runtime config; `AdminBackup.js` — settings export and backups.
+  - `LibraryAssets.js` — books from archives, covers and images, author info, reviews; `BookDelivery.js` — sending books.
+  - `CacheCleaner.js` — book and cover cache cleaning (schedule maths in `CacheSchedule.js`).
+  - `discovery/ExternalShelf.js` — discovery config, shelf cache, Wikidata awards shelf; `discovery/PersonalShelves.js` — personal shelves.
 - `core/search/` — library database:
   - `CatalogSearch.js` imports INPX (`LibraryImport.js`, `InpxParser.js`) into `library.sqlite` and is the main-thread API (`catalogSearch` on the worker).
   - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).
