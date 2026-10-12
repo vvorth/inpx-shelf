@@ -2046,6 +2046,8 @@ const tests = [
     ...require('./dependency-smoke-tests'),
     ...require('./security-regression-tests'),
     ...require('./kobo-sync-tests'),
+    ...require('./inpx-parser-tests'),
+    ...require('./xml-parser-tests'),
     testConfigSecretsSurviveRestart,
     testAppCacheRecoveryBootstrapAndRoute,
     testFb2ContentsExcludeNotesBodies,
