@@ -133,7 +133,7 @@ async function testBackupValidationBeforeMutation() {
         const base = {'backup-info.json': {version: 'test'}, 'config.json': {opds: {password: 'new'}}};
         const invalid = await archive({...base, 'reading-lists.json': '{broken'});
         await assert.rejects(worker.importAdminBackup('admin', 'token', invalid));
-        const bomb = await archive({...base, 'discovery-cache.json': JSON.stringify({large: 'x'.repeat(1024*1024)})});
+        const bomb = await archive({...base, 'kobo-sync.json': JSON.stringify({devices: [], large: 'x'.repeat(1024*1024)})});
         await assert.rejects(worker.importAdminBackup('admin', 'token', bomb), /распакованный размер/);
         const secretStore = new (require('../server/core/SecretStore'))(worker.config);
         const protectedConfig = await secretStore.protectConfig({opds: {password: 'new'}});
@@ -145,6 +145,17 @@ async function testBackupValidationBeforeMutation() {
         assert.strictEqual(worker.config.opds.password, 'old');
         assert.strictEqual(worker.profileSessions.size, 1);
         assert.deepStrictEqual(await fs.readdir(worker.config.tempDir), []);
+
+        // Upstream inpx-web backups carry the discovery cache and upstream release links: neither is restored.
+        worker.config.checkReleaseLink = 'https://api.github.com/repos/vvorth/inpx-shelf/releases/latest';
+        const upstream = await archive({...base, 'config.json': {opds: {password: 'new'},
+            checkReleaseLink: 'https://api.github.com/repos/AceAsket/inpx-web/releases/latest'},
+        'discovery-cache.json': {stale: {time: 0, value: {}}}});
+        const restored = await worker.importAdminBackup('admin', 'token', upstream);
+        assert.ok(!restored.restored.includes('discovery-cache.json'));
+        assert.strictEqual(await fs.pathExists(path.join(dataDir, 'discovery-cache.json')), false);
+        assert.strictEqual(worker.config.checkReleaseLink, 'https://api.github.com/repos/vvorth/inpx-shelf/releases/latest');
+        assert.strictEqual((await fs.readJson(worker.config.configFile)).checkReleaseLink, worker.config.checkReleaseLink);
     });
 }
 

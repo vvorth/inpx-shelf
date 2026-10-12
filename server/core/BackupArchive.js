@@ -35,6 +35,9 @@ async function read(payload, config, folder) {
         const result = {};
         let total = 0;
         for (const entry of entries) {
+            // Older and upstream inpx-web backups carry the discovery cache; it is rebuilt, never restored.
+            if (entry.name === 'discovery-cache.json')
+                continue;
             const stream = await zip.stream(entry.name);
             const chunks = [];
             for await (const chunk of stream) {

@@ -177,7 +177,6 @@ module.exports = {
         await this.addBackupPath(zipFile, this.config.configFile, 'config.json');
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'secret.key'), 'secret.key');
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'reading-lists.json'), 'reading-lists.json');
-        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'discovery-cache.json'), 'discovery-cache.json');
         // Token hashes included: restored devices keep syncing without being set up again.
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'kobo-sync.json'), 'kobo-sync.json');
 
@@ -224,9 +223,11 @@ module.exports = {
                     this.normalizeImportedAdminSettings(decoded);
                     // Keep machine-local paths, including the recovery journal location. Converter paths
                     // are programs the server runs: only config.json on this machine may set them.
+                    // Release links stay too: an upstream inpx-web backup would point update checks at upstream.
                     runtimePatch = Object.assign(_.pick(decoded, ConfigManager.propsToSave), {
                         dataDir: this.config.dataDir, tempDir: this.config.tempDir, logDir: this.config.logDir,
                         converterPaths: this.config.converterPaths,
+                        latestReleaseLink: this.config.latestReleaseLink, checkReleaseLink: this.config.checkReleaseLink,
                     });
                     const protectedConfig = await secretStore.protectConfig(runtimePatch);
                     if (await fs.pathExists(path.join(folder, 'secret.key')))
@@ -238,8 +239,6 @@ module.exports = {
                     const rebased = await this.readingListStore.rebaseReaderProgressGeneration(normalized);
                     content['reading-lists.json'] = JSON.stringify(rebased, null, 2);
                 }
-                if (archive['discovery-cache.json'])
-                    content['discovery-cache.json'] = JSON.stringify(archive['discovery-cache.json'], null, 2);
                 let koboData = null;
                 if (archive['kobo-sync.json']) {
                     const KoboStore = require('./kobo/KoboStore');
@@ -255,10 +254,6 @@ module.exports = {
                 if (runtimePatch)
                     Object.assign(this.config, runtimePatch);
                 this.profileSessions.clear();
-                if (archive['discovery-cache.json']) {
-                    this.discoveryCache = new Map();
-                    this.discoveryDiskCache = archive['discovery-cache.json'];
-                }
                 const restored = Object.keys(content);
                 this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
                 //правки метаданных из бэкапа попадают в поиск и связи авторов при пересборке БД библиотеки;

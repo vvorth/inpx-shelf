@@ -831,7 +831,7 @@ async function testAdminBackupArchiveAndDownload() {
             assert.ok(entries['config.json']);
             assert.ok(entries['reading-lists.json']);
             assert.ok(entries['secret.key']);
-            assert.ok(entries['discovery-cache.json']);
+            assert.strictEqual(entries['discovery-cache.json'], undefined);
             assert.ok(entries['kobo-sync.json']);
             assert.strictEqual(entries['db/index.json'], undefined);
 
