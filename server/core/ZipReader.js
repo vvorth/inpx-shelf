@@ -29,7 +29,8 @@ class ZipReader {
         const commands = this.sevenZipCommands;
         for (let index = 0; ; index++) {
             try {
-                return await runProcess(commands[index], args, options);
+                // большой solid-архив на медленном диске распаковывается долго: 120 с конвертации тут мало
+                return await runProcess(commands[index], args, {timeoutMs: 30*60*1000, ...options});
             } catch (err) {
                 if (err.code !== 'ENOENT')
                     throw err;

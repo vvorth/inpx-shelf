@@ -80,8 +80,9 @@ function killTree(child) {
 }
 
 // options.stdoutFile пишет stdout в файл, options.maxStdout возвращает stdout буфером не больше этого размера.
+// options.timeoutMs - срок вне конвертации (внутри действует срок конвертации).
 async function runProcess(command, args, options = {}) {
-    const scope = context.getStore() || {...defaults, deadline: Date.now() + defaults.timeoutMs};
+    const scope = context.getStore() || {...defaults, deadline: Date.now() + (options.timeoutMs || defaults.timeoutMs)};
     const timeoutError = () => failure('INPX_CONVERSION_TIMEOUT', t('errors.conversionTimeout'));
     if (scope.deadline <= Date.now())
         throw timeoutError();
