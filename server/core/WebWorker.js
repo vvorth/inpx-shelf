@@ -580,9 +580,30 @@ class WebWorker {
             this.stateStore.close();
     }
 
+    //Одна сборка БД за раз: вызов во время сборки ставит в очередь не больше одной следующей
+    loadOrCreateDb(recreate = false) {
+        if (!this.dbLoad) {
+            this.dbLoad = this.loadOrCreateDbOnce(recreate).finally(() => {
+                this.dbLoad = null;
+            });
+            return this.dbLoad;
+        }
+
+        this.dbReloadRecreate = !!(this.dbReloadRecreate || recreate);
+        if (!this.dbReload) {
+            this.dbReload = this.dbLoad.then(() => {
+                const force = this.dbReloadRecreate;
+                this.dbReload = null;
+                this.dbReloadRecreate = false;
+                return this.loadOrCreateDb(force);
+            });
+        }
+        return this.dbReload;
+    }
+
     //Открывает БД библиотеки или строит её из INPX. Пока строится впервые - сервер занят;
     //пересборка готовой БД (переиндексирование, новый INPX) идёт в фоне, прежняя БД отвечает до замены.
-    async loadOrCreateDb(recreate = false) {
+    async loadOrCreateDbOnce(recreate = false) {
         const config = this.config;
         const firstLoad = !this.catalogSearch.ready;
         if (firstLoad)
@@ -4856,20 +4877,21 @@ class WebWorker {
                 while (this.myState != ssNormal)
                     await utils.sleep(1000);
 
-                if (this.remoteLib) {
-                    await this.remoteLib.downloadInpxFile();
-                }
+                //пока идёт пересборка, БД ещё со старым хешем: проверим в следующий раз
+                if (!this.dbLoad) {
+                    if (this.remoteLib) {
+                        await this.remoteLib.downloadInpxFile();
+                    }
 
-                const newInpxHash = await this.inpxHashCreator.getHash();
+                    const newInpxHash = await this.inpxHashCreator.getHash();
 
-                const dbConfig = await this.dbConfig();
-                const currentInpxHash = (dbConfig.inpxHash ? dbConfig.inpxHash : '');
+                    const dbConfig = await this.dbConfig();
+                    const currentInpxHash = (dbConfig.inpxHash ? dbConfig.inpxHash : '');
 
-                if (newInpxHash !== currentInpxHash) {
-                    log('inpx file: changes found, recreating DB');
-                    await this.recreateDb();
-                } else {
-                    //log('inpx file: no changes');
+                    if (newInpxHash !== currentInpxHash) {
+                        log('inpx file: changes found, recreating DB');
+                        await this.recreateDb();
+                    }
                 }
             } catch(e) {
                 log(LM_ERR, `periodicCheckInpx: ${e.message}`);

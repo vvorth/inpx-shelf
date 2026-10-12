@@ -71,7 +71,31 @@ async function testExternalForceRefreshIsAdminOnly() {
     assert.deepStrictEqual(forced, [false, true, false]);
 }
 
+//пересборки БД библиотеки не идут параллельно: во время сборки в очереди не больше одной следующей
+async function testLibraryRebuildsDoNotOverlap() {
+    const worker = bareWorker({config: {}, setMyState: () => {}, resetLibraryAssetCaches: () => {}});
+    worker.inpxHashCreator = {getInpxFileHash: async() => 'file', getHash: async() => 'hash'};
+    let running = 0;
+    const builds = [];
+    worker.catalogSearch = {
+        ready: true,
+        ensure: async(hash, options) => {
+            running++;
+            assert.strictEqual(running, 1, 'rebuilds overlap');
+            builds.push(options.force);
+            await new Promise(resolve => setTimeout(resolve, 20));
+            running--;
+            return true;
+        },
+    };
+
+    await Promise.all([worker.loadOrCreateDb(), worker.recreateDb(), worker.loadOrCreateDb(), worker.recreateDb()]);
+    assert.deepStrictEqual(builds, [false, true]);
+    assert.strictEqual(worker.dbLoad, null);
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
+    testLibraryRebuildsDoNotOverlap,
 ];
