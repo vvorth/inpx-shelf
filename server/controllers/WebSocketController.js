@@ -9,6 +9,8 @@ const runtimeMetrics = require('../core/RuntimeMetrics');
 const i18n = require('../core/i18n');
 
 const cleanPeriod = 1*60*1000;//1 минута
+//пароли и токены не попадают в журнал запросов
+const hideSecrets = (key, value) => (/pass|token|secret/i.test(key) && value ? '***' : value);
 const closeSocketOnIdle = 5*60*1000;//5 минут
 //только чтение; всё остальное, в том числе новые действия, требует CSRF-токен
 const readOnlyActions = new Set([
@@ -94,14 +96,14 @@ class WebSocketController {
         let metricToken = null;
         let metricOk = false;
         try {
+            req = JSON.parse(message);
             if (this.isDevelopment || this.config.logQueries) {
-                log(`WebSocket-IN:  ${utils.cutString(message)}`);
+                log(`WebSocket-IN:  ${utils.cutString(JSON.stringify(req, hideSecrets))}`);
             }
 
-            req = JSON.parse(message);
             require('../core/RequestLimits').checkRequest(req, messageBytes, this.config);
             req.__startTime = Date.now();
-            metricToken = runtimeMetrics.beginAction(req.action);
+            metricToken = runtimeMetrics.beginAction(this.actionLabel(req.action));
             if (!req.profileAccessToken && this.security && ws.req && ws.req.securitySession && ws.req.securitySession.profileAccessToken)
                 req.profileAccessToken = ws.req.securitySession.profileAccessToken;
 
@@ -322,11 +324,18 @@ class WebSocketController {
             ws.send(message);
 
             if (this.isDevelopment || this.config.logQueries) {
-                log(`WebSocket-OUT: ${utils.cutString(message)}`);
+                log(`WebSocket-OUT: ${utils.cutString(JSON.stringify(r, hideSecrets))}`);
                 log(`${Date.now() - req.__startTime}ms`);
             }
 
         }
+    }
+
+    //метка метрики только для действий, у которых есть обработчик (имя метода = camelCase действия),
+    //иначе запросы до входа с произвольным action плодят метки без ограничения
+    actionLabel(action) {
+        const method = _.camelCase(action);
+        return (typeof action === 'string' && _.kebabCase(method) === action && typeof this[method] === 'function' ? action : 'unknown');
     }
 
     isCsrfProtectedAction(action = '') {

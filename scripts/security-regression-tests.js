@@ -436,6 +436,31 @@ async function testAccessPasswordLimitBlocksCorrectGuess() {
     assert.strictEqual((await call(token)).ok, true);
 }
 
-module.exports = [testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+// Query logging must not write passwords and tokens; unknown actions share one metric label.
+async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
+    const Controller = require('../server/controllers/WebSocketController');
+    const runtimeMetrics = require('../server/core/RuntimeMetrics');
+    const logger = new (require('../server/core/AppLogger'))().logger;
+    const config = {logQueries: true};
+    const controller = Object.assign(Object.create(Controller.prototype), {config, webAccess: {hasAccess: async() => true}, activeRequests: 0});
+    controller.test = async(req, ws) => controller.send({ok: true, profileAccessToken: 'OUT_SECRET'}, req, ws);
+    const ws = {readyState: 1, req: {headers: {}}, send() {}};
+    const lines = [];
+    const capture = {log: (type, message) => lines.push(message)};
+    logger.handlers.push(capture);
+    try {
+        await controller.processMessage(ws, JSON.stringify({action: 'test', password: 'IN_SECRET', accessToken: 'IN_SECRET',
+            profile: {password: 'IN_SECRET'}, csrfToken: 'IN_SECRET'}));
+        await controller.processMessage(ws, JSON.stringify({action: 'random-action-name'}));
+    } finally {
+        logger.handlers.splice(logger.handlers.indexOf(capture), 1);
+    }
+    assert.ok(lines.some(line => line.includes('WebSocket-IN')) && lines.some(line => line.includes('WebSocket-OUT')));
+    assert.ok(!lines.some(line => line.includes('_SECRET')), lines.join(''));
+    const labels = [...runtimeMetrics.actionStats.keys()];
+    assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
+}
+
+module.exports = [testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];
