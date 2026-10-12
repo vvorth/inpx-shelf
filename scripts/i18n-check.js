@@ -63,10 +63,13 @@ function params(value) {
 }
 
 //код без комментариев (строки сохраняются, чтобы номера строк совпадали)
-function stripComments(text) {
-    return text
-        .replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, ' '))
-        .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+function stripComments(text, vue = false) {
+    const blank = m => m.replace(/[^\n]/g, ' ');
+    const html = text.replace(/<!--[\s\S]*?-->/g, blank);
+    //в шаблоне .vue `/*` - обычный текст (accept="image/*"): комментарии JS/CSS ищем только после него
+    const codeStart = (vue ? Math.max(0, html.search(/<script[\s>]/)) : 0);
+    return html.slice(0, codeStart) + html.slice(codeStart)
+        .replace(/\/\*[\s\S]*?\*\//g, blank)
         .replace(/(^|[^:'"`\\])\/\/.*$/gm, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
 }
 
@@ -116,7 +119,7 @@ function main() {
         //posix-путь: на Windows path.relative даёт обратные слэши, и dataFiles не совпадал бы
         const rel = path.relative(root, file).split(path.sep).join('/');
         const text = fs.readFileSync(file, 'utf8');
-        const code = stripComments(text);
+        const code = stripComments(text, file.endsWith('.vue'));
 
         for (const m of code.matchAll(callRe)) {
             usedKeys.add(m[1]);
