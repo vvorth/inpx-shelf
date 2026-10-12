@@ -250,8 +250,6 @@
                         </section>
                     </template>
 
-                    <AdminIntegrations v-else-if="section === 'integrations'" />
-
                     <template v-else-if="section === 'storage'">
                 <div class="admin-subsection">
                     <div class="admin-subsection-head">
@@ -358,6 +356,9 @@
                     </div>
                 </div>
                     </template>
+
+                    <!-- v-show: несохранённые правки формы переживают переключение разделов -->
+                    <AdminIntegrations v-show="section === 'integrations'" />
                 </div>
             </div>
         </div>

@@ -174,7 +174,8 @@ async function fetchDeployedBuildId() {
     try {
         const response = await fetch(`${appBasePath()}build-id.txt?check=${Date.now()}`, {
             cache: 'no-store',
-            signal: AbortSignal.timeout(appBuildCheckTimeoutMs),
+            // старые браузеры (в т.ч. e-reader) без AbortSignal.timeout проверяют без таймаута
+            signal: AbortSignal.timeout?.(appBuildCheckTimeoutMs),
         });
         if (!response.ok)
             return '';
