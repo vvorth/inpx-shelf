@@ -219,16 +219,18 @@ class KoboService {
     }
 
     // ------------------------------------------------------------------ list → device
+    // The profile's lists among listIds, in that order, from one load of the profile store.
+    async boundLists(userId, listIds) {
+        const data = await this.worker.readingListStore.load();
+        const own = new Map(data.lists.filter(list => list.userId === userId).map(list => [list.id, list]));
+        return {data, lists: listIds.map(listId => own.get(listId)).filter(Boolean)};
+    }
+
     async collectWanted(device, rekey = true) {
         const store = this.worker.readingListStore;
-        const lists = [];
-        for (const listId of device.listIds) {
-            const list = await store.getList(device.userId, listId);
-            if (list)
-                lists.push(list);
-        }
-
-        const overrides = await this.metadataOverrides();
+        const {data, lists} = await this.boundLists(device.userId, device.listIds);
+        const overrides = data.metadataOverrides || {};
+        const records = await this.worker.getBookRecordsByUids(lists.flatMap(list => store.normalizeEntries(list.books).map(entry => entry.bookUid)));
         const wanted = new Map();
         // bookUid → its wanted item (or null for an orphan), for books listed more than once.
         const seenUids = new Map();
@@ -248,7 +250,7 @@ class KoboService {
                     continue;
                 }
                 seenUids.set(entry.bookUid, null);
-                const book = this.withOverrides(await this.worker.getBookRecordByUid(entry.bookUid), overrides);
+                const book = this.withOverrides(records.get(entry.bookUid) || null, overrides);
                 if (!book) {
                     // Missing from the DB while still listed (re-index in progress,
                     // INPX line rewritten): never treat that as a removal.
@@ -487,13 +489,9 @@ class KoboService {
             const bound = new Set(this.store.data.devices.filter(device => device.userId === userId)
                 .flatMap(device => device.listIds));
             const store = this.worker.readingListStore;
-            for (const listId of (listIds || [...bound])) {
-                if (!bound.has(listId))
-                    continue;
-                const list = await store.getList(userId, listId);
-                if (list)
-                    this.enqueuePrewarm(userId, store.normalizeEntries(list.books).map(entry => entry.bookUid));
-            }
+            const {lists} = await this.boundLists(userId, (listIds || [...bound]).filter(listId => bound.has(listId)));
+            for (const list of lists)
+                this.enqueuePrewarm(userId, store.normalizeEntries(list.books).map(entry => entry.bookUid));
         })().catch(e => log(LM_WARN, `Kobo: cannot queue books for preparation: ${e.message}`))
             .finally(() => this.prewarmListTasks.delete(task));
         this.prewarmListTasks.add(task);

@@ -32,10 +32,22 @@ async function fixture(options, test) {
         const prepareCalls = [];
         // What the stand-in converter currently produces; tests change it to mimic regenerated files.
         const output = {suffix: ''};
+        const lookups = {batches: 0};
         const worker = {
             config,
             readingListStore: new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin-fixture'}),
             getBookRecordByUid: async uid => books.get(uid) || null,
+            // Through getBookRecordByUid, so tests that replace it hide books from both.
+            async getBookRecordsByUids(uids) {
+                lookups.batches++;
+                const found = new Map();
+                for (const uid of uids) {
+                    const book = await this.getBookRecordByUid(uid);
+                    if (book)
+                        found.set(uid, book);
+                }
+                return found;
+            },
             getBookCover: async() => ({contentType: 'image/png', data: png}),
             getPreparedBookFile: async(uid, format) => {
                 prepareCalls.push([uid, format]);
@@ -79,7 +91,7 @@ async function fixture(options, test) {
             assert.ok(syncToken);
             return {items: await response.json(), more: response.headers.get('x-kobo-sync') === 'continue'};
         };
-        await test({config, service, store, worker, books, device, endpoint, token, base, listA, listB, call, sync, prepareCalls, output});
+        await test({config, service, store, worker, books, device, endpoint, token, base, listA, listB, call, sync, prepareCalls, output, lookups});
     } finally {
         if (server) {
             server.closeAllConnections();
@@ -497,6 +509,25 @@ async function testKoboSyncKeepsChangesMadeDuringConversion() {
         await pendingSync;
         assert.strictEqual(service.store.data.devices[0].books[epubUuid].deletedOnDevice, true);
         assert.deepStrictEqual(entitlementIds((await sync({fresh: true})).items, 'NewEntitlement'), [kobo.uuidv5('late-uid')]);
+    });
+}
+
+// Each request checks the profile without cloning the store; a sync loads it once and asks for all books at once.
+async function testKoboSyncLoadsProfileStoreOnce() {
+    await fixture({}, async({store, listA, listB, sync, lookups}) => {
+        await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
+        await store.addBooks('default', listB.id, ['epub-uid', 'pdf-uid']);
+        await sync({fresh: true});
+        const load = store.load;
+        let loads = 0;
+        store.load = function(...args) {
+            loads++;
+            return load.apply(this, args);
+        };
+        lookups.batches = 0;
+        await sync();
+        store.load = load;
+        assert.deepStrictEqual([loads, lookups.batches], [1, 1]);
     });
 }
 
@@ -1135,6 +1166,7 @@ module.exports = [
     testKoboStoreProxyToggle,
     testKoboSyncKeepsChangesMadeDuringConversion,
     testKoboResetDuringSyncIsKept,
+    testKoboSyncLoadsProfileStoreOnce,
     testKoboRowFollowsTheListedRecord,
     testKoboReannouncesRegeneratedFiles,
     testKoboTokensAreMaskedInLogs,

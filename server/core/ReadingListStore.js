@@ -907,10 +907,15 @@ class ReadingListStore {
     }
 
     // Exact lookup: unlike resolveUser, an unknown id does not fall back to the first profile.
+    // Asked on every Kobo request: reads the cached copy in place instead of cloning the store.
     async hasUser(userId = '') {
         const normalizedUserId = String(userId || '').trim();
-        const data = await this.load();
-        return !!normalizedUserId && data.users.some((item) => item.id === normalizedUserId);
+        if (!normalizedUserId)
+            return false;
+        const stat = await fs.stat(this.file).catch(() => null);
+        const fresh = stat && this.loaded && this.loaded.stamp === this.fileStamp(stat) && !this.config.resetAdminPassword;
+        const data = (fresh ? this.loaded.data : await this.load());
+        return data.users.some((item) => item.id === normalizedUserId);
     }
 
     async findUserByLogin(login = '') {
