@@ -47,14 +47,30 @@ function adminEventCounts(webWorker) {
     });
 }
 
+// Directory sizes walk up to tens of thousands of files: scrapes within a minute share one walk.
+const sizeCacheMs = 60*1000;
+const sizeCache = new WeakMap();
+function cachedSizes(config, webWorker) {
+    let cached = sizeCache.get(webWorker);
+    if (!cached || Date.now() - cached.at > sizeCacheMs) {
+        const value = Promise.all([
+            webWorker.dirSize(webWorker.catalogSearch.file),
+            webWorker.dirSize(config.bookDir),
+            webWorker.dirSize(config.coverDir || `${config.publicFilesDir}/cover`),
+        ]);
+        value.catch(() => sizeCache.delete(webWorker));
+        cached = {at: Date.now(), value};
+        sizeCache.set(webWorker, cached);
+    }
+    return cached.value;
+}
+
 async function buildMetrics(config, webWorker, security = null, webSocketController = null) {
     const index = await webWorker.getIndexStatus();
     const stats = index.stats || {};
     const memory = process.memoryUsage();
     const cpu = process.cpuUsage();
-    const dbSize = await webWorker.dirSize(webWorker.catalogSearch.file);
-    const bookCacheSize = await webWorker.dirSize(config.bookDir);
-    const coverCacheSize = await webWorker.dirSize(config.coverDir || `${config.publicFilesDir}/cover`);
+    const [dbSize, bookCacheSize, coverCacheSize] = await cachedSizes(config, webWorker);
     const sources = Array.isArray(config.librarySources) ? config.librarySources : [];
     const enabledSources = sources.filter(source => source.enabled !== false);
     const loginMetrics = security && security.getLoginMetrics ? security.getLoginMetrics() : null;
