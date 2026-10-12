@@ -590,6 +590,14 @@ function testHugePngIsRejectedBeforeDecoding() {
     assert.throws(() => imageUtils.fitToJpeg(huge, 10, 10), /20000x20000/);
 }
 
+// gunzip of a compressed book stops at the output limit instead of filling memory.
+async function testGunzipBufferIsBounded() {
+    const utils = require('../server/core/utils');
+    const packed = require('zlib').gzipSync(Buffer.alloc(1024*1024));
+    assert.strictEqual((await utils.gunzipBuffer(packed)).length, 1024*1024);
+    await assert.rejects(utils.gunzipBuffer(packed, 1000), {code: 'ERR_BUFFER_TOO_LARGE'});
+}
+
 module.exports = [
     testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
@@ -597,5 +605,4 @@ module.exports = [
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
-    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding
-];
+    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded];

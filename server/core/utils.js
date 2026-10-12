@@ -137,9 +137,12 @@ function gzipBuffer(buf) {
     });
 }
 
-function gunzipBuffer(buf) {
+// Сжатая книга не должна распаковаться больше этого (защита от gzip-бомбы).
+const maxGunzipBytes = 256*1024*1024;
+
+function gunzipBuffer(buf, maxOutputLength = maxGunzipBytes) {
     return new Promise((resolve, reject) => {
-        zlib.gunzip(buf, (err, result) => {
+        zlib.gunzip(buf, {maxOutputLength}, (err, result) => {
             if (err) reject(err);
             resolve(result);
         });
