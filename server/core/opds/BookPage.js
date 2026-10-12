@@ -3,10 +3,19 @@ const _ = require('lodash');
 const dayjs = require('dayjs');
 
 const BasePage = require('./BasePage');
+const bookConverter = require('../BookConverter');
 const Fb2Parser = require('../fb2/Fb2Parser');
 const {t, tGenre} = require('../i18n');
 
 const extMime = new Map([['fb2', 'application/fb2+xml'], ['epub', 'application/epub+zip'], ['mobi', 'application/x-mobipocket-ebook']]);
+const convertedMime = new Map([
+    ['epub', 'application/epub+zip'],
+    ['epub3', 'application/epub+zip'],
+    ['kepub', 'application/kepub+zip'],
+    ['kfx', 'application/vnd.amazon.ebook'],
+    ['azw8', 'application/x-mobi8-ebook'],
+    ['pdf', 'application/pdf'],
+]);
 
 class BookPage extends BasePage {
     constructor(config) {
@@ -174,6 +183,20 @@ class BookPage extends BasePage {
                     addLink(rawHref, 'application/x-fictionbook+xml');
                 else if (ext !== 'epub' && ext !== 'mobi')
                     addLink(directDownload ? `${directHref}&zip=1` : `${bookInfo.link}/zip`, 'application/zip');
+
+                //converted formats, produced on download by the /book route
+                if (this.config.conversionEnabled) {
+                    for (const fmt of (this.config.conversionFormats || [])) {
+                        if (fmt === ext || !bookConverter.canConvertSourceTo(ext, fmt))
+                            continue;
+                        const convertedName = encodeURIComponent(bookConverter.getConvertedFileName(bookInfo.downFileName || `book.${ext}`, fmt));
+                        links.push({
+                            href: (directDownload ? `${directHref}&format=${fmt}` : `${bookInfo.link}/${fmt}/${convertedName}`),
+                            type: convertedMime.get(fmt) || `application/${fmt}`,
+                            title: fmt.toUpperCase(),
+                        });
+                    }
+                }
 
                 //entry
                 const e = this.makeEntry({

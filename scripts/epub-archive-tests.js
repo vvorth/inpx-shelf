@@ -349,6 +349,13 @@ async function testSameFilenameEpubAndFb2KeepTheirOwnAssetsAndDownloads() {
             const coldXml = await page.body({query: {uid: epubUid}, originalUrl: `/opds/book?uid=${encodeURIComponent(epubUid)}`});
             assert.strictEqual(restores, 0, 'OPDS must return an EPUB acquisition link before preparing the book');
             assert.ok(coldXml.includes(`/book/by-uid?uid=${encodeURIComponent(epubUid)}&amp;format=raw`));
+            assert.ok(!coldXml.includes('&amp;format=pdf'), 'OPDS must not offer conversions while conversion is off');
+            Object.assign(config, {conversionEnabled: true, conversionFormats: ['epub', 'kepub', 'pdf']});
+            const convertXml = await page.body({query: {uid: epubUid}, originalUrl: `/opds/book?uid=${encodeURIComponent(epubUid)}`});
+            delete config.conversionEnabled;
+            delete config.conversionFormats;
+            assert.ok(convertXml.includes(`/book/by-uid?uid=${encodeURIComponent(epubUid)}&amp;format=pdf`), 'OPDS must offer the EPUB as PDF');
+            assert.ok(!/format=(epub|kepub)/.test(convertXml), 'OPDS must offer only conversions the source supports');
             const [{bookInfo}, raw, wrapped, rawAgain, wrappedAgain, prepared] = await Promise.all([
                 worker.getBookInfo(epubUid),
                 fetch(`${base}/book/by-uid?uid=${encodeURIComponent(epubUid)}&format=raw`),
