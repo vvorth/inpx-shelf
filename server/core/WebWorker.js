@@ -871,9 +871,9 @@ class WebWorker {
             require('./FilePersistence').writeFileAtomic(this.discoveryDiskCacheFile, JSON.stringify(this.discoveryDiskCache || {})));
     }
 
-    //Убирает просроченные записи и полки прежних библиотек (хеш INPX - второе поле ключа discovery:...)
+    //Убирает просроченные записи и записи прежних библиотек (хеш INPX - второе поле ключей discovery: и wikidata-matches:)
     pruneDiscoveryCache(currentKey = '', now = Date.now()) {
-        const libraryOf = key => (key.startsWith('discovery:') ? key.split(':')[1] : null);
+        const libraryOf = key => (/^(discovery|wikidata-matches):/.test(key) ? key.split(':')[1] : null);
         const library = libraryOf(currentKey);
         const stale = (key, entry) => !entry || now - entry.time >= (entry.ttl || discoveryCacheMaxTtl)
             || (library !== null && libraryOf(key) !== null && libraryOf(key) !== library);
@@ -1201,12 +1201,13 @@ class WebWorker {
         };
     }
 
-    async rememberExternalDiscoveryShelf(inpxHash = '', discovery = {}, limit = externalShelfPageSize, forceRefresh = false) {
+    //forceRefresh пересобирает полку, refetch - ещё и заново загружает лауреатов и сопоставляет их с библиотекой
+    async rememberExternalDiscoveryShelf(inpxHash = '', discovery = {}, limit = externalShelfPageSize, forceRefresh = false, refetch = forceRefresh) {
         //полка кешируется целыми страницами клиента: любой размер не даёт своего ключа
         const pageLimit = Math.ceil(limit / externalShelfPageSize) * externalShelfPageSize;
         const shelf = await this.rememberPersistedDiscovery(
             `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${pageLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
-            () => this.buildExternalDiscoveryShelfV2(pageLimit, discovery, forceRefresh),
+            () => this.buildExternalDiscoveryShelfV2(pageLimit, discovery, refetch),
             discovery.externalTtlMinutes * 60 * 1000,
             {forceRefresh},
         );
@@ -1263,10 +1264,11 @@ class WebWorker {
 
         if (section !== 'personal' && discovery.externalSource !== 'none') {
             try {
-                //заново загрузить Викиданные и сопоставить книги может только админ, остальным - из кеша
-                const forceRefresh = options.forceRefresh === true
+                //заново загрузить Викиданные и сопоставить книги может только админ, остальным полка собирается из кеша
+                const forceRefresh = options.forceRefresh === true;
+                const refetch = forceRefresh
                     && await this.requireAdmin(options.userId, options.profileAccessToken).then(() => true, () => false);
-                const externalShelf = await this.rememberExternalDiscoveryShelf(inpxHash, discovery, externalShelfLimit, forceRefresh);
+                const externalShelf = await this.rememberExternalDiscoveryShelf(inpxHash, discovery, externalShelfLimit, forceRefresh, refetch);
                 if (externalShelf)
                     shelves.push(externalShelf);
                 this.warmExternalDiscoveryShelves();//no await
@@ -3778,7 +3780,7 @@ class WebWorker {
 
     async getBookAssetArchives(subDir, libFolder, sourceLibDir = '') {
         const libDir = sourceLibDir || this.config.libDir;
-        //как fblibraryArchives: найденные архивы помнятся до сброса кешей ресурсов библиотеки
+        //как fblibraryArchives: архивы (и их отсутствие) помнятся до сброса кешей ресурсов библиотеки
         const cacheKey = `${libDir}::${subDir}::${libFolder}`;
         if (!this.bookAssetArchives)
             this.bookAssetArchives = new Map();
@@ -3803,8 +3805,7 @@ class WebWorker {
         }
         const result = exact
             .filter((archive, index, all) => all.findIndex(item => item.file === archive.file) === index);
-        if (result.length)
-            this.bookAssetArchives.set(cacheKey, result);
+        this.bookAssetArchives.set(cacheKey, result);
         return result;
     }
 

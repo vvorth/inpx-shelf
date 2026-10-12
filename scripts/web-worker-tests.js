@@ -24,6 +24,7 @@ async function testDiscoveryCacheIsPruned() {
         const worker = bareWorker({config: {dataDir}, discoveryCache: new Map()});
         worker.discoveryDiskCache = {
             'discovery:old-hash:external:v6:x': {time: Date.now(), ttl: day, value: {}},
+            'wikidata-matches:old-hash:v9': {time: Date.now(), ttl: day, value: {}},
             'wikidata-awards:v5': {time: Date.now() - 2*day, ttl: day, value: {}},
             'discovery:new-hash:legacy': {time: Date.now() - 8*day, value: {}},
         };
@@ -60,15 +61,15 @@ async function testExternalForceRefreshIsAdminOnly() {
             throw new Error('admin only');
     };
     const forced = [];
-    worker.rememberExternalDiscoveryShelf = async(inpxHash, discovery, limit, forceRefresh) => {
-        forced.push(forceRefresh);
+    worker.rememberExternalDiscoveryShelf = async(inpxHash, discovery, limit, forceRefresh, refetch) => {
+        forced.push([forceRefresh, refetch]);
         return {id: 'external-source', items: []};
     };
 
     await worker.getDiscoveryShelvesV2({section: 'external', forceRefresh: true, userId: 'reader'});
     await worker.getDiscoveryShelvesV2({section: 'external', forceRefresh: true, userId: 'admin'});
     await worker.getDiscoveryShelvesV2({section: 'external', userId: 'admin'});
-    assert.deepStrictEqual(forced, [false, true, false]);
+    assert.deepStrictEqual(forced, [[true, false], [true, true], [false, false]]);
 }
 
 //пересборки БД библиотеки не идут параллельно: во время сборки в очереди не больше одной следующей
