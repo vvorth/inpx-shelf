@@ -988,16 +988,29 @@ class ReadingListStore {
         };
     }
 
+    // Runs outside the store lock (see the loop at the end): scrypt takes ~0.3 s and must not hold up other requests.
     async verifyUserPassword(userId, password) {
-        const data = await this.load();
-        const user = data.users.find(item => item.id === userId);
+        const user = await this.getPasswordRecord(userId);
         if (!user || !user.passwordHash || !await profilePassword.verify(user.passwordHash, user.login, password))
             return false;
-        if (profilePassword.isLegacy(user.passwordHash)) {
-            user.passwordHash = await profilePassword.hash(password);
+        if (profilePassword.isLegacy(user.passwordHash))
+            await this.upgradePasswordHash(userId, user.passwordHash, await profilePassword.hash(password));
+        return true;
+    }
+
+    async getPasswordRecord(userId) {
+        const user = (await this.load()).users.find(item => item.id === userId);
+        return (user ? {login: user.login, passwordHash: user.passwordHash} : null);
+    }
+
+    // Unless the password changed while it was being checked.
+    async upgradePasswordHash(userId, previousHash, passwordHash) {
+        const data = await this.load();
+        const user = data.users.find(item => item.id === userId);
+        if (user && user.passwordHash === previousHash) {
+            user.passwordHash = passwordHash;
             await this.save(data);
         }
-        return true;
     }
 
     async createUser(profile = {}) {
@@ -1893,9 +1906,11 @@ function utilsHasProp(obj, prop) {
 
 // Every asynchronous store operation may read or change the persisted state (even
 // load can bootstrap it). Keep its entire call tree in one reentrant transaction.
+// Password checks only take the lock for their reads and writes.
+const unlocked = new Set(['verifyUserPassword', 'verifyOpdsPassword']);
 for (const name of Object.getOwnPropertyNames(ReadingListStore.prototype)) {
     const method = ReadingListStore.prototype[name];
-    if (method.constructor.name === 'AsyncFunction') {
+    if (method.constructor.name === 'AsyncFunction' && !unlocked.has(name)) {
         ReadingListStore.prototype[name] = function(...args) {
             return withFileTransaction(this.file, () => method.apply(this, args));
         };
