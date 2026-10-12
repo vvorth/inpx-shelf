@@ -1346,7 +1346,7 @@ import {t, tm, formatDateTime} from '../../share/i18n';
 
 const readerPreferencesStorageKey = 'inpx.reader.preferences.v1';
 const readerProgressStorageKey = 'inpx.reader.progress.v1';
-const readerPreferencesVersion = 3;
+const {readerPreferencesVersion, readerDefaults, einkReaderDefaults, migrateReaderPreferences} = require('../../../shared/readerPreferences');
 const readerDeviceProfileKeys = ['regularProfile', 'compactProfile'];
 const readerDeviceScopedPreferenceKeys = new Set([
     'readMode',
@@ -1464,79 +1464,10 @@ class Reader {
     preferences = {
         readerPreferencesVersion,
         theme: 'dark',
-        readMode: 'scroll',
-        pagedNavigation: 'tap',
-        pagedDirection: 'vertical',
-        pageAnimation: 'soft',
-        pageAnimationSpeed: 'normal',
-        showStatusBar: true,
-        statusBarClock: false,
-        statusBarProgressBar: false,
-        statusBarProgressPosition: 'bottom',
-        statusBarRemaining: false,
-        statusBarAlign: 'center',
-        statusBarSize: 12,
-        fontFamily: 'serif',
-        fontSize: 18,
-        lineHeight: 1.7,
-        textShadow: false,
-        contentWidth: 1040,
-        contentWidthMode: 'viewport',
-        backgroundImage: '',
-        backgroundImageName: '',
-        backgroundTransparentPages: false,
-        backgroundTransparentStatus: false,
-        pagedSpreadMode: 'single',
-        dualPageGap: 28,
-        pageVerticalPadding: 18,
-        pageHorizontalPadding: 18,
-        pagePaddingTop: 18,
-        pagePaddingBottom: 22,
-        pagePaddingLeft: 18,
-        pagePaddingRight: 18,
-        pageOuterGap: 28,
-        pageOuterGapTop: 28,
-        pageOuterGapBottom: 28,
+        ...readerDefaults,
         regularProfile: {},
         compactProfile: {},
-        einkProfile: {
-            readMode: 'paged',
-            pagedNavigation: 'tap',
-            pagedDirection: 'vertical',
-            pageAnimation: 'none',
-            pageAnimationSpeed: 'fast',
-            showStatusBar: true,
-            statusBarClock: false,
-            statusBarProgressBar: false,
-            statusBarProgressPosition: 'bottom',
-            statusBarRemaining: false,
-            statusBarAlign: 'center',
-            statusBarSize: 12,
-            fontFamily: 'serif',
-            fontSize: 19,
-            lineHeight: 1.8,
-            textShadow: false,
-            contentWidth: 920,
-            contentWidthMode: 'fixed',
-            backgroundTransparentPages: false,
-            backgroundTransparentStatus: false,
-            pagedSpreadMode: 'single',
-            dualPageGap: 28,
-            pageVerticalPadding: 18,
-            pageHorizontalPadding: 18,
-            pagePaddingTop: 18,
-            pagePaddingBottom: 22,
-            pagePaddingLeft: 18,
-            pagePaddingRight: 18,
-            pageOuterGap: 28,
-            pageOuterGapTop: 28,
-            pageOuterGapBottom: 28,
-            einkContrast: 92,
-            einkPaperTone: 94,
-            einkInkTone: 10,
-            regularProfile: {},
-            compactProfile: {},
-        },
+        einkProfile: {...einkReaderDefaults, regularProfile: {}, compactProfile: {}},
     };
     defaultReaderPreferences = _.cloneDeep(this.preferences);
     progress = {
@@ -9820,7 +9751,7 @@ class Reader {
         if (!preferences || typeof preferences !== 'object')
             return this.preferences;
 
-        const normalized = this.normalizeReaderSpacingPreferences(this.migrateReaderPreferences(preferences));
+        const normalized = this.normalizeReaderSpacingPreferences(migrateReaderPreferences(preferences));
         const nextPreferences = Object.assign({}, this.preferences, normalized, {
             einkProfile: Object.assign(
                 {},
@@ -9832,30 +9763,6 @@ class Reader {
         if (nextPreferences.einkProfile)
             this.mergeReaderDeviceProfiles(nextPreferences.einkProfile, this.preferences.einkProfile || {}, normalized.einkProfile || {});
         return nextPreferences;
-    }
-
-    migrateReaderPreferences(preferences = {}) {
-        if (!preferences || typeof preferences !== 'object')
-            return {};
-
-        const next = _.cloneDeep(preferences);
-        const version = Math.max(0, parseInt(next.readerPreferencesVersion, 10) || 0);
-        if (version < 2) {
-            next.textShadow = false;
-            next.einkProfile = Object.assign({}, next.einkProfile || {}, {textShadow: false});
-        }
-        if (
-            version < 3
-            && next.contentWidthMode === 'fixed'
-            && (Number(next.contentWidth || 1040) || 1040) === 1040
-        ) {
-            // The previous desktop default constrained the whole two-page
-            // spread to 1040px. Migrate only that untouched default; custom
-            // fixed widths remain an explicit reader preference.
-            next.contentWidthMode = 'viewport';
-        }
-        next.readerPreferencesVersion = readerPreferencesVersion;
-        return next;
     }
 
     normalizeReaderSpacingPreferences(preferences = {}) {

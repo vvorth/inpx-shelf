@@ -586,17 +586,21 @@ async function testReaderTextShadowDefaultsOff() {
         einkProfile: {textShadow: true},
     });
 
-    assert.strictEqual(defaults.readerPreferencesVersion, 2);
+    const shared = require('../shared/readerPreferences');
+    assert.strictEqual(defaults.readerPreferencesVersion, shared.readerPreferencesVersion);
     assert.strictEqual(defaults.textShadow, false);
     assert.strictEqual(defaults.einkProfile.textShadow, false);
     assert.strictEqual(legacy.textShadow, false);
     assert.strictEqual(legacy.einkProfile.textShadow, false);
     assert.strictEqual(explicit.textShadow, true);
     assert.strictEqual(explicit.einkProfile.textShadow, true);
-    assert.match(readerSource, /const readerPreferencesVersion = 3;/);
-    assert.match(readerSource, /version < 2[\s\S]{0,180}next\.textShadow = false;/);
-    assert.match(readerSource, /version < 3[\s\S]{0,500}next\.contentWidthMode = 'viewport';/);
-    assert.match(readerSource, /normalizeReaderSpacingPreferences\(this\.migrateReaderPreferences\(preferences\)\)/);
+    // The untouched old 1040px default becomes viewport-wide; an explicit choice saved at the current version stays.
+    assert.strictEqual(store.normalizeReaderPreferences({contentWidthMode: 'fixed', contentWidth: 1040}).contentWidthMode, 'viewport');
+    const current = store.normalizeReaderPreferences({readerPreferencesVersion: shared.readerPreferencesVersion, contentWidthMode: 'fixed', contentWidth: 1040});
+    assert.strictEqual(current.contentWidthMode, 'fixed');
+    assert.strictEqual(store.normalizeReaderPreferences(current).contentWidthMode, 'fixed');
+    assert.match(readerSource, /require\('\.\.\/\.\.\/\.\.\/shared\/readerPreferences'\)/);
+    assert.match(readerSource, /normalizeReaderSpacingPreferences\(migrateReaderPreferences\(preferences\)\)/);
     assert.match(readerSource, /defaultReaderPreferences = _\.cloneDeep\(this\.preferences\);/);
 }
 

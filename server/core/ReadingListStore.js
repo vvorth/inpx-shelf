@@ -5,7 +5,7 @@ const profilePassword = require('./ProfilePassword');
 const {withFileTransaction, writeFileAtomic} = require('./FilePersistence');
 const {t} = require('./i18n');
 
-const readerPreferencesVersion = 2;
+const {readerPreferencesVersion, readerDefaults, einkReaderDefaults, migrateReaderPreferences} = require('../../shared/readerPreferences');
 
 function logWarning(message) {
     try {
@@ -245,100 +245,17 @@ class ReadingListStore {
     }
 
     normalizeReaderPreferences(value = {}) {
-        const source = (value && typeof(value) === 'object') ? value : {};
-        const sourceVersion = Math.max(0, parseInt(source.readerPreferencesVersion, 10) || 0);
-        const preferences = (sourceVersion < readerPreferencesVersion)
-            ? Object.assign({}, source, {
-                textShadow: false,
-                einkProfile: Object.assign({}, source.einkProfile || {}, {textShadow: false}),
-            })
-            : source;
-        const defaults = {
-            readMode: 'scroll',
-            pagedNavigation: 'tap',
-            pagedDirection: 'vertical',
-            pageAnimation: 'soft',
-            pageAnimationSpeed: 'normal',
-            showStatusBar: true,
-            statusBarClock: false,
-            statusBarProgressBar: false,
-            statusBarProgressPosition: 'bottom',
-            statusBarRemaining: false,
-            statusBarAlign: 'center',
-            statusBarSize: 12,
-            fontFamily: 'serif',
-            fontSize: 18,
-            lineHeight: 1.7,
-            textShadow: false,
-            contentWidth: 1040,
-            contentWidthMode: 'fixed',
-            backgroundImage: '',
-            backgroundImageName: '',
-            backgroundTransparentPages: false,
-            backgroundTransparentStatus: false,
-            pagedSpreadMode: 'single',
-            dualPageGap: 28,
-            pageVerticalPadding: 18,
-            pageHorizontalPadding: 18,
-            pagePaddingTop: 18,
-            pagePaddingBottom: 22,
-            pagePaddingLeft: 18,
-            pagePaddingRight: 18,
-            pageOuterGap: 28,
-            pageOuterGapTop: 28,
-            pageOuterGapBottom: 28,
-            einkContrast: 92,
-            einkPaperTone: 94,
-            einkInkTone: 10,
-        };
-        const einkDefaults = {
-            readMode: 'paged',
-            pagedNavigation: 'tap',
-            pagedDirection: 'vertical',
-            pageAnimation: 'none',
-            pageAnimationSpeed: 'fast',
-            showStatusBar: true,
-            statusBarClock: false,
-            statusBarProgressBar: false,
-            statusBarProgressPosition: 'bottom',
-            statusBarRemaining: false,
-            statusBarAlign: 'center',
-            statusBarSize: 12,
-            fontFamily: 'serif',
-            fontSize: 19,
-            lineHeight: 1.8,
-            textShadow: false,
-            contentWidth: 920,
-            contentWidthMode: 'fixed',
-            backgroundImage: '',
-            backgroundImageName: '',
-            backgroundTransparentPages: false,
-            backgroundTransparentStatus: false,
-            pagedSpreadMode: 'single',
-            dualPageGap: 28,
-            pageVerticalPadding: 18,
-            pageHorizontalPadding: 18,
-            pagePaddingTop: 18,
-            pagePaddingBottom: 22,
-            pagePaddingLeft: 18,
-            pagePaddingRight: 18,
-            pageOuterGap: 28,
-            pageOuterGapTop: 28,
-            pageOuterGapBottom: 28,
-            einkContrast: 92,
-            einkPaperTone: 94,
-            einkInkTone: 10,
-        };
-        const einkProfile = this.normalizeReaderRuntimeSettings(preferences.einkProfile || {}, einkDefaults);
-        einkProfile.regularProfile = this.normalizeReaderDeviceSettings((preferences.einkProfile || {}).regularProfile || {}, einkDefaults);
-        einkProfile.compactProfile = this.normalizeReaderDeviceSettings((preferences.einkProfile || {}).compactProfile || {}, einkDefaults);
+        const preferences = migrateReaderPreferences((value && typeof(value) === 'object') ? value : {});
+        const einkProfile = this.normalizeReaderRuntimeSettings(preferences.einkProfile || {}, einkReaderDefaults);
+        einkProfile.regularProfile = this.normalizeReaderDeviceSettings((preferences.einkProfile || {}).regularProfile || {}, einkReaderDefaults);
+        einkProfile.compactProfile = this.normalizeReaderDeviceSettings((preferences.einkProfile || {}).compactProfile || {}, einkReaderDefaults);
 
         return {
             readerPreferencesVersion,
             theme: this.normalizeReaderTheme(preferences.theme),
-            ...this.normalizeReaderRuntimeSettings(preferences, defaults),
-            regularProfile: this.normalizeReaderDeviceSettings(preferences.regularProfile || {}, defaults),
-            compactProfile: this.normalizeReaderDeviceSettings(preferences.compactProfile || {}, defaults),
+            ...this.normalizeReaderRuntimeSettings(preferences, readerDefaults),
+            regularProfile: this.normalizeReaderDeviceSettings(preferences.regularProfile || {}, readerDefaults),
+            compactProfile: this.normalizeReaderDeviceSettings(preferences.compactProfile || {}, readerDefaults),
             einkProfile,
         };
     }
