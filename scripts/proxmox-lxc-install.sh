@@ -235,6 +235,16 @@ validate_paths() {
         [[ -d "${LIBRARY_DIR}" ]] || fail "Library directory does not exist: ${LIBRARY_DIR}"
         [[ -f "${LIBRARY_DIR}/${INPX_FILE}" ]] || fail "INPX file not found: ${LIBRARY_DIR}/${INPX_FILE}"
     fi
+
+    # sync_repo делает rsync --delete в APP_ROOT: всё, что лежит внутри, будет удалено
+    [[ "${APP_ROOT}" != "/" ]] || fail "--app-root must not be /"
+    local dir
+    for dir in "${DATA_DIR}" "${LIBRARY_DIR}" "${SOURCE_DIRS[@]}"; do
+        [[ -n "${dir}" ]] || continue
+        if [[ "${dir}" == "${APP_ROOT}" || "${dir}" == "${APP_ROOT}/"* ]]; then
+            fail "${dir} is inside --app-root ${APP_ROOT} and would be deleted on sync"
+        fi
+    done
 }
 
 install_base_packages() {
