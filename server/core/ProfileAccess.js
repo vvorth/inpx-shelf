@@ -1,4 +1,5 @@
-const {parseBasicAuth, equal} = require('./opds/Auth');
+const {parseBasicAuth} = require('./opds/Auth');
+const {timingSafeStringEqual: equal} = require('./Security');
 const {t} = require('./i18n');
 
 const bootstrapActions = new Set(['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile', 'logout']);

@@ -1,10 +1,4 @@
-const crypto = require('crypto');
-
-function equal(a, b) {
-    const left = Buffer.from(String(a || ''));
-    const right = Buffer.from(String(b || ''));
-    return left.length === right.length && crypto.timingSafeEqual(left, right);
-}
+const {timingSafeStringEqual: equal} = require('../Security');
 
 function parseBasicAuth(header = '') {
     const match = String(header).match(/^Basic\s+(.+)$/i);
@@ -62,4 +56,3 @@ module.exports = function opdsAuth(config, verifyPassword, security) {
 };
 
 module.exports.parseBasicAuth = parseBasicAuth;
-module.exports.equal = equal;

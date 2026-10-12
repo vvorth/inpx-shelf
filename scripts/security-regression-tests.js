@@ -576,6 +576,12 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings, testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
-    testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
-    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];
+module.exports = [
+    testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
+    testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
+    testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
+    testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
+    testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
+    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates
+];
