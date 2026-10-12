@@ -1340,6 +1340,7 @@
 
 <script>
 import vueComponent from '../vueComponent.js';
+import ReaderEnvironment from './readerEnvironment.js';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 import readerContent from '../../../server/core/fb2/ReaderContent';
 import _ from 'lodash';
@@ -1498,7 +1499,6 @@ class Reader {
     readerHomeJobId = 0;
     readerBackgroundMaxBytes = 4 * 1024 * 1024;
     statusClockText = '';
-    statusClockTimer = null;
     profileReaderPreferencesApplied = false;
     pageTurnTimer = null;
     scrollFrame = 0;
@@ -1538,11 +1538,6 @@ class Reader {
     compactChromeStatusHold = false;
     compactChromeViewportRefreshSuppressedUntil = 0;
     compactChromeTransitionId = 0;
-    wakeLock = null;
-    wakeLockSupported = false;
-    wakeLockActive = false;
-    wakeLockRequested = false;
-    environmentAttached = false;
     serverBackgroundImage = null;
     profileWarningNotifiedKey = '';
     fontFamilyOptions = [
@@ -1640,13 +1635,25 @@ class Reader {
             }
             if (document.visibilityState === 'visible') {
                 this.resumeViewportRefreshAfterVisibility();
-                if (this.wakeLockRequested)
-                    this.requestWakeLock();// no await
+                if (this.environment.wakeLockRequested)
+                    this.environment.requestWakeLock();// no await
             }
         };
         this.handlePageHide = () => {
             this.flushProgress();
         };
+        this.environment = new ReaderEnvironment({
+            handlers: {
+                beforeunload: this.handleBeforeUnload,
+                fullscreenchange: this.handleFullscreenChange,
+                resize: this.handleWindowResize,
+                keydown: this.handleReaderKeydown,
+                visibilitychange: this.handleVisibilityChange,
+                pagehide: this.handlePageHide,
+                viewportResize: this.handleVisualViewportResize,
+            },
+            onClockTick: () => this.updateStatusClock(),
+        });
 
         // uid книги фиксируется при вызове: отложенное сохранение не должно попасть в другую книгу
         this.saveProgressDebounced = _.debounce((bookUid) => {
@@ -1659,7 +1666,7 @@ class Reader {
     }
 
     mounted() {
-        this.attachEnvironment();
+        this.environment.attach();
         this.handleFullscreenChange();
         this.$nextTick(() => {
             this.attachScrollerObserver();
@@ -1669,14 +1676,15 @@ class Reader {
 
     activated() {
         // При первом монтировании activated тоже вызывается: окружение уже подключено
-        if (this.environmentAttached)
+        if (this.environment.attached)
             return;
-        this.attachEnvironment();
+        this.environment.attach();
         this.$nextTick(() => this.attachScrollerObserver());
     }
 
     deactivated() {
-        this.detachEnvironment();
+        this.environment.detach();
+        this.detachScrollerObserver();
         this.flushProgress();
         this.clearSpacingReflowTimer();
         clearTimeout(this.pageTurnTimer);
@@ -1684,42 +1692,9 @@ class Reader {
             this.savePreferencesDebounced.flush();
     }
 
-    attachEnvironment() {
-        if (this.environmentAttached)
-            return;
-        this.environmentAttached = true;
-        window.addEventListener('beforeunload', this.handleBeforeUnload);
-        document.addEventListener('fullscreenchange', this.handleFullscreenChange);
-        window.addEventListener('resize', this.handleWindowResize);
-        window.addEventListener('keydown', this.handleReaderKeydown);
-        document.addEventListener('visibilitychange', this.handleVisibilityChange);
-        window.addEventListener('pagehide', this.handlePageHide);
-        this.startStatusClock();
-        this.wakeLockSupported = !!(navigator && navigator.wakeLock && navigator.wakeLock.request);
-        this.requestWakeLock();// no await
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', this.handleVisualViewportResize);
-        }
-    }
-
-    detachEnvironment() {
-        this.environmentAttached = false;
-        window.removeEventListener('beforeunload', this.handleBeforeUnload);
-        document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
-        window.removeEventListener('resize', this.handleWindowResize);
-        window.removeEventListener('keydown', this.handleReaderKeydown);
-        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-        window.removeEventListener('pagehide', this.handlePageHide);
-        if (window.visualViewport) {
-            window.visualViewport.removeEventListener('resize', this.handleVisualViewportResize);
-        }
-        this.detachScrollerObserver();
-        this.stopStatusClock();
-        this.releaseWakeLock();// no await
-    }
-
     beforeUnmount() {
-        this.detachEnvironment();
+        this.environment.detach();
+        this.detachScrollerObserver();
         this.clearSpacingReflowTimer();
         this.clearReaderReflowAnchorHighlight();
         if (this.pagePaddingPreviewTimer) {
@@ -2062,20 +2037,6 @@ class Reader {
         });
     }
 
-    startStatusClock() {
-        this.stopStatusClock();
-        this.updateStatusClock();
-        this.statusClockTimer = setInterval(() => this.updateStatusClock(), 30000);
-    }
-
-    stopStatusClock() {
-        if (!this.statusClockTimer)
-            return;
-
-        clearInterval(this.statusClockTimer);
-        this.statusClockTimer = null;
-    }
-
     normalizeFontFamily(value = '') {
         const normalized = String(value || '').trim().toLowerCase();
         return ['serif', 'sans', 'mono', 'system'].includes(normalized) ? normalized : 'serif';
@@ -2096,43 +2057,6 @@ class Reader {
             case 'serif':
             default:
                 return 'Georgia, "Times New Roman", Times, serif';
-        }
-    }
-
-    async requestWakeLock() {
-        this.wakeLockRequested = true;
-        if (!this.wakeLockSupported || document.visibilityState !== 'visible')
-            return false;
-
-        try {
-            if (this.wakeLock)
-                return true;
-
-            this.wakeLock = await navigator.wakeLock.request('screen');
-            this.wakeLockActive = true;
-            this.wakeLock.addEventListener('release', () => {
-                this.wakeLock = null;
-                this.wakeLockActive = false;
-            });
-            return true;
-        } catch (e) {
-            this.wakeLock = null;
-            this.wakeLockActive = false;
-            return false;
-        }
-    }
-
-    async releaseWakeLock() {
-        this.wakeLockRequested = false;
-        const lock = this.wakeLock;
-        this.wakeLock = null;
-        this.wakeLockActive = false;
-        if (lock && typeof lock.release === 'function') {
-            try {
-                await lock.release();
-            } catch (e) {
-                //
-            }
         }
     }
 
