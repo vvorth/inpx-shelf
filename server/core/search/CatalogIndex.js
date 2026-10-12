@@ -1003,13 +1003,16 @@ class CatalogIndex {
             const author = String(row.author || '');
             const series = String(row.series || '');
             db.exec('BEGIN');
+            const old = db.prepare('SELECT del, series_norm FROM book WHERE id = ?').get(id) || {};
             //исходные поля записи не меняются: правка накладывается при выдаче, здесь - поиск и связи с авторами
             db.prepare('UPDATE book SET title_norm = ?, series_norm = ? WHERE id = ?').run(normalize(title), normalize(series), id);
-            //счётчики книг авторов (списки, поиск имён) считают только неудалённые книги
-            const counted = (db.prepare('SELECT del FROM book WHERE id = ?').get(id) || {}).del ? 0 : 1;
+            //счётчики книг авторов и серий (списки, поиск имён) считают только неудалённые книги
+            const counted = old.del ? 0 : 1;
             const before = new Set(db.prepare('SELECT author_id FROM book_author WHERE book_id = ?').all(id).map(r => r.author_id));
             db.prepare('DELETE FROM book_author WHERE book_id = ?').run(id);
             const findAuthor = db.prepare('SELECT id FROM author WHERE name_norm = ?');
+            const aliasOf = db.prepare('SELECT alias FROM author_alias WHERE author_id = ?');
+            const authorAliases = [];
             const after = new Set();
             for (const name of splitAuthors(author)) {
                 let found = findAuthor.get(normalize(name));
@@ -1019,6 +1022,7 @@ class CatalogIndex {
                     db.prepare('INSERT INTO name_tri(rowid, name_norm) VALUES (?, ?)').run(nameId, normalize(name));
                     found = {id: authorId};
                 }
+                authorAliases.push(...aliasOf.all(found.id).map(r => r.alias));
                 if (after.has(found.id))
                     continue;
                 after.add(found.id);
@@ -1036,13 +1040,39 @@ class CatalogIndex {
                 if (!before.has(authorId))
                     addBooks(authorId, counted);
             }
+
+            const seriesNorm = normalize(series);
+            if (seriesNorm !== (old.series_norm || '')) {
+                const findSeries = db.prepare('SELECT id FROM series WHERE name_norm = ?');
+                const addSeriesBooks = (seriesId, delta) => {
+                    db.prepare('UPDATE series SET books = MAX(0, books + ?) WHERE id = ?').run(delta, seriesId);
+                    db.prepare(`UPDATE name SET books = MAX(0, books + ?) WHERE kind = 'series' AND ref = ?`).run(delta, seriesId);
+                };
+                const before = (old.series_norm ? findSeries.get(old.series_norm) : null);
+                if (before)
+                    addSeriesBooks(before.id, -counted);
+                if (seriesNorm) {
+                    let found = findSeries.get(seriesNorm);
+                    if (!found) {
+                        const seriesId = Number(db.prepare('INSERT INTO series(name, name_norm, books) VALUES (?, ?, 0)').run(series, seriesNorm).lastInsertRowid);
+                        const nameId = db.prepare(`INSERT INTO name(kind, ref, name_norm, books) VALUES ('series', ?, ?, 0)`).run(seriesId, seriesNorm).lastInsertRowid;
+                        db.prepare('INSERT INTO name_tri(rowid, name_norm) VALUES (?, ?)').run(nameId, seriesNorm);
+                        found = {id: seriesId};
+                    }
+                    addSeriesBooks(found.id, counted);
+                }
+            }
+
+            //английские имена авторов ищутся наравне с именами из библиотеки, как при построении
             db.prepare('DELETE FROM book_fts WHERE rowid = ?').run(id);
             db.prepare('INSERT INTO book_fts(rowid, title, author, series, keywords) VALUES (?, ?, ?, ?, ?)')
-                .run(id, normalize(title), normalize(author), normalize(series), normalize(row.keywords));
+                .run(id, normalize(title), normalize([author, ...authorAliases].join(' ')), seriesNorm, normalize(row.keywords));
             db.exec('COMMIT');
         } finally {
             db.close();
         }
+        //названия и серии изменились: кэш групп и масок OPDS строится заново
+        this.queryMasks = null;
         //язык и оценка правкой не меняются: колонки в памяти остаются верными
     }
 

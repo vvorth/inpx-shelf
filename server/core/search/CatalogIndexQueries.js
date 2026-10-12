@@ -83,7 +83,7 @@ function valueCondition(field, value, params) {
 const hasValue = value => (value !== undefined && value !== null && value !== '');
 const hasBookFilter = query => !!(query.genre || query.lang || hasValue(query.del));
 
-//Кэш запросов живёт, пока не перечитаны колонки (правка метаданных, переоткрытие индекса)
+//Кэш запросов живёт, пока не перечитаны колонки и не было правки метаданных (updateBook сбрасывает его)
 function queryCache(index) {
     if (!index.queryMasks || index.queryMasks.columns !== index.columns)
         index.queryMasks = {columns: index.columns, masks: new Map(), groups: new Map()};

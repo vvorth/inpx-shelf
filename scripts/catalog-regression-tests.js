@@ -141,4 +141,32 @@ async function testMetadataEditKeepsAuthorCounts() {
     });
 }
 
-module.exports = [testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];
+// An edit keeps English author names searchable, registers a new series and refreshes cached OPDS groups.
+async function testMetadataEditKeepsAliasesSeriesAndOpdsGroups() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        const book = (id, title, series) => ({id, _uid: `u${id}`, author: 'Азимов Айзек', title, series, serno: 1, size: 1, librate: 0, del: 0,
+            sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang: 'ru'});
+        index.beginBuild(file, [['Азимов Айзек', 'Isaac Asimov']]);
+        index.insertBooks([book(1, 'Академия', 'Основание'), book(2, 'Конец вечности', '')]);
+        index.finishBuild({});
+        index.open(file);
+        try {
+            const titles = () => index.opdsGroups('title', {depth: 1, del: '0'}).found.map(group => group.value);
+            assert.deepStrictEqual(titles(), ['а', 'к']);
+            index.updateBook(file, {id: 1, title: 'Будущее', author: 'Азимов Айзек', series: 'Новая серия'});
+            assert.deepStrictEqual(titles(), ['б', 'к']);
+            assert.deepStrictEqual(index.search({q: 'asimov будущее'}).ids, [1]);
+            assert.deepStrictEqual(index.listNames({kind: 'series'}).items, [{name: 'Новая серия', books: 1}]);
+            assert.deepStrictEqual(index.seriesBooks('Новая серия'), [1]);
+            assert.deepStrictEqual(index.matchNames('новая').series, [{name: 'Новая серия', books: 1}]);
+        } finally {
+            index.close();
+        }
+    });
+}
+
+module.exports = [testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
+    testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];
