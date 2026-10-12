@@ -1,6 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const pckg = require('../package.json');
 const platform = process.argv[2];
@@ -14,7 +14,7 @@ async function makeRelease(target) {
         throw new Error(`Build not found: ${srcDir}`);
 
     const zipFile = `${outDir}/${pckg.name}-${pckg.version}-${target}.zip`;
-    execSync(`zip -r ${zipFile} .`, {cwd: srcDir, stdio: 'inherit'});
+    execFileSync('zip', ['-r', zipFile, '.'], {cwd: srcDir, stdio: 'inherit'});
 }
 
 async function main() {
