@@ -238,6 +238,15 @@ function isReadingInProgress(progress) {
     return !!progress && progress.hidden !== true && !((Number(progress.percent) || 0) >= READ_PERCENT);
 }
 
+function readerProgressOf(user) {
+    return (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {});
+}
+
+//Персональная полка без книг: гостю (сначала выбрать профиль) или когда подобрать нечего
+function emptyPersonalShelf(id, title, subtitle, emptyMessage = msg('discovery.shelf.selectProfileFirst')) {
+    return {id, title, subtitle, source: 'personal', sourceName: msg('discovery.sourceForYou'), updatedAt: Date.now(), items: [], emptyMessage};
+}
+
 function cleanDirTargetRatio(value) {
     const ratio = Number(value);
     if (!Number.isFinite(ratio) || ratio <= 0)
@@ -1291,12 +1300,10 @@ class WebWorker {
 
     getPersonalReadBookSet(user = null, lists = []) {
         const readBookUids = new Set();
-        const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object'
-            ? user.readerProgress
-            : {});
+        const progressMap = readerProgressOf(user);
 
         for (const [bookUid, progress] of Object.entries(progressMap)) {
-            if ((Number(progress && progress.percent || 0) || 0) >= 0.999)
+            if ((Number(progress && progress.percent || 0) || 0) >= READ_PERCENT)
                 readBookUids.add(String(bookUid || '').trim());
         }
 
@@ -1314,7 +1321,7 @@ class WebWorker {
     async buildContinueReadingShelfV2(user = null, limit = 8, context = null) {
         const progressMap = (context && context.progressMap
             ? context.progressMap
-            : (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}));
+            : readerProgressOf(user));
         const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, []));
 
         const rows = Object.entries(progressMap)
@@ -1322,7 +1329,7 @@ class WebWorker {
                 bookUid: String(bookUid || '').trim(),
                 progress: Object.assign({percent: 0, sectionId: '', updatedAt: ''}, progress || {}),
             }))
-            .filter((item) => item.bookUid && item.progress.hidden !== true && Number(item.progress.percent || 0) < 0.999)
+            .filter((item) => item.bookUid && isReadingInProgress(item.progress))
             .sort((a, b) => String(b.progress.updatedAt || '').localeCompare(String(a.progress.updatedAt || '')));
 
         const items = [];
@@ -1356,18 +1363,8 @@ class WebWorker {
     }
 
     async buildFromReadingListsShelfV2(user = null, limit = 8, context = null) {
-        if (!user || !user.id) {
-            return {
-                id: 'from-your-lists',
-                title: msg('discovery.shelf.fromLists'),
-                subtitle: msg('discovery.shelf.fromListsUnreadSubtitle'),
-                source: 'personal',
-                sourceName: msg('discovery.sourceForYou'),
-                updatedAt: Date.now(),
-                items: [],
-                emptyMessage: msg('discovery.shelf.selectProfileFirst'),
-            };
-        }
+        if (!user || !user.id)
+            return emptyPersonalShelf('from-your-lists', msg('discovery.shelf.fromLists'), msg('discovery.shelf.fromListsUnreadSubtitle'));
 
         const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
         const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, lists));
@@ -1434,22 +1431,12 @@ class WebWorker {
     }
 
     async buildUnfinishedSeriesShelfV2(user = null, limit = 8, context = null) {
-        if (!user || !user.id) {
-            return {
-                id: 'unfinished-series',
-                title: msg('discovery.shelf.unfinishedSeries'),
-                subtitle: msg('discovery.shelf.unfinishedSeriesSubtitle'),
-                source: 'personal',
-                sourceName: msg('discovery.sourceForYou'),
-                updatedAt: Date.now(),
-                items: [],
-                emptyMessage: msg('discovery.shelf.selectProfileFirst'),
-            };
-        }
+        if (!user || !user.id)
+            return emptyPersonalShelf('unfinished-series', msg('discovery.shelf.unfinishedSeries'), msg('discovery.shelf.unfinishedSeriesSubtitle'));
 
         const progressMap = (context && context.progressMap
             ? context.progressMap
-            : (user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}));
+            : readerProgressOf(user));
         const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
         const readBookUids = (context && context.readBookUids ? new Set(context.readBookUids) : new Set());
         const seriesState = new Map();
@@ -1581,7 +1568,7 @@ class WebWorker {
     async buildPersonalDiscoveryTasteProfile(user = null, context = null) {
         const progressMap = (context && context.progressMap
             ? context.progressMap
-            : (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}));
+            : readerProgressOf(user));
         const lists = (context && Array.isArray(context.lists)
             ? context.lists
             : (user && user.id ? await this.readingListStore.getLists(user.id, {}) : []));
@@ -1799,18 +1786,8 @@ class WebWorker {
     }
 
     async buildSimilarBooksShelfV2(user = null, limit = 8, context = null) {
-        if (!user || !user.id) {
-            return {
-                id: 'similar-books',
-                title: msg('discovery.shelf.similar'),
-                subtitle: msg('discovery.shelf.similarSubtitle'),
-                source: 'personal',
-                sourceName: msg('discovery.sourceForYou'),
-                updatedAt: Date.now(),
-                items: [],
-                emptyMessage: msg('discovery.shelf.selectProfileFirst'),
-            };
-        }
+        if (!user || !user.id)
+            return emptyPersonalShelf('similar-books', msg('discovery.shelf.similar'), msg('discovery.shelf.similarSubtitle'));
 
         const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
         const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, lists));
@@ -1823,18 +1800,11 @@ class WebWorker {
         const displayLimit = Math.max(1, Math.min(parseInt(limit, 10) || 8, 96));
         const probeLimit = displayLimit + 1;
         if (!Object.keys(preferredAuthors).length && !Object.keys(preferredSeries).length && !Object.keys(preferredGenres).length && !Object.keys(preferredKeywords).length && !Object.keys(preferredLanguages).length) {
-            return {
-                id: 'similar-books',
-                title: msg('discovery.shelf.similar'),
-                subtitle: msg('discovery.shelf.similarSubtitle'),
-                source: 'personal',
-                sourceName: msg('discovery.sourceForYou'),
-                updatedAt: Date.now(),
+            return Object.assign(emptyPersonalShelf('similar-books', msg('discovery.shelf.similar'), msg('discovery.shelf.similarSubtitle'),
+                msg('discovery.shelf.similarEmptyNoProfile')), {
                 discoveryTaste: profile.taste,
                 discoveryNeedsTasteSetup: !profile.taste.completedAt && !profile.taste.promptDismissedAt,
-                items: [],
-                emptyMessage: msg('discovery.shelf.similarEmptyNoProfile'),
-            };
+            });
         }
 
         const rotationSeed = String(user.id || '')
@@ -1998,7 +1968,7 @@ class WebWorker {
     async buildPersonalDiscoveryShelvesV2(user, lists, limit, similarEnabled, similarLimit) {
         const context = {
             lists,
-            progressMap: (user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {}),
+            progressMap: readerProgressOf(user),
             readBookUids: this.getPersonalReadBookSet(user, lists),
         };
 
@@ -2029,7 +1999,7 @@ class WebWorker {
 
     //Прогресс текущего читателя по набору книг и есть ли книга в его списках: {uid: {percent, read, hidden, inList}}
     getUserBookStates(user = null, bookUids = [], lists = []) {
-        const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {});
+        const progressMap = readerProgressOf(user);
         const listed = new Set(lists.flatMap(list => this.readingListStore.normalizeEntries(list.books).map(entry => entry.bookUid)));
         const states = {};
         for (const value of (Array.isArray(bookUids) ? bookUids : []).slice(0, 2000)) {
@@ -2085,9 +2055,7 @@ class WebWorker {
     }
 
     async buildUserReadingSummary(user = null, limit = 6) {
-        const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object'
-            ? user.readerProgress
-            : {});
+        const progressMap = readerProgressOf(user);
 
         const rows = Object.entries(progressMap)
             .map(([bookUid, progress]) => ({
@@ -2131,9 +2099,7 @@ class WebWorker {
     async getUserReadingLibrary(user = null, options = {}) {
         this.checkMyState();
 
-        const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object'
-            ? user.readerProgress
-            : {});
+        const progressMap = readerProgressOf(user);
         const state = ['reading', 'read', 'hidden', 'all'].includes(String(options.state || '').trim())
             ? String(options.state || '').trim()
             : 'reading';
