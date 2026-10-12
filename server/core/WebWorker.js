@@ -4822,7 +4822,12 @@ class WebWorker {
         //формируем список
         for (const filename of list) {
             const filePath = `${dir}/${filename}`;
-            const stat = await fs.stat(filePath);
+            let stat = null;
+            try {
+                stat = await fs.stat(filePath);
+            } catch (e) {
+                continue;//файл удалён во время обхода или битая ссылка
+            }
             if (!stat.isDirectory()) {
                 size += stat.size;
                 files.push({name: filePath, stat});

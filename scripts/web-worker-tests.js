@@ -145,10 +145,26 @@ async function testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing() {
     });
 }
 
+//очистка кеша пропускает файлы, которые нельзя прочитать (удалены во время обхода, битые ссылки)
+async function testCleanDirSkipsVanishedFiles() {
+    await temporary(async(dir) => {
+        await fs.writeFile(path.join(dir, 'old'), Buffer.alloc(600));
+        await fs.utimes(path.join(dir, 'old'), 1, 1);
+        await fs.writeFile(path.join(dir, 'new'), Buffer.alloc(600));
+        await fs.symlink(path.join(dir, 'missing'), path.join(dir, 'broken'));
+
+        const result = await bareWorker().cleanDir({dir, maxSize: 1000, targetSize: 700});
+        assert.strictEqual(result.found, 2);
+        assert.strictEqual(result.removed, 1);
+        assert.deepStrictEqual((await fs.readdir(dir)).sort(), ['broken', 'new']);
+    });
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
     testLibraryRebuildsDoNotOverlap,
     testAuthorInfoIndexBuildsOnce,
     testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing,
+    testCleanDirSkipsVanishedFiles,
 ];
