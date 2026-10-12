@@ -1752,8 +1752,9 @@ class ReadingListStore {
                 target.telegramChatId = String(incomingUser.telegramChatId || '').trim();
             if (utilsHasProp(incomingUser, 'opdsEnabled'))
                 target.opdsEnabled = (incomingUser.opdsEnabled !== false);
+            //вход в OPDS по паролю профиля - только если у профиля есть логин и пароль, как в updateUser
             if (utilsHasProp(incomingUser, 'opdsAuthEnabled'))
-                target.opdsAuthEnabled = (incomingUser.opdsAuthEnabled === true);
+                target.opdsAuthEnabled = (incomingUser.opdsAuthEnabled === true && !!target.login && !!target.passwordHash);
             if (utilsHasProp(incomingUser, 'readerPreferences'))
                 target.readerPreferences = this.normalizeReaderPreferences(incomingUser.readerPreferences);
             if (utilsHasProp(incomingUser, 'discoveryPreferences'))

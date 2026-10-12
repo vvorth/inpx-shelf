@@ -1050,6 +1050,13 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(restored.user.readerBookmarks['source:book:1'][0].note, 'Note');
         assert.deepStrictEqual(restored.user.discoveryPreferences.taste.genres, ['sf']);
 
+        // OPDS login needs the profile's own login and password: Reader B has none.
+        const withOpds = JSON.parse(JSON.stringify(exported));
+        withOpds.user.opdsAuthEnabled = true;
+        await store.importData('reader-b', withOpds);
+        assert.strictEqual((await store.getUser('reader-b')).opdsAuthEnabled, false);
+        await store.updateUser('reader-b', {emailTo: 'b@example.test'});
+
         // An older backup must not roll back a position saved after it.
         const backup = JSON.parse(JSON.stringify(exported));
         backup.user.readerProgress['source:book:1'].updatedAt = '2020-01-01T00:00:00.000Z';
