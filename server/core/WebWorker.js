@@ -497,6 +497,26 @@ function discoveryRotation(book = {}, rotationSeed = 0) {
     return stableHash / 9973;
 }
 
+//Архив может лежать под другим расширением: .zip вместо .7z и наоборот
+function archiveNameCandidates(file = '') {
+    const ext = path.extname(file).toLowerCase();
+    if (ext === '.zip')
+        return [file, `${file.substring(0, file.length - 4)}.7z`];
+    if (ext === '.7z')
+        return [file, `${file.substring(0, file.length - 3)}.zip`];
+    return [file];
+}
+
+//Каталог ресурсов библиотеки (covers, images, etc/authors...): внутри каталога библиотеки или рядом с ним
+function libraryAssetDirCandidates(subDir = '', libDir = '') {
+    const normalizedSubDir = String(subDir || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const normalizedLibDir = String(libDir || '').replace(/\\/g, '/').replace(/\/+$/g, '');
+    return [
+        `${normalizedLibDir}/${normalizedSubDir}`,
+        `${path.dirname(normalizedLibDir)}/${normalizedSubDir}`,
+    ];
+}
+
 //singleton
 let instance = null;
 
@@ -3487,14 +3507,7 @@ class WebWorker {
     }
 
     async resolveLibraryArchivePath(folder = '', libDir = '') {
-        const candidates = [folder];
-        const ext = path.extname(folder).toLowerCase();
-        if (ext === '.zip')
-            candidates.push(`${folder.substring(0, folder.length - 4)}.7z`);
-        else if (ext === '.7z')
-            candidates.push(`${folder.substring(0, folder.length - 3)}.zip`);
-
-        for (const candidate of candidates) {
+        for (const candidate of archiveNameCandidates(folder)) {
             const resolved = await this.resolveExistingPath(candidate);
             if (resolved)
                 return resolved;
@@ -3546,15 +3559,7 @@ class WebWorker {
     }
 
     async resolveArchiveNameInDir(dir = '', name = '') {
-        const candidate = path.join(dir, name);
-        const candidates = [candidate];
-        const ext = path.extname(candidate).toLowerCase();
-        if (ext === '.zip')
-            candidates.push(`${candidate.substring(0, candidate.length - 4)}.7z`);
-        else if (ext === '.7z')
-            candidates.push(`${candidate.substring(0, candidate.length - 3)}.zip`);
-
-        for (const item of candidates) {
+        for (const item of archiveNameCandidates(path.join(dir, name))) {
             const resolved = await this.resolveExistingPath(item);
             if (resolved)
                 return resolved;
@@ -3584,12 +3589,7 @@ class WebWorker {
     }
 
     async resolveLibraryAssetDir(subDir = '', sourceLibDir = '') {
-        const normalizedSubDir = String(subDir || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-        const libDir = String(sourceLibDir || this.config.libDir || '').replace(/\\/g, '/').replace(/\/+$/g, '');
-        const candidates = [
-            `${libDir}/${normalizedSubDir}`,
-            `${path.dirname(libDir)}/${normalizedSubDir}`,
-        ];
+        const candidates = libraryAssetDirCandidates(subDir, sourceLibDir || this.config.libDir);
 
         for (const dir of Array.from(new Set(candidates))) {
             if (await fs.pathExists(dir))
@@ -3600,12 +3600,8 @@ class WebWorker {
     }
 
     async resolveLibraryAssetDirs(subDir = '', sourceLibDir = '') {
-        const normalizedSubDir = String(subDir || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-        const libDir = String(sourceLibDir || this.config.libDir || '').replace(/\\/g, '/').replace(/\/+$/g, '');
-        const candidates = [
-            `${libDir}/${normalizedSubDir}`,
-            `${path.dirname(libDir)}/${normalizedSubDir}`,
-        ].filter(item => item && !item.startsWith('./'));
+        const candidates = libraryAssetDirCandidates(subDir, sourceLibDir || this.config.libDir)
+            .filter(item => item && !item.startsWith('./'));
 
         const result = [];
         const seen = new Set();
