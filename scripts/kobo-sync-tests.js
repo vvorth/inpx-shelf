@@ -1045,6 +1045,7 @@ async function testKoboTokensAreMaskedInLogs() {
     assert.strictEqual(kobo.maskTokens(`/kobo/${token}/v1/library/sync?x=1`), '/kobo/***/v1/library/sync?x=1');
     assert.strictEqual(kobo.maskTokens(`/books/kobo/${token}`), '/books/kobo/***');
     assert.strictEqual(kobo.maskTokens('/kobo/not-a-token/x'), '/kobo/not-a-token/x');
+    assert.strictEqual(kobo.maskTokens('/metrics?format=x&token=secret#a'), '/metrics?format=x&token=***#a');
     for (const file of ['server/index.js', 'server/dev.js']) {
         const source = await fs.readFile(path.join(__dirname, '..', file), 'utf8');
         assert.ok(!/log\(`[^`]*\$\{req\.originalUrl\}/.test(source), `${file} logs request URLs unmasked`);

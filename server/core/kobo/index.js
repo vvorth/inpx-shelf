@@ -66,9 +66,10 @@ function stableKey(book) {
     return (libid ? `${book.sourceId || ''}:${libid}` : book._uid);
 }
 
-// Device tokens travel in the URL path: never write them to a log.
+// Device tokens travel in the URL path, the metrics token may come in the query: never write them to a log.
 function maskTokens(url = '') {
-    return String(url).replace(/\/kobo\/[0-9a-f]{32}(?=[/?#]|$)/gi, '/kobo/***');
+    return String(url).replace(/\/kobo\/[0-9a-f]{32}(?=[/?#]|$)/gi, '/kobo/***')
+        .replace(/([?&]token=)[^&#]*/gi, '$1***');
 }
 
 function koboTime(value = null) {
