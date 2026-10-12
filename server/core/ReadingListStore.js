@@ -878,6 +878,20 @@ class ReadingListStore {
         };
     }
 
+    ownList(data, user, listId) {
+        const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
+        if (!item)
+            throw new Error(t('errors.listNotFound'));
+        return item;
+    }
+
+    requireBookUid(bookUid) {
+        const normalizedBookUid = this.normalizeBookUid(bookUid);
+        if (!normalizedBookUid)
+            throw new Error('bookUid is empty');
+        return normalizedBookUid;
+    }
+
     ensureUniqueUserName(users, name, excludeId = '') {
         const duplicate = users.find((item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase());
         if (duplicate)
@@ -1039,10 +1053,7 @@ class ReadingListStore {
     }
 
     async updateUser(userId, patch = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
         const nextName = this.validateUserName(utilsHasProp(patch, 'name') ? patch.name : target.name);
         const nextLogin = this.validateLogin(utilsHasProp(patch, 'login') ? patch.login : target.login);
@@ -1076,9 +1087,7 @@ class ReadingListStore {
 
     async getReaderState(userId = '', bookUid = '') {
         const {user} = await this.resolveUser(userId);
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         return {
             preferences: this.normalizeReaderPreferences(user.readerPreferences),
@@ -1090,10 +1099,7 @@ class ReadingListStore {
     }
 
     async updateReaderPreferences(userId = '', patch = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
         target.readerPreferences = this.normalizeReaderPreferences(Object.assign({}, target.readerPreferences || {}, patch || {}));
         target.updatedAt = this.nowIso();
@@ -1102,10 +1108,7 @@ class ReadingListStore {
     }
 
     async updateDiscoveryPreferences(userId = '', patch = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
         const current = this.normalizeDiscoveryPreferences(target.discoveryPreferences);
         const events = Object.assign({}, current.events || {});
@@ -1136,10 +1139,7 @@ class ReadingListStore {
     }
 
     async recordDiscoveryEvents(userId = '', inputEvents = []) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
         const preferences = this.normalizeDiscoveryPreferences(target.discoveryPreferences);
         const events = Object.assign({}, preferences.events || {});
@@ -1245,14 +1245,9 @@ class ReadingListStore {
     }
 
     async updateReaderProgress(userId = '', bookUid = '', patch = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         if (!target.readerProgress || typeof(target.readerProgress) !== 'object')
             target.readerProgress = {};
@@ -1317,14 +1312,9 @@ class ReadingListStore {
     }
 
     async deleteReaderProgress(userId = '', bookUid = '') {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         if (target.readerProgress && typeof(target.readerProgress) === 'object')
             delete target.readerProgress[normalizedBookUid];
@@ -1335,10 +1325,7 @@ class ReadingListStore {
     }
 
     async clearReaderProgress(userId = '') {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
         const current = (target.readerProgress && typeof(target.readerProgress) === 'object')
             ? target.readerProgress
@@ -1356,14 +1343,9 @@ class ReadingListStore {
     }
 
     async addReaderBookmark(userId = '', bookUid = '', bookmark = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         if (!target.readerBookmarks || typeof(target.readerBookmarks) !== 'object')
             target.readerBookmarks = {};
@@ -1386,14 +1368,9 @@ class ReadingListStore {
     }
 
     async deleteReaderBookmark(userId = '', bookUid = '', bookmarkId = '') {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         const normalizedBookmarkId = String(bookmarkId || '').trim();
         if (!normalizedBookmarkId)
@@ -1516,9 +1493,7 @@ class ReadingListStore {
 
     async renameList(userId = '', listId, name) {
         const {data, user} = await this.resolveUser(userId);
-        const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
-        if (!item)
-            throw new Error(t('errors.listNotFound'));
+        const item = this.ownList(data, user, listId);
 
         const normalized = this.validateName(name);
         this.ensureUniqueListName(data.lists, user.id, normalized, item.id);
@@ -1531,9 +1506,7 @@ class ReadingListStore {
 
     async setListVisibility(userId = '', listId, visibility) {
         const {data, user} = await this.resolveUser(userId);
-        const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
-        if (!item)
-            throw new Error(t('errors.listNotFound'));
+        const item = this.ownList(data, user, listId);
 
         item.visibility = this.normalizeVisibility(visibility);
         item.updatedAt = this.nowIso();
@@ -1544,11 +1517,7 @@ class ReadingListStore {
 
     async deleteList(userId = '', listId) {
         const {data, user} = await this.resolveUser(userId);
-        const index = data.lists.findIndex((row) => row.id === listId && row.userId === user.id);
-        if (index < 0)
-            throw new Error(t('errors.listNotFound'));
-
-        data.lists.splice(index, 1);
+        data.lists.splice(data.lists.indexOf(this.ownList(data, user, listId)), 1);
         await this.save(data);
         return {success: true};
     }
@@ -1559,13 +1528,9 @@ class ReadingListStore {
 
     async setBookMembership(userId = '', listId, bookUid, enabled) {
         const {data, user} = await this.resolveUser(userId);
-        const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
-        if (!item)
-            throw new Error(t('errors.listNotFound'));
+        const item = this.ownList(data, user, listId);
 
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         item.books = this.normalizeEntries(item.books);
         const existing = item.books.find((row) => row.bookUid === normalizedBookUid);
@@ -1584,13 +1549,9 @@ class ReadingListStore {
 
     async setBookRead(userId = '', listId, bookUid, read) {
         const {data, user} = await this.resolveUser(userId);
-        const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
-        if (!item)
-            throw new Error(t('errors.listNotFound'));
+        const item = this.ownList(data, user, listId);
 
-        const normalizedBookUid = this.normalizeBookUid(bookUid);
-        if (!normalizedBookUid)
-            throw new Error('bookUid is empty');
+        const normalizedBookUid = this.requireBookUid(bookUid);
 
         item.books = this.normalizeEntries(item.books);
         const existing = item.books.find((row) => row.bookUid === normalizedBookUid);
@@ -1604,10 +1565,7 @@ class ReadingListStore {
     }
 
     async setBooksRead(userId = '', bookUids = [], read = true, options = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
-        if (!target)
-            throw new Error(t('errors.userNotFound'));
+        const {data, user: target} = await this.resolveUser(userId);
 
         const normalizedBookUids = Array.from(new Set((Array.isArray(bookUids) ? bookUids : [bookUids])
             .map((bookUid) => this.normalizeBookUid(bookUid))
@@ -1641,7 +1599,7 @@ class ReadingListStore {
 
         const updatedLists = [];
         for (const item of data.lists) {
-            if (item.userId !== user.id)
+            if (item.userId !== target.id)
                 continue;
             if (listIds && !listIds.has(String(item.id || '').trim()))
                 continue;
@@ -1676,8 +1634,7 @@ class ReadingListStore {
     // (keeping order and the read flag), reader progress, bookmarks and the book's metadata edits
     // from old to new uids.
     async rekeyBooks(userId = '', mapping = {}) {
-        const {data, user} = await this.resolveUser(userId);
-        const target = data.users.find((item) => item.id === user.id);
+        const {data, user: target} = await this.resolveUser(userId);
         const pairs = new Map(Object.entries(mapping || {})
             .map(([from, to]) => [this.normalizeBookUid(from), this.normalizeBookUid(to)])
             .filter(([from, to]) => from && to && from !== to));
@@ -1728,9 +1685,7 @@ class ReadingListStore {
 
     async addBooks(userId = '', listId, bookUids = []) {
         const {data, user} = await this.resolveUser(userId);
-        const item = data.lists.find((row) => row.id === listId && row.userId === user.id);
-        if (!item)
-            throw new Error(t('errors.listNotFound'));
+        const item = this.ownList(data, user, listId);
 
         item.books = this.normalizeEntries(item.books);
         const existing = new Set(item.books.map((row) => row.bookUid));
