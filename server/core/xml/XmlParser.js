@@ -305,19 +305,6 @@ class XmlParser extends NodeBase {
         return this;
     }
 
-    addRoot(node, after = '*') {
-        const selectorObj = this.wideSelector(after);
-
-        if (Array.isArray(node)) {
-            for (const node_ of node)
-                this.rawAdd(this.rawNodes, node_.raw, selectorObj);
-        } else {
-            this.rawAdd(this.rawNodes, node.raw, selectorObj);
-        }
-
-        return this;
-    }
-
     remove(selector = '') {
         const selectorObj = this.wideSelector(selector);
 
@@ -328,14 +315,6 @@ class XmlParser extends NodeBase {
                     n[3] = null;
             }
         }
-
-        return this;
-    }
-
-    removeRoot(selector = '') {
-        const selectorObj = this.wideSelector(selector);
-
-        this.rawRemove(this.rawNodes, selectorObj);
 
         return this;
     }
@@ -448,25 +427,6 @@ class XmlParser extends NodeBase {
 
     selectFirstSelf(selector) {
         return this.selectFirst(selector, true);
-    }
-
-    toJson(options = {}) {
-        const {format = false} = options;
-
-        if (format)
-            return JSON.stringify(this.rawNodes, null, 2);
-        else
-            return JSON.stringify(this.rawNodes);
-    }
-
-    fromJson(jsonString) {
-        const parsed = JSON.parse(jsonString);
-        if (!Array.isArray(parsed))
-            throw new Error('JSON parse error: root element must be array');
-
-        this.rawNodes = parsed;
-
-        return this;
     }
 
     toString(options = {}) {
