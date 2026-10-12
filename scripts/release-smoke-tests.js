@@ -357,7 +357,7 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
     assert.doesNotMatch(bodyHtml, /Аннотация/);
     assert.match(bodyHtml, /<h2 id="section-1" class="reader-anchored-heading reader-section-heading">Глава<\/h2>/);
     assert.match(readerSource, /this\.readerAnnotationHtml = fb2ToReaderHtml\.buildReaderAnnotationHtml\(/);
-    assert.match(readerSource, /this\.readerSearchText = this\.normalizeReaderSearchText\(this\.stripHtml\(this\.readerHtml \|\| ''\)\)\.toLowerCase\(\);/);
+    assert.match(readerSource, /this\.readerSearchText = readerTextAnchors\.normalizeReaderSearchText\(readerTextAnchors\.stripHtml\(this\.readerHtml \|\| ''\)\)\.toLowerCase\(\);/);
     assert.match(readerSource, /get hasContentsMenu\(\)[\s\S]{0,160}this\.hasContents \|\| this\.hasAnnotation/);
     assert.match(readerSource, /v-if="hasContentsMenu"/);
     assert.match(readerSource, /contentsPanelView === 'annotation'/);

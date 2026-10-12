@@ -1342,6 +1342,7 @@
 import vueComponent from '../vueComponent.js';
 import ReaderEnvironment from './readerEnvironment.js';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
+const readerTextAnchors = require('./readerTextAnchors');
 import _ from 'lodash';
 const readerProgress = require('../../share/readerProgress');
 const readerStorage = require('../../share/readerStorage');
@@ -2801,7 +2802,7 @@ class Reader {
         if (!activeResult || activeResult.pageIndex !== pageIndex)
             return page.html || '';
 
-        return this.highlightHtmlMatches(page.html || '', this.searchQuery);
+        return readerTextAnchors.highlightHtmlMatches(page.html || '', this.searchQuery);
     }
 
     get hasSearchResults() {
@@ -5001,24 +5002,6 @@ class Reader {
         });
     }
 
-    escapeRegExp(value = '') {
-        return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    // <template> разбирает HTML без загрузки и декодирования картинок (data: URL до мегабайт)
-    parseInertHtml(html = '') {
-        const template = document.createElement('template');
-        template.innerHTML = String(html || '');
-        return template;
-    }
-
-    stripHtml(html = '') {
-        if (typeof document === 'undefined')
-            return String(html || '');
-
-        return String(this.parseInertHtml(html).content.textContent || '');
-    }
-
     // Текст страницы считается один раз на страницу текущей разбивки
     getPagedPageText(page = null) {
         const html = String((page && page.html) || '');
@@ -5027,7 +5010,7 @@ class Reader {
         const cached = pagedPageTextCache.get(page);
         if (cached && cached.html === html)
             return cached.text;
-        const text = this.stripHtml(html);
+        const text = readerTextAnchors.stripHtml(html);
         pagedPageTextCache.set(page, {html, text});
         return text;
     }
@@ -5036,7 +5019,7 @@ class Reader {
         if (this.readerSearchText)
             return this.readerSearchText;
 
-        this.readerSearchText = this.normalizeReaderSearchText(this.stripHtml(this.readerHtml || '')).toLowerCase();
+        this.readerSearchText = readerTextAnchors.normalizeReaderSearchText(readerTextAnchors.stripHtml(this.readerHtml || '')).toLowerCase();
         return this.readerSearchText;
     }
 
@@ -5048,53 +5031,7 @@ class Reader {
         if (/<img\b/i.test(html))
             return false;
 
-        return !this.stripHtml(html).replace(/\s+/g, '').trim();
-    }
-
-    highlightHtmlMatches(html = '', query = '') {
-        const safeQuery = String(query || '').trim();
-        if (!safeQuery || typeof document === 'undefined')
-            return html;
-
-        const host = this.parseInertHtml(html);
-        const pattern = new RegExp(this.escapeRegExp(safeQuery), 'gi');
-        const walker = document.createTreeWalker(host.content, NodeFilter.SHOW_TEXT);
-        const textNodes = [];
-
-        while (walker.nextNode())
-            textNodes.push(walker.currentNode);
-
-        for (const textNode of textNodes) {
-            const value = String(textNode.nodeValue || '');
-            if (!value.trim() || !pattern.test(value))
-                continue;
-
-            pattern.lastIndex = 0;
-            const fragment = document.createDocumentFragment();
-            let lastIndex = 0;
-            let match = pattern.exec(value);
-            while (match) {
-                const matchText = match[0];
-                const matchIndex = match.index;
-                if (matchIndex > lastIndex)
-                    fragment.appendChild(document.createTextNode(value.slice(lastIndex, matchIndex)));
-
-                const mark = document.createElement('mark');
-                mark.className = 'reader-search-hit';
-                mark.textContent = matchText;
-                fragment.appendChild(mark);
-                lastIndex = matchIndex + matchText.length;
-                match = pattern.exec(value);
-            }
-
-            if (lastIndex < value.length)
-                fragment.appendChild(document.createTextNode(value.slice(lastIndex)));
-
-            if (textNode.parentNode)
-                textNode.parentNode.replaceChild(fragment, textNode);
-        }
-
-        return host.innerHTML;
+        return !readerTextAnchors.stripHtml(html).replace(/\s+/g, '').trim();
     }
 
     rebuildSearchResults(resetIndex = false) {
@@ -5228,10 +5165,10 @@ class Reader {
         const contentRoot = (anchorSheet && anchorSheet.querySelector('.reader-page-content, .reader-html')) || null;
         const caretAnchor = this.captureTopLeftReaderTextAnchor(contentRoot);
         const focusNode = this.findTopLeftReaderContentNode(contentRoot);
-        const focusId = caretAnchor.id || this.getReaderNodeAnchorId(focusNode);
+        const focusId = caretAnchor.id || readerTextAnchors.getReaderNodeAnchorId(focusNode);
         const focusText = caretAnchor.textSnippet
-            || this.getReaderNodeTextSnippet(focusNode)
-            || this.getReaderNodeImageAnchor(focusNode)
+            || readerTextAnchors.getReaderNodeTextSnippet(focusNode)
+            || readerTextAnchors.getReaderNodeImageAnchor(focusNode)
             || this.getPagedVisibleTextSnippet(anchorSheet)
             || this.getPagedVisibleImageAnchor(anchorSheet);
         const textOffset = Number(caretAnchor.textOffset) >= 0
@@ -5253,138 +5190,19 @@ class Reader {
         if (!root || typeof document === 'undefined' || typeof window === 'undefined' || typeof document.createRange !== 'function')
             return {};
 
-        const textPosition = this.findTopLeftReaderTextPosition(root);
+        const textPosition = readerTextAnchors.findTopLeftReaderTextPosition(root);
         if (!textPosition || !textPosition.node)
             return {};
 
-        const textSnippet = this.getReaderTextSnippetFromPosition(root, textPosition.node, textPosition.offset);
+        const textSnippet = readerTextAnchors.getReaderTextSnippetFromPosition(root, textPosition.node, textPosition.offset);
         if (!textSnippet)
             return {};
 
         return {
-            id: this.getReaderNodeAnchorId(textPosition.node.parentElement),
+            id: readerTextAnchors.getReaderNodeAnchorId(textPosition.node.parentElement),
             textSnippet,
             textOffset: this.getPagedTextOffsetForSnippet(textSnippet, this.getPagedAnchorPageIndex()),
         };
-    }
-
-    findTopLeftReaderTextPosition(root = null) {
-        if (!root || typeof document === 'undefined' || typeof window === 'undefined' || typeof document.createTreeWalker !== 'function')
-            return null;
-
-        const rootRect = (typeof root.getBoundingClientRect === 'function' ? root.getBoundingClientRect() : null);
-        if (!rootRect || rootRect.width <= 0 || rootRect.height <= 0)
-            return null;
-
-        const walker = document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (node) => (
-                    this.normalizeReaderSearchText(node.nodeValue || '').length
-                        ? NodeFilter.FILTER_ACCEPT
-                        : NodeFilter.FILTER_REJECT
-                ),
-            },
-        );
-        let bestRect = null;
-        let current = walker.nextNode();
-
-        while (current) {
-            const range = document.createRange();
-            range.selectNodeContents(current);
-            const rects = Array.from(range.getClientRects());
-            if (typeof range.detach === 'function')
-                range.detach();
-
-            for (const rect of rects) {
-                if (!rect || rect.width <= 0 || rect.height <= 0)
-                    continue;
-                if (rect.bottom < rootRect.top || rect.top > rootRect.bottom)
-                    continue;
-                if (rect.right < rootRect.left || rect.left > rootRect.right)
-                    continue;
-
-                if (!bestRect || rect.top < bestRect.top || (Math.round(rect.top) === Math.round(bestRect.top) && rect.left < bestRect.left))
-                    bestRect = rect;
-            }
-
-            current = walker.nextNode();
-        }
-
-        if (!bestRect)
-            return null;
-
-        const points = [
-            {x: bestRect.left + 1, y: bestRect.top + (bestRect.height / 2)},
-            {x: bestRect.left + Math.min(12, Math.max(2, bestRect.width / 4)), y: bestRect.top + (bestRect.height / 2)},
-            {x: rootRect.left + 2, y: bestRect.top + (bestRect.height / 2)},
-        ];
-
-        for (const point of points) {
-            const position = this.getReaderTextPositionFromPoint(point.x, point.y);
-            if (position && position.node && root.contains(position.node))
-                return position;
-        }
-
-        return null;
-    }
-
-    getReaderTextPositionFromPoint(x = 0, y = 0) {
-        if (typeof document === 'undefined')
-            return null;
-
-        if (typeof document.caretPositionFromPoint === 'function') {
-            const position = document.caretPositionFromPoint(x, y);
-            if (position && position.offsetNode)
-                return {
-                    node: position.offsetNode,
-                    offset: Math.max(0, Math.round(Number(position.offset || 0) || 0)),
-                };
-        }
-
-        if (typeof document.caretRangeFromPoint === 'function') {
-            const range = document.caretRangeFromPoint(x, y);
-            if (range && range.startContainer)
-                return {
-                    node: range.startContainer,
-                    offset: Math.max(0, Math.round(Number(range.startOffset || 0) || 0)),
-                };
-        }
-
-        return null;
-    }
-
-    getReaderTextSnippetFromPosition(root = null, node = null, offset = 0) {
-        if (!root || !node || node.nodeType !== Node.TEXT_NODE || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function')
-            return '';
-
-        let text = String(node.nodeValue || '').slice(Math.max(0, Math.min(String(node.nodeValue || '').length, Math.round(Number(offset || 0) || 0))));
-        const walker = document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (candidate) => (
-                    this.normalizeReaderSearchText(candidate.nodeValue || '').length
-                        ? NodeFilter.FILTER_ACCEPT
-                        : NodeFilter.FILTER_REJECT
-                ),
-            },
-        );
-
-        let found = false;
-        let current = walker.nextNode();
-        while (current && text.length < 260) {
-            if (current === node) {
-                found = true;
-            } else if (found) {
-                text += ` ${String(current.nodeValue || '')}`;
-            }
-            current = walker.nextNode();
-        }
-
-        const normalized = this.normalizeReaderSearchText(text);
-        return normalized.length >= 12 ? normalized.slice(0, 180) : '';
     }
 
     captureScrollReflowAnchor() {
@@ -5394,8 +5212,8 @@ class Reader {
 
         const contentRoot = scroller.querySelector('.reader-html');
         const focusNode = this.findTopLeftReaderContentNode(contentRoot);
-        const focusId = this.getReaderNodeAnchorId(focusNode);
-        const focusText = this.getReaderNodeTextSnippet(focusNode);
+        const focusId = readerTextAnchors.getReaderNodeAnchorId(focusNode);
+        const focusText = readerTextAnchors.getReaderNodeTextSnippet(focusNode);
 
         return {
             mode: 'scroll',
@@ -5420,15 +5238,15 @@ class Reader {
                 continue;
             if (node === root)
                 continue;
-            if (this.isReaderHighlightContainerNode(node))
+            if (readerTextAnchors.isReaderHighlightContainerNode(node))
                 continue;
 
             const rect = node.getBoundingClientRect();
             if (!rect || rect.width <= 0 || rect.height <= 0)
                 continue;
 
-            const hasId = !!this.getReaderNodeAnchorId(node);
-            const text = this.normalizeReaderSearchText(node.textContent || '');
+            const hasId = !!readerTextAnchors.getReaderNodeAnchorId(node);
+            const text = readerTextAnchors.normalizeReaderSearchText(node.textContent || '');
             const hasReadableText = text.length >= 12;
             const hasImage = !!(typeof node.querySelector === 'function' && node.querySelector('img'));
             if (!hasId && !hasReadableText && !hasImage)
@@ -5446,53 +5264,6 @@ class Reader {
         return bestNode;
     }
 
-    getReaderNodeAnchorId(node = null) {
-        if (!node || typeof node.getAttribute !== 'function')
-            return '';
-
-        return String(node.getAttribute('id') || node.getAttribute('name') || '').trim();
-    }
-
-    getReaderNodeTextSnippet(node = null) {
-        if (!node)
-            return '';
-
-        const text = this.normalizeReaderSearchText(node.textContent || '');
-        if (!text)
-            return '';
-
-        return text.slice(0, 180);
-    }
-
-    normalizeReaderImageAnchor(src = '') {
-        const safeSrc = String(src || '').trim();
-        if (!safeSrc)
-            return '';
-
-        let normalized = safeSrc;
-        try {
-            const url = new URL(safeSrc, window.location.href);
-            normalized = `${url.pathname}${url.search || ''}`;
-        } catch(e) {
-            normalized = safeSrc;
-        }
-
-        return `image:${normalized}`.slice(0, 220);
-    }
-
-    getReaderNodeImageAnchor(node = null) {
-        if (!node || typeof node.querySelector !== 'function')
-            return '';
-
-        const image = (String(node.tagName || '').toLowerCase() === 'img')
-            ? node
-            : node.querySelector('img');
-        if (!image)
-            return '';
-
-        return this.normalizeReaderImageAnchor(image.getAttribute('src') || image.currentSrc || image.src || '');
-    }
-
     getPagedVisibleTextSnippet(sheet = null) {
         const pageIndex = this.getPagedAnchorPageIndex();
         const modelText = this.getPagedPageSearchText(pageIndex);
@@ -5500,7 +5271,7 @@ class Reader {
         if (sheet && typeof sheet.querySelector === 'function') {
             const anchorSheet = this.getPagedAnchorSheet(sheet);
             const contentRoots = Array.from(anchorSheet.querySelectorAll('.reader-html')).slice(0, 1);
-            const text = this.normalizeReaderSearchText(contentRoots.map(node => (node && (node.innerText || node.textContent)) || '').filter(Boolean).join(' '));
+            const text = readerTextAnchors.normalizeReaderSearchText(contentRoots.map(node => (node && (node.innerText || node.textContent)) || '').filter(Boolean).join(' '));
             if (text && (text.length >= 24 || text.length >= modelText.length))
                 return text.slice(0, 240);
         }
@@ -5520,7 +5291,7 @@ class Reader {
         if (!image)
             return '';
 
-        return this.normalizeReaderImageAnchor(image.getAttribute('src') || image.currentSrc || image.src || '');
+        return readerTextAnchors.normalizeReaderImageAnchor(image.getAttribute('src') || image.currentSrc || image.src || '');
     }
 
     restorePendingReflowAnchor() {
@@ -5581,7 +5352,7 @@ class Reader {
         if (anchor.id)
             target = scroller.querySelector(`#${this.escapeCssId(anchor.id)}`);
         if (!target && anchor.textSnippet)
-            target = this.findReaderNodeByTextSnippet(scroller.querySelector('.reader-html'), anchor.textSnippet);
+            target = readerTextAnchors.findReaderNodeByTextSnippet(scroller.querySelector('.reader-html'), anchor.textSnippet);
 
         if (target) {
             scroller.scrollTop = Math.max(0, target.offsetTop - 18);
@@ -5680,29 +5451,13 @@ class Reader {
         if (anchor.id)
             target = root.querySelector(`#${this.escapeCssId(anchor.id)}`);
         if (!target && anchor.textSnippet)
-            target = this.findReaderNodeByTextSnippet(root.querySelector('.reader-html') || root, anchor.textSnippet);
+            target = readerTextAnchors.findReaderNodeByTextSnippet(root.querySelector('.reader-html') || root, anchor.textSnippet);
         if (!target && anchor.textSnippet && String(anchor.textSnippet || '').startsWith('image:'))
-            target = this.findReaderNodeByImageAnchor(root, anchor.textSnippet);
+            target = readerTextAnchors.findReaderNodeByImageAnchor(root, anchor.textSnippet);
         if (!target && anchor.sectionId)
             target = root.querySelector(`#${this.escapeCssId(anchor.sectionId)}`);
 
         return target;
-    }
-
-    findReaderNodeByImageAnchor(root = null, imageAnchor = '') {
-        if (!root || typeof root.querySelectorAll !== 'function')
-            return null;
-
-        const safeAnchor = String(imageAnchor || '').trim();
-        if (!safeAnchor)
-            return null;
-
-        const images = Array.from(root.querySelectorAll('img'));
-        const image = images.find((node) => this.normalizeReaderImageAnchor(node.getAttribute('src') || node.currentSrc || node.src || '') === safeAnchor);
-        if (!image)
-            return null;
-
-        return image.closest('.reader-image-block, .reader-page-content, p, div') || image;
     }
 
     reflowReaderLayout() {
@@ -6264,7 +6019,7 @@ class Reader {
             addId(node.getAttribute('name'));
         }
         for (const image of Array.from(host.querySelectorAll('img')))
-            addId(this.normalizeReaderImageAnchor(image.getAttribute('src') || ''));
+            addId(readerTextAnchors.normalizeReaderImageAnchor(image.getAttribute('src') || ''));
 
         return Array.from(ids);
     }
@@ -7506,7 +7261,7 @@ class Reader {
         });
         this.readerHtml = readerHtml;
         this.readerNotesAnchorId = notesAnchorId;
-        this.readerSearchText = this.normalizeReaderSearchText(this.stripHtml(this.readerHtml || '')).toLowerCase();
+        this.readerSearchText = readerTextAnchors.normalizeReaderSearchText(readerTextAnchors.stripHtml(this.readerHtml || '')).toLowerCase();
 
         const emptyProgress = {percent: 0, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '', updatedAt: ''};
         const progressResetAt = String((stateResponse && stateResponse.progressResetAt) || '').trim();
@@ -8257,7 +8012,7 @@ class Reader {
         if (!safeId || !this.readerHtml || typeof document === 'undefined')
             return false;
 
-        return !!this.parseInertHtml(this.readerHtml).content.querySelector(`#${this.escapeCssId(safeId)}`);
+        return !!readerTextAnchors.parseInertHtml(this.readerHtml).content.querySelector(`#${this.escapeCssId(safeId)}`);
     }
 
     handleReaderAnnotationClick(event) {
@@ -8466,7 +8221,7 @@ class Reader {
     }
 
     findPagedPageIndexByTextSnippet(textSnippet = '', preferredIndex = -1) {
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
+        const safeSnippet = readerTextAnchors.normalizeReaderSearchText(textSnippet).toLowerCase();
         if (!safeSnippet || !this.pagedPages.length)
             return -1;
 
@@ -8484,7 +8239,7 @@ class Reader {
         let bestDistance = Infinity;
         for (let index = 0; index < this.pagedPages.length; index += 1) {
             const page = this.pagedPages[index] || {};
-            const pageText = this.getHtmlReaderSearchText(page.html || '');
+            const pageText = readerTextAnchors.getHtmlReaderSearchText(page.html || '');
             if (!pageText)
                 continue;
             if (!needles.some((needle) => pageText.includes(needle)))
@@ -8517,47 +8272,11 @@ class Reader {
 
     getPagedPageSearchText(index = 0) {
         const page = this.pagedPages[Math.max(0, Math.min(this.pagedPages.length - 1, Number(index || 0) || 0))] || {};
-        return this.getHtmlReaderSearchText(page.html || '');
-    }
-
-    getHtmlReaderSearchText(html = '') {
-        if (typeof document === 'undefined')
-            return this.normalizeReaderSearchText(this.stripHtml(html || '')).toLowerCase();
-
-        const host = document.createElement('div');
-        host.innerHTML = String(html || '');
-        return this.getReaderRootSearchText(host);
-    }
-
-    getReaderRootSearchText(root = null) {
-        if (!root || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function')
-            return this.normalizeReaderSearchText(root && root.textContent ? root.textContent : '').toLowerCase();
-
-        const parts = [];
-        const walker = document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (node) => (
-                    this.normalizeReaderSearchText(node.nodeValue || '').length
-                        ? NodeFilter.FILTER_ACCEPT
-                        : NodeFilter.FILTER_REJECT
-                ),
-            },
-        );
-        let current = walker.nextNode();
-        while (current) {
-            const text = this.normalizeReaderSearchText(current.nodeValue || '');
-            if (text)
-                parts.push(text);
-            current = walker.nextNode();
-        }
-
-        return this.normalizeReaderSearchText(parts.join(' ')).toLowerCase();
+        return readerTextAnchors.getHtmlReaderSearchText(page.html || '');
     }
 
     getPagedTextOffsetForSnippet(textSnippet = '', pageIndex = 0) {
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
+        const safeSnippet = readerTextAnchors.normalizeReaderSearchText(textSnippet).toLowerCase();
         if (!safeSnippet || !this.pagedPages.length)
             return -1;
 
@@ -8705,64 +8424,18 @@ class Reader {
         return starts;
     }
 
-    findReaderNodeByTextSnippet(root = null, textSnippet = '') {
-        if (!root || typeof root.querySelectorAll !== 'function')
-            return null;
-
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
-        if (!safeSnippet)
-            return null;
-
-        const needles = [
-            safeSnippet.slice(0, 180),
-            safeSnippet.slice(0, 120),
-            safeSnippet.slice(0, 80),
-            safeSnippet.slice(0, 48),
-        ].filter((value) => value.length >= 24);
-        if (!needles.length)
-            return null;
-
-        const nodes = Array.from(root.querySelectorAll('*')).reverse();
-        for (const node of nodes) {
-            if (node === root || this.isReaderHighlightContainerNode(node))
-                continue;
-
-            const text = this.normalizeReaderSearchText(node.textContent || '').toLowerCase();
-            if (text && needles.some((needle) => text.includes(needle)))
-                return node;
-        }
-
-        return null;
-    }
-
-    isReaderHighlightContainerNode(node = null) {
-        if (!node || !node.classList)
-            return false;
-
-        return [
-            'reader-html',
-            'reader-page-content',
-            'reader-page-sheet',
-            'reader-page-column-sheet',
-        ].some(className => node.classList.contains(className));
-    }
-
-    normalizeReaderSearchText(text = '') {
-        return String(text || '').replace(/\s+/g, ' ').trim();
-    }
-
     findPagedPageIndexByAnchorText(id = '') {
         const safeId = String(id || '').trim();
         if (!safeId || typeof document === 'undefined')
             return -1;
 
-        const sourceHost = this.parseInertHtml(this.readerHtml).content;
+        const sourceHost = readerTextAnchors.parseInertHtml(this.readerHtml).content;
         const target = sourceHost.querySelector(`#${this.escapeCssId(safeId)}`)
             || Array.from(sourceHost.querySelectorAll('[name]')).find((node) => node.getAttribute('name') === safeId);
         if (!target)
             return -1;
 
-        const targetText = this.normalizeReaderSearchText(target.textContent || '');
+        const targetText = readerTextAnchors.normalizeReaderSearchText(target.textContent || '');
         if (!targetText)
             return -1;
 
@@ -8775,7 +8448,7 @@ class Reader {
             return -1;
 
         for (let index = 0; index < this.pagedPages.length; index += 1) {
-            const pageText = this.normalizeReaderSearchText(this.getPagedPageText(this.pagedPages[index]));
+            const pageText = readerTextAnchors.normalizeReaderSearchText(this.getPagedPageText(this.pagedPages[index]));
             if (textNeedles.some((needle) => pageText.includes(needle)))
                 return index;
         }
