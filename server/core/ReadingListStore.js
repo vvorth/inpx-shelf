@@ -143,6 +143,12 @@ class ReadingListStore {
                 ? value[key]
                 : (utilsHasProp(defaults, key) ? defaults[key] : fallback)
         );
+        //сторона без своего значения берётся из общего, как в читалке (normalizeReaderSpacingPreferences): низ = верх + 4
+        const side = (key, shared, extra = 0) => {
+            if (!utilsHasProp(value, key) && utilsHasProp(value, shared) && Number.isFinite(Number(value[shared])))
+                return Number(value[shared]) + extra;
+            return setting(key, 0);
+        };
         const fontFamily = String(setting('fontFamily', 'serif')).trim().toLowerCase();
         const contentWidthMode = String(setting('contentWidthMode', 'fixed')).trim().toLowerCase();
         const pagedSpreadMode = String(setting('pagedSpreadMode', 'single')).trim().toLowerCase();
@@ -177,13 +183,13 @@ class ReadingListStore {
             dualPageGap: Math.max(0, Math.min(240, parseInt(setting('dualPageGap', 28), 10) || 0)),
             pageVerticalPadding: Math.max(0, Math.min(160, parseInt(setting('pageVerticalPadding', 18), 10) || 0)),
             pageHorizontalPadding: Math.max(0, Math.min(220, parseInt(setting('pageHorizontalPadding', 18), 10) || 0)),
-            pagePaddingTop: Math.max(0, Math.min(160, parseInt(setting('pagePaddingTop', setting('pageVerticalPadding', 18)), 10) || 0)),
-            pagePaddingBottom: Math.max(0, Math.min(160, parseInt(setting('pagePaddingBottom', setting('pageVerticalPadding', 22)), 10) || 0)),
-            pagePaddingLeft: Math.max(0, Math.min(220, parseInt(setting('pagePaddingLeft', setting('pageHorizontalPadding', 18)), 10) || 0)),
-            pagePaddingRight: Math.max(0, Math.min(220, parseInt(setting('pagePaddingRight', setting('pageHorizontalPadding', 18)), 10) || 0)),
+            pagePaddingTop: Math.max(0, Math.min(160, parseInt(side('pagePaddingTop', 'pageVerticalPadding'), 10) || 0)),
+            pagePaddingBottom: Math.max(0, Math.min(160, parseInt(side('pagePaddingBottom', 'pageVerticalPadding', 4), 10) || 0)),
+            pagePaddingLeft: Math.max(0, Math.min(220, parseInt(side('pagePaddingLeft', 'pageHorizontalPadding'), 10) || 0)),
+            pagePaddingRight: Math.max(0, Math.min(220, parseInt(side('pagePaddingRight', 'pageHorizontalPadding'), 10) || 0)),
             pageOuterGap: Math.max(0, Math.min(220, parseInt(setting('pageOuterGap', 28), 10) || 0)),
-            pageOuterGapTop: Math.max(0, Math.min(220, parseInt(setting('pageOuterGapTop', setting('pageOuterGap', 28)), 10) || 0)),
-            pageOuterGapBottom: Math.max(0, Math.min(220, parseInt(setting('pageOuterGapBottom', setting('pageOuterGap', 28)), 10) || 0)),
+            pageOuterGapTop: Math.max(0, Math.min(220, parseInt(side('pageOuterGapTop', 'pageOuterGap'), 10) || 0)),
+            pageOuterGapBottom: Math.max(0, Math.min(220, parseInt(side('pageOuterGapBottom', 'pageOuterGap'), 10) || 0)),
             einkContrast: Math.max(72, Math.min(100, parseInt(setting('einkContrast', 92), 10) || 92)),
             einkPaperTone: Math.max(84, Math.min(99, parseInt(setting('einkPaperTone', 94), 10) || 94)),
             einkInkTone: Math.max(4, Math.min(26, parseInt(setting('einkInkTone', 10), 10) || 10)),
@@ -195,7 +201,7 @@ class ReadingListStore {
             return {};
 
         const hasOwn = key => utilsHasProp(value, key);
-        const normalized = this.normalizeReaderRuntimeSettings(Object.assign({}, defaults, value), defaults);
+        const normalized = this.normalizeReaderRuntimeSettings(value, defaults);
         const allowed = [
             'readMode',
             'pagedNavigation',
