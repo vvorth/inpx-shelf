@@ -147,432 +147,7 @@
                 </div>
             </div>
 
-            <div
-                v-show="bookUid && showToolbarActions"
-                ref="readerToolbarActions"
-                class="reader-toolbar-actions"
-                :class="{
-                    'reader-toolbar-actions--mobile-sheet': isCompactLayout,
-                }"
-            >
-                <input
-                    ref="readerBackgroundInput"
-                    class="reader-background-input"
-                    type="file"
-                    accept="image/*"
-                    @change="handleReaderBackgroundUpload"
-                />
-
-                <div class="reader-controls-header">
-                    <div class="tabs reader-controls-tabs">
-                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'text'}" @click="setReaderControlsTab('text')">{{ uiText.controlsText }}</button>
-                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'page'}" @click="setReaderControlsTab('page')">{{ uiText.controlsPage }}</button>
-                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'background'}" @click="setReaderControlsTab('background')">{{ uiText.controlsBackground }}</button>
-                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'status'}" @click="setReaderControlsTab('status')">{{ uiText.controlsStatus }}</button>
-                    </div>
-
-                    <div class="reader-controls-state">
-                        <q-btn
-                            v-if="readerSettingsReflowPending"
-                            flat
-                            dense
-                            no-caps
-                            icon="la la-sync-alt"
-                            class="reader-rebuild-btn"
-                            :disable="layoutRefreshing || isPagedBuildPending"
-                            @click="applyPendingReaderSettingsReflow"
-                        >
-                            {{ uiText.rebuildPages }}
-                        </q-btn>
-                        <div class="reader-progress-text">
-                            {{ displayProgressPercent }}%<span v-if="showDisplayPagedPageCounter"> | {{ displayCurrentPage }}/{{ displayTotalPages }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="reader-controls-body">
-                    <template v-if="readerControlsTab === 'text'">
-                        <section class="reader-controls-group reader-controls-group--mode">
-                            <div class="reader-controls-group-title">{{ uiText.controlsView }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsTheme }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': preferences.theme === 'dark'}" @click="setTheme('dark')">{{ uiText.themeDark }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': preferences.theme === 'sepia'}" @click="setTheme('sepia')">{{ uiText.themeSepia }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': preferences.theme === 'light'}" @click="setTheme('light')">{{ uiText.themeLight }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': preferences.theme === 'eink'}" @click="setTheme('eink')">{{ uiText.themeEink }}</q-btn>
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsFont }}</div>
-                                <q-select
-                                    :model-value="selectedFontFamily"
-                                    :options="fontFamilyOptions"
-                                    class="reader-font-select"
-                                    behavior="menu"
-                                    :dark="preferences.theme === 'dark'"
-                                    popup-content-class="reader-font-menu"
-                                    :popup-content-style="readerDialogStyle"
-                                    borderless
-                                    dense
-                                    options-dense
-                                    emit-value
-                                    map-options
-                                    dropdown-icon="la la-angle-down"
-                                    @update:model-value="setFontFamily"
-                                />
-                            </div>
-                        </section>
-
-                        <section class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsTypography }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsFontSize }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-minus" @click="changeFontSize(-1)" />
-                                    <div class="reader-stepper-value">{{ activePreferences.fontSize }}px</div>
-                                    <q-btn flat dense round icon="la la-plus" @click="changeFontSize(1)" />
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsLineHeight }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-minus" @click="changeLineHeight(-0.05)" />
-                                    <div class="reader-stepper-value">{{ activePreferences.lineHeight.toFixed(2) }}</div>
-                                    <q-btn flat dense round icon="la la-plus" @click="changeLineHeight(0.05)" />
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsTextShadow }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.textShadow}" @click="setTextShadow(true)">{{ uiText.textShadowOn }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.textShadow}" @click="setTextShadow(false)">{{ uiText.textShadowOff }}</q-btn>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsWidth }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsTextWidth }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-compress" @click="changeContentWidth(-40)" />
-                                    <div class="reader-stepper-value">{{ activePreferences.contentWidth }}px</div>
-                                    <q-btn flat dense round icon="la la-expand" @click="changeContentWidth(40)" />
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsTextWidthMode }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.contentWidthMode !== 'viewport'}" @click="setContentWidthMode('fixed')">{{ uiText.widthFixed }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.contentWidthMode === 'viewport'}" @click="setContentWidthMode('viewport')">{{ uiText.widthViewport }}</q-btn>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section v-if="preferences.theme === 'eink'" class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsInk }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.einkContrast }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-minus" @click="changeEinkContrast(-4)" />
-                                    <div class="reader-stepper-value">{{ activePreferences.einkContrast }}%</div>
-                                    <q-btn flat dense round icon="la la-plus" @click="changeEinkContrast(4)" />
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.einkPaper }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-minus" @click="changeEinkPaperTone(-2)" />
-                                    <div class="reader-stepper-value">{{ activePreferences.einkPaperTone }}%</div>
-                                    <q-btn flat dense round icon="la la-plus" @click="changeEinkPaperTone(2)" />
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.einkInk }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-minus" @click="changeEinkInkTone(2)" />
-                                    <div class="reader-stepper-value">{{ 100 - activePreferences.einkInkTone }}%</div>
-                                    <q-btn flat dense round icon="la la-plus" @click="changeEinkInkTone(-2)" />
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsReset }}</div>
-                            <div class="reader-reset-control">
-                                <q-btn
-                                    flat
-                                    dense
-                                    no-caps
-                                    icon="la la-undo"
-                                    @click="resetReaderAppearance"
-                                >
-                                    {{ uiText.resetReaderAppearance }}
-                                </q-btn>
-                                <div class="reader-control-hint">{{ uiText.resetReaderAppearanceHint }}</div>
-                            </div>
-                        </section>
-                    </template>
-
-                    <template v-else-if="readerControlsTab === 'page'">
-                        <section class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsMode }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsReadMode }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.readMode === 'scroll'}" @click="setReadMode('scroll')">{{ uiText.readModeScroll }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.readMode === 'paged'}" @click="setReadMode('paged')">{{ uiText.readModePages }}</q-btn>
-                                </div>
-                            </div>
-
-                            <template v-if="activePreferences.readMode === 'paged'">
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.controlsPageFlow }}</div>
-                                    <div class="reader-theme-switch">
-                                        <q-btn flat dense no-caps :class="{'is-active': activePreferences.pagedDirection === 'vertical'}" @click="setPagedDirection('vertical')">{{ uiText.directionVertical }}</q-btn>
-                                        <q-btn flat dense no-caps :class="{'is-active': activePreferences.pagedDirection === 'horizontal'}" @click="setPagedDirection('horizontal')">{{ uiText.directionHorizontal }}</q-btn>
-                                    </div>
-                                </div>
-
-                                <div v-if="!isCompactLayout" class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.controlsSpread }}</div>
-                                    <div class="reader-theme-switch">
-                                        <q-btn flat dense no-caps :class="{'is-active': activePreferences.pagedSpreadMode !== 'dual'}" @click="setPagedSpreadMode('single')">{{ uiText.spreadSingle }}</q-btn>
-                                        <q-btn flat dense no-caps :class="{'is-active': activePreferences.pagedSpreadMode === 'dual'}" @click="setPagedSpreadMode('dual')">{{ uiText.spreadDual }}</q-btn>
-                                    </div>
-                                </div>
-                            </template>
-                        </section>
-
-                        <section v-if="activePreferences.readMode === 'paged'" class="reader-controls-group reader-controls-group--spacing">
-                            <div class="reader-controls-group-title">{{ uiText.controlsSpacing }}</div>
-
-                            <div v-if="activePreferences.pagedSpreadMode === 'dual' && !isCompactLayout" class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.pageGap }}</div>
-                                <div class="reader-stepper">
-                                    <q-btn flat dense round icon="la la-compress-arrows-alt" @click="changeDualPageGap(-8)" />
-                                    <div class="reader-stepper-value">{{ dualPageGap }}px</div>
-                                    <q-btn flat dense round icon="la la-expand-arrows-alt" @click="changeDualPageGap(8)" />
-                                </div>
-                            </div>
-
-                            <div v-if="isCompactLayout" class="reader-mobile-spacing-control">
-                                <div class="reader-mobile-spacing-stepper">
-                                    <div class="reader-mobile-spacing-active">{{ activeMobileSpacingControl.label }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changeMobileSpacingControl(-4)" />
-                                        <div class="reader-stepper-value">{{ activeMobileSpacingControl.value }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changeMobileSpacingControl(4)" />
-                                    </div>
-                                </div>
-
-                                <div class="reader-mobile-spacing-targets">
-                                    <button
-                                        v-for="item in mobileSpacingControls"
-                                        :key="item.key"
-                                        type="button"
-                                        class="reader-mobile-spacing-target"
-                                        :class="{'is-active': item.key === mobileSpacingControl}"
-                                        @click="setMobileSpacingControl(item.key)"
-                                    >
-                                        <span>{{ item.label }}</span>
-                                        <strong>{{ item.value }}px</strong>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div v-else class="reader-spacing-grid">
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.pagePaddingTop }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changePagePadding('top', -4)" />
-                                        <div class="reader-stepper-value">{{ pagePaddingTop }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changePagePadding('top', 4)" />
-                                    </div>
-                                </div>
-
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.pagePaddingBottom }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changePagePadding('bottom', -4)" />
-                                        <div class="reader-stepper-value">{{ pagePaddingBottom }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changePagePadding('bottom', 4)" />
-                                    </div>
-                                </div>
-
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.pagePaddingLeft }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changePagePadding('left', -4)" />
-                                        <div class="reader-stepper-value">{{ pagePaddingLeft }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changePagePadding('left', 4)" />
-                                    </div>
-                                </div>
-
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.pagePaddingRight }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changePagePadding('right', -4)" />
-                                        <div class="reader-stepper-value">{{ pagePaddingRight }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changePagePadding('right', 4)" />
-                                    </div>
-                                </div>
-
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.pageOuterGapTop }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changePageOuterGap('top', -4)" />
-                                        <div class="reader-stepper-value">{{ pageOuterGapTop }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changePageOuterGap('top', 4)" />
-                                    </div>
-                                </div>
-
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.pageOuterGapBottom }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changePageOuterGap('bottom', -4)" />
-                                        <div class="reader-stepper-value">{{ pageOuterGapBottom }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changePageOuterGap('bottom', 4)" />
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section v-if="activePreferences.readMode === 'paged'" class="reader-controls-group reader-controls-group--animation">
-                            <div class="reader-controls-group-title">{{ uiText.controlsAnimation }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsAnimationType }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.pageAnimation === 'none'}" @click="setPageAnimation('none')">{{ uiText.animationNone }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.pageAnimation === 'soft'}" @click="setPageAnimation('soft')">{{ uiText.animationSoft }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.pageAnimation === 'slide'}" @click="setPageAnimation('slide')">{{ uiText.animationSlide }}</q-btn>
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsAnimationSpeed }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.pageAnimationSpeed === 'fast'}" @click="setPageAnimationSpeed('fast')">{{ uiText.speedFast }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.pageAnimationSpeed === 'normal'}" @click="setPageAnimationSpeed('normal')">{{ uiText.speedNormal }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.pageAnimationSpeed === 'slow'}" @click="setPageAnimationSpeed('slow')">{{ uiText.speedSlow }}</q-btn>
-                                </div>
-                            </div>
-                        </section>
-                    </template>
-
-                    <template v-else-if="readerControlsTab === 'background'">
-                        <section class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsBackgroundImage }}</div>
-                            <div class="reader-background-control">
-                                <q-btn flat dense no-caps icon="la la-image" @click="openReaderBackgroundPicker">{{ uiText.backgroundUpload }}</q-btn>
-                                <q-btn v-if="preferences.backgroundImage" flat dense no-caps icon="la la-times" @click="clearReaderBackground">{{ uiText.backgroundClear }}</q-btn>
-                            </div>
-                        </section>
-
-                        <section v-if="preferences.backgroundImage" class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsBackgroundLayers }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsPages }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.backgroundTransparentPages}" @click="setBackgroundTransparency('backgroundTransparentPages', false)">{{ uiText.backgroundPagesSolid }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.backgroundTransparentPages}" @click="setBackgroundTransparency('backgroundTransparentPages', true)">{{ uiText.backgroundPagesTransparent }}</q-btn>
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsStatusBar }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.backgroundTransparentStatus}" @click="setBackgroundTransparency('backgroundTransparentStatus', false)">{{ uiText.backgroundStatusSolid }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.backgroundTransparentStatus}" @click="setBackgroundTransparency('backgroundTransparentStatus', true)">{{ uiText.backgroundStatusTransparent }}</q-btn>
-                                </div>
-                            </div>
-                        </section>
-                    </template>
-
-                    <template v-else-if="readerControlsTab === 'status'">
-                        <section class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsStatusField }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsStatusVisibility }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.showStatusBar}" @click="setStatusBarVisible(true)">{{ uiText.statusBarOn }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.showStatusBar}" @click="setStatusBarVisible(false)">{{ uiText.statusBarOff }}</q-btn>
-                                </div>
-                            </div>
-
-                            <template v-if="activePreferences.showStatusBar">
-                                <div class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.statusSize }}</div>
-                                    <div class="reader-stepper">
-                                        <q-btn flat dense round icon="la la-minus" @click="changeStatusBarSize(-1)" />
-                                        <div class="reader-stepper-value">{{ statusBarSize }}px</div>
-                                        <q-btn flat dense round icon="la la-plus" @click="changeStatusBarSize(1)" />
-                                    </div>
-                                </div>
-
-                                <div v-if="!isCompactLayout" class="reader-control-field">
-                                    <div class="reader-control-label">{{ uiText.controlsStatusPosition }}</div>
-                                    <div class="reader-theme-switch">
-                                        <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarAlign !== 'edge'}" @click="setStatusBarAlign('center')">{{ uiText.statusAlignCenter }}</q-btn>
-                                        <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarAlign === 'edge'}" @click="setStatusBarAlign('edge')">{{ uiText.statusAlignEdge }}</q-btn>
-                                    </div>
-                                </div>
-                            </template>
-                        </section>
-
-                        <section v-if="activePreferences.showStatusBar" class="reader-controls-group">
-                            <div class="reader-controls-group-title">{{ uiText.controlsStatusContent }}</div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsClock }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarClock}" @click="setStatusBarOption('statusBarClock', true)">{{ uiText.statusClockOn }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.statusBarClock}" @click="setStatusBarOption('statusBarClock', false)">{{ uiText.statusClockOff }}</q-btn>
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsProgressBar }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarProgressBar}" @click="setStatusBarOption('statusBarProgressBar', true)">{{ uiText.statusProgressOn }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.statusBarProgressBar}" @click="setStatusBarOption('statusBarProgressBar', false)">{{ uiText.statusProgressOff }}</q-btn>
-                                </div>
-                            </div>
-
-                            <div v-if="activePreferences.statusBarProgressBar" class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsProgressPosition }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarProgressPosition !== 'side'}" @click="setStatusBarProgressPosition('bottom')">{{ uiText.statusProgressBottom }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarProgressPosition === 'side'}" @click="setStatusBarProgressPosition('side')">{{ uiText.statusProgressSide }}</q-btn>
-                                </div>
-                            </div>
-
-                            <div class="reader-control-field">
-                                <div class="reader-control-label">{{ uiText.controlsRemaining }}</div>
-                                <div class="reader-theme-switch">
-                                    <q-btn flat dense no-caps :class="{'is-active': activePreferences.statusBarRemaining}" @click="setStatusBarOption('statusBarRemaining', true)">{{ uiText.statusRemainingOn }}</q-btn>
-                                    <q-btn flat dense no-caps :class="{'is-active': !activePreferences.statusBarRemaining}" @click="setStatusBarOption('statusBarRemaining', false)">{{ uiText.statusRemainingOff }}</q-btn>
-                                </div>
-                            </div>
-                        </section>
-                    </template>
-                </div>
-            </div>
+            <ReaderSettingsPanel ref="settingsPanel" :reader="readerContext" />
         </div>
 
         <div v-if="loading" class="reader-loading">
@@ -1335,6 +910,7 @@ import vueComponent from '../vueComponent.js';
 import ReaderEnvironment from './readerEnvironment.js';
 import BookCover from '../Library/BookCover.vue';
 import ReaderDebugPanel from './ReaderDebugPanel.vue';
+import ReaderSettingsPanel from './ReaderSettingsPanel.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 const readerTextAnchors = require('./readerTextAnchors');
 import _ from 'lodash';
@@ -1369,7 +945,7 @@ const readerDeviceScopedPreferenceKeys = new Set([
 ]);
 
 const componentOptions = {
-    components: {ReaderDebugPanel, BookCover},
+    components: {ReaderDebugPanel, ReaderSettingsPanel, BookCover},
     watch: {
         readerSourceKey: {
             immediate: true,
@@ -3118,6 +2694,16 @@ class Reader {
         return this.isCompactLayout && this.readerChromeHidden;
     }
 
+    //части шаблона вынесены в дочерние компоненты (ReaderSettingsPanel и др.): им передаётся сам Reader
+    get readerContext() {
+        return this;
+    }
+
+    childRef(child, name) {
+        const component = this.$refs && this.$refs[child];
+        return (component && component.$refs) ? component.$refs[name] : null;
+    }
+
     get readerChromeHidden() {
         return !!(this.bookUid && this.chromeHidden);
     }
@@ -3261,7 +2847,7 @@ class Reader {
             return;
         }
 
-        const panel = this.$refs && this.$refs.readerToolbarActions;
+        const panel = this.childRef('settingsPanel', 'readerToolbarActions');
         const rect = panel && panel.getBoundingClientRect ? panel.getBoundingClientRect() : null;
         const fallback = this.defaultMobileSettingsFooterHeight;
         const measured = rect && rect.height
@@ -8996,7 +8582,7 @@ class Reader {
     }
 
     openReaderBackgroundPicker() {
-        const input = this.$refs.readerBackgroundInput;
+        const input = this.childRef('settingsPanel', 'readerBackgroundInput');
         if (input && typeof input.click === 'function')
             input.click();
     }
@@ -9266,153 +8852,6 @@ export default vueComponent(Reader);
     color: var(--reader-accent);
 }
 
-.reader-toolbar-actions {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 16px;
-    z-index: 45;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    box-sizing: border-box;
-    width: min(760px, calc(100vw - 32px));
-    max-height: min(72vh, 620px);
-    margin: 0;
-    padding: 12px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    contain: none;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: color-mix(in srgb, var(--reader-surface) 96%, var(--reader-bg) 4%);
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.24);
-    backdrop-filter: blur(14px);
-    scrollbar-width: thin;
-}
-
-.reader-background-input {
-    display: none;
-}
-
-.reader-controls-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-.reader-controls-state {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    min-width: 0;
-}
-
-.reader-rebuild-btn {
-    flex: 0 0 auto;
-    min-height: 30px;
-    padding: 4px 10px;
-    border: 1px solid color-mix(in srgb, var(--reader-accent) 36%, var(--reader-border));
-    border-radius: var(--reader-radius);
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
-    font-size: 12px;
-    font-weight: 800;
-}
-
-.reader-controls-body {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
-    width: 100%;
-}
-
-.reader-controls-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: color-mix(in srgb, var(--reader-surface) 90%, var(--reader-surface-2) 10%);
-}
-
-.reader-controls-group-title {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--reader-text);
-}
-
-.reader-control-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
-.reader-control-label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--reader-muted);
-    padding-left: 2px;
-}
-
-.reader-spacing-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-}
-
-.reader-background-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    min-height: 34px;
-    padding: 1px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-}
-
-.reader-background-control :deep(.q-btn) {
-    flex: 1 1 0;
-    min-height: 30px;
-}
-
-.reader-reset-control {
-    display: grid;
-    gap: 6px;
-}
-
-.reader-reset-control :deep(.q-btn) {
-    min-height: 34px;
-    padding: 3px 10px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-    font-size: 12px;
-    font-weight: 650;
-    line-height: 1.2;
-    letter-spacing: 0;
-}
-
-.reader-reset-control :deep(.q-icon) {
-    font-size: 18px;
-}
-
-.reader-control-hint {
-    color: var(--reader-muted);
-    font-size: 11px;
-    line-height: 1.35;
-}
-
 .reader-profile-chip {
     display: inline-flex;
     align-items: center;
@@ -9476,18 +8915,9 @@ export default vueComponent(Reader);
     overflow: hidden;
 }
 
-.reader-controls-tabs {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
 .reader-controls-tabs .tab,
 .reader-dialog-tabs .tab {
     cursor: pointer;
-}
-
-.reader-stepper {
-    flex-wrap: nowrap;
 }
 
 .reader-theme-switch :deep(.q-btn),
@@ -9504,54 +8934,9 @@ export default vueComponent(Reader);
     border-radius: var(--reader-radius);
 }
 
-.reader-stepper :deep(.q-btn--round) {
-    padding: 0;
-}
-
 .reader-theme-switch :deep(.q-btn.is-active) {
     background: var(--reader-accent);
     color: var(--reader-on-accent);
-}
-
-.reader-font-select {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    background: var(--reader-surface-2);
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    color: var(--reader-text);
-}
-
-.reader-font-select :deep(.q-field__control) {
-    min-height: 32px;
-    height: 32px;
-    border-radius: var(--reader-radius);
-    color: var(--reader-text);
-    padding: 0 8px 0 12px;
-    background: transparent;
-}
-
-.reader-font-select :deep(.q-field__control::before),
-.reader-font-select :deep(.q-field__control::after) {
-    display: none;
-}
-
-.reader-font-select :deep(.q-field__native),
-.reader-font-select :deep(.q-field__append) {
-    min-height: 32px;
-    color: var(--reader-text);
-}
-
-.reader-font-select :deep(.q-field__native) {
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 32px;
-    padding: 0;
-}
-
-.reader-font-select :deep(.q-field__append) {
-    padding-left: 6px;
 }
 
 :global(.reader-font-menu) {
@@ -9574,21 +8959,6 @@ export default vueComponent(Reader);
 :global(.reader-font-menu .q-item--active .q-item__label) {
     background: var(--reader-accent-soft);
     color: var(--reader-accent);
-}
-
-.reader-stepper-value,
-.reader-progress-text {
-    min-width: 40px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--reader-muted);
-}
-
-.reader-progress-text {
-    flex: 0 0 auto;
-    padding: 0 2px;
-    white-space: nowrap;
 }
 
 .reader-loading,
@@ -11228,27 +10598,6 @@ export default vueComponent(Reader);
         flex-direction: column;
         align-items: stretch;
     }
-
-    .reader-toolbar-actions {
-        left: 10px;
-        right: 10px;
-        width: auto;
-        justify-content: flex-start;
-    }
-
-    .reader-controls-header {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .reader-controls-state {
-        justify-content: space-between;
-        width: 100%;
-    }
-
-    .reader-progress-text {
-        text-align: left;
-    }
 }
 
 @media (max-width: 640px) {
@@ -11395,45 +10744,6 @@ export default vueComponent(Reader);
         height: 34px;
     }
 
-    .reader-toolbar-actions {
-        position: fixed;
-        left: 4px;
-        right: 4px;
-        top: auto;
-        bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-        z-index: 70;
-        align-items: stretch;
-        flex-direction: column;
-        justify-content: flex-start;
-        gap: 8px;
-        width: auto;
-        max-height: min(44vh, 372px);
-        max-height: min(44dvh, 372px);
-        margin: 0;
-        padding: 18px 10px 10px;
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        contain: none;
-        border: 1px solid var(--reader-border);
-        border-radius: var(--reader-radius-lg);
-        background: color-mix(in srgb, var(--reader-surface) 96%, var(--reader-bg) 4%);
-        box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.28);
-        backdrop-filter: blur(14px);
-    }
-
-    .reader-toolbar-actions::before {
-        content: "";
-        position: absolute;
-        top: 7px;
-        left: 50%;
-        width: 42px;
-        height: 4px;
-        border-radius: var(--reader-radius);
-        background: color-mix(in srgb, var(--reader-muted) 44%, transparent);
-        transform: translateX(-50%);
-    }
-
     .reader-mobile-footer--settings {
         flex: 0 0 var(--reader-mobile-settings-height, min(46dvh, 388px));
         height: var(--reader-mobile-settings-height, min(46dvh, 388px));
@@ -11444,95 +10754,6 @@ export default vueComponent(Reader);
         background: transparent;
         box-shadow: none;
         pointer-events: none;
-    }
-
-    .reader-controls-body {
-        grid-template-columns: 1fr;
-        gap: 8px;
-    }
-
-    .reader-controls-group {
-        padding: 9px;
-        border-radius: var(--reader-radius);
-    }
-
-    .reader-spacing-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 5px;
-    }
-
-    .reader-spacing-grid .reader-control-label {
-        min-height: 22px;
-        line-height: 1.12;
-        font-size: 10px;
-    }
-
-    .reader-spacing-grid .reader-stepper {
-        min-height: 32px;
-        border-radius: var(--reader-radius);
-    }
-
-    .reader-spacing-grid .reader-stepper :deep(.q-btn) {
-        min-height: 30px;
-        min-width: 28px;
-        padding: 0;
-    }
-
-    .reader-spacing-grid .reader-stepper-value {
-        min-width: 34px;
-        font-size: 11px;
-    }
-
-    .reader-mobile-spacing-control {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        min-width: 0;
-    }
-
-    .reader-mobile-spacing-stepper {
-        display: grid;
-        grid-template-columns: minmax(86px, 1fr) minmax(0, 1.4fr);
-        align-items: center;
-        gap: 8px;
-    }
-
-    .reader-mobile-spacing-active {
-        min-width: 0;
-        color: var(--reader-text);
-        font-size: 12px;
-        font-weight: 800;
-        line-height: 1.1;
-    }
-
-    .reader-mobile-spacing-targets {
-        display: flex;
-        gap: 5px;
-        min-width: 0;
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        scrollbar-width: none;
-    }
-
-    .reader-mobile-spacing-targets::-webkit-scrollbar {
-        display: none;
-    }
-
-    .reader-mobile-spacing-target {
-        flex: 0 0 auto;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 32px;
-        padding: 5px 9px;
-        border: 1px solid var(--reader-border);
-        border-radius: var(--reader-radius);
-        background: var(--reader-surface-2);
-        color: var(--reader-muted);
-        font: inherit;
-        font-size: 11px;
-        font-weight: 800;
-        line-height: 1;
     }
 
     .reader-mobile-spacing-target strong {
@@ -11561,35 +10782,13 @@ export default vueComponent(Reader);
         min-height: 44px;
     }
 
-    .reader-controls-tabs {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-    }
-
     .reader-theme-switch :deep(.q-btn),
     .reader-stepper :deep(.q-btn) {
         min-height: 36px;
     }
 
-    .reader-reset-control :deep(.q-btn) {
-        min-height: 44px;
-    }
-
     .reader-search-toolbar :deep(.q-btn) {
         min-height: 44px;
-    }
-
-    .reader-font-select :deep(.q-field__control) {
-        min-height: 44px;
-        height: 44px;
-    }
-
-    .reader-progress-text {
-        width: 100%;
-        min-width: 0;
-        text-align: left;
-        padding-left: 4px;
-        white-space: normal;
     }
 
     .reader-shell {
