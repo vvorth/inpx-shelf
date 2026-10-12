@@ -1389,6 +1389,8 @@ const componentOptions = {
         currentProfileReaderPreferences: {
             immediate: true,
             handler(newValue) {
+                // Фон (data URL до 4 МБ) отправляем на сервер только при изменении
+                this.serverBackgroundImage = (newValue ? String(newValue.backgroundImage || '') : null);
                 if (newValue) {
                     this.profileReaderPreferencesApplied = true;
                     this.applyReaderPreferences(newValue, {persistLocal: true});
@@ -1544,6 +1546,7 @@ class Reader {
     wakeLockRequested = false;
     wakeLockError = '';
     environmentAttached = false;
+    serverBackgroundImage = null;
     profileWarningNotifiedKey = '';
     fontFamilyOptions = [
         {label: 'Serif', value: 'serif'},
@@ -9793,8 +9796,14 @@ class Reader {
         if (!api)
             return;
 
+        const preferences = this.preferences;
+        const backgroundImage = String(preferences.backgroundImage || '');
+        const patch = (backgroundImage === this.serverBackgroundImage
+            ? _.omit(preferences, ['backgroundImage', 'backgroundImageName'])
+            : preferences);
         try {
-            await api.updateReaderPreferences(this.preferences, {suppressProfileLogin: true});
+            await api.updateReaderPreferences(patch, {suppressProfileLogin: true});
+            this.serverBackgroundImage = backgroundImage;
         } catch (e) {
             if ((e && e.message) !== 'need_profile_login')
                 throw e;
@@ -9979,8 +9988,9 @@ class Reader {
             if (userId)
                 byUser[userId] = preferences;
 
+            // Фон хранится один раз: в копии пользователя, а не ещё и в общей
             localStorage.setItem(readerPreferencesStorageKey, JSON.stringify({
-                preferences,
+                preferences: (userId ? _.omit(preferences, ['backgroundImage', 'backgroundImageName']) : preferences),
                 byUser,
             }));
         } catch (e) {
