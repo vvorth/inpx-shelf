@@ -368,6 +368,33 @@ async function testMetricsReuseDirectorySizes() {
     }
 }
 
+// After the rename the directory is synced too; platforms that cannot do it (Windows) still save.
+async function testAtomicWriteSyncsDirectory() {
+    await temporary(async(dir) => {
+        const {writeFileAtomic} = require('../server/core/FilePersistence');
+        const promises = require('fs').promises;
+        const open = promises.open;
+        const opened = [];
+        promises.open = async(file, ...args) => {
+            opened.push(file);
+            return open(file, ...args);
+        };
+        try {
+            await writeFileAtomic(path.join(dir, 'data.json'), '1');
+            assert.ok(opened.includes(dir), 'The directory must be synced');
+            promises.open = async(file, ...args) => {
+                if (file === dir)
+                    throw Object.assign(new Error('not supported'), {code: 'EISDIR'});
+                return open(file, ...args);
+            };
+            await writeFileAtomic(path.join(dir, 'data.json'), '2');
+        } finally {
+            promises.open = open;
+        }
+        assert.strictEqual(await fs.readFile(path.join(dir, 'data.json'), 'utf8'), '2');
+    });
+}
+
 // OPDS sends the password with every request: a repeated success must skip scrypt.
 async function testRepeatedPasswordCheckSkipsScrypt() {
     const profilePassword = require('../server/core/ProfilePassword');
@@ -531,6 +558,6 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings, testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings, testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

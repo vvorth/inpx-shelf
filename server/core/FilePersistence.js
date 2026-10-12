@@ -52,8 +52,24 @@ async function writeFileAtomic(file, data) {
             await handle.close();
         }
         await fs.rename(temporary, file);
+        await syncDir(path.dirname(file));
     } finally {
         await fs.remove(temporary);
+    }
+}
+
+// The rename reaches the disk only with its directory. Best effort: Windows cannot open a directory for fsync.
+async function syncDir(dir) {
+    let handle;
+    try {
+        handle = await require('fs').promises.open(dir, 'r');
+        await handle.sync();
+    } catch (error) {
+        if (!['EISDIR', 'EPERM', 'EACCES', 'EINVAL', 'ENOTSUP'].includes(error.code))
+            throw error;
+    } finally {
+        if (handle)
+            await handle.close();
     }
 }
 
