@@ -52,6 +52,8 @@ class AdminAuthorNames {
     }
 
     beforeUnmount() {
+        //запрос в полёте после закрытия не должен снова запускать таймер
+        this.closed = true;
         clearTimeout(this.timer);
     }
 
@@ -78,6 +80,8 @@ class AdminAuthorNames {
         } catch (e) {
             return;
         }
+        if (this.closed)
+            return;
         if (this.running) {
             this.timer = setTimeout(() => this.refresh(), 2000);
         } else if (this.job.message) {
@@ -90,7 +94,8 @@ class AdminAuthorNames {
         this.busy = true;
         try {
             this.status = await this.api.adminAuthorNamesUpdate();
-            this.timer = setTimeout(() => this.refresh(), 1000);
+            if (!this.closed)
+                this.timer = setTimeout(() => this.refresh(), 1000);
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {
