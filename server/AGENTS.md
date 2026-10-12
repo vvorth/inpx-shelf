@@ -12,7 +12,7 @@ Node.js 24 server. Entry: `index.js`.
   - `CatalogSearch.js` imports INPX (`LibraryImport.js`, `InpxParser.js`) into `library.sqlite` and is the main-thread API (`catalogSearch` on the worker).
   - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).
 - `core/StateStore.js` — `state.sqlite`: prepared-book file cache, access-password sessions.
-- `core/ReadingListStore.js` — users, lists, progress, metadata overrides (`reading-lists.json`). `core/kobo/KoboStore.js` — `kobo-sync.json`. Writes go through `FilePersistence` transactions.
+- `core/ReadingListStore.js` — `reading-lists.json`: loading, normalizing, saving, metadata overrides; `core/readingLists/` mixins add profiles (`Users`), lists (`Lists`), reader state, reader settings and discovery. Every async method runs in the store lock. `core/kobo/KoboStore.js` — `kobo-sync.json`. Writes go through `FilePersistence` transactions.
 - `core/BackupTransaction.js` — the files a full backup contains and restores.
 
 ## Rules
