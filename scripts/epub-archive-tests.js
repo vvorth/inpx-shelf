@@ -427,7 +427,7 @@ async function testSolidEpubExtractsAllChaptersOnce() {
         await archive(file, resources, 'PPMd');
         let extractions = 0;
         const originals = {};
-        for (const method of ['run7z', 'run7zStdout']) {
+        for (const method of ['run7z']) {
             originals[method] = ZipReader.prototype[method];
             ZipReader.prototype[method] = function(args, ...rest) {
                 if (args[0] === 'x') extractions++;

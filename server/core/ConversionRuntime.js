@@ -1,5 +1,7 @@
 const {AsyncLocalStorage} = require('async_hooks');
+const fs = require('fs');
 const {spawn} = require('child_process');
+const {pipeline} = require('stream/promises');
 const {t} = require('./i18n');
 
 const context = new AsyncLocalStorage();
@@ -77,6 +79,7 @@ function killTree(child) {
     }
 }
 
+// options.stdoutFile пишет stdout в файл, options.maxStdout возвращает stdout буфером не больше этого размера.
 async function runProcess(command, args, options = {}) {
     const scope = context.getStore() || {...defaults, deadline: Date.now() + defaults.timeoutMs};
     const timeoutError = () => failure('INPX_CONVERSION_TIMEOUT', t('errors.conversionTimeout'));
@@ -84,12 +87,35 @@ async function runProcess(command, args, options = {}) {
         throw timeoutError();
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
-            stdio: ['ignore', 'ignore', 'pipe'], env: options.env || process.env,
+            stdio: ['ignore', options.stdoutFile || options.maxStdout ? 'pipe' : 'ignore', 'pipe'], env: options.env || process.env,
             cwd: options.cwd, windowsHide: true, detached: process.platform !== 'win32',
         });
         let stderr = Buffer.alloc(0);
-        let timedOut = false;
-        const timer = setTimeout(() => { timedOut = true; killTree(child); }, Math.max(1, scope.deadline - Date.now()));
+        let stopped = null;
+        const stop = error => {
+            if (!stopped) {
+                stopped = error;
+                killTree(child);
+            }
+        };
+        const timer = setTimeout(() => stop(timeoutError()), Math.max(1, scope.deadline - Date.now()));
+        let written = null;
+        const stdout = [];
+        let stdoutBytes = 0;
+        if (options.stdoutFile) {
+            // Файл создаём только после запуска: при ENOENT пробуют следующую команду.
+            child.once('spawn', () => {
+                written = pipeline(child.stdout, fs.createWriteStream(options.stdoutFile)).catch(stop);
+            });
+        } else if (options.maxStdout) {
+            child.stdout.on('data', data => {
+                stdoutBytes += data.length;
+                if (stdoutBytes > options.maxStdout)
+                    stop(failure('INPX_OUTPUT_TOO_LARGE', `${command} output exceeds ${options.maxStdout} bytes`));
+                else
+                    stdout.push(data);
+            });
+        }
         child.stderr.on('data', data => {
             stderr = Buffer.concat([stderr, data]).subarray(-scope.stderrBytes);
         });
@@ -97,11 +123,13 @@ async function runProcess(command, args, options = {}) {
             clearTimeout(timer);
             reject(error.code === 'ENOENT' ? Object.assign(new Error(`${command} not found`), {code: 'ENOENT'}) : error);
         });
-        child.once('close', code => {
+        child.once('close', async code => {
             clearTimeout(timer);
-            if (timedOut) reject(timeoutError());
-            else if (code === 0) resolve();
-            else reject(new Error(`${command} failed with exit code ${code}: ${stderr.toString('utf8').trim()}`));
+            await written;
+            const text = stderr.toString('utf8');
+            if (stopped) reject(stopped);
+            else if (code === 0) resolve(options.maxStdout ? Buffer.concat(stdout) : undefined);
+            else reject(Object.assign(new Error(`${command} failed with exit code ${code}: ${text.trim()}`), {stderr: text}));
         });
     });
 }
