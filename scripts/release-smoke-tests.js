@@ -2047,6 +2047,7 @@ const tests = [
     ...require('./inpx-parser-tests'),
     ...require('./xml-parser-tests'),
     ...require('./client-tests'),
+    ...require('./web-worker-tests'),
     testConfigSecretsSurviveRestart,
     testAppCacheRecoveryBootstrapAndRoute,
     testFb2ContentsExcludeNotesBodies,

@@ -49,6 +49,8 @@ const stateToText = {
 
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
+//наибольший срок обновления внешней витрины (externalTtlMinutes); записи без своего срока живут столько
+const discoveryCacheMaxTtl = 10080*60*1000;
 const personalDiscoveryCacheTtl = 10*60*1000;
 const externalDiscoveryCacheVersion = 'v9';
 const bookAssetVersion = 'fblibrary-assets-v5';
@@ -823,7 +825,25 @@ class WebWorker {
         if (!this.discoveryDiskCacheFile)
             this.discoveryDiskCacheFile = path.join(this.config.dataDir, 'discovery-cache.json');
         await withFileTransaction(this.discoveryDiskCacheFile, () =>
-            require('./FilePersistence').writeFileAtomic(this.discoveryDiskCacheFile, JSON.stringify(this.discoveryDiskCache || {}, null, 2)));
+            require('./FilePersistence').writeFileAtomic(this.discoveryDiskCacheFile, JSON.stringify(this.discoveryDiskCache || {})));
+    }
+
+    //Убирает просроченные записи и полки прежних библиотек (хеш INPX - второе поле ключа discovery:...)
+    pruneDiscoveryCache(currentKey = '', now = Date.now()) {
+        const libraryOf = key => (key.startsWith('discovery:') ? key.split(':')[1] : null);
+        const library = libraryOf(currentKey);
+        const stale = (key, entry) => !entry || now - entry.time >= (entry.ttl || discoveryCacheMaxTtl)
+            || (library !== null && libraryOf(key) !== null && libraryOf(key) !== library);
+
+        for (const [key, entry] of this.discoveryCache) {
+            if (stale(key, entry))
+                this.discoveryCache.delete(key);
+        }
+        const diskCache = this.discoveryDiskCache || {};
+        for (const key of Object.keys(diskCache)) {
+            if (stale(key, diskCache[key]))
+                delete diskCache[key];
+        }
     }
 
     async rememberPersistedDiscovery(key, loader, ttl = discoveryCacheTtl, options = {}) {
@@ -835,7 +855,7 @@ class WebWorker {
         const diskCache = await this.getDiscoveryDiskCache();
         const persisted = diskCache[key];
         if (!forceRefresh && persisted && Date.now() - persisted.time < ttl) {
-            this.discoveryCache.set(key, {time: persisted.time, value: _.cloneDeep(persisted.value)});
+            this.discoveryCache.set(key, {time: persisted.time, ttl: persisted.ttl, value: _.cloneDeep(persisted.value)});
             return _.cloneDeep(persisted.value);
         }
 
@@ -850,8 +870,9 @@ class WebWorker {
         try {
             const value = await loading;
             const time = Date.now();
-            this.discoveryCache.set(key, {time, value: _.cloneDeep(value)});
-            diskCache[key] = {time, value: _.cloneDeep(value)};
+            this.pruneDiscoveryCache(key, time);
+            this.discoveryCache.set(key, {time, ttl, value: _.cloneDeep(value)});
+            diskCache[key] = {time, ttl, value: _.cloneDeep(value)};
             await this.saveDiscoveryDiskCache();
             return value;
         } catch(e) {
@@ -1138,12 +1159,17 @@ class WebWorker {
     }
 
     async rememberExternalDiscoveryShelf(inpxHash = '', discovery = {}, limit = externalShelfPageSize, forceRefresh = false) {
-        return this.rememberPersistedDiscovery(
-            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${limit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
-            () => this.buildExternalDiscoveryShelfV2(limit, discovery, forceRefresh),
+        //полка кешируется целыми страницами клиента: любой размер не даёт своего ключа
+        const pageLimit = Math.ceil(limit / externalShelfPageSize) * externalShelfPageSize;
+        const shelf = await this.rememberPersistedDiscovery(
+            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${pageLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
+            () => this.buildExternalDiscoveryShelfV2(pageLimit, discovery, forceRefresh),
             discovery.externalTtlMinutes * 60 * 1000,
             {forceRefresh},
         );
+        if (shelf && Array.isArray(shelf.items) && shelf.items.length > limit)
+            Object.assign(shelf, {items: shelf.items.slice(0, limit), discoveryHasMore: true});
+        return shelf;
     }
 
     //готовит первую страницу всех премий заранее, чтобы выбор премии открывался сразу;
