@@ -36,58 +36,11 @@ class TitlePage extends BasePage {
             if (books.length) {
                 const filtered = this.filterBooks(books, query);
 
-                for (const book of filtered) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('common.untitled')} (${book.ext})`;
-
-                    entry.push(
-                        this.makeEntry({
-                            id: book._uid,
-                            title,
-                            link: this.acqLink({href: `/book?uid=${encodeURIComponent(book._uid)}`}),
-                            content: {
-                                '*ATTRS': {type: 'text'},
-                                '*TEXT': this.bookAuthor(book.author),
-                            },
-                        })
-                    );
-                }
+                for (const book of filtered)
+                    entry.push(this.bookEntry(book));
             }
         } else {
-            if (query.depth == 1 && !query.genre && !query.others) {
-                entry.push(
-                    this.makeEntry({
-                        id: 'select_genre',
-                        title: t('opds.chooseGenre'),
-                        link: this.navLink({href: `/genre?from=${this.id}`}),
-                    })
-                );
-            }
-
-            //навигация по каталогу
-            const queryRes = await this.opdsQuery('title', query, t('opds.otherTitles'));
-
-            for (const rec of queryRes) {
-                const e = {
-                    id: rec.id,
-                    title: rec.title,
-                    link: this.navLink({href: `/${this.id}?title=${rec.q}&genre=${encodeURIComponent(query.genre)}`}),
-                };
-
-                let countStr = '';
-                if (rec.count)
-                    countStr = `${t('opds.titleCount', {n: rec.count})}${(query.genre ? t('opds.selectedGenre') : '')}`;
-                if (!countStr && rec.bookCount && !query.genre)
-                    countStr = t('common.bookCount', {n: rec.bookCount});
-
-                if (countStr) {
-                    e.content = {
-                        '*ATTRS': {type: 'text'},
-                        '*TEXT': countStr,
-                    };
-                }
-
-                entry.push(this.makeEntry(e));
-            }
+            entry.push(...await this.catalogEntries('title', query, t('opds.otherTitles'), 'opds.titleCount'));
         }
 
         result.entry = entry;

@@ -392,6 +392,70 @@ class BasePage {
         });
     }
 
+    //книга в ленте: ссылка на её страницу, в тексте - авторы
+    bookEntry(book, title = `${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')} (${book.ext})`,
+        text = this.bookAuthor(book.author)) {
+        return this.makeEntry({
+            id: book._uid,
+            title,
+            link: this.acqLink({href: `/book?uid=${encodeURIComponent(book._uid)}`}),
+            content: {
+                '*ATTRS': {type: 'text'},
+                '*TEXT': text,
+            },
+        });
+    }
+
+    sortSeriesBooks(seriesBooks) {
+        seriesBooks.sort((a, b) => {
+            const dserno = (a.serno || Number.MAX_VALUE) - (b.serno || Number.MAX_VALUE);
+            const dtitle = a.title.localeCompare(b.title);
+            const dext = a.ext.localeCompare(b.ext);
+            return (dserno ? dserno : (dtitle ? dtitle : dext));
+        });
+
+        return seriesBooks;
+    }
+
+    //навигация по каталогу (from - поле и параметр ссылки: author, series, title); на верхнем уровне - выбор жанра
+    async catalogEntries(from, query, otherTitle, countKey, recTitle = rec => rec.title) {
+        const entry = [];
+        if (query.depth == 1 && !query.genre && !query.others) {
+            entry.push(
+                this.makeEntry({
+                    id: 'select_genre',
+                    title: t('opds.chooseGenre'),
+                    link: this.navLink({href: `/genre?from=${this.id}`}),
+                })
+            );
+        }
+
+        for (const rec of await this.opdsQuery(from, query, otherTitle)) {
+            const e = {
+                id: rec.id,
+                title: recTitle(rec),
+                link: this.navLink({href: `/${this.id}?${from}=${rec.q}&genre=${encodeURIComponent(query.genre)}`}),
+            };
+
+            let countStr = '';
+            if (rec.count)
+                countStr = `${t(countKey, {n: rec.count})}${(query.genre ? t('opds.selectedGenre') : '')}`;
+            if (!countStr && rec.bookCount && !query.genre)
+                countStr = t('common.bookCount', {n: rec.bookCount});
+
+            if (countStr) {
+                e.content = {
+                    '*ATTRS': {type: 'text'},
+                    '*TEXT': countStr,
+                };
+            }
+
+            entry.push(this.makeEntry(e));
+        }
+
+        return entry;
+    }
+
     bookAuthor(author) {
         if (author) {
             let a = author.split(',');

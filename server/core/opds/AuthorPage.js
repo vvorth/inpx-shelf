@@ -48,17 +48,6 @@ class AuthorPage extends BasePage {
         return books;
     }
 
-    sortSeriesBooks(seriesBooks) {
-        seriesBooks.sort((a, b) => {
-            const dserno = (a.serno || Number.MAX_VALUE) - (b.serno || Number.MAX_VALUE);
-            const dtitle = a.title.localeCompare(b.title);
-            const dext = a.ext.localeCompare(b.ext);
-            return (dserno ? dserno : (dtitle ? dtitle : dext));        
-        });
-
-        return seriesBooks;
-    }
-
     async body(req) {
         const result = {};
 
@@ -102,21 +91,8 @@ class AuthorPage extends BasePage {
                     );
                 }
 
-                for (const book of sorted) {
-                    const title = `${book.serno ? `${book.serno}. `: ''}${book.title || t('common.untitled')} (${book.ext})`;
-
-                    entry.push(
-                        this.makeEntry({
-                            id: book._uid,
-                            title,
-                            link: this.acqLink({href: `/book?uid=${encodeURIComponent(book._uid)}`}),
-                            content: {
-                                '*ATTRS': {type: 'text'},
-                                '*TEXT': this.bookAuthor(book.author),
-                            },
-                        })
-                    );
-                }
+                for (const book of sorted)
+                    entry.push(this.bookEntry(book));
             }
         } else if (query.author && query.author[0] == '=') {
             //книги по автору
@@ -142,57 +118,12 @@ class AuthorPage extends BasePage {
                             })
                         );
                     } else {
-                        const title = `${b.book.title || t('common.untitled')} (${b.book.ext})`;
-                        entry.push(
-                            this.makeEntry({
-                                id: b.book._uid,
-                                title,
-                                link: this.acqLink({href: `/book?uid=${encodeURIComponent(b.book._uid)}`}),
-                                content: {
-                                    '*ATTRS': {type: 'text'},
-                                    '*TEXT': this.bookAuthor(b.book.author),
-                                },
-                            })
-                        );
+                        entry.push(this.bookEntry(b.book, `${b.book.title || t('common.untitled')} (${b.book.ext})`));
                     }
                 }
             }
         } else {
-            if (query.depth == 1 && !query.genre && !query.others) {
-                entry.push(
-                    this.makeEntry({
-                        id: 'select_genre',
-                        title: t('opds.chooseGenre'),
-                        link: this.navLink({href: `/genre?from=${this.id}`}),
-                    })
-                );
-            }
-
-            //навигация по каталогу
-            const queryRes = await this.opdsQuery('author', query, t('opds.otherAuthors'));
-
-            for (const rec of queryRes) {
-                const e = {
-                    id: rec.id,
-                    title: this.bookAuthor(rec.title),
-                    link: this.navLink({href: `/${this.id}?author=${rec.q}&genre=${encodeURIComponent(query.genre)}`}),
-                };
-
-                let countStr = '';
-                if (rec.count)
-                    countStr = `${t('authors.foundCount', {n: rec.count})}${(query.genre ? t('opds.selectedGenre') : '')}`;
-                if (!countStr && rec.bookCount && !query.genre)
-                    countStr = t('common.bookCount', {n: rec.bookCount});
-
-                if (countStr) {
-                    e.content = {
-                        '*ATTRS': {type: 'text'},
-                        '*TEXT': countStr,
-                    };
-                }
-
-                entry.push(this.makeEntry(e));
-            }
+            entry.push(...await this.catalogEntries('author', query, t('opds.otherAuthors'), 'authors.foundCount', rec => this.bookAuthor(rec.title)));
         }
 
         result.entry = entry;

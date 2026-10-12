@@ -65,20 +65,9 @@ class SearchPage extends BasePage {
                     const pageItems = found.slice(offset, offset + limit);
 
                     for (const book of pageItems) {
-                        const title = `${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')} (${book.ext})`;
                         const subtitle = [this.bookAuthor(book.author), book.series ? t('common.seriesWithName', {name: book.series}) : ''].filter(Boolean).join(' · ');
 
-                        entry.push(
-                            this.makeEntry({
-                                id: book._uid,
-                                title,
-                                link: this.acqLink({href: `/book?uid=${encodeURIComponent(book._uid)}`}),
-                                content: {
-                                    '*ATTRS': {type: 'text'},
-                                    '*TEXT': subtitle,
-                                },
-                            }),
-                        );
+                        entry.push(this.bookEntry(book, undefined, subtitle));
                     }
 
                     if (found.length > offset + pageItems.length) {
