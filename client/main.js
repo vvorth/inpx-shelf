@@ -170,26 +170,12 @@ function clearReloadRecord() {
 }
 
 async function fetchDeployedBuildId() {
-    let timeoutId = null;
     try {
-        const scopePath = appBasePath();
-        const controller = ('AbortController' in window) ? new window.AbortController() : null;
-        const response = await Promise.race([
-            fetch(`${scopePath}build-id.txt?check=${Date.now()}`, {
-                cache: 'no-store',
-                ...(controller ? {signal: controller.signal} : {}),
-            }),
-            new Promise(resolve => {
-                timeoutId = window.setTimeout(() => {
-                    if (controller)
-                        controller.abort();
-                    resolve(null);
-                }, appBuildCheckTimeoutMs);
-            }),
-        ]);
-        if (timeoutId != null)
-            window.clearTimeout(timeoutId);
-        if (!response || !response.ok)
+        const response = await fetch(`${appBasePath()}build-id.txt?check=${Date.now()}`, {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(appBuildCheckTimeoutMs),
+        });
+        if (!response.ok)
             return '';
 
         const deployedBuildId = (await response.text()).trim();
@@ -198,9 +184,6 @@ async function fetchDeployedBuildId() {
         return (contentType.startsWith('text/plain') && validBuildId) ? deployedBuildId : '';
     } catch (e) {
         return '';
-    } finally {
-        if (timeoutId != null)
-            window.clearTimeout(timeoutId);
     }
 }
 
