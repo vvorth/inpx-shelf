@@ -357,8 +357,10 @@
                 </div>
                     </template>
 
-                    <!-- v-show: несохранённые правки формы переживают переключение разделов -->
-                    <AdminIntegrations v-show="section === 'integrations'" />
+                    <!-- v-show на обёртке, не на компоненте: у компонента с комментарием в корне v-show молча не работает; несохранённые правки переживают переключение разделов -->
+                    <div v-show="section === 'integrations'">
+                        <AdminIntegrations />
+                    </div>
                 </div>
             </div>
         </div>
