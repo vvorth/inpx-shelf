@@ -414,18 +414,19 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
 
 async function testReaderBookNotesMenuAndReturnLayout() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const dialogsSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/ReaderDialogs.vue'), 'utf8');
 
     assert.match(readerSource, /readerNotesAnchorId = '';/);
     assert.match(readerSource, /get hasBookNotes\(\)[\s\S]{0,120}readerNotesAnchorId/);
     assert.match(readerSource, /get hasContentsMenu\(\)[\s\S]{0,180}this\.hasContents \|\| this\.hasAnnotation \|\| this\.hasBookNotes/);
-    assert.strictEqual((readerSource.match(/data-testid="reader-notes-link"/g) || []).length, 1);
+    assert.strictEqual((dialogsSource.match(/data-testid="reader-notes-link"/g) || []).length, 1);
     assert.strictEqual((readerSource.match(/'reader-note-return'/g) || []).length, 1);
-    assert.match(readerSource, /v-if="\(hasAnnotation \|\| hasBookNotes\) && displayContents\.length"/);
+    assert.match(dialogsSource, /v-if="\(reader\.hasAnnotation \|\| reader\.hasBookNotes\) && reader\.displayContents\.length"/);
     assert.match(readerSource, /bookNotes: t\('reader\.bookNotes'\)/);
 
-    const firstAnnotationLink = readerSource.indexOf('@click="showReaderAnnotation"');
-    const firstNotesLink = readerSource.indexOf('@click="showReaderNotes"', firstAnnotationLink);
-    const firstFeatureSeparator = readerSource.indexOf('(hasAnnotation || hasBookNotes) && displayContents.length', firstNotesLink);
+    const firstAnnotationLink = dialogsSource.indexOf('@click="reader.showReaderAnnotation"');
+    const firstNotesLink = dialogsSource.indexOf('@click="reader.showReaderNotes"', firstAnnotationLink);
+    const firstFeatureSeparator = dialogsSource.indexOf('(reader.hasAnnotation || reader.hasBookNotes) && reader.displayContents.length', firstNotesLink);
     assert.ok(firstAnnotationLink >= 0 && firstNotesLink > firstAnnotationLink);
     assert.ok(firstFeatureSeparator > firstNotesLink);
 

@@ -439,274 +439,7 @@
             </div>
         </div>
 
-        <component
-            :is="readerPanelTag"
-            v-if="!fullscreenActive || contentsDialogOpen"
-            v-bind="readerPanelBinding('contentsDialogOpen')"
-        >
-            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
-                <div class="reader-dialog-header">
-                    <div class="reader-dialog-heading">
-                        <q-btn
-                            v-if="contentsPanelView === 'annotation'"
-                            flat
-                            dense
-                            round
-                            icon="la la-arrow-left"
-                            :aria-label="uiText.backToContents"
-                            @click="showContentsList"
-                        />
-                        <div class="reader-dialog-title">
-                            {{ contentsPanelView === 'annotation' ? uiText.annotation : uiText.contents }}
-                        </div>
-                    </div>
-                    <q-btn flat dense round icon="la la-times" @click="closeContentsDialog" />
-                </div>
-
-                <div class="reader-dialog-body" :class="{'reader-dialog-body--annotation': contentsPanelView === 'annotation'}">
-                    <div
-                        v-if="contentsPanelView === 'annotation'"
-                        class="reader-html reader-annotation-html"
-                        :style="readerAnnotationStyle"
-                        @click="handleReaderAnnotationClick"
-                        v-html="readerAnnotationHtml"
-                    ></div>
-                    <template v-else>
-                        <button
-                            v-if="hasAnnotation"
-                            type="button"
-                            class="reader-dialog-link reader-dialog-link--feature"
-                            @click="showReaderAnnotation"
-                        >
-                            <q-icon name="la la-info-circle" />
-                            <span>{{ uiText.annotation }}</span>
-                            <q-icon name="la la-angle-right" />
-                        </button>
-                        <button
-                            v-if="hasBookNotes"
-                            type="button"
-                            class="reader-dialog-link reader-dialog-link--feature"
-                            data-testid="reader-notes-link"
-                            @click="showReaderNotes"
-                        >
-                            <q-icon name="la la-sticky-note" />
-                            <span>{{ uiText.bookNotes }}</span>
-                            <q-icon name="la la-angle-right" />
-                        </button>
-                        <div v-if="(hasAnnotation || hasBookNotes) && displayContents.length" class="reader-dialog-separator" role="separator"></div>
-                        <button
-                            v-for="item in displayContents"
-                            :key="item.id"
-                            class="reader-dialog-link"
-                            :class="{'is-active': item.id === currentSectionId}"
-                            @click="jumpToContent(item.id)"
-                        >
-                            {{ item.title }}
-                        </button>
-                    </template>
-                </div>
-            </div>
-        </component>
-
-        <component
-            :is="readerPanelTag"
-            v-if="!fullscreenActive || bookmarksDialogOpen"
-            v-bind="readerPanelBinding('bookmarksDialogOpen')"
-        >
-            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
-                <div class="reader-dialog-header">
-                    <div class="reader-dialog-title">{{ uiText.myPlaces }}</div>
-                    <q-btn flat dense round icon="la la-times" @click="bookmarksDialogOpen = false" />
-                </div>
-
-                <div class="reader-dialog-body">
-                    <div class="tabs reader-dialog-tabs">
-                        <button
-                            type="button"
-                            class="tab"
-                            :class="{'is-active': currentPlacesTab === 'progress'}"
-                            @click="currentPlacesTab = 'progress'"
-                        >
-                            {{ uiText.continueReading }}
-                        </button>
-                        <button
-                            type="button"
-                            class="tab"
-                            :class="{'is-active': currentPlacesTab === 'bookmarks'}"
-                            @click="currentPlacesTab = 'bookmarks'"
-                        >
-                            {{ uiText.bookmarks }} <span v-if="plainBookmarks.length" class="tab-count">{{ plainBookmarks.length }}</span>
-                        </button>
-                        <button
-                            type="button"
-                            class="tab"
-                            :class="{'is-active': currentPlacesTab === 'notes'}"
-                            @click="currentPlacesTab = 'notes'"
-                        >
-                            {{ uiText.notes }} <span v-if="noteBookmarks.length" class="tab-count">{{ noteBookmarks.length }}</span>
-                        </button>
-                    </div>
-
-                    <div v-if="currentPlacesTab === 'progress'" class="reader-continue-card">
-                        <div class="reader-continue-title">{{ currentSectionTitle || title }}</div>
-                        <div class="reader-continue-meta">
-                            {{ displayProgressPercent }}%<span v-if="showDisplayPagedPageCounter"> | {{ displayCurrentPage }}/{{ displayTotalPages }}</span>
-                        </div>
-                        <div v-if="progress.updatedAt" class="reader-continue-updated">{{ formatBookmarkDate(progress.updatedAt) }}</div>
-                        <div class="reader-continue-actions">
-                            <q-btn flat dense no-caps icon="la la-book-open" class="reader-inline-action-btn" @click="jumpToProgress">{{ uiText.continueReading }}</q-btn>
-                            <q-btn flat dense no-caps icon="la la-bookmark" class="reader-inline-action-btn" @click="addCurrentBookmark">{{ uiText.bookmark }}</q-btn>
-                        </div>
-                    </div>
-
-                    <template v-else-if="currentPlacesTab === 'bookmarks'">
-                        <button
-                            v-for="item in plainBookmarks"
-                            :key="item.id"
-                            class="reader-dialog-link reader-dialog-link--bookmark"
-                            @click="jumpToBookmark(item)"
-                        >
-                            <span class="reader-dialog-link-text">
-                                <span>{{ item.title }}</span>
-                                <small v-if="item.excerpt" class="reader-dialog-link-subtext">{{ item.excerpt }}</small>
-                            </span>
-                            <span class="reader-dialog-link-meta">{{ Math.round((Number(item.percent || 0) || 0) * 100) }}%</span>
-                            <q-btn
-                                flat
-                                dense
-                                round
-                                icon="la la-trash"
-                                class="reader-bookmark-delete"
-                                @click.stop="removeBookmark(item.id)"
-                            />
-                        </button>
-                        <div v-if="!plainBookmarks.length" class="reader-dialog-empty">{{ uiText.noBookmarks }}</div>
-                    </template>
-
-                    <template v-else>
-                        <button
-                            v-for="item in noteBookmarks"
-                            :key="item.id"
-                            class="reader-dialog-link reader-dialog-link--bookmark"
-                            @click="jumpToBookmark(item)"
-                        >
-                            <span class="reader-dialog-link-text">
-                                <span>{{ item.title }}</span>
-                                <small v-if="item.note" class="reader-dialog-link-note">{{ item.note }}</small>
-                                <small v-if="item.excerpt" class="reader-dialog-link-subtext">{{ item.excerpt }}</small>
-                            </span>
-                            <span class="reader-dialog-link-meta">{{ Math.round((Number(item.percent || 0) || 0) * 100) }}%</span>
-                            <q-btn
-                                flat
-                                dense
-                                round
-                                icon="la la-trash"
-                                class="reader-bookmark-delete"
-                                @click.stop="removeBookmark(item.id)"
-                            />
-                        </button>
-                        <div v-if="!noteBookmarks.length" class="reader-dialog-empty">{{ uiText.noNotes }}</div>
-                    </template>
-                </div>
-            </div>
-        </component>
-
-        <component
-            :is="readerPanelTag"
-            v-if="!fullscreenActive || helpDialogOpen"
-            v-bind="readerPanelBinding('helpDialogOpen')"
-        >
-            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
-                <div class="reader-dialog-header">
-                    <div class="reader-dialog-title">{{ uiText.readerHelp }}</div>
-                    <q-btn flat dense round icon="la la-times" @click="helpDialogOpen = false" />
-                </div>
-
-                <div class="reader-dialog-body">
-                    <div class="reader-help-intro">{{ readerHelpIntro }}</div>
-                    <div v-for="item in readerHelpItems" :key="item" class="reader-help-item">{{ item }}</div>
-                </div>
-            </div>
-        </component>
-
-        <component
-            :is="readerPanelTag"
-            v-if="isPagedMode && (!fullscreenActive || searchDialogOpen)"
-            v-bind="readerPanelBinding('searchDialogOpen')"
-        >
-            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
-                <div class="reader-dialog-header">
-                    <div class="reader-dialog-title">{{ uiText.searchTitle }}</div>
-                    <q-btn flat dense round icon="la la-times" @click="searchDialogOpen = false" />
-                </div>
-
-                <div class="reader-dialog-body">
-                    <q-input
-                        v-model="searchQuery"
-                        dense
-                        outlined
-                        clearable
-                        :aria-label="uiText.searchTitle"
-                        :placeholder="uiText.searchPlaceholder"
-                        @update:model-value="handleSearchInput"
-                        @keyup.enter="jumpToNextSearchResult"
-                    />
-                    <div class="reader-search-toolbar">
-                        <q-btn
-                            flat
-                            dense
-                            no-caps
-                            icon="la la-angle-left"
-                            :label="uiText.searchPrev"
-                            class="reader-inline-action-btn"
-                            :disable="!hasSearchResults"
-                            @click="jumpToPrevSearchResult"
-                        />
-                        <q-btn
-                            flat
-                            dense
-                            no-caps
-                            icon-right="la la-angle-right"
-                            :label="uiText.searchNext"
-                            class="reader-inline-action-btn"
-                            :disable="!hasSearchResults"
-                            @click="jumpToNextSearchResult"
-                        />
-                    </div>
-                    <div class="reader-search-meta">
-                        <span v-if="hasSearchResults">{{ searchResultsLabel }}</span>
-                        <span v-else-if="searchQuery.trim()">{{ uiText.searchEmpty }}</span>
-                        <span v-else>{{ uiText.searchHint }}</span>
-                    </div>
-                </div>
-            </div>
-        </component>
-
-        <q-dialog v-model="bookmarkComposerOpen">
-            <div class="reader-dialog reader-dialog--composer std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
-                <div class="reader-dialog-header">
-                    <div class="reader-dialog-title">{{ uiText.newPlace }}</div>
-                    <q-btn flat dense round icon="la la-times" @click="bookmarkComposerOpen = false" />
-                </div>
-
-                <div class="reader-dialog-body">
-                    <div class="reader-compose-title">{{ bookmarkDraft.title || title }}</div>
-                    <div v-if="bookmarkDraft.excerpt" class="reader-compose-excerpt">{{ bookmarkDraft.excerpt }}</div>
-                    <q-input
-                        class="reader-compose-input"
-                        v-model="bookmarkDraft.note"
-                        outlined
-                        autogrow
-                        type="textarea"
-                        :label="uiText.noteLabel"
-                    />
-                    <div class="reader-compose-actions">
-                        <q-btn flat dense no-caps icon="la la-bookmark" class="reader-inline-action-btn" @click="saveBookmarkDraft('bookmark')">{{ uiText.simpleBookmark }}</q-btn>
-                        <q-btn flat dense no-caps icon="la la-sticky-note" class="reader-inline-action-btn" @click="saveBookmarkDraft('note')">{{ uiText.saveAsNote }}</q-btn>
-                    </div>
-                </div>
-            </div>
-        </q-dialog>
+        <ReaderDialogs :reader="readerContext" />
     </div>
 </template>
 
@@ -716,6 +449,7 @@ import ReaderEnvironment from './readerEnvironment.js';
 import ReaderDebugPanel from './ReaderDebugPanel.vue';
 import ReaderSettingsPanel from './ReaderSettingsPanel.vue';
 import ReaderHome from './ReaderHome.vue';
+import ReaderDialogs from './ReaderDialogs.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 const readerTextAnchors = require('./readerTextAnchors');
 import _ from 'lodash';
@@ -750,7 +484,7 @@ const readerDeviceScopedPreferenceKeys = new Set([
 ]);
 
 const componentOptions = {
-    components: {ReaderDebugPanel, ReaderSettingsPanel, ReaderHome},
+    components: {ReaderDebugPanel, ReaderSettingsPanel, ReaderHome, ReaderDialogs},
     watch: {
         readerSourceKey: {
             immediate: true,
@@ -8720,11 +8454,6 @@ export default vueComponent(Reader);
     overflow: hidden;
 }
 
-.reader-controls-tabs .tab,
-.reader-dialog-tabs .tab {
-    cursor: pointer;
-}
-
 .reader-theme-switch :deep(.q-btn),
 .reader-stepper :deep(.q-btn) {
     min-height: 30px;
@@ -8739,10 +8468,6 @@ export default vueComponent(Reader);
     align-items: center;
     justify-content: center;
     padding: 24px;
-}
-
-.reader-home-tab-list .tab {
-    cursor: pointer;
 }
 
 .reader-home-state--locked > div {
@@ -9673,148 +9398,13 @@ export default vueComponent(Reader);
     box-shadow: 0 24px 56px rgba(0, 0, 0, 0.26);
 }
 
-.std-dialog-card--reader :deep(.q-btn),
-.std-dialog-card--reader :deep(.q-icon),
-.std-dialog-card--reader :deep(.q-field__native),
-.std-dialog-card--reader :deep(.q-field__input),
-.std-dialog-card--reader :deep(.q-field__label),
-.std-dialog-card--reader :deep(.q-field__marginal),
-.std-dialog-card--reader :deep(.q-field__control) {
-    color: var(--reader-text);
-}
-
 .reader-toolbar,
 .reader-home {
     text-shadow: none !important;
 }
 
-.std-dialog-card--reader :deep(.q-field__control) {
-    background: var(--reader-surface-2);
-}
-
 .reader-dialog--contents {
     overflow: hidden;
-}
-
-.reader-dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--reader-border);
-}
-
-.reader-dialog-heading {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.reader-dialog-title {
-    min-width: 0;
-    font-size: 18px;
-    font-weight: 750;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reader-dialog-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: calc(85vh - 64px);
-    overflow: auto;
-    padding: 12px;
-}
-
-.reader-dialog-link {
-    padding: 12px 14px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-    text-align: left;
-    cursor: pointer;
-}
-
-.reader-dialog-link--feature {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) 18px;
-    align-items: center;
-    gap: 10px;
-    border-color: color-mix(in srgb, var(--reader-accent) 34%, var(--reader-border));
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
-    font-weight: 800;
-}
-
-.reader-dialog-link--feature .q-icon:last-child {
-    justify-self: end;
-}
-
-.reader-dialog-separator {
-    height: 1px;
-    margin: 4px 2px;
-    background: var(--reader-border);
-}
-
-.reader-dialog-body--annotation {
-    gap: 0;
-}
-
-.reader-annotation-html {
-    min-width: 0;
-    padding: 0 4px 10px;
-    overflow-wrap: anywhere;
-    user-select: text;
-}
-
-.reader-annotation-html :deep(p:first-child),
-.reader-annotation-html :deep(blockquote:first-child) {
-    margin-top: 0;
-}
-
-.reader-annotation-html :deep(p:last-child),
-.reader-annotation-html :deep(blockquote:last-child) {
-    margin-bottom: 0;
-}
-
-.reader-dialog-link--bookmark {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 56px 36px;
-    align-items: start;
-    gap: 10px;
-}
-
-.reader-dialog-link-text {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.reader-dialog-link-subtext {
-    color: var(--reader-muted);
-    font-size: 11px;
-    line-height: 1.35;
-}
-
-.reader-dialog-link-meta {
-    min-width: 56px;
-    align-self: start;
-    text-align: right;
-    color: var(--reader-muted);
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.reader-bookmark-delete {
-    align-self: start;
-    justify-self: end;
-    color: var(--reader-muted);
 }
 
 .reader-dialog-link.is-active {
@@ -9822,138 +9412,11 @@ export default vueComponent(Reader);
     color: var(--reader-accent);
 }
 
-.reader-dialog-tabs {
-    flex-wrap: wrap;
-}
-
-
-.reader-continue-card {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 14px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-}
-
-.reader-continue-title {
-    font-size: 15px;
-    font-weight: 750;
-}
-
-.reader-continue-meta,
-.reader-continue-updated,
-.reader-dialog-empty {
-    color: var(--reader-muted);
-    font-size: 12px;
-}
-
-.reader-help-intro {
-    margin-bottom: 12px;
-    color: var(--reader-muted);
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.reader-help-item {
-    padding: 12px 14px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: color-mix(in srgb, var(--reader-surface-2) 86%, transparent);
-    line-height: 1.45;
-}
-
-.reader-help-item + .reader-help-item {
-    margin-top: 10px;
-}
-
-.reader-search-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.reader-search-toolbar :deep(.q-btn) {
-    min-height: 34px;
-    padding: 4px 10px;
-    font-size: 13px;
-    font-weight: 650;
-    line-height: 1.2;
-}
-
-.reader-search-toolbar :deep(.q-icon) {
-    font-size: 18px;
-}
-
-.reader-search-meta {
-    margin-top: 6px;
-    color: var(--reader-muted);
-    font-size: 12px;
-}
-
 .reader-html :deep(.reader-search-hit) {
     padding: 0.04em 0.14em;
     border-radius: 0.28em;
     background: color-mix(in srgb, var(--reader-accent) 28%, transparent);
     color: inherit;
-}
-
-.reader-continue-actions,
-.reader-compose-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.reader-inline-action-btn {
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-}
-
-.reader-compose-input :deep(.q-field__control),
-.reader-compose-input :deep(.q-field__marginal),
-.reader-compose-input :deep(.q-field__native),
-.reader-compose-input :deep(.q-field__input) {
-    color: var(--reader-text);
-}
-
-.reader-compose-input :deep(.q-field__control) {
-    background: var(--reader-surface-2);
-}
-
-.reader-compose-input :deep(.q-field__label),
-.reader-compose-input :deep(.q-field__bottom) {
-    color: var(--reader-muted);
-}
-
-.reader-dialog-link-note {
-    color: var(--reader-text);
-    font-size: 12px;
-    line-height: 1.45;
-    font-weight: 600;
-}
-
-.reader-dialog--composer {
-    width: min(92vw, 520px);
-}
-
-.reader-compose-title {
-    font-size: 14px;
-    font-weight: 750;
-}
-
-.reader-compose-excerpt {
-    padding: 10px 12px;
-    border-left: 3px solid var(--reader-border);
-    background: color-mix(in srgb, var(--reader-surface-2) 86%, transparent);
-    color: var(--reader-muted);
-    line-height: 1.55;
 }
 
 /* тёмная и светлая темы - палитра библиотеки (App.vue) */
@@ -10255,10 +9718,6 @@ export default vueComponent(Reader);
     .reader-theme-switch :deep(.q-btn),
     .reader-stepper :deep(.q-btn) {
         min-height: 36px;
-    }
-
-    .reader-search-toolbar :deep(.q-btn) {
-        min-height: 44px;
     }
 
     .reader-shell {
