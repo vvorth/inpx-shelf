@@ -83,7 +83,7 @@ class Security {
 
         if (!this.secret) {
             this.secret = crypto.randomBytes(48).toString('hex');
-            await fs.outputFile(secretFile, this.secret, {encoding: 'utf8', mode: 0o600});
+            await require('./FilePersistence').writeFileAtomic(secretFile, this.secret);
         }
     }
 
