@@ -1220,7 +1220,10 @@ class WebWorker {
 
         if (section !== 'personal' && discovery.externalSource !== 'none') {
             try {
-                const externalShelf = await this.rememberExternalDiscoveryShelf(inpxHash, discovery, externalShelfLimit, options.forceRefresh === true);
+                //заново загрузить Викиданные и сопоставить книги может только админ, остальным - из кеша
+                const forceRefresh = options.forceRefresh === true
+                    && await this.requireAdmin(options.userId, options.profileAccessToken).then(() => true, () => false);
+                const externalShelf = await this.rememberExternalDiscoveryShelf(inpxHash, discovery, externalShelfLimit, forceRefresh);
                 if (externalShelf)
                     shelves.push(externalShelf);
                 this.warmExternalDiscoveryShelves();//no await

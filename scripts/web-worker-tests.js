@@ -50,6 +50,28 @@ async function testDiscoveryCacheIsPruned() {
     });
 }
 
+//полную перезагрузку внешней витрины запускает только админ
+async function testExternalForceRefreshIsAdminOnly() {
+    const worker = bareWorker({checkMyState: () => {}, dbConfig: async() => ({inpxHash: 'h'})});
+    worker.getDiscoveryConfigForRequest = async() => ({enabled: true, shelfLimit: 8, externalSource: 'wikidata-awards', externalTtlMinutes: 1440});
+    worker.warmExternalDiscoveryShelves = async() => {};
+    worker.requireAdmin = async(userId) => {
+        if (userId !== 'admin')
+            throw new Error('admin only');
+    };
+    const forced = [];
+    worker.rememberExternalDiscoveryShelf = async(inpxHash, discovery, limit, forceRefresh) => {
+        forced.push(forceRefresh);
+        return {id: 'external-source', items: []};
+    };
+
+    await worker.getDiscoveryShelvesV2({section: 'external', forceRefresh: true, userId: 'reader'});
+    await worker.getDiscoveryShelvesV2({section: 'external', forceRefresh: true, userId: 'admin'});
+    await worker.getDiscoveryShelvesV2({section: 'external', userId: 'admin'});
+    assert.deepStrictEqual(forced, [false, true, false]);
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
+    testExternalForceRefreshIsAdminOnly,
 ];
