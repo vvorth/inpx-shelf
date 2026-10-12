@@ -94,8 +94,39 @@ async function testLibraryRebuildsDoNotOverlap() {
     assert.strictEqual(worker.dbLoad, null);
 }
 
+//индекс справок об авторах: одно построение на параллельные запросы, без недостроенного индекса после ошибки
+async function testAuthorInfoIndexBuildsOnce() {
+    const worker = bareWorker();
+    worker.resetLibraryAssetCaches();
+    let builds = 0;
+    let fail = true;
+    worker.buildAuthorInfoIndex = async() => {
+        builds++;
+        await new Promise(resolve => setTimeout(resolve, 10));
+        if (fail)
+            throw new Error('broken archive');
+        return {authorInfoArchives: [], authorPictureArchives: [], authorToArchive: new Map()};
+    };
+
+    const results = await Promise.allSettled([worker.ensureAuthorInfoArchives(), worker.ensureAuthorInfoArchives()]);
+    assert.deepStrictEqual(results.map(item => item.status), ['rejected', 'rejected']);
+    assert.strictEqual(builds, 1);
+
+    fail = false;
+    const [first, second] = await Promise.all([worker.ensureAuthorInfoArchives(), worker.ensureAuthorInfoArchives()]);
+    assert.strictEqual(builds, 2);
+    assert.strictEqual(first, second);
+    await worker.ensureAuthorInfoArchives();
+    assert.strictEqual(builds, 2);
+
+    worker.resetLibraryAssetCaches();
+    await worker.ensureAuthorInfoArchives();
+    assert.strictEqual(builds, 3);
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
     testLibraryRebuildsDoNotOverlap,
+    testAuthorInfoIndexBuildsOnce,
 ];

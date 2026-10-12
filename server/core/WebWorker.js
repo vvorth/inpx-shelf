@@ -665,9 +665,7 @@ class WebWorker {
         this.libraryAssetGeneration = (this.libraryAssetGeneration || 0) + 1;
         this.fblibraryArchives = {};
         this.authorInfoCache = new Map();
-        this.authorInfoArchives = null;
-        this.authorPictureArchives = null;
-        this.authorToArchive = null;
+        this.authorInfoIndex = null;
         this.reviewArchiveStates = new Map();
         this.preparedBookSizes = new Map();
     }
@@ -3851,13 +3849,24 @@ class WebWorker {
         return null;
     }
 
-    async ensureAuthorInfoArchives() {
-        if (this.authorInfoArchives && this.authorPictureArchives && this.authorToArchive)
-            return;
+    //Индекс справок и портретов авторов строится один раз на поколение ресурсов библиотеки:
+    //параллельные запросы ждут одно построение, после ошибки следующий запрос строит заново
+    ensureAuthorInfoArchives() {
+        if (!this.authorInfoIndex) {
+            const index = this.buildAuthorInfoIndex();
+            this.authorInfoIndex = index;
+            index.catch(() => {
+                if (this.authorInfoIndex === index)
+                    this.authorInfoIndex = null;
+            });
+        }
+        return this.authorInfoIndex;
+    }
 
-        this.authorInfoArchives = [];
-        this.authorPictureArchives = [];
-        this.authorToArchive = new Map();
+    async buildAuthorInfoIndex() {
+        const authorInfoArchives = [];
+        const authorPictureArchives = [];
+        const authorToArchive = new Map();
 
         const sources = getEnabledLibrarySources(this.config);
         const scannedAuthorDirs = new Set();
@@ -3880,7 +3889,7 @@ class WebWorker {
                         continue;
 
                     const id = path.basename(file, path.extname(file));
-                    this.authorInfoArchives.push({
+                    authorInfoArchives.push({
                         id,
                         sourceId: source.id || '',
                         sourceLibDir: source.libDir || '',
@@ -3898,7 +3907,7 @@ class WebWorker {
                         continue;
 
                     const id = path.basename(file, path.extname(file));
-                    this.authorPictureArchives.push({
+                    authorPictureArchives.push({
                         id,
                         sourceId: source.id || '',
                         sourceLibDir: source.libDir || '',
@@ -3916,10 +3925,10 @@ class WebWorker {
             return parseInt(a.id, 10) - parseInt(b.id, 10);
         };
 
-        this.authorInfoArchives.sort(bySourceAndId);
-        this.authorPictureArchives.sort(bySourceAndId);
+        authorInfoArchives.sort(bySourceAndId);
+        authorPictureArchives.sort(bySourceAndId);
 
-        for (const archive of this.authorInfoArchives) {
+        for (const archive of authorInfoArchives) {
             const zipReader = new ZipReader();
             await zipReader.open(archive.file);
 
@@ -3933,10 +3942,10 @@ class WebWorker {
                     if (!hash)
                         continue;
 
-                    if (!this.authorToArchive.has(hash))
-                        this.authorToArchive.set(hash, []);
+                    if (!authorToArchive.has(hash))
+                        authorToArchive.set(hash, []);
 
-                    this.authorToArchive.get(hash).push({
+                    authorToArchive.get(hash).push({
                         archive,
                         entryName: name,
                     });
@@ -3945,25 +3954,27 @@ class WebWorker {
                 await zipReader.close();
             }
         }
+
+        return {authorInfoArchives, authorPictureArchives, authorToArchive};
     }
 
     async getAuthorPictureByKey(authorKey, archiveId = '', sourceId = '') {
-        await this.ensureAuthorInfoArchives();
+        const {authorPictureArchives} = await this.ensureAuthorInfoArchives();
 
         const archives = [];
         if (archiveId) {
-            const exactArchive = this.authorPictureArchives.find(item => item.id === String(archiveId) && (!sourceId || item.sourceId === sourceId));
+            const exactArchive = authorPictureArchives.find(item => item.id === String(archiveId) && (!sourceId || item.sourceId === sourceId));
             if (exactArchive)
                 archives.push(exactArchive);
         }
 
-        archives.push(...this.authorPictureArchives.filter(item => {
+        archives.push(...authorPictureArchives.filter(item => {
             if (archives.includes(item))
                 return false;
 
             return sourceId && item.sourceId === sourceId;
         }));
-        archives.push(...this.authorPictureArchives.filter(item => !archives.includes(item)));
+        archives.push(...authorPictureArchives.filter(item => !archives.includes(item)));
 
         for (const archive of archives) {
             const zipReader = new ZipReader();
@@ -3994,10 +4005,10 @@ class WebWorker {
     }
 
     async findAuthorInfo(author) {
-        await this.ensureAuthorInfoArchives();
+        const {authorToArchive} = await this.ensureAuthorInfoArchives();
 
         const hashed = flibraryAuthorHash(author);
-        const matches = this.authorToArchive.get(hashed) || [];
+        const matches = authorToArchive.get(hashed) || [];
         if (!hashed || !matches.length)
             return null;
 
