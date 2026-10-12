@@ -50,7 +50,7 @@ const stateToText = {
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
 const personalDiscoveryCacheTtl = 10*60*1000;
-const externalDiscoveryCacheVersion = 'v6';
+const externalDiscoveryCacheVersion = 'v7';
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
 const bookInfoVersion = 'fb2-encoding-v8';
@@ -906,6 +906,7 @@ class WebWorker {
         let best = null;
         let bestKind = '';
         let bestScore = -Infinity;
+        const byLang = new Map();
 
         for (const book of books) {
             const bookTitle = normalizeDiscoveryText(book.title || '');
@@ -930,6 +931,9 @@ class WebWorker {
                     authorScore += 90;
             }
 
+            //часть названия совпала, автор другой: это другая книга («The Everlasting» и «The Everlasting Story of Nory»)
+            if (authorTokens.length && !authorScore && bookTitle !== title)
+                continue;
             if (authorTokens.length && !authorScore)
                 score -= 180;
 
@@ -951,9 +955,13 @@ class WebWorker {
                 best = book;
                 bestKind = kind;
             }
+            const lang = String(book.lang || '').trim().toLowerCase();
+            if (score >= 450 && !(byLang.has(lang) && byLang.get(lang).score >= score))
+                byLang.set(lang, {book, score});
         }
 
-        return (bestScore >= 450 ? {book: best, kind: bestKind, score: bestScore} : null);
+        //byLang - лучшее издание на каждом языке: читателю показывается издание на его языках
+        return (bestScore >= 450 ? {book: best, kind: bestKind, score: bestScore, byLang} : null);
     }
 
     makeExternalDiscoveryPlaceholder(item = {}, index = 0) {
@@ -980,53 +988,46 @@ class WebWorker {
         };
     }
 
-    async matchExternalItemsToLocalBooksV2(items = [], limit = 8) {
+    //каждый лауреат сопоставляется с библиотекой один раз для всех премий; издания ищутся по всем названиям
+    //(русскому и английскому), чтобы у каждого языка было своё
+    async matchExternalItems(items = []) {
         const result = [];
-        const seenBookUids = new Set();
-        const seenExternalItems = new Set();
-        let matchedCount = 0;
-        let missingCount = 0;
-        let processed = 0;
-
-        for (let index = 0; index < items.length && result.length < limit; index++) {
-            const item = items[index];
-            processed = index + 1;
+        const seen = new Set();
+        for (const [index, item] of items.entries()) {
             const externalKey = buildExternalFeedIdentity(item);
-            if (externalKey && seenExternalItems.has(externalKey))
+            if (externalKey && seen.has(externalKey))
                 continue;
             if (externalKey)
-                seenExternalItems.add(externalKey);
+                seen.add(externalKey);
 
-            //переведённая книга может лежать в библиотеке под любым из названий
-            let match = null;
+            let primary = null;
+            const byLang = new Map();
             for (const variant of [item, ...(item.alternates || [])]) {
-                match = this.pickDiscoveryBookMatchV2(variant, await this.findExternalDiscoveryCandidates(variant, 32));
-                if (match)
-                    break;
-            }
-
-            if (match && match.book) {
-                if (!seenBookUids.has(match.book._uid)) {
-                    seenBookUids.add(match.book._uid);
-                    result.push(Object.assign({}, match.book, {
-                        discoveryUrl: item.url,
-                    }));
-                    matchedCount++;
+                const match = this.pickDiscoveryBookMatchV2(variant, await this.findExternalDiscoveryCandidates(variant, 32));
+                if (!match)
+                    continue;
+                primary = primary || match.book;
+                for (const [lang, edition] of match.byLang) {
+                    if (!(byLang.has(lang) && byLang.get(lang).score >= edition.score))
+                        byLang.set(lang, edition);
                 }
-            } else {
-                result.push(this.makeExternalDiscoveryPlaceholder(item, index));
-                missingCount++;
             }
 
+            //названия в Викиданных русские и английские: главным показывается такое издание, если оно есть
+            const preferred = ['ru', 'en'].find(lang => byLang.has(lang));
+            if (preferred)
+                primary = byLang.get(preferred).book;
+            const withUrl = book => Object.assign({}, book, {discoveryUrl: item.url});
+            result.push({
+                awards: item.awards || [],
+                book: (primary
+                    ? Object.assign(withUrl(primary), {discoveryEditions: [...byLang.values()]
+                        .filter(edition => edition.book._uid !== primary._uid).map(edition => withUrl(edition.book))})
+                    : this.makeExternalDiscoveryPlaceholder(item, index)),
+            });
             await utils.processLoop();
         }
-
-        return {
-            items: result,
-            matchedCount,
-            missingCount,
-            hasMore: processed < items.length,
-        };
+        return {items: result};
     }
 
     async fetchWikidataAwardWinners(discovery = {}) {
@@ -1061,18 +1062,39 @@ class WebWorker {
         );
     }
 
+    async getWikidataAwardMatches(discovery = {}, forceRefresh = false) {
+        const inpxHash = String((await this.dbConfig()).inpxHash || '');
+        return this.rememberPersistedDiscovery(
+            `wikidata-matches:${inpxHash}:${externalDiscoveryCacheVersion}`,
+            async() => this.matchExternalItems((await this.getWikidataAwardWinners(discovery, forceRefresh)).items),
+            discovery.externalTtlMinutes * 60 * 1000,
+            {forceRefresh},
+        );
+    }
+
     async buildExternalDiscoveryShelfV2(limit = 8, discovery = {}, forceRefresh = false) {
         if (discovery.externalSource === 'none')
             return null;
 
         const award = findWikidataAward(discovery.externalBrowseUrl);
-        const {items: winners} = await this.getWikidataAwardWinners(discovery, forceRefresh);
-        const matched = await this.matchExternalItemsToLocalBooksV2(
-            (award ? winners.filter(item => (item.awards || []).includes(award.id)) : winners),
-            limit,
-        );
+        const {items: matches} = await this.getWikidataAwardMatches(discovery, forceRefresh);
+        //сначала книги из библиотеки (новые премии первыми), лауреаты, которых в ней нет, - в конце
+        const local = [];
+        const missing = [];
+        const seenBookUids = new Set();
+        for (const {awards, book} of matches) {
+            if (award && !awards.includes(award.id))
+                continue;
+            if (book.discoveryMissingLocal) {
+                missing.push(book);
+            } else if (!seenBookUids.has(book._uid)) {
+                seenBookUids.add(book._uid);
+                local.push(book);
+            }
+        }
+        const books = local.concat(missing);
         const sourceName = (discovery.externalName || msg('discovery.externalSource'));
-        const libraryCounts = {inLibrary: matched.matchedCount, notInLibrary: matched.missingCount};
+        const libraryCounts = {inLibrary: local.length, notInLibrary: missing.length};
 
         return {
             id: 'external-source',
@@ -1085,9 +1107,9 @@ class WebWorker {
             sourceUrl: (award ? wikidataEntityUrl + award.id : ''),
             updatedAt: Date.now(),
             discoveryStale: false,
-            discoveryHasMore: matched.hasMore,
+            discoveryHasMore: books.length > limit,
             genreOptions: wikidataAwards.map(item => ({label: msg(item.label), value: wikidataEntityUrl + item.id})),
-            items: matched.items,
+            items: books.slice(0, limit),
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
     }

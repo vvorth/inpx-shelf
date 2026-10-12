@@ -1671,6 +1671,35 @@ async function testWikidataAwardsShelf() {
     }
 }
 
+// Award winners: a partial title needs the right author, every language keeps its own copy,
+// and the shelf lists the books in the library first.
+async function testAwardsShelfEditionsAndOrder() {
+    const worker = makeWorker();
+    assert.strictEqual(worker.pickDiscoveryBookMatchV2({title: 'The Everlasting', author: 'Alix E. Harrow'},
+        [{_uid: 'nory', title: 'The Everlasting Story of Nory', author: 'Baker Nicholson'}]), null);
+
+    const library = [
+        {_uid: 'uk', title: 'Нейромант', author: 'Гибсон Уильям', lang: 'uk'},//i18n-ignore: тестовые данные
+        {_uid: 'ru', title: 'Нейромант', author: 'Гибсон Уильям', lang: 'ru'},//i18n-ignore: тестовые данные
+        {_uid: 'en', title: 'Neuromancer', author: 'Gibson William', lang: 'en'},
+    ];
+    worker.bookSearch = async query => ({found: library.filter(book => query.title.slice(1) === book.title)});
+    const {items} = await worker.matchExternalItems([
+        {title: 'Новинка', author: 'Автор Новый', url: 'u:new', awards: ['Q255032'], alternates: []},//i18n-ignore: тестовые данные
+        {title: 'Нейромант', author: 'Уильям Гибсон', url: 'u:neuro', awards: ['Q255032'],//i18n-ignore: тестовые данные
+            alternates: [{title: 'Neuromancer', author: 'William Gibson'}]},
+    ]);
+    const neuromancer = items[1].book;
+    assert.deepStrictEqual([neuromancer._uid, ...neuromancer.discoveryEditions.map(book => book._uid)].sort(), ['en', 'ru', 'uk']);
+
+    worker.getWikidataAwardMatches = async() => ({items});
+    const shelf = await worker.buildExternalDiscoveryShelfV2(1, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',
+        externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032'}));
+    assert.strictEqual(shelf.items[0].discoveryUrl, 'u:neuro', 'books in the library come before newer missing winners');
+    assert.strictEqual(shelf.discoveryHasMore, true);
+    assert.deepStrictEqual([shelf.subtitle.params.inLibrary, shelf.subtitle.params.notInLibrary], [1, 1]);
+}
+
 async function testConfiguredConverterPathsHavePriority() {
     const externalTools = require('../server/core/ExternalTools');
     const bookConverter = require('../server/core/BookConverter');
@@ -2025,6 +2054,7 @@ const tests = [
     testCacheRotationAlignsToServerClock,
     testExternalDiscoveryMultiSourceSearch,
     testWikidataAwardsShelf,
+    testAwardsShelfEditionsAndOrder,
     testConfiguredConverterPathsHavePriority,
     testDiscoveryShelvesBuildOnlyRequestedSection,
     testOpdsIndexQueries,
