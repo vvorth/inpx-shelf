@@ -36,7 +36,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
-import {t} from '../../share/i18n';
+import {t, formatDateTime} from '../../share/i18n';
 
 class AdminAuthorNames {
     status = {ready: false, count: 0, updatedAt: '', matched: 0, job: {}, indexBuilding: false};
@@ -68,8 +68,7 @@ class AdminAuthorNames {
     }
 
     formatDate(value) {
-        const date = new Date(value);
-        return (Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString());
+        return formatDateTime(value, {year: 'numeric', month: '2-digit', day: '2-digit'});
     }
 
     async refresh() {

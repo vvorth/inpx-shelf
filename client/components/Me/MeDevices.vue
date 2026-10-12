@@ -139,7 +139,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
-import {t} from '../../share/i18n';
+import {t, formatDateTime} from '../../share/i18n';
 import {copyTextToClipboard} from '../../share/utils';
 import {currentProfile} from '../../share/session';
 
@@ -210,8 +210,7 @@ class MeDevices {
     }
 
     formatDateTime(value) {
-        const date = new Date(value);
-        return (Number.isNaN(date.getTime()) ? '' : date.toLocaleString());
+        return formatDateTime(value, {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'});
     }
 
     setKoboDevices(devices = []) {

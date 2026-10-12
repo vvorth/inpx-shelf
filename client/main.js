@@ -4,11 +4,12 @@ import { createApp } from 'vue';
 import router from './router';
 import store from './store';
 import q from './quasar';
-import i18n, {setLang, t} from './share/i18n';
+import i18n, {setLang, setIsoDates, t} from './share/i18n';
 
 import App from './components/App.vue';
 
 setLang(store.state.settings.uiLang);
+setIsoDates(store.state.settings.isoDates);
 
 const currentBuildId = (typeof __INPX_WEB_BUILD_ID__ !== 'undefined'
     ? String(__INPX_WEB_BUILD_ID__ || '').trim()

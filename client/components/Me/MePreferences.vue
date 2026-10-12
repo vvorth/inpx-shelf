@@ -37,6 +37,7 @@
                 />
             </div>
             <q-toggle :model-value="!!settings.darkTheme" :label="$t('mePreferences.darkTheme')" @update:model-value="set('darkTheme', $event)" />
+            <q-toggle :model-value="settings.isoDates !== false" :label="$t('mePreferences.isoDates')" @update:model-value="set('isoDates', $event)" />
             <q-toggle v-if="config.latestVersion" :model-value="settings.showNewReleaseAvailable !== false" :label="$t('settings.notifyAboutNewVersions')" @update:model-value="set('showNewReleaseAvailable', $event)" />
         </section>
 

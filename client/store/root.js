@@ -26,6 +26,7 @@ const state = {
         showJson: false,
         showNewReleaseAvailable: true,
         darkTheme: false,
+        isoDates: true,
         uiLang: '',
         showDiscoveryContinueReading: true,
         showDiscoveryFromLists: true,

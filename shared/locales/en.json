@@ -996,6 +996,7 @@
         "bookListView": "Book list view",
         "catalog": "Catalog",
         "darkTheme": "Dark theme",
+        "isoDates": "24-hour time and ISO dates (2026-10-08 14:25)",
         "showOnlyUnreadBooks": "Show only unread books on the home page",
         "theseSettingsAreStored": "These settings are stored in this browser."
     },

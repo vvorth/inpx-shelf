@@ -8,7 +8,7 @@ const locales = {ru: 'ru-RU', en: 'en-US'};
 const ruFamily = new Set(['ru', 'uk', 'be', 'kk']);
 const langCookie = 'inpx_lang';
 
-const state = reactive({lang: i18n.fallbackLang});
+const state = reactive({lang: i18n.fallbackLang, isoDates: true});
 
 export function detectLang() {
     const langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || '']);
@@ -44,11 +44,30 @@ export function getLocale() {
     return locales[state.lang] || locales[i18n.fallbackLang];
 }
 
-//Дата и время - в региональном формате браузера (12/24 часа, порядок дня и месяца),
-//а не языка интерфейса: английский интерфейс не означает американский формат.
+export function setIsoDates(value) {
+    state.isoDates = (value !== false);
+}
+
+//Дата и время: по умолчанию ISO и 24 часа (2026-10-08 14:25), иначе региональный формат браузера
+//(а не языка интерфейса: английский интерфейс не означает американский формат).
+//Из options берётся состав (дата, время, секунды) и часовой пояс.
 export function formatDateTime(value, options = {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) {
     const date = (value instanceof Date ? value : new Date(Number(value) || value));
-    return (Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, options));
+    if (Number.isNaN(date.getTime()))
+        return '';
+    if (!state.isoDates)
+        return date.toLocaleString(undefined, options);
+
+    const parts = {};
+    const format = new Intl.DateTimeFormat('en-US', {timeZone: options.timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'});
+    for (const part of format.formatToParts(date))
+        parts[part.type] = part.value;
+    const day = `${parts.year}-${parts.month}-${parts.day}`;
+    const time = `${parts.hour}:${parts.minute}${options.second ? `:${parts.second}` : ''}`;
+    if (!options.hour)
+        return day;
+    return (options.day || options.month ? `${day} ${time}` : time);
 }
 
 export function t(key, params) {

@@ -21,7 +21,7 @@ import vueComponent from './vueComponent.js';
 
 //import * as utils from '../share/utils';
 import q from '../quasar';
-import {setLang} from '../share/i18n';
+import {setLang, setIsoDates} from '../share/i18n';
 import Notify from './share/Notify.vue';
 import StdDialog from './share/StdDialog.vue';
 
@@ -44,6 +44,9 @@ const componentOptions = {
         },
         uiLang(newValue) {
             this.applyLang(newValue);
+        },
+        isoDates(newValue) {
+            setIsoDates(newValue);
         },
         '$route.path'() {
             this.applyPwaManifest();
@@ -135,6 +138,10 @@ class App {
 
     get darkTheme() {
         return !!this.settings.darkTheme;
+    }
+
+    get isoDates() {
+        return this.settings.isoDates !== false;
     }
 
     get uiLang() {
