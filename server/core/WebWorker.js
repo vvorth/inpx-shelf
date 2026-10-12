@@ -304,7 +304,15 @@ const wikidataAwards = [
 const wikidataEntityUrl = 'https://www.wikidata.org/wiki/';
 //столько книг клиент просит на первой странице вкладки (DiscoveryPage), такие полки готовятся заранее
 const externalShelfPageSize = 24;
+//столько книг полка отдаёт самое большее (все издания всех премий бывает больше)
+const externalShelfMaxLimit = 480;
 const externalWarmInterval = 60*60*1000;
+
+//языки читателя для полки премий: пустой список - все языки
+function readerLanguages(value) {
+    return [...new Set((Array.isArray(value) ? value : []).map(code => String(code || '').trim().toLowerCase())
+        .filter(code => /^[a-z]{2,3}$/.test(code)))].sort().slice(0, 10);
+}
 
 function findWikidataAward(url = '') {
     return wikidataAwards.find(award => wikidataEntityUrl + award.id === String(url || '').trim()) || null;
@@ -1075,6 +1083,9 @@ class WebWorker {
             return null;
 
         const award = findWikidataAward(discovery.externalBrowseUrl);
+        //издания на других языках отбрасываются до деления на страницы: иначе страница почти пустая
+        const languages = readerLanguages(discovery.externalLanguages);
+        const readable = book => (!languages.length || !book.lang || languages.includes(String(book.lang).trim().toLowerCase()));
         const {items: matches} = await this.getWikidataAwardMatches(discovery, forceRefresh);
         //сначала книги из библиотеки (новые премии первыми), лауреаты, которых в ней нет, - в конце
         const local = [];
@@ -1088,8 +1099,11 @@ class WebWorker {
                 missing.push(books[0]);
                 continue;
             }
+            const copies = books.filter(readable);
+            if (!copies.length)
+                continue;
             inLibrary++;
-            for (const book of books) {
+            for (const book of copies) {
                 if (!seenBookUids.has(book._uid)) {
                     seenBookUids.add(book._uid);
                     local.push(book);
@@ -1120,7 +1134,7 @@ class WebWorker {
 
     async rememberExternalDiscoveryShelf(inpxHash = '', discovery = {}, limit = externalShelfPageSize, forceRefresh = false) {
         return this.rememberPersistedDiscovery(
-            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${limit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}`,
+            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${limit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
             () => this.buildExternalDiscoveryShelfV2(limit, discovery, forceRefresh),
             discovery.externalTtlMinutes * 60 * 1000,
             {forceRefresh},
@@ -1156,7 +1170,7 @@ class WebWorker {
         if (!discovery.enabled)
             return {shelves: []};
 
-        const externalShelfLimit = Math.max(1, Math.min(parseInt(options.externalLimit, 10) || discovery.shelfLimit, 120));
+        const externalShelfLimit = Math.max(1, Math.min(parseInt(options.externalLimit, 10) || discovery.shelfLimit, externalShelfMaxLimit));
         const personalShelfLimit = Math.max(1, Math.min(parseInt(options.personalLimit, 10) || discovery.shelfLimit, 24));
         const personalSimilarLimit = Math.max(personalShelfLimit, Math.min(parseInt(options.personalSimilarLimit, 10) || Math.max(personalShelfLimit, 16), 96));
         //главная просит только персональные полки, внешняя витрина - только свою

@@ -1702,6 +1702,12 @@ async function testAwardsShelfEditionsAndOrder() {
         'all copies in the library come before newer missing winners');
     assert.strictEqual(shelf.discoveryHasMore, false);
     assert.deepStrictEqual([shelf.subtitle.params.inLibrary, shelf.subtitle.params.notInLibrary], [1, 1]);
+
+    // Copies in other languages are dropped before paging, so a page is full of books the reader sees.
+    const english = await worker.buildExternalDiscoveryShelfV2(1, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',
+        externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032', externalLanguages: ['EN', 'bad language']}));
+    assert.deepStrictEqual(english.items.map(book => book._uid), ['en']);
+    assert.strictEqual(english.discoveryHasMore, true, 'the missing winner is on the next page');
 }
 
 async function testConfiguredConverterPathsHavePriority() {

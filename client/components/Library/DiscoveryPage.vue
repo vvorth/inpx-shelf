@@ -155,6 +155,9 @@ import {externalDiscovery, discoveryRouteLabel} from '../../share/discoveryRoute
 import {isExternalOnly} from '../../share/discovery';
 
 const kinds = ['home', 'bestsellers'];
+//больше сервер не отдаёт (externalShelfMaxLimit)
+const externalMaxLimit = 480;
+
 const shelfSettings = {
     'continue-reading': 'showDiscoveryContinueReading',
     'from-your-lists': 'showDiscoveryFromLists',
@@ -297,11 +300,17 @@ class DiscoveryPage {
         return externalDiscovery(this.config, this.settings);
     }
 
+    //сервер отбрасывает издания на других языках до деления на страницы; [] - все языки
+    get externalLanguages() {
+        const languages = myLanguages(this.config, this.settings);
+        return (this.allLanguages || languages.all ? [] : languages.list);
+    }
+
     //набор параметров, от которого зависит ответ сервера
     get requestKey() {
         return JSON.stringify([
             this.kind, this.config.currentUserId || '', !!this.config.profileAuthorized, this.similarLimit,
-            this.external, this.settings.discoveryExternalGenreUrl || '', this.settings.discoveryExternalLimit || 12,
+            this.external, this.settings.discoveryExternalGenreUrl || '', this.settings.discoveryExternalLimit || 12, this.externalLanguages,
             this.settings.showDiscoverySimilar !== false, (this.config.dbConfig || {}).inpxHash || '',
         ]);
     }
@@ -326,7 +335,8 @@ class DiscoveryPage {
                 personalSimilarLimit: this.similarLimit,
                 personalSimilarEnabled: this.settings.showDiscoverySimilar !== false,
                 //первую страницу (24) сервер готовит заранее
-                externalLimit: Math.max(24, Math.min(120, parseInt(this.settings.discoveryExternalLimit, 10) || 24)),
+                externalLimit: Math.max(24, Math.min(externalMaxLimit, parseInt(this.settings.discoveryExternalLimit, 10) || 24)),
+                externalLanguages: this.externalLanguages,
                 externalSource: external.source,
                 externalName: external.name,
                 externalTtlMinutes: Math.max(1440, parseInt(this.settings.discoveryExternalTtlMinutes || (this.config.discovery || {}).externalTtlMinutes, 10) || 1440),
@@ -437,7 +447,8 @@ class DiscoveryPage {
     canLoadMore(shelf) {
         if (!shelf.items.length || shelf.discoveryHasMore !== true)
             return false;
-        return (shelf.id === 'similar-books' || shelf.source === 'external');
+        return (shelf.id === 'similar-books'
+            || (shelf.source === 'external' && (parseInt(this.settings.discoveryExternalLimit, 10) || 24) < externalMaxLimit));
     }
 
     formatTime(value) {
@@ -472,7 +483,7 @@ class DiscoveryPage {
             }
         } else {
             const current = Math.max(24, parseInt(this.settings.discoveryExternalLimit, 10) || 24);
-            this.setSetting('discoveryExternalLimit', Math.min(120, current + 24));
+            this.setSetting('discoveryExternalLimit', Math.min(externalMaxLimit, current + 24));
         }
     }
 

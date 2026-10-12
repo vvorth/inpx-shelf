@@ -496,6 +496,7 @@ class WebSocketController {
             externalName: req.externalName,
             externalTtlMinutes: req.externalTtlMinutes,
             externalBrowseUrl: req.externalBrowseUrl,
+            externalLanguages: req.externalLanguages,
         });
 
         this.send(result, req, ws);
