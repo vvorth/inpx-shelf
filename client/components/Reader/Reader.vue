@@ -6478,7 +6478,7 @@ class Reader {
             walk(body.$$array('/section'));
         }
 
-        return result.slice(0, 200);
+        return result;
     }
 
     escapeCssId(id = '') {
