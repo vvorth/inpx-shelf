@@ -113,7 +113,8 @@ function main() {
     const callRe = /(?<![\w$])(?:\$t|t|tk|msg|keyError|i18n\.t|\$tm|tm)\(\s*'([a-zA-Z]\w*(?:\.[\w-]+)+)'/g;
     const literalRe = /'([a-zA-Z]\w*(?:\.[\w-]+)+)'/g;
     for (const file of codeDirs.flatMap(dir => walk(path.join(root, dir)))) {
-        const rel = path.relative(root, file);
+        //posix-путь: на Windows path.relative даёт обратные слэши, и dataFiles не совпадал бы
+        const rel = path.relative(root, file).split(path.sep).join('/');
         const text = fs.readFileSync(file, 'utf8');
         const code = stripComments(text);
 
