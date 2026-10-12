@@ -105,7 +105,7 @@ import {isExternalOnly} from '../../share/discovery';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {isSignedIn} from '../../share/session';
-import {bookAuthors, bookUid, bookRoute, authorRoute, seriesRoute} from '../../share/bookActions';
+import {bookAuthors, bookUid, bookRoute} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 
 const componentOptions = {
@@ -200,14 +200,6 @@ class BookCollection {
 
     stars(book) {
         return '★'.repeat(Math.max(0, Math.min(5, Number(book.librate) || 0)));
-    }
-
-    authorLink(name) {
-        return authorRoute(name);
-    }
-
-    seriesLink(name) {
-        return seriesRoute(name);
     }
 
     openLists(book) {

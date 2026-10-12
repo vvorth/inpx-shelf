@@ -249,7 +249,7 @@ import BookCollection from '../Library/BookCollection.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
-import {bookAuthors, bookRoute, authorRoute, seriesRoute} from '../../share/bookActions';
+import {bookAuthors} from '../../share/bookActions';
 import {downloadJson} from '../../share/utils';
 import {bookViews, bookViewOptions} from '../../share/bookView';
 
@@ -475,14 +475,6 @@ class ListsPage {
         this.setSetting('listsSort', (current !== key ? key : (desc ? '' : `-${key}`)));
     }
 
-    authorLink(name) {
-        return authorRoute(name);
-    }
-
-    seriesLink(name) {
-        return seriesRoute(name);
-    }
-
     bookMeta(book) {
         const author = String(book.author || '').split(',').filter(Boolean).join(', ');
         const series = book.series ? `${book.series}${book.serno ? ` #${book.serno}` : ''}` : '';
@@ -496,10 +488,6 @@ class ListsPage {
 
     percent(value) {
         return Math.max(0, Math.min(100, Math.round((Number(value || 0) || 0) * 100)));
-    }
-
-    bookLink(book) {
-        return bookRoute(book);
     }
 
     openReader(bookUid) {

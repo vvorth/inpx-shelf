@@ -7,6 +7,7 @@ import q from './quasar';
 import i18n, {setLang, setIsoDates, t} from './share/i18n';
 
 import App from './components/App.vue';
+import {bookRoute, authorRoute, seriesRoute} from './share/bookActions';
 
 setLang(store.state.settings.uiLang);
 setIsoDates(store.state.settings.isoDates);
@@ -261,6 +262,8 @@ function mountApplication() {
     app.use(router);
     app.use(store);
     app.use(q.quasar, q.options);
+    //ссылки на книгу, автора и серию - в шаблонах любых страниц
+    Object.assign(app.config.globalProperties, {bookLink: bookRoute, authorLink: authorRoute, seriesLink: seriesRoute});
     q.init();
     app.mount('#app');
 }

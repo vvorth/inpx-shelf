@@ -138,7 +138,7 @@ import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
-import {bookUid, bookAuthors, bookRoute, seriesRoute, loadBookStates} from '../../share/bookActions';
+import {bookUid, bookAuthors, loadBookStates} from '../../share/bookActions';
 import {myLanguages, bookLang, languageMatches} from '../../share/languages';
 
 //до стольки книг (после фильтра языков) все разделы открыты сразу
@@ -393,14 +393,6 @@ class AuthorPage {
         return [lang, coauthors.length ? t('author.coAuthors', {names: coauthors.join(', ')}) : ''].filter(Boolean).join(' · ');
     }
 
-    seriesLink(series) {
-        return seriesRoute(series);
-    }
-
-    bookLink(book) {
-        return bookRoute(book);
-    }
-
     async load() {
         const name = this.name;
         this.loadedName = name;
@@ -584,7 +576,6 @@ export default vueComponent(AuthorPage);
     align-self: flex-start;
     font-size: 13px;
 }
-
 
 @media (max-width: 899px) {
     .entity-avatar {

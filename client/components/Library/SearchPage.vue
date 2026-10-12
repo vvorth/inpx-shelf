@@ -239,7 +239,7 @@ import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
-import {bookUid, loadBookStates} from '../../share/bookActions';
+import {loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
 import {myLanguages, allLanguages, languageName} from '../../share/languages';
 
@@ -565,10 +565,6 @@ class SearchPage {
 
     setView(view) {
         this.$store.commit('setSettings', {bookView: view});
-    }
-
-    stateOf(book) {
-        return this.states[bookUid(book)] || {};
     }
 
     initials(name) {

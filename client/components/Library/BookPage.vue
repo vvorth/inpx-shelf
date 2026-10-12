@@ -202,7 +202,7 @@ import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
-import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline, authorRoute, seriesRoute, loadBookStates} from '../../share/bookActions';
+import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline, loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 import {myLanguages, languageMatches, bookLang} from '../../share/languages';
 
@@ -329,14 +329,6 @@ class BookPage {
     genreLabel(code) {
         void this.genresReady;
         return genreName(code);
-    }
-
-    authorLink(name) {
-        return authorRoute(name);
-    }
-
-    seriesLink(name) {
-        return seriesRoute(name);
     }
 
     async load() {
