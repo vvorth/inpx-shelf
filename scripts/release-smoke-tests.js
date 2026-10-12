@@ -2073,6 +2073,7 @@ const tests = [
     ...require('./kobo-sync-tests'),
     ...require('./inpx-parser-tests'),
     ...require('./xml-parser-tests'),
+    ...require('./client-tests'),
     testConfigSecretsSurviveRestart,
     testAppCacheRecoveryBootstrapAndRoute,
     testFb2ContentsExcludeNotesBodies,

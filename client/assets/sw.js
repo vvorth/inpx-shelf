@@ -61,8 +61,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(noStoreRequest(request))
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(withBase('/index.html'), copy));
+          // Кэшируем только саму страницу приложения: навигацией бывают и скачивания книг и резервных копий
+          if (response.ok && [withBase('/'), withBase('/index.html')].includes(url.pathname)
+              && (response.headers.get('content-type') || '').startsWith('text/html')) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(withBase('/index.html'), copy));
+          }
           return response;
         })
         .catch(() => caches.match(withBase('/index.html')))
