@@ -425,7 +425,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.match(readerSource, /readerNotesAnchorId = '';/);
     assert.match(readerSource, /get hasBookNotes\(\)[\s\S]{0,120}readerNotesAnchorId/);
     assert.match(readerSource, /get hasContentsMenu\(\)[\s\S]{0,180}this\.hasContents \|\| this\.hasAnnotation \|\| this\.hasBookNotes/);
-    assert.strictEqual((readerSource.match(/data-testid="reader-notes-link"/g) || []).length, 2);
+    assert.strictEqual((readerSource.match(/data-testid="reader-notes-link"/g) || []).length, 1);
     assert.strictEqual((readerSource.match(/'reader-note-return'/g) || []).length, 1);
     assert.match(readerSource, /v-if="\(hasAnnotation \|\| hasBookNotes\) && displayContents\.length"/);
     assert.match(readerSource, /bookNotes: t\('reader\.bookNotes'\)/);

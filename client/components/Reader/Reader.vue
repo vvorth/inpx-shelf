@@ -1064,227 +1064,12 @@
             </div>
         </div>
 
-        <div v-if="fullscreenActive && contentsDialogOpen" class="reader-overlay-panel std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
-            <div class="reader-dialog-header">
-                <div class="reader-dialog-heading">
-                    <q-btn
-                        v-if="contentsPanelView === 'annotation'"
-                        flat
-                        dense
-                        round
-                        icon="la la-arrow-left"
-                        :aria-label="uiText.backToContents"
-                        @click="showContentsList"
-                    />
-                    <div class="reader-dialog-title">
-                        {{ contentsPanelView === 'annotation' ? uiText.annotation : uiText.contents }}
-                    </div>
-                </div>
-                <q-btn flat dense round icon="la la-times" @click="closeContentsDialog" />
-            </div>
-
-            <div class="reader-dialog-body" :class="{'reader-dialog-body--annotation': contentsPanelView === 'annotation'}">
-                <div
-                    v-if="contentsPanelView === 'annotation'"
-                    class="reader-html reader-annotation-html"
-                    :style="readerAnnotationStyle"
-                    @click="handleReaderAnnotationClick"
-                    v-html="readerAnnotationHtml"
-                ></div>
-                <template v-else>
-                    <button
-                        v-if="hasAnnotation"
-                        type="button"
-                        class="reader-dialog-link reader-dialog-link--feature"
-                        @click="showReaderAnnotation"
-                    >
-                        <q-icon name="la la-info-circle" />
-                        <span>{{ uiText.annotation }}</span>
-                        <q-icon name="la la-angle-right" />
-                    </button>
-                    <button
-                        v-if="hasBookNotes"
-                        type="button"
-                        class="reader-dialog-link reader-dialog-link--feature"
-                        data-testid="reader-notes-link"
-                        @click="showReaderNotes"
-                    >
-                        <q-icon name="la la-sticky-note" />
-                        <span>{{ uiText.bookNotes }}</span>
-                        <q-icon name="la la-angle-right" />
-                    </button>
-                    <div v-if="(hasAnnotation || hasBookNotes) && displayContents.length" class="reader-dialog-separator" role="separator"></div>
-                    <button
-                        v-for="item in displayContents"
-                        :key="item.id"
-                        class="reader-dialog-link"
-                        :class="{'is-active': item.id === currentSectionId}"
-                        @click="jumpToContent(item.id)"
-                    >
-                        {{ item.title }}
-                    </button>
-                </template>
-            </div>
-        </div>
-
-        <div v-if="fullscreenActive && bookmarksDialogOpen" class="reader-overlay-panel std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
-            <div class="reader-dialog-header">
-                <div class="reader-dialog-title">{{ uiText.myPlaces }}</div>
-                <q-btn flat dense round icon="la la-times" @click="bookmarksDialogOpen = false" />
-            </div>
-
-            <div class="reader-dialog-body">
-                <div class="reader-dialog-tabs">
-                    <button
-                        type="button"
-                        class="reader-dialog-tab"
-                        :class="{'is-active': currentPlacesTab === 'progress'}"
-                        @click="currentPlacesTab = 'progress'"
-                    >
-                        {{ uiText.continueReading }}
-                    </button>
-                    <button
-                        type="button"
-                        class="reader-dialog-tab"
-                        :class="{'is-active': currentPlacesTab === 'bookmarks'}"
-                        @click="currentPlacesTab = 'bookmarks'"
-                    >
-                        {{ uiText.bookmarks }} <span v-if="plainBookmarks.length">{{ plainBookmarks.length }}</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="reader-dialog-tab"
-                        :class="{'is-active': currentPlacesTab === 'notes'}"
-                        @click="currentPlacesTab = 'notes'"
-                    >
-                        {{ uiText.notes }} <span v-if="noteBookmarks.length">{{ noteBookmarks.length }}</span>
-                    </button>
-                </div>
-
-                <div v-if="currentPlacesTab === 'progress'" class="reader-continue-card">
-                    <div class="reader-continue-title">{{ currentSectionTitle || title }}</div>
-                    <div class="reader-continue-meta">
-                        {{ displayProgressPercent }}%<span v-if="showDisplayPagedPageCounter"> | {{ displayCurrentPage }}/{{ displayTotalPages }}</span>
-                    </div>
-                    <div v-if="progress.updatedAt" class="reader-continue-updated">{{ formatBookmarkDate(progress.updatedAt) }}</div>
-                    <div class="reader-continue-actions">
-                        <q-btn flat dense no-caps icon="la la-book-open" class="reader-inline-action-btn" @click="jumpToProgress">{{ uiText.continueReading }}</q-btn>
-                        <q-btn flat dense no-caps icon="la la-bookmark" class="reader-inline-action-btn" @click="addCurrentBookmark">{{ uiText.bookmark }}</q-btn>
-                    </div>
-                </div>
-
-                <template v-else-if="currentPlacesTab === 'bookmarks'">
-                    <button
-                        v-for="item in plainBookmarks"
-                        :key="item.id"
-                        class="reader-dialog-link reader-dialog-link--bookmark"
-                        @click="jumpToBookmark(item)"
-                    >
-                        <span class="reader-dialog-link-text">
-                            <span>{{ item.title }}</span>
-                            <small v-if="item.excerpt" class="reader-dialog-link-subtext">{{ item.excerpt }}</small>
-                        </span>
-                        <span class="reader-dialog-link-meta">{{ Math.round((Number(item.percent || 0) || 0) * 100) }}%</span>
-                        <q-btn
-                            flat
-                            dense
-                            round
-                            icon="la la-trash"
-                            class="reader-bookmark-delete"
-                            @click.stop="removeBookmark(item.id)"
-                        />
-                    </button>
-                    <div v-if="!plainBookmarks.length" class="reader-dialog-empty">{{ uiText.noBookmarks }}</div>
-                </template>
-
-                <template v-else>
-                    <button
-                        v-for="item in noteBookmarks"
-                        :key="item.id"
-                        class="reader-dialog-link reader-dialog-link--bookmark"
-                        @click="jumpToBookmark(item)"
-                    >
-                        <span class="reader-dialog-link-text">
-                            <span>{{ item.title }}</span>
-                            <small v-if="item.note" class="reader-dialog-link-note">{{ item.note }}</small>
-                            <small v-if="item.excerpt" class="reader-dialog-link-subtext">{{ item.excerpt }}</small>
-                        </span>
-                        <span class="reader-dialog-link-meta">{{ Math.round((Number(item.percent || 0) || 0) * 100) }}%</span>
-                        <q-btn
-                            flat
-                            dense
-                            round
-                            icon="la la-trash"
-                            class="reader-bookmark-delete"
-                            @click.stop="removeBookmark(item.id)"
-                        />
-                    </button>
-                    <div v-if="!noteBookmarks.length" class="reader-dialog-empty">{{ uiText.noNotes }}</div>
-                </template>
-            </div>
-        </div>
-
-        <div v-if="fullscreenActive && helpDialogOpen" class="reader-overlay-panel std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
-            <div class="reader-dialog-header">
-                <div class="reader-dialog-title">{{ uiText.readerHelp }}</div>
-                <q-btn flat dense round icon="la la-times" @click="helpDialogOpen = false" />
-            </div>
-
-            <div class="reader-dialog-body">
-                <div class="reader-help-intro">{{ readerHelpIntro }}</div>
-                <div v-for="item in readerHelpItems" :key="item" class="reader-help-item">{{ item }}</div>
-            </div>
-        </div>
-
-        <div v-if="fullscreenActive && searchDialogOpen && isPagedMode" class="reader-overlay-panel std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
-            <div class="reader-dialog-header">
-                <div class="reader-dialog-title">{{ uiText.searchTitle }}</div>
-                <q-btn flat dense round icon="la la-times" @click="searchDialogOpen = false" />
-            </div>
-
-            <div class="reader-dialog-body">
-                <q-input
-                    v-model="searchQuery"
-                    dense
-                    outlined
-                    clearable
-                    :aria-label="uiText.searchTitle"
-                    :placeholder="uiText.searchPlaceholder"
-                    @update:model-value="handleSearchInput"
-                    @keyup.enter="jumpToNextSearchResult"
-                />
-                <div class="reader-search-toolbar">
-                    <q-btn
-                        flat
-                        dense
-                        no-caps
-                        icon="la la-angle-left"
-                        :label="uiText.searchPrev"
-                        class="reader-inline-action-btn"
-                        :disable="!hasSearchResults"
-                        @click="jumpToPrevSearchResult"
-                    />
-                    <q-btn
-                        flat
-                        dense
-                        no-caps
-                        icon-right="la la-angle-right"
-                        :label="uiText.searchNext"
-                        class="reader-inline-action-btn"
-                        :disable="!hasSearchResults"
-                        @click="jumpToNextSearchResult"
-                    />
-                </div>
-                <div class="reader-search-meta">
-                    <span v-if="hasSearchResults">{{ searchResultsLabel }}</span>
-                    <span v-else-if="searchQuery.trim()">{{ uiText.searchEmpty }}</span>
-                    <span v-else>{{ uiText.searchHint }}</span>
-                </div>
-            </div>
-        </div>
-
-        <q-dialog v-if="!fullscreenActive" v-model="contentsDialogOpen" position="right">
-            <div class="reader-dialog reader-dialog--contents std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
+        <component
+            :is="readerPanelTag"
+            v-if="!fullscreenActive || contentsDialogOpen"
+            v-bind="readerPanelBinding('contentsDialogOpen')"
+        >
+            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
                 <div class="reader-dialog-header">
                     <div class="reader-dialog-heading">
                         <q-btn
@@ -1346,10 +1131,14 @@
                     </template>
                 </div>
             </div>
-        </q-dialog>
+        </component>
 
-        <q-dialog v-if="!fullscreenActive" v-model="bookmarksDialogOpen" position="right">
-            <div class="reader-dialog reader-dialog--contents std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
+        <component
+            :is="readerPanelTag"
+            v-if="!fullscreenActive || bookmarksDialogOpen"
+            v-bind="readerPanelBinding('bookmarksDialogOpen')"
+        >
+            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
                 <div class="reader-dialog-header">
                     <div class="reader-dialog-title">{{ uiText.myPlaces }}</div>
                     <q-btn flat dense round icon="la la-times" @click="bookmarksDialogOpen = false" />
@@ -1445,10 +1234,14 @@
                     </template>
                 </div>
             </div>
-        </q-dialog>
+        </component>
 
-        <q-dialog v-if="!fullscreenActive" v-model="helpDialogOpen" position="right">
-            <div class="reader-dialog reader-dialog--contents std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
+        <component
+            :is="readerPanelTag"
+            v-if="!fullscreenActive || helpDialogOpen"
+            v-bind="readerPanelBinding('helpDialogOpen')"
+        >
+            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
                 <div class="reader-dialog-header">
                     <div class="reader-dialog-title">{{ uiText.readerHelp }}</div>
                     <q-btn flat dense round icon="la la-times" @click="helpDialogOpen = false" />
@@ -1459,10 +1252,14 @@
                     <div v-for="item in readerHelpItems" :key="item" class="reader-help-item">{{ item }}</div>
                 </div>
             </div>
-        </q-dialog>
+        </component>
 
-        <q-dialog v-if="!fullscreenActive && isPagedMode" v-model="searchDialogOpen" position="right">
-            <div class="reader-dialog reader-dialog--contents std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
+        <component
+            :is="readerPanelTag"
+            v-if="isPagedMode && (!fullscreenActive || searchDialogOpen)"
+            v-bind="readerPanelBinding('searchDialogOpen')"
+        >
+            <div :class="readerPanelClass" :style="readerDialogSurfaceStyle">
                 <div class="reader-dialog-header">
                     <div class="reader-dialog-title">{{ uiText.searchTitle }}</div>
                     <q-btn flat dense round icon="la la-times" @click="searchDialogOpen = false" />
@@ -1508,7 +1305,7 @@
                     </div>
                 </div>
             </div>
-        </q-dialog>
+        </component>
 
         <q-dialog v-model="bookmarkComposerOpen">
             <div class="reader-dialog reader-dialog--composer std-dialog-card--reader" :class="readerThemeClass" :style="readerDialogSurfaceStyle">
@@ -2195,6 +1992,21 @@ class Reader {
         return ['1', 'true', 'yes', 'on'].includes(String(this.$route.query.debugReader || '').trim().toLowerCase());
     }
 
+    //в полноэкранном режиме окно q-dialog уходит в body, вне полноэкранного элемента: там панели - обычные блоки
+    get readerPanelTag() {
+        return (this.fullscreenActive ? 'div' : 'q-dialog');
+    }
+
+    get readerPanelClass() {
+        return [(this.fullscreenActive ? 'reader-overlay-panel' : 'reader-dialog reader-dialog--contents'), 'std-dialog-card--reader', this.readerThemeClass];
+    }
+
+    readerPanelBinding(flag) {
+        if (this.fullscreenActive)
+            return {};
+        return {modelValue: this[flag], position: 'right', 'onUpdate:modelValue': value => { this[flag] = value; }};
+    }
+
     get readerThemeClass() {
         return `reader-theme-${this.preferences.theme || 'dark'}`;
     }
@@ -2745,12 +2557,6 @@ class Reader {
         ];
     }
 
-    get compactProgressHint() {
-        return (this.showDisplayPagedPageCounter)
-            ? `${this.displayProgressPercent}% | ${this.displayCurrentPage}/${this.displayTotalPages}`
-            : `${this.displayProgressPercent}%`;
-    }
-
     get compactStatusBarText() {
         const base = (this.showDisplayPagedPageCounter)
             ? `${this.readerProgressLabel} | ${this.displayCurrentPage}/${this.displayTotalPages}`
@@ -3119,17 +2925,6 @@ class Reader {
         return this.highlightHtmlMatches(page.html || '', this.searchQuery);
     }
 
-    renderReflowPageStartOverride(page = null, pageIndex = 0) {
-        const override = this.reflowPageStartOverride;
-        if (!override || !page || this.searchQuery.trim())
-            return '';
-        if (Number(override.pageIndex) !== Number(pageIndex) && !this.pageHtmlContainsReaderSnippet(page.html || '', override.textSnippet || ''))
-            return '';
-
-        const html = this.trimPagedPageHtmlBeforeSnippet(page.html || '', override.textSnippet || '');
-        return html || '';
-    }
-
     pageHtmlContainsReaderSnippet(html = '', textSnippet = '') {
         const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
         if (!safeSnippet || safeSnippet.length < 24)
@@ -3301,17 +3096,6 @@ class Reader {
         return 0.992;
     }
 
-    get readerShellVerticalPadding() {
-        const shell = (this.$refs ? this.$refs.readerShell : null);
-        if (!shell || typeof window === 'undefined' || !window.getComputedStyle)
-            return 0;
-
-        const style = window.getComputedStyle(shell);
-        const padTop = parseFloat(style.paddingTop || '0') || 0;
-        const padBottom = parseFloat(style.paddingBottom || '0') || 0;
-        return padTop + padBottom;
-    }
-
     get compactVisibleScrollerHeight() {
         if (!this.isCompactLayout || typeof window === 'undefined')
             return 0;
@@ -3329,21 +3113,6 @@ class Reader {
             rect.height || 0,
             viewportHeight - Math.max(0, rect.top || 0),
         ));
-    }
-
-    get readerMobileFooterHeight() {
-        if (!this.isCompactLayout)
-            return 0;
-
-        const footer = (this.$refs ? this.$refs.readerMobileFooter : null);
-        if (!footer)
-            return 0;
-
-        const rect = (typeof footer.getBoundingClientRect === 'function')
-            ? footer.getBoundingClientRect()
-            : null;
-
-        return Math.max(0, Math.round((rect && rect.height) || footer.offsetHeight || 0));
     }
 
     get readerBodyStyle() {
@@ -3927,12 +3696,6 @@ class Reader {
         this.readerMetaExpanded = !this.readerMetaExpanded;
     }
 
-    toggleBookmarksDialog(tab = '') {
-        if (tab)
-            this.currentPlacesTab = tab;
-        this.bookmarksDialogOpen = !this.bookmarksDialogOpen;
-    }
-
     openPlacesDialog(tab = '') {
         this.currentPlacesTab = (tab || this.defaultPlacesTab);
         this.bookmarksDialogOpen = true;
@@ -4025,32 +3788,6 @@ class Reader {
             [key]: next,
         });
         this.showPagePaddingPreview(edge);
-        this.savePreferencesDebounced();
-        this.requestReaderSettingsReflow({previewSpacing: true});
-    }
-
-    async changePageVerticalPadding(delta = 0) {
-        const nextTop = Math.max(0, Math.min(160, this.pagePaddingTop + (Number(delta || 0) || 0)));
-        const nextBottom = Math.max(0, Math.min(160, this.pagePaddingBottom + (Number(delta || 0) || 0)));
-        this.capturePendingReflowAnchor(true);
-        this.updateActivePreferences({
-            pagePaddingTop: nextTop,
-            pagePaddingBottom: nextBottom,
-            pageVerticalPadding: nextTop,
-        });
-        this.savePreferencesDebounced();
-        this.requestReaderSettingsReflow({previewSpacing: true});
-    }
-
-    async changePageHorizontalPadding(delta = 0) {
-        const nextLeft = Math.max(0, Math.min(200, this.pagePaddingLeft + (Number(delta || 0) || 0)));
-        const nextRight = Math.max(0, Math.min(200, this.pagePaddingRight + (Number(delta || 0) || 0)));
-        this.capturePendingReflowAnchor(true);
-        this.updateActivePreferences({
-            pagePaddingLeft: nextLeft,
-            pagePaddingRight: nextRight,
-            pageHorizontalPadding: nextLeft,
-        });
         this.savePreferencesDebounced();
         this.requestReaderSettingsReflow({previewSpacing: true});
     }
@@ -6363,17 +6100,6 @@ class Reader {
         this.reflowReaderLayout();
     }
 
-    scheduleSpacingReflow() {
-        this.clearSpacingReflowTimer();
-        if (!this.bookUid || !this.isPagedMode)
-            return;
-
-        this.spacingReflowTimer = setTimeout(() => {
-            this.spacingReflowTimer = null;
-            this.reflowReaderLayout();
-        }, 900);
-    }
-
     applyLiveSpacingPreview() {
         if (!this.bookUid || !this.isPagedMode)
             return;
@@ -6449,30 +6175,6 @@ class Reader {
         while (node && node.lastElementChild)
             node = node.lastElementChild;
         return node || null;
-    }
-
-    measurePagedContentSize() {
-        if (!this.$refs || !this.$refs.readerBody)
-            return 0;
-
-        const readerBody = this.$refs.readerBody;
-        const scroller = (this.$refs ? this.$refs.scroller : null);
-        const contentRoot = readerBody.querySelector('.reader-html') || readerBody;
-        const style = window.getComputedStyle(readerBody);
-
-        const blocks = [readerBody, contentRoot]
-            .concat(Array.from(contentRoot.querySelectorAll('*')));
-        const padBottom = parseFloat(style.paddingBottom || '0') || 0;
-        const maxBottom = blocks.reduce((acc, node) => (
-            Math.max(acc, (node.offsetTop || 0) + (node.offsetHeight || 0))
-        ), 0);
-
-        return Math.max(
-            maxBottom + padBottom,
-            contentRoot.scrollHeight || 0,
-            readerBody.scrollHeight || 0,
-            (scroller && scroller.scrollHeight) || 0,
-        );
     }
 
     getPagedMeasureAvailableHeight(measureHost) {
@@ -6664,13 +6366,6 @@ class Reader {
         return measuredHeight > Math.max(0, availableHeight - 12);
     }
 
-    getPageOffsetByIndex(index = 0) {
-        const {pageOffsets, maxScroll} = this.pagedMetrics;
-        const safeIndex = Math.max(0, Math.min(pageOffsets.length - 1, index));
-        const offset = (pageOffsets[safeIndex] !== undefined ? pageOffsets[safeIndex] : 0);
-        return Math.max(0, Math.min(maxScroll, offset));
-    }
-
     syncPagedProgress(save = false) {
         if (!this.isPagedMode)
             return;
@@ -6759,37 +6454,8 @@ class Reader {
         return -1;
     }
 
-    scheduleSnapToNearestPage() {
-        if (!this.isPagedMode)
-            return;
-        this.clearSnapTimer();
-        this.snapTimer = setTimeout(() => {
-            this.snapTimer = null;
-            this.snapToNearestPage();
-        }, 140);
-    }
-
-    getPagedScroll() {
-        if (!this.isPagedMode)
-            return 0;
-
-        return this.currentPagedPageIndex;
-    }
-
     setPagedScroll(value = 0) {
         this.setCurrentPagedPage(value, false);
-    }
-
-    scrollToPagedOffset(value = 0, behavior = 'auto') {
-        const nextIndex = Math.round(Number(value || 0) || 0);
-        if (behavior === 'smooth') {
-            this.pageTurnAnimating = true;
-            clearTimeout(this.pageTurnTimer);
-            this.pageTurnTimer = setTimeout(() => {
-                this.pageTurnAnimating = false;
-            }, 220);
-        }
-        this.setCurrentPagedPage(nextIndex, true);
     }
 
     async toggleFullscreen() {
@@ -6883,52 +6549,6 @@ class Reader {
             .filter((child) => !child.classList || !child.classList.contains('reader-page-spacer'))
             .map((child) => child.outerHTML || '')
             .filter((item) => String(item || '').trim());
-    }
-
-    compactMobilePagedPages(pages = [], measureHost = null, measureHtml = null) {
-        if (!this.isCompactLayout || !this.isPagedMode || !measureHost || !measureHtml || !Array.isArray(pages) || pages.length < 2)
-            return pages;
-
-        const compacted = pages.map((page) => Object.assign({}, page, {
-            units: this.extractPagedContentUnits(page.html),
-        }));
-
-        for (let index = 0; index < compacted.length - 1; index += 1) {
-            const page = compacted[index];
-            const next = compacted[index + 1];
-            if (!page || !next || !Array.isArray(page.units) || !Array.isArray(next.units))
-                continue;
-
-            while (next.units.length) {
-                const candidateUnits = page.units.concat(next.units[0]);
-                measureHtml.innerHTML = this.wrapPagedMeasureHtml(candidateUnits);
-                if (this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
-                    const splitUnits = this.splitUnitToFitCurrentPage({html: next.units[0]}, page.units);
-                    if (splitUnits.length > 1) {
-                        const firstSplitUnit = splitUnits[0];
-                        const remainingSplitUnits = splitUnits.slice(1).map((unit) => unit.html).filter(Boolean);
-                        const splitCandidateUnits = page.units.concat(firstSplitUnit.html);
-                        measureHtml.innerHTML = this.wrapPagedMeasureHtml(splitCandidateUnits);
-                        if (firstSplitUnit.html && remainingSplitUnits.length && !this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
-                            page.units.push(firstSplitUnit.html);
-                            next.units.splice(0, 1, ...remainingSplitUnits);
-                        }
-                    }
-                    break;
-                }
-
-                page.units.push(next.units.shift());
-            }
-        }
-
-        measureHtml.innerHTML = '';
-        return compacted
-            .filter((page) => page.units && page.units.length && !this.isBlankPagedPageUnits(page.units))
-            .map((page) => ({
-                html: this.wrapPagedMeasureHtml(page.units),
-                sectionId: page.sectionId || '',
-                anchorIds: this.collectPagedAnchorIdsFromUnits(page.units, page.sectionId || ''),
-            }));
     }
 
     async compactMobilePagedPagesChunked(pages = [], measureHost = null, measureHtml = null, jobId = 0) {
@@ -7842,146 +7462,6 @@ class Reader {
         }
 
         return units;
-    }
-
-    buildPagedPages() {
-        if (!this.isPagedMode) {
-            this.pagedPages = [];
-            return;
-        }
-
-        const measureHost = this.$refs ? this.$refs.pageMeasure : null;
-        if (!measureHost)
-            return;
-
-        const measureHtml = measureHost.querySelector('.reader-html');
-        if (!measureHtml)
-            return;
-
-        const queue = this.buildPagedUnits().slice();
-        const pages = [];
-        let currentUnits = [];
-        let activeSectionId = '';
-        let currentPageSectionId = '';
-        let currentEstimatedLines = 0;
-        const fastLineBudget = this.getFastPagedLineBudget(measureHost);
-        const buildStartedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-        const fallbackRoots = new Map();
-        const stats = {
-            status: 'building',
-            totalUnits: queue.length,
-            fastUnits: 0,
-            domUnits: 0,
-            fastSplits: 0,
-            domSplits: 0,
-            generatedFastSplitUnits: 0,
-            generatedDomSplitUnits: 0,
-            pages: 0,
-            durationMs: 0,
-            fallbackRoots: [],
-        };
-
-        const applyUnits = (list) => {
-            measureHtml.innerHTML = this.wrapPagedMeasureHtml(list);
-        };
-        const publishStats = (status = stats.status) => {
-            stats.status = status;
-            stats.durationMs = Math.max(0, Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - buildStartedAt));
-            stats.fallbackRoots = Array.from(fallbackRoots.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 5)
-                .map(([label, count]) => `${label}:${count}`);
-            this.readerDebug = Object.assign({}, this.readerDebug, {
-                paginationStats: Object.assign({}, stats),
-            });
-        };
-        const recordFallbackRoot = (unit) => {
-            if (!this.readerDebugEnabled)
-                return;
-            const label = this.describePagedUnitRoot(this.getPagedUnitRoot(unit));
-            fallbackRoots.set(label, (fallbackRoots.get(label) || 0) + 1);
-        };
-        const finalizePage = () => {
-            if (!currentUnits.length)
-                return;
-            if (!this.isBlankPagedPageUnits(currentUnits)) {
-                pages.push({
-                    html: this.wrapPagedMeasureHtml(currentUnits),
-                    sectionId: currentPageSectionId || activeSectionId || '',
-                    anchorIds: this.collectPagedAnchorIdsFromUnits(currentUnits, currentPageSectionId || activeSectionId || ''),
-                });
-            }
-            stats.pages = pages.length;
-            currentUnits = [];
-            currentPageSectionId = activeSectionId || '';
-            currentEstimatedLines = 0;
-            applyUnits([]);
-        };
-
-        applyUnits([]);
-        for (let index = 0; index < queue.length; index += 1) {
-            const unit = queue[index];
-            if (unit.sectionId)
-                activeSectionId = unit.sectionId;
-            if (unit.breakBefore && currentUnits.length && !this.isCompactLayout) {
-                finalizePage();
-                currentPageSectionId = unit.sectionId || activeSectionId || '';
-            }
-
-            const candidateUnits = currentUnits.concat(unit.html);
-            applyUnits(candidateUnits);
-            if (this.doesPagedMeasureOverflow(measureHost, measureHtml) && !currentUnits.length) {
-                const splitUnits = this.splitOversizedUnit(unit);
-                if (splitUnits.length) {
-                    queue.splice(index, 1, ...splitUnits);
-                    index -= 1;
-                    applyUnits([]);
-                    continue;
-                }
-            }
-
-            if (this.doesPagedMeasureOverflow(measureHost, measureHtml) && currentUnits.length) {
-                const fitCurrentPageSplit = this.splitUnitToFitCurrentPage(unit, currentUnits);
-                if (fitCurrentPageSplit.length) {
-                    queue.splice(index, 1, ...fitCurrentPageSplit);
-                    index -= 1;
-                    applyUnits(currentUnits);
-                    continue;
-                }
-
-                finalizePage();
-                currentPageSectionId = unit.sectionId || activeSectionId || '';
-                currentUnits = [unit.html];
-                applyUnits(currentUnits);
-                if (this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
-                    const splitUnits = this.splitOversizedUnit(unit);
-                    if (splitUnits.length) {
-                        currentUnits = [];
-                        applyUnits([]);
-                        queue.splice(index, 1, ...splitUnits);
-                        index -= 1;
-                        continue;
-                    }
-                }
-            } else {
-                currentUnits = candidateUnits;
-                if (unit.sectionId && !currentPageSectionId)
-                    currentPageSectionId = unit.sectionId;
-            }
-        }
-
-        finalizePage();
-        let finalPages = (pages.length ? pages : [{
-            html: this.readerHtml || '',
-            sectionId: '',
-            anchorIds: this.collectPagedAnchorIdsFromUnits([this.readerHtml || ''], ''),
-        }]);
-        finalPages = this.compactMobilePagedPages(finalPages, measureHost, measureHtml);
-        this.pagedPages = finalPages;
-        this.currentPageIndex = Math.max(0, Math.min(this.pagedPages.length - 1, this.currentPageIndex));
-        this.pagedLayoutSignature = this.getPagedLayoutSignature();
-        this.noteCompactChromeTotalPages();
-        this.rebuildSearchResults(false);
     }
 
     async buildPagedPagesChunked(jobId = 0) {
@@ -9782,15 +9262,6 @@ class Reader {
         }
 
         return this.normalizeReaderSearchText(parts.join(' ')).toLowerCase();
-    }
-
-    getPagedSpreadSearchText(index = 0) {
-        const safeIndex = Math.max(0, Math.min(this.pagedPages.length - 1, Math.round(Number(index || 0) || 0)));
-        const indexes = [safeIndex];
-        if (this.isDualPagedSpread && safeIndex + 1 < this.pagedPages.length)
-            indexes.push(safeIndex + 1);
-
-        return this.normalizeReaderSearchText(indexes.map(pageIndex => this.getPagedPageSearchText(pageIndex)).filter(Boolean).join(' '));
     }
 
     getPagedTextOffsetForSnippet(textSnippet = '', pageIndex = 0) {
