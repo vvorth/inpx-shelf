@@ -2078,7 +2078,7 @@ class Reader {
 
         const theme = String(this.preferences.theme || 'dark');
         const overlay = (theme === 'dark')
-            ? 'rgba(18, 23, 27, 0.58)'
+            ? 'rgba(18, 23, 21, 0.58)'
             : 'rgba(248, 241, 229, 0.46)';
 
         return {
@@ -2118,26 +2118,26 @@ class Reader {
 
         if (theme === 'light') {
             return {
-                '--reader-bg': '#f7fafc',
+                '--reader-bg': '#f4f6f5',
                 '--reader-surface': '#ffffff',
-                '--reader-surface-2': '#eef3f7',
-                '--reader-text': '#1f2a33',
-                '--reader-muted': '#60707d',
-                '--reader-border': 'rgba(96, 112, 125, 0.18)',
-                '--reader-accent': '#0f9f8f',
-                '--reader-accent-soft': 'rgba(15, 159, 143, 0.12)',
+                '--reader-surface-2': '#eef3f1',
+                '--reader-text': '#18201d',
+                '--reader-muted': '#5c6863',
+                '--reader-border': '#d6dcd9',
+                '--reader-accent': '#1f5c50',
+                '--reader-accent-soft': '#dcebe6',
             };
         }
 
         return {
-            '--reader-bg': '#12171b',
-            '--reader-surface': '#182127',
-            '--reader-surface-2': '#222c33',
-            '--reader-text': '#edf2f5',
-            '--reader-muted': '#9db0bc',
-            '--reader-border': 'rgba(157, 176, 188, 0.22)',
-            '--reader-accent': '#5eead4',
-            '--reader-accent-soft': 'rgba(94, 234, 212, 0.12)',
+            '--reader-bg': '#121715',
+            '--reader-surface': '#1a201e',
+            '--reader-surface-2': '#222a27',
+            '--reader-text': '#e6ece9',
+            '--reader-muted': '#98a59f',
+            '--reader-border': '#313b37',
+            '--reader-accent': '#6fbfa9',
+            '--reader-accent-soft': '#1f3a33',
         };
     }
 
@@ -2169,7 +2169,7 @@ class Reader {
                 background: var(--reader-surface);
                 color: var(--reader-text);
                 border: 1px solid var(--reader-border);
-                border-radius: 18px;
+                border-radius: 6px;
                 box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
             `,
         };
@@ -9081,6 +9081,9 @@ export default vueComponent(Reader);
 <style scoped>
 .reader-page {
     --q-primary: var(--reader-accent);
+    /* формы и шрифт заголовков как в библиотеке */
+    --reader-radius: 6px;
+    --reader-radius-lg: 8px;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -9142,19 +9145,17 @@ export default vueComponent(Reader);
 
 .reader-toolbar-main {
     display: grid;
-    grid-template-columns: auto minmax(300px, 430px) minmax(96px, max-content) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     flex: 1 1 auto;
     gap: 12px;
-    width: min(100%, calc(var(--reader-content-width) + 420px));
-    max-width: 1280px;
-    margin: 0 auto;
+    width: 100%;
     min-width: 0;
 }
 
 .reader-back-btn--note-return {
     border: 1px solid color-mix(in srgb, var(--reader-accent) 38%, var(--reader-border));
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     background: var(--reader-accent-soft);
     color: var(--reader-accent);
     font-weight: 800;
@@ -9178,8 +9179,9 @@ export default vueComponent(Reader);
 }
 
 .reader-book-title {
+    font-family: var(--app-font-serif, Georgia, serif);
     font-size: 18px;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -9223,8 +9225,12 @@ export default vueComponent(Reader);
 }
 
 .reader-icon-btn {
-    border: 1px solid var(--reader-border);
-    background: var(--reader-surface-2);
+    border-radius: var(--reader-radius);
+    color: var(--reader-muted);
+}
+
+.reader-icon-btn:hover {
+    color: var(--reader-text);
 }
 
 .reader-icon-btn.is-active {
@@ -9251,7 +9257,7 @@ export default vueComponent(Reader);
     overscroll-behavior: contain;
     contain: none;
     border: 1px solid var(--reader-border);
-    border-radius: 18px;
+    border-radius: var(--reader-radius);
     background: color-mix(in srgb, var(--reader-surface) 96%, var(--reader-bg) 4%);
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.24);
     backdrop-filter: blur(14px);
@@ -9282,7 +9288,7 @@ export default vueComponent(Reader);
     min-height: 30px;
     padding: 4px 10px;
     border: 1px solid color-mix(in srgb, var(--reader-accent) 36%, var(--reader-border));
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-accent-soft);
     color: var(--reader-accent);
     font-size: 12px;
@@ -9303,7 +9309,7 @@ export default vueComponent(Reader);
     min-width: 0;
     padding: 10px;
     border: 1px solid var(--reader-border);
-    border-radius: 16px;
+    border-radius: var(--reader-radius);
     background: color-mix(in srgb, var(--reader-surface) 90%, var(--reader-surface-2) 10%);
 }
 
@@ -9341,7 +9347,7 @@ export default vueComponent(Reader);
     min-height: 34px;
     padding: 1px;
     border: 1px solid var(--reader-border);
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
 }
@@ -9360,7 +9366,7 @@ export default vueComponent(Reader);
     min-height: 34px;
     padding: 3px 10px;
     border: 1px solid var(--reader-border);
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
     font-size: 12px;
@@ -9390,7 +9396,7 @@ export default vueComponent(Reader);
     min-height: 34px;
     padding: 6px 10px;
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface);
     color: var(--reader-muted);
     font-size: 12px;
@@ -9438,7 +9444,7 @@ export default vueComponent(Reader);
     gap: 1px;
     padding: 1px;
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     overflow: hidden;
 }
@@ -9466,7 +9472,7 @@ export default vueComponent(Reader);
 .reader-theme-switch :deep(.q-btn) {
     flex: 1 1 0;
     min-width: 0;
-    border-radius: 12px;
+    border-radius: var(--reader-radius);
 }
 
 .reader-stepper :deep(.q-btn--round) {
@@ -9485,14 +9491,14 @@ export default vueComponent(Reader);
     max-width: none;
     background: var(--reader-surface-2);
     border: 1px solid var(--reader-border);
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     color: var(--reader-text);
 }
 
 .reader-font-select :deep(.q-field__control) {
     min-height: 32px;
     height: 32px;
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     color: var(--reader-text);
     padding: 0 8px 0 12px;
     background: transparent;
@@ -9522,7 +9528,7 @@ export default vueComponent(Reader);
 
 :global(.reader-font-menu) {
     border: 1px solid var(--reader-border);
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
@@ -9903,7 +9909,7 @@ export default vueComponent(Reader);
     gap: 10px;
     padding: 10px 14px;
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: color-mix(in srgb, var(--reader-surface) 94%, transparent);
     color: var(--reader-text);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
@@ -9919,7 +9925,7 @@ export default vueComponent(Reader);
 
 .reader-reflow-card--loading {
     padding: 14px 18px;
-    border-radius: 18px;
+    border-radius: var(--reader-radius);
     box-shadow: 0 20px 44px rgba(0, 0, 0, 0.18);
     font-size: 14px;
 }
@@ -10004,7 +10010,7 @@ export default vueComponent(Reader);
 .reader-html :deep(.reader-cover) {
     width: 180px;
     max-width: 42vw;
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
 }
 
@@ -10122,7 +10128,7 @@ export default vueComponent(Reader);
     padding-inline-start: var(--reader-page-padding-left);
     box-sizing: border-box;
     border: 1px solid var(--reader-border);
-    border-radius: 26px;
+    border-radius: var(--reader-radius-lg);
     background: color-mix(in srgb, var(--reader-surface) 94%, transparent);
     box-shadow: none;
     background-clip: padding-box;
@@ -10163,7 +10169,7 @@ export default vueComponent(Reader);
     max-width: min(360px, 82%);
     padding: 18px 22px;
     border: 1px solid var(--reader-border);
-    border-radius: 18px;
+    border-radius: var(--reader-radius);
     background: color-mix(in srgb, var(--reader-surface) 88%, transparent);
     text-align: center;
 }
@@ -10207,7 +10213,7 @@ export default vueComponent(Reader);
     padding-inline-start: var(--reader-page-padding-left);
     box-sizing: border-box;
     border: 1px solid var(--reader-border);
-    border-radius: 26px;
+    border-radius: var(--reader-radius-lg);
     background: color-mix(in srgb, var(--reader-surface) 94%, transparent);
     overflow: hidden;
     contain: layout paint style;
@@ -10263,7 +10269,7 @@ export default vueComponent(Reader);
 .reader-page-column-sheet.reader-reflow-anchor-highlight,
 .reader-html :deep(.reader-reflow-anchor-highlight) {
     position: relative;
-    border-radius: 10px;
+    border-radius: var(--reader-radius);
     animation: reader-reflow-anchor-pulse 4.2s ease-out both;
 }
 
@@ -10459,7 +10465,7 @@ export default vueComponent(Reader);
     margin: 22px 0 0;
     padding: 14px 16px;
     border: 1px solid var(--reader-border);
-    border-radius: 18px;
+    border-radius: var(--reader-radius);
     background: color-mix(in srgb, var(--reader-surface) 82%, transparent);
 }
 
@@ -10479,7 +10485,7 @@ export default vueComponent(Reader);
 .reader-contents-toggle {
     padding: 6px 10px;
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
     font-size: 12px;
@@ -10497,7 +10503,7 @@ export default vueComponent(Reader);
 .reader-contents-chip {
     padding: 8px 12px;
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
     cursor: pointer;
@@ -10579,7 +10585,7 @@ export default vueComponent(Reader);
     max-width: min(100%, 680px);
     height: auto;
     margin: 18px auto;
-    border-radius: 12px;
+    border-radius: var(--reader-radius);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
 }
 
@@ -10660,34 +10666,20 @@ export default vueComponent(Reader);
 
 .reader-mobile-bar {
     display: flex;
-    gap: 6px;
-    padding: 4px;
-    border: 1px solid var(--reader-border);
-    border-radius: 22px;
-    background: color-mix(in srgb, var(--reader-surface) 88%, var(--reader-bg) 12%);
-    box-shadow:
-        0 16px 34px rgba(0, 0, 0, 0.18),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    backdrop-filter: blur(12px);
+    margin: 0 -8px calc(-8px - env(safe-area-inset-bottom));
+    padding: 2px 0 env(safe-area-inset-bottom);
+    border-top: 1px solid var(--reader-border);
+    background: var(--reader-surface);
 }
 
 .reader-mobile-btn {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 64px;
-    padding: 6px 4px 8px;
-    border: 1px solid color-mix(in srgb, var(--reader-border) 78%, var(--reader-surface) 22%);
-    border-radius: 16px;
-    background:
-        linear-gradient(
-            to bottom,
-            color-mix(in srgb, var(--reader-surface) 92%, white 8%) 0%,
-            color-mix(in srgb, var(--reader-surface-2) 92%, var(--reader-surface) 8%) 100%
-        );
-    color: var(--reader-text);
-    box-shadow:
-        0 6px 14px rgba(0, 0, 0, 0.08),
-        inset 0 1px 0 rgba(255, 255, 255, 0.34);
+    min-height: 56px;
+    padding: 6px 4px;
+    border-radius: 0;
+    background: transparent;
+    color: var(--reader-muted);
 }
 
 .reader-mobile-btn :deep(.q-btn__content) {
@@ -10726,17 +10718,7 @@ export default vueComponent(Reader);
 }
 
 .reader-mobile-btn.is-active {
-    border-color: color-mix(in srgb, var(--reader-accent) 36%, var(--reader-border));
-    background:
-        linear-gradient(
-            to bottom,
-            color-mix(in srgb, var(--reader-accent-soft) 82%, var(--reader-surface) 18%) 0%,
-            color-mix(in srgb, var(--reader-accent-soft) 58%, var(--reader-surface-2) 42%) 100%
-        );
     color: var(--reader-accent);
-    box-shadow:
-        0 8px 18px rgba(0, 0, 0, 0.12),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .reader-status-bar {
@@ -10746,14 +10728,12 @@ export default vueComponent(Reader);
     flex-wrap: wrap;
     gap: 12px;
     padding: var(--reader-status-padding-y, 4px) var(--reader-status-padding-x, 10px);
-    border: 1px solid color-mix(in srgb, var(--reader-border) 72%, var(--reader-surface-2));
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--reader-surface-2) 96%, transparent);
+    border: 1px solid var(--reader-border);
+    border-radius: var(--reader-radius);
+    background: var(--reader-surface);
     color: var(--reader-muted);
     font-size: var(--reader-status-font-size, 12px);
-    font-weight: 700;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
-    backdrop-filter: blur(10px);
+    font-weight: 600;
 }
 
 .reader-status-main {
@@ -10801,7 +10781,7 @@ export default vueComponent(Reader);
 .reader-dialog {
     width: min(92vw, 420px);
     max-height: 85vh;
-    border-radius: 22px;
+    border-radius: var(--reader-radius-lg);
     background: var(--reader-surface) !important;
     color: var(--reader-text) !important;
     box-shadow: 0 24px 56px rgba(0, 0, 0, 0.26);
@@ -10815,7 +10795,7 @@ export default vueComponent(Reader);
     width: min(92vw, 420px);
     max-height: calc(100vh - 120px);
     border: 1px solid var(--reader-border);
-    border-radius: 22px;
+    border-radius: var(--reader-radius-lg);
     overflow: hidden;
     background: var(--reader-surface);
     color: var(--reader-text);
@@ -10882,7 +10862,7 @@ export default vueComponent(Reader);
 .reader-dialog-link {
     padding: 12px 14px;
     border: 1px solid var(--reader-border);
-    border-radius: 14px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
     text-align: left;
@@ -10980,7 +10960,7 @@ export default vueComponent(Reader);
 .reader-dialog-tab {
     padding: 8px 12px;
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
     font-size: 12px;
@@ -10999,7 +10979,7 @@ export default vueComponent(Reader);
     gap: 8px;
     padding: 14px;
     border: 1px solid var(--reader-border);
-    border-radius: 16px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
 }
 
@@ -11027,7 +11007,7 @@ export default vueComponent(Reader);
 .reader-help-item {
     padding: 12px 14px;
     border: 1px solid var(--reader-border);
-    border-radius: 16px;
+    border-radius: var(--reader-radius);
     background: color-mix(in srgb, var(--reader-surface-2) 86%, transparent);
     line-height: 1.45;
 }
@@ -11077,7 +11057,7 @@ export default vueComponent(Reader);
 
 .reader-inline-action-btn {
     border: 1px solid var(--reader-border);
-    border-radius: 999px;
+    border-radius: var(--reader-radius);
     background: var(--reader-surface-2);
     color: var(--reader-text);
 }
@@ -11122,15 +11102,16 @@ export default vueComponent(Reader);
     line-height: 1.55;
 }
 
+/* тёмная и светлая темы - палитра библиотеки (App.vue) */
 .reader-theme-dark {
-    --reader-bg: #12171b;
-    --reader-surface: #182127;
-    --reader-surface-2: #222c33;
-    --reader-text: #edf2f5;
-    --reader-muted: #9db0bc;
-    --reader-border: rgba(157, 176, 188, 0.22);
-    --reader-accent: #5eead4;
-    --reader-accent-soft: rgba(94, 234, 212, 0.12);
+    --reader-bg: #121715;
+    --reader-surface: #1a201e;
+    --reader-surface-2: #222a27;
+    --reader-text: #e6ece9;
+    --reader-muted: #98a59f;
+    --reader-border: #313b37;
+    --reader-accent: #6fbfa9;
+    --reader-accent-soft: #1f3a33;
 }
 
 .reader-theme-sepia {
@@ -11145,14 +11126,14 @@ export default vueComponent(Reader);
 }
 
 .reader-theme-light {
-    --reader-bg: #f7fafc;
+    --reader-bg: #f4f6f5;
     --reader-surface: #ffffff;
-    --reader-surface-2: #eef3f7;
-    --reader-text: #1f2a33;
-    --reader-muted: #60707d;
-    --reader-border: rgba(96, 112, 125, 0.18);
-    --reader-accent: #0f9f8f;
-    --reader-accent-soft: rgba(15, 159, 143, 0.12);
+    --reader-surface-2: #eef3f1;
+    --reader-text: #18201d;
+    --reader-muted: #5c6863;
+    --reader-border: #d6dcd9;
+    --reader-accent: #1f5c50;
+    --reader-accent-soft: #dcebe6;
 }
 
 .reader-theme-eink {
@@ -11199,24 +11180,6 @@ export default vueComponent(Reader);
         inset 0 12px 24px color-mix(in srgb, var(--reader-bg) 82%, transparent);
 }
 
-.reader-theme-sepia .reader-status-bar,
-.reader-theme-light .reader-status-bar {
-    border-color: color-mix(in srgb, var(--reader-border) 70%, var(--reader-text) 30%);
-    box-shadow:
-        0 14px 24px rgba(0, 0, 0, 0.16),
-        0 -2px 8px rgba(255, 255, 255, 0.22),
-        inset 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-
-.reader-theme-sepia .reader-mobile-bar,
-.reader-theme-light .reader-mobile-bar {
-    border-color: color-mix(in srgb, var(--reader-border) 82%, var(--reader-text) 18%);
-    box-shadow:
-        0 16px 30px rgba(0, 0, 0, 0.16),
-        0 -1px 0 rgba(255, 255, 255, 0.24),
-        inset 0 1px 0 rgba(255, 255, 255, 0.42);
-}
-
 .reader-theme-sepia .reader-mobile-footer,
 .reader-theme-sepia .reader-desktop-footer {
     background:
@@ -11227,24 +11190,6 @@ export default vueComponent(Reader);
             color-mix(in srgb, var(--reader-bg) 88%, transparent) 62%,
             transparent 100%
         );
-}
-
-.reader-theme-sepia .reader-status-bar {
-    color: color-mix(in srgb, var(--reader-text) 88%, var(--reader-muted));
-    background: color-mix(in srgb, var(--reader-surface-2) 82%, var(--reader-text) 18%);
-}
-
-.reader-theme-sepia .reader-mobile-bar {
-    background: color-mix(in srgb, var(--reader-surface) 84%, var(--reader-bg) 16%);
-}
-
-.reader-theme-light .reader-status-bar {
-    color: color-mix(in srgb, var(--reader-text) 84%, var(--reader-muted));
-    background: color-mix(in srgb, var(--reader-surface-2) 84%, var(--reader-text) 16%);
-}
-
-.reader-theme-light .reader-mobile-bar {
-    background: color-mix(in srgb, var(--reader-surface) 86%, var(--reader-bg) 14%);
 }
 
 .reader-page--transparent-pages .reader-page-sheet:not(.reader-page-sheet--measure):not(.reader-page-sheet--dual),
@@ -11416,7 +11361,7 @@ export default vueComponent(Reader);
         padding: 5px 8px;
         gap: 5px;
         font-size: 11px;
-        border-radius: 12px;
+        border-radius: var(--reader-radius);
     }
 
     .reader-profile-chip :deep(.q-icon) {
@@ -11499,7 +11444,7 @@ export default vueComponent(Reader);
         overscroll-behavior: contain;
         contain: none;
         border: 1px solid var(--reader-border);
-        border-radius: 20px 20px 16px 16px;
+        border-radius: var(--reader-radius-lg);
         background: color-mix(in srgb, var(--reader-surface) 96%, var(--reader-bg) 4%);
         box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.28);
         backdrop-filter: blur(14px);
@@ -11512,7 +11457,7 @@ export default vueComponent(Reader);
         left: 50%;
         width: 42px;
         height: 4px;
-        border-radius: 999px;
+        border-radius: var(--reader-radius);
         background: color-mix(in srgb, var(--reader-muted) 44%, transparent);
         transform: translateX(-50%);
     }
@@ -11536,7 +11481,7 @@ export default vueComponent(Reader);
 
     .reader-controls-group {
         padding: 9px;
-        border-radius: 14px;
+        border-radius: var(--reader-radius);
     }
 
     .reader-spacing-grid {
@@ -11552,7 +11497,7 @@ export default vueComponent(Reader);
 
     .reader-spacing-grid .reader-stepper {
         min-height: 32px;
-        border-radius: 12px;
+        border-radius: var(--reader-radius);
     }
 
     .reader-spacing-grid .reader-stepper :deep(.q-btn) {
@@ -11609,7 +11554,7 @@ export default vueComponent(Reader);
         min-height: 32px;
         padding: 5px 9px;
         border: 1px solid var(--reader-border);
-        border-radius: 999px;
+        border-radius: var(--reader-radius);
         background: var(--reader-surface-2);
         color: var(--reader-muted);
         font: inherit;
@@ -11640,7 +11585,7 @@ export default vueComponent(Reader);
         width: 100%;
         max-width: none;
         justify-content: center;
-        border-radius: 14px;
+        border-radius: var(--reader-radius);
         min-height: 44px;
     }
 
@@ -11690,7 +11635,7 @@ export default vueComponent(Reader);
 
     .reader-body--paged {
         width: 100%;
-        border-radius: 20px;
+        border-radius: var(--reader-radius-lg);
         box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
     }
 
@@ -11702,7 +11647,7 @@ export default vueComponent(Reader);
     .reader-page-sheet--horizontal {
         width: 100%;
         max-width: 100%;
-        border-radius: 16px;
+        border-radius: var(--reader-radius);
     }
 
     .reader-shell--paged-horizontal {
@@ -11731,8 +11676,7 @@ export default vueComponent(Reader);
     }
 
     .reader-mobile-btn {
-        min-height: 60px;
-        border-radius: 15px;
+        min-height: 52px;
     }
 
     .reader-mobile-btn :deep(.q-icon) {
