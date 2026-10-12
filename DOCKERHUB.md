@@ -15,7 +15,7 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 - Built-in FB2 reader with profiles, progress, bookmarks, themes, fonts, Wake Lock and separate PWA mode.
 - Personal reading lists, read/unread marks, OPDS and profile-level OPDS links.
 - Book sending by Telegram and email when configured.
-- Conversion to `epub`, `epub3`, `kepub`, `kfx`, `azw8` and `pdf` in the default image.
+- Conversion to `epub`, `epub3`, `kepub`, `kfx` and `azw8` in the default image; `pdf` in the `-pdf` image.
 - Admin dashboard, event log, backup/restore, source management, health checks and Prometheus metrics.
 
 ## Tags
@@ -24,8 +24,9 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 | --- | --- |
 | `latest` | Newest stable release (no `-alpha`, `-beta` or `-rc` suffix). Appears with the first stable release. |
 | `beta` | Newest pre-release (`-alpha.N`, `-beta.N` or `-rc.N`). |
-| `dev`, `dev-<commit>` | Development build, published on every push to the `develop` branch after the tests pass. Unstable: for testing, not for your main library. |
-| `1.0.0-beta.1` | Full image with fb2cng, MuPDF, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
+| `dev`, `dev-<commit>` | Development build, published on every push to the `dev` branch after the tests pass. Unstable: for testing, not for your main library. |
+| `1.0.0-beta.1` | Image with fb2cng, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
+| `…-pdf` | Every tag above also exists with a `-pdf` suffix (`latest-pdf`, `beta-pdf`, `dev-pdf`, `1.0.0-beta.1-pdf`): the same image plus MuPDF for `fb2` / `epub` → `pdf` conversion, about 100 MB larger. |
 
 ## Quick Start
 

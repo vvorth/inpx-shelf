@@ -67,13 +67,13 @@ inpx-shelf — веб-каталог для self-hosted INPX-библиотек 
 
 ## Сборка Docker-контейнера
 
-Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий, например `vvorth/inpx-shelf:1.0.0-beta.1`. Тег `latest` указывает на последний стабильный релиз, `beta` — на последний предварительный (`-alpha`, `-beta`, `-rc`), `dev` — на сборку из ветки `develop` (собирается при каждом изменении ветки, только для тестирования). Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
+Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий, например `vvorth/inpx-shelf:1.0.0-beta.1`. Тег `latest` указывает на последний стабильный релиз, `beta` — на последний предварительный (`-alpha`, `-beta`, `-rc`), `dev` — на сборку из ветки `dev` (собирается при каждом изменении ветки, только для тестирования). У каждого тега есть вариант с суффиксом `-pdf` (`latest-pdf`, `beta-pdf`, `dev-pdf`, `1.0.0-beta.1-pdf`): тот же образ плюс MuPDF для конвертации в `pdf`, примерно на 100 МБ больше. Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
 
 Образ можно запустить на данных inpx-web: путь данных в контейнере остался `/usr/local/bin/.inpx-web`, поэтому существующий volume подключается без изменений.
 
 Готовые YAML-примеры:
 
-* [docker-compose.full.yml](./docker-compose.full.yml) — основной образ с конвертацией через fb2cng и MuPDF
+* [docker-compose.full.yml](./docker-compose.full.yml) — основной образ с конвертацией через fb2cng (для `pdf` возьмите тег с `-pdf`)
 * [docker-compose.telegram-email.yml](./docker-compose.telegram-email.yml) — пример с отправкой книг в Telegram и на email
 
 Важно: путь в `INPX` и каталог в `LIBDIR` должны совпадать с путём внутри контейнера из правой части `volume`.
@@ -86,10 +86,16 @@ git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-
 cd inpx-shelf
 ```
 
-Собрать основной образ с конвертацией через fb2cng и MuPDF можно так:
+Собрать основной образ с конвертацией через fb2cng можно так:
 
 ```sh
 docker build -t inpx-shelf:latest .
+```
+
+Вариант с MuPDF для конвертации в `pdf`:
+
+```sh
+docker build --target runtime-pdf -t inpx-shelf:latest-pdf .
 ```
 
 Облегчённый вариант без конвертации в `epub` / `epub3` / `kepub` / `kfx` / `azw8` / `pdf`:
@@ -106,7 +112,7 @@ docker build --no-cache -t inpx-shelf:latest .
 
 Важно:
 
-* основной образ умеет `fb2 -> epub`, `epub3`, `kepub`, `kfx`, `azw8` через fb2cng и `fb2` / `epub -> pdf` через MuPDF
+* основной образ умеет `fb2 -> epub`, `epub3`, `kepub`, `kfx`, `azw8` через fb2cng; `runtime-pdf` (теги `-pdf`) добавляет `fb2` / `epub -> pdf` через MuPDF
 * `runtime-lite` заметно легче и быстрее собирается, не умеет конвертацию книг и автоматически скрывает кнопки `EPUB` / `EPUB3` / `KEPUB` / `KFX` / `AZW8` / `PDF` в интерфейсе
 * Dockerfile использует multi-stage сборку: приложение упаковывается в `pkg`-бинарник, а runtime-слой не тянет Node.js, `node_modules` и dev/UI-зависимости
 * при включённом BuildKit повторные сборки идут быстрее за счёт кэша `apt` и `npm`
@@ -197,7 +203,7 @@ docker run -d \
 * каталог `/usr/local/bin/.inpx-web` хранит базу поиска, кэш, конфигурацию и служебные данные, поэтому его лучше выносить в постоянный volume
 * `INPX_BOOK_CACHE_SIZE_MB` и `INPX_COVER_CACHE_SIZE_MB` ограничивают подготовленные книги и обложки; при превышении лимита старые файлы удаляются до целевого размера
 * библиотека подключена как `:ro`, чтобы контейнер не изменял исходные архивы
-* первый запуск может быть долгим: приложение создаёт поисковую базу, а конвертация в `epub` / `epub3` / `kepub` / `kfx` / `azw8` / `pdf` требует установленного в образе fb2cng и MuPDF
+* первый запуск может быть долгим: приложение создаёт поисковую базу, а конвертация в `epub` / `epub3` / `kepub` / `kfx` / `azw8` требует установленного в образе fb2cng, в `pdf` — MuPDF (образ с тегом `-pdf`)
 * порядок обновления описан в разделе [Обновление контейнера](#обновление-контейнера)
 * веб-интерфейс после запуска будет доступен по адресу `http://<ваш_хост>:12380`
 
@@ -889,7 +895,7 @@ rm -f ./server/config/application_env
 node server --data-dir=.inpx-shelf --lib-dir=/path/to/library --inpx=/path/to/library/library.inpx
 ```
 
-Замените `/path/to/library` на свой каталог. Для конвертации при запуске из исходников нужны установленные fb2cng (`fbc`) и MuPDF (`mutool`); для JPEG XL/WebP — `djxl` и `dwebp`. Готовый основной Docker-образ включает эти инструменты.
+Замените `/path/to/library` на свой каталог. Для конвертации при запуске из исходников нужны установленные fb2cng (`fbc`) и MuPDF (`mutool`); для JPEG XL/WebP — `djxl` и `dwebp`. Готовый Docker-образ включает эти инструменты, MuPDF — только образ с тегом `-pdf`.
 
 <a id="cli" />
 

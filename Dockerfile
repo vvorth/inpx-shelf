@@ -81,14 +81,27 @@ FROM base-tools AS conversion-tools
 ARG FB2CNG_VERSION
 
 LABEL org.opencontainers.image.title="inpx-shelf" \
-      org.opencontainers.image.description="Dockerized inpx-shelf with fb2cng and MuPDF conversion" \
+      org.opencontainers.image.description="Dockerized inpx-shelf with fb2cng conversion" \
       org.opencontainers.image.source="https://github.com/vvorth/inpx-shelf"
 
 ENV INPX_ENABLE_CONVERSION=true
-ENV INPX_CONVERSION_FORMATS=epub,epub3,kepub,kfx,azw8,pdf
+ENV INPX_CONVERSION_FORMATS=epub,epub3,kepub,kfx,azw8
 ENV INPX_FB2CNG_VERSION=${FB2CNG_VERSION}
 
 COPY --from=fb2cng-tools /fb2cng-runtime/fbc /usr/local/bin/fbc
+
+# Default image: fb2cng formats only. MuPDF (PDF output, ~100 MB) is in runtime-pdf.
+FROM conversion-tools AS runtime
+
+# --chmod avoids a follow-up chmod RUN that would duplicate the binary in a second layer.
+COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
+
+FROM conversion-tools AS pdf-tools
+
+LABEL org.opencontainers.image.title="inpx-shelf-pdf" \
+      org.opencontainers.image.description="Dockerized inpx-shelf with fb2cng and MuPDF (PDF) conversion"
+
+ENV INPX_CONVERSION_FORMATS=epub,epub3,kepub,kfx,azw8,pdf
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -96,9 +109,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends mupdf-tools fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-FROM conversion-tools AS runtime
+FROM pdf-tools AS runtime-pdf
 
-# --chmod avoids a follow-up chmod RUN that would duplicate the binary in a second layer.
 COPY --from=build --chmod=755 /app/dist/linux/inpx-shelf /usr/local/bin/inpx-shelf
 
 FROM base-tools AS runtime-lite
