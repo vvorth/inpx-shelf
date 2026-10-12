@@ -17,12 +17,13 @@ const pageSize = 20000;
 //писатель, романист, поэт, детский писатель, фантаст, автор рассказов, драматург, эссеист, автор, переводчик, сценарист
 const occupations = ['Q36180', 'Q6625963', 'Q49757', 'Q4853732', 'Q18844224', 'Q15949613', 'Q214917', 'Q11774202', 'Q482980', 'Q333634', 'Q28389'];
 
+//без ORDER BY порядок строк между страницами не определён: имена терялись бы и повторялись
 function occupationQuery(occupation, offset) {
     return `SELECT ?item ?ru ?en WHERE {
   ?item wdt:P106 wd:${occupation} .
   ?item rdfs:label ?ru . FILTER(LANG(?ru) = "ru")
   ?item rdfs:label ?en . FILTER(LANG(?en) = "en")
-} LIMIT ${pageSize} OFFSET ${offset}`;
+} ORDER BY ?item LIMIT ${pageSize} OFFSET ${offset}`;
 }
 
 //Ключ имени: слова в алфавитном порядке, чтобы «Айзек Азимов» и «Азимов Айзек» совпали
