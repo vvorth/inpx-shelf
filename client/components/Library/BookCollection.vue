@@ -42,11 +42,11 @@
                     </div>
                     <div class="wide-card-foot">
                         <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
-                        <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
+                        <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('bookCollection.read', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
                         <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                         <div class="foot-actions">
-                            <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
+                            <BookQuickActions :book="book" :signed-in="signedIn" :in-list="!!stateOf(book).inList" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
                         </div>
                     </div>
                 </div>
@@ -81,17 +81,17 @@
                 </div>
                 <div class="row-side">
                     <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
-                    <span v-else-if="stateOf(book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
+                    <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                     <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
                     <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                     <div class="row-actions">
-                        <BookQuickActions :book="book" :signed-in="signedIn" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
+                        <BookQuickActions :book="book" :signed-in="signedIn" :in-list="!!stateOf(book).inList" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
                     </div>
                 </div>
             </li>
         </ol>
 
-        <AddToListDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" @changed="$emit('interaction', {book: listsBook, type: 'save'})" />
+        <AddToListDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" @changed="listsChanged" />
     </div>
 </template>
 
@@ -131,6 +131,8 @@ class BookCollection {
     };
 
     genresReady = 0;
+    //состояния книг, обновлённые после правки списков в окне: поверх states от страницы
+    changedStates = {};
     listsBook = null;
     listsDialogVisible = false;
 
@@ -165,7 +167,8 @@ class BookCollection {
     }
 
     stateOf(book) {
-        return this.states[bookUid(book)] || {};
+        const uid = bookUid(book);
+        return this.changedStates[uid] || this.states[uid] || {};
     }
 
     authorsOf(book) {
@@ -202,6 +205,19 @@ class BookCollection {
     openLists(book) {
         this.listsBook = book;
         this.listsDialogVisible = true;
+    }
+
+    async listsChanged() {
+        const book = this.listsBook;
+        this.$emit('interaction', {book, type: 'save'});
+        const uid = bookUid(book);
+        try {
+            const result = await this.$root.api.getBookStates([uid]);
+            const state = (result && result.states && result.states[uid]) || {};
+            this.changedStates = Object.assign({}, this.changedStates, {[uid]: Object.assign({}, this.stateOf(book), state, {inList: !!state.inList})});
+        } catch (e) {
+            //отметка закладки не обязательна
+        }
     }
 }
 

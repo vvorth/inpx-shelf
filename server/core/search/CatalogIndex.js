@@ -965,6 +965,14 @@ class CatalogIndex {
             .all(normalize(name)).map(row => row.alias);
     }
 
+    //Английские имена авторов для набора полей «автор» книг: {поле: ['Isaac Asimov', ...]}
+    authorAliasesOf(values = []) {
+        const result = {};
+        for (const value of values)
+            result[value] = splitAuthors(value).flatMap(name => this.authorAliases(name));
+        return result;
+    }
+
     //Подсказки при наборе: авторы, серии и книги
     suggest(request = {}) {
         if (!this.db)

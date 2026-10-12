@@ -843,6 +843,15 @@ body.body--dark pre {
     color: var(--app-primary);
 }
 
+.read-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--app-primary);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .pill--warn {
     background: rgba(154, 91, 0, 0.12);
     color: var(--app-accent);

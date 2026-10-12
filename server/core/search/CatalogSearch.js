@@ -204,6 +204,12 @@ class CatalogSearch {
         return await this.getThread().call('authorAliases', name);
     }
 
+    async authorAliasesOf(values = []) {
+        if (!this.ready)
+            return {};
+        return await this.getThread().call('authorAliasesOf', values);
+    }
+
     checkReady() {
         if (!this.ready)
             throw new Error('catalog_index_not_ready');

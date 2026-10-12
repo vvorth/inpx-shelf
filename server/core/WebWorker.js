@@ -1998,18 +1998,20 @@ class WebWorker {
         return {book: result.books[0]};
     }
 
-    //Прогресс текущего читателя по набору книг: {uid: {percent, read, hidden}}
-    getUserBookStates(user = null, bookUids = []) {
+    //Прогресс текущего читателя по набору книг и есть ли книга в его списках: {uid: {percent, read, hidden, inList}}
+    getUserBookStates(user = null, bookUids = [], lists = []) {
         const progressMap = (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {});
+        const listed = new Set(lists.flatMap(list => this.readingListStore.normalizeEntries(list.books).map(entry => entry.bookUid)));
         const states = {};
         for (const value of (Array.isArray(bookUids) ? bookUids : []).slice(0, 2000)) {
             const bookUid = String(value || '').trim();
             const progress = bookUid && progressMap[bookUid];
-            if (!progress)
+            const inList = listed.has(bookUid);
+            if (!progress && !inList)
                 continue;
 
-            const percent = Math.max(0, Math.min(1, Number(progress.percent || 0) || 0));
-            states[bookUid] = {percent, read: percent >= READ_PERCENT, hidden: progress.hidden === true};
+            const percent = (progress ? Math.max(0, Math.min(1, Number(progress.percent || 0) || 0)) : 0);
+            states[bookUid] = {percent, read: percent >= READ_PERCENT, hidden: !!progress && progress.hidden === true, inList};
         }
         return {states};
     }
@@ -3274,6 +3276,16 @@ class WebWorker {
         }
 
         this.sortReadingListBooks(books, listEntries.map((entry) => entry.bookUid));
+
+        //английские имена авторов нужны фильтру списка в браузере
+        let aliases = {};
+        try {
+            aliases = await this.catalogSearch.authorAliasesOf(Array.from(new Set(books.map(book => String(book.author || '')))));
+        } catch (e) {
+            //поиск по английским именам не обязателен
+        }
+        for (const book of books)
+            book._authorAliases = aliases[String(book.author || '')] || [];
 
         return {
             list: {

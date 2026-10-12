@@ -1071,11 +1071,16 @@ async function testBookPageRecordAndReaderStates() {
 
     const user = {readerProgress: {a: {percent: 0.4}, b: {percent: 1}, c: {percent: 0.2, hidden: true}}};
     assert.deepStrictEqual(worker.getUserBookStates(user, ['a', 'b', 'c', 'missing', '']).states, {
-        a: {percent: 0.4, read: false, hidden: false},
-        b: {percent: 1, read: true, hidden: false},
-        c: {percent: 0.2, read: false, hidden: true},
+        a: {percent: 0.4, read: false, hidden: false, inList: false},
+        b: {percent: 1, read: true, hidden: false, inList: false},
+        c: {percent: 0.2, read: false, hidden: true, inList: false},
     });
     assert.deepStrictEqual(worker.getUserBookStates(null, ['a']).states, {});
+    worker.readingListStore.normalizeEntries = rows => rows;
+    assert.deepStrictEqual(worker.getUserBookStates(user, ['a', 'd', 'e'], [{books: [{bookUid: 'a'}, {bookUid: 'd'}]}]).states, {
+        a: {percent: 0.4, read: false, hidden: false, inList: true},
+        d: {percent: 0, read: false, hidden: false, inList: true},
+    });
 
     worker.getEffectiveUser = async(userId) => ({
         guest: {id: 'default', name: 'Без профиля', login: '', passwordHash: ''},
@@ -1244,6 +1249,7 @@ async function testAuthorEnglishNames() {
         assert.deepStrictEqual(index.suggest({q: 'asim'}).authors, [{name: 'Азимов Айзек', books: 1, alias: 'Isaac Asimov'}]);
         assert.deepStrictEqual(index.authorAliases('Азимов Айзек'), ['Isaac Asimov']);
         assert.deepStrictEqual(index.authorAliases('Стругацкий Аркадий'), []);
+        assert.deepStrictEqual(index.authorAliasesOf(['Азимов Айзек, Стругацкий Аркадий']), {'Азимов Айзек, Стругацкий Аркадий': ['Isaac Asimov']});
         index.close();
     });
 }

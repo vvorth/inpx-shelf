@@ -163,7 +163,7 @@
                             <div v-if="!visibleBooks.length" class="page-empty page-empty--inline">
                                 {{ $t('lists.nothingMatches') }}
                             </div>
-                            <BookCollection v-else-if="view !== 'table'" :books="visibleBooks.map(book => book.record)" :view="view" />
+                            <BookCollection v-else-if="view !== 'table'" :books="visibleBooks.map(book => book.record)" :states="bookStates" :view="view" />
                             <div v-else class="table-wrap">
                                 <table class="data-table">
                                     <thead>
@@ -237,6 +237,7 @@ import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {refreshReadingLists} from '../../share/readingLists';
 import {bookAuthors} from '../../share/bookActions';
+import {bookViews, bookViewOptions} from '../../share/bookView';
 
 const readingNowId = '__reading__';
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
@@ -364,6 +365,7 @@ class ListsPage {
                 title: String(book.title || '').trim(),
                 author: String(book.author || '').trim(),
                 authors: bookAuthors(book),
+                aliases: (book._authorAliases || []).join(' '),
                 series: String(book.series || '').trim(),
                 serno: book.serno || '',
                 ext: book.ext || '',
@@ -384,15 +386,19 @@ class ListsPage {
     }
 
     get view() {
-        return (['covers', 'cards'].includes(this.settings.listsView) ? this.settings.listsView : 'table');
+        return (bookViews.includes(this.settings.listsView) ? this.settings.listsView : 'table');
     }
 
     get viewOptions() {
         return [
-            {icon: 'la la-list', value: 'table', attrs: {'aria-label': t('lists.asTable'), title: t('lists.asTable')}},
-            {icon: 'la la-th', value: 'covers', attrs: {'aria-label': t('mePreferences.asCovers'), title: t('mePreferences.asCovers')}},
-            {icon: 'la la-th-large', value: 'cards', attrs: {'aria-label': t('mePreferences.asCards'), title: t('mePreferences.asCards')}},
+            {icon: 'la la-table', value: 'table', attrs: {'aria-label': t('lists.asTable'), title: t('lists.asTable')}},
+            ...bookViewOptions(),
         ];
+    }
+
+    //все книги открытого списка в нём есть; прочитанное - по отметке списка
+    get bookStates() {
+        return Object.fromEntries(this.books.map(book => [book.bookUid, {read: book.read, percent: (book.read ? 1 : 0), inList: true}]));
     }
 
     get columns() {
@@ -416,7 +422,7 @@ class ListsPage {
         const books = this.books.filter((book) => {
             if (this.unreadOnly && book.read)
                 return false;
-            const text = normalize(`${book.title} ${book.author} ${book.series}`);
+            const text = normalize(`${book.title} ${book.author} ${book.aliases} ${book.series}`);
             return words.every(word => text.includes(word));
         });
 

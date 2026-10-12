@@ -24,7 +24,7 @@
         <q-btn v-else flat dense round icon="la la-download" :aria-label="$t('common.download')" @click="act('download')">
             <q-tooltip>{{ $t('bookQuickActions.download', {ext: originalLabel}) }}</q-tooltip>
         </q-btn>
-        <q-btn v-if="signedIn" flat dense round icon="la la-bookmark" :aria-label="$t('book.list')" @click="$emit('lists')">
+        <q-btn v-if="signedIn" flat dense round :icon="inList ? listedIcon : 'la la-bookmark'" :aria-label="$t('book.list')" @click="$emit('lists')">
             <q-tooltip>{{ $t('book.list') }}</q-tooltip>
         </q-btn>
     </div>
@@ -36,6 +36,7 @@ import vueComponent from '../vueComponent.js';
 
 import {runBookAction, conversionFormats} from '../../share/bookActions';
 import {isExternalOnly} from '../../share/discovery';
+import {fasBookmark} from '@quasar/extras/fontawesome-v5';
 
 const componentOptions = {
     emits: ['lists', 'used'],
@@ -46,7 +47,11 @@ class BookQuickActions {
     _props = {
         book: {type: Object, required: true},
         signedIn: Boolean,
+        //книга есть в одном из списков: закладка закрашена (в Line Awesome закрашенной нет)
+        inList: Boolean,
     };
+
+    listedIcon = fasBookmark;
 
     get formats() {
         return conversionFormats(this.$store.state.config, this.book);

@@ -733,7 +733,8 @@ class WebSocketController {
     //Гостю и профилю без входа отвечаем пустым набором, а не need_profile_login: страницы каталога открыты всем
     async getBookStates(req, ws) {
         const user = await this.webWorker.getAuthorizedUserOrNull(req.userId, req.profileAccessToken);
-        this.send(this.webWorker.getUserBookStates(user, req.bookUids), req, ws);
+        const lists = (user ? await this.webWorker.readingListStore.getLists(user.id) : []);
+        this.send(this.webWorker.getUserBookStates(user, req.bookUids, lists), req, ws);
     }
 
     async getBookInfo(req, ws) {

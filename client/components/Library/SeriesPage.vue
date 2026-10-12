@@ -73,7 +73,7 @@
                                 {{ bookMeta(row.book) }}
                             </div>
                         </div>
-                        <span v-if="stateOf(row.book).read" class="pill pill--accent">{{ $t('common.read') }}</span>
+                        <span v-if="stateOf(row.book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(row.book).percent > 0" class="pill num">{{ Math.round(stateOf(row.book).percent * 100) }}%</span>
                     </template>
                     <div v-else class="series-main card-hint">
