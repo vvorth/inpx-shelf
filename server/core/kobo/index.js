@@ -732,6 +732,10 @@ class KoboService {
         // A book removed from a collection on the device stays out of it until it leaves that list here.
         for (const [uuid, row] of Object.entries(books)) {
             const item = wanted.get(uuid);
+            // The lists name another record for this Kobo id (re-keyed lists whose device rows were not
+            // saved, another copy with the same libid): files, covers and metadata come from that one.
+            if (item && row.bookUid !== item.bookUid)
+                Object.assign(row, {bookUid: item.bookUid, stableKey: item.stableKey});
             const listIds = (item ? item.listIds : orphanUids.get(row.bookUid) || []);
             row.collectionRemoved = (row.collectionRemoved || []).filter(listId => listIds.includes(listId));
         }

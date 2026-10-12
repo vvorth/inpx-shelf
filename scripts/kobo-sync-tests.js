@@ -500,6 +500,22 @@ async function testKoboSyncKeepsChangesMadeDuringConversion() {
     });
 }
 
+// The lists were re-keyed but the device rows were not (two files, saved one after the other).
+async function testKoboRowFollowsTheListedRecord() {
+    await fixture({}, async({service, store, books, listA, sync, call}) => {
+        await store.addBooks('default', listA.id, ['fb2-uid']);
+        await sync({fresh: true});
+        const fb2Uuid = kobo.uuidv5('main:101');
+        await service.store.mutate((data) => {
+            data.devices[0].books[fb2Uuid].bookUid = 'gone-uid';
+        });
+        books.set('gone-uid', null);
+        await sync();
+        assert.strictEqual(service.store.data.devices[0].books[fb2Uuid].bookUid, 'fb2-uid');
+        assert.strictEqual((await call(`/download/${fb2Uuid}/kepub`)).status, 200);
+    });
+}
+
 async function testKoboReannouncesRegeneratedFiles() {
     await withFb2cngConfig(async(configPath) => fixture({config: {fb2cngConfigPath: configPath}}, async({config, store, listA, call, sync, output}) => {
         await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
@@ -1100,6 +1116,7 @@ module.exports = [
     testKoboRefusesDevicesOfDeletedProfiles,
     testKoboStoreProxyToggle,
     testKoboSyncKeepsChangesMadeDuringConversion,
+    testKoboRowFollowsTheListedRecord,
     testKoboReannouncesRegeneratedFiles,
     testKoboTokensAreMaskedInLogs,
     testKoboPrewarmsBooksAddedToBoundLists,
