@@ -91,6 +91,12 @@ class WebAccess {
         return false;
     }
 
+    //токен уже прошёл проверку пароля: запрос с ним - не попытка входа
+    isActiveToken(accessToken) {
+        const accessRec = this.accessMap.get(accessToken);
+        return this.freeAccess || !!(accessRec && accessRec.used > 0);
+    }
+
     async deleteAccess(accessToken) {
         this.db.deleteAccess(accessToken);
         this.accessMap.delete(accessToken);

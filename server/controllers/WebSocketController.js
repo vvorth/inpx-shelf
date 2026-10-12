@@ -110,13 +110,13 @@ class WebSocketController {
             //pong for WebSocketConnection
             this.send({_rok: 1}, req, ws);
 
-            //access
+            //access: лимит попыток проверяем до пароля, иначе заблокированный перебор всё ещё может угадать
+            if (this.security && req.accessToken && !this.webAccess.isActiveToken(req.accessToken))
+                this.security.checkLoginRate(ws.req);
             const access = await this.webAccess.hasAccess(req.accessToken);
             if (!access) {
-                if (this.security && req.accessToken) {
-                    this.security.checkLoginRate(ws.req);
+                if (this.security && req.accessToken)
                     this.security.recordLoginAttempt(ws.req, false);
-                }
                 await utils.sleep(500);
                 const salt = this.webAccess.newToken();
                 this.send({error: 'need_access_token', salt}, req, ws);

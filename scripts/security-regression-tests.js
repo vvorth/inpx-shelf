@@ -411,6 +411,31 @@ async function testWriteActionsNeedCsrf() {
         assert.strictEqual(isProtected(action), false, action);
 }
 
-module.exports = [testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+// A client over the login limit must not get in even with the right access password.
+async function testAccessPasswordLimitBlocksCorrectGuess() {
+    const Controller = require('../server/controllers/WebSocketController');
+    const WebAccess = require('../server/core/WebAccess');
+    const config = {accessPassword: 'secret', loginRateLimitMaxAttempts: 2};
+    const webAccess = Object.assign(Object.create(WebAccess.prototype),
+        {config, freeAccess: false, accessTimeout: 0, accessMap: new Map(), db: {putAccess() {}}});
+    const controller = Object.assign(Object.create(Controller.prototype), {config, webAccess, security: new Security(config), activeRequests: 0});
+    controller.test = async(req, ws) => controller.send({ok: true}, req, ws);
+    const sent = [];
+    const ws = {readyState: 1, req: {headers: {}, socket: {remoteAddress: '192.0.2.1'}}, send: message => sent.push(JSON.parse(message))};
+    const call = async(accessToken) => {
+        sent.length = 0;
+        await controller.processMessage(ws, JSON.stringify({action: 'test', accessToken}));
+        return sent.find(message => !message._rok);
+    };
+    for (let i = 0; i < 2; i++)
+        assert.strictEqual((await call('wrong')).error, 'need_access_token');
+    const token = require('../server/core/utils').getBufHash(`secret${webAccess.newToken()}`, 'sha256', 'hex');
+    assert.match((await call(token)).error, /Too many login attempts/);
+    assert.strictEqual(webAccess.isActiveToken(token), false, 'A blocked guess must not activate the token');
+    controller.security.loginAttempts.clear();
+    assert.strictEqual((await call(token)).ok, true);
+}
+
+module.exports = [testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];
