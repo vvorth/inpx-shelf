@@ -275,23 +275,30 @@ async function testConversionErrorHidesConverterOutput() {
     });
 }
 
-async function testRootPathRewriteStaysInPublicDir() {
+// The web app is rewritten for rootPath once at extraction: requests never modify files that are being served.
+async function testRootPathRewriteAtExtraction() {
     await temporary(async(dir) => {
+        const appDir = require('../build/appdir');
         const config = {dataDir: path.join(dir, 'data'), rootPathStatic: '/root', bookPathStatic: '/root/book',
             publicDir: path.join(dir, 'data', 'public'), bookDir: path.join(dir, 'data', 'public-files', 'book')};
         await fs.ensureDir(config.bookDir);
-        await fs.ensureDir(config.publicDir);
-        const outside = path.join(dir, 'outside.js');
-        await fs.writeFile(outside, 'keep');
+        const source = `<script src="/${appDir}/app.js"></script>`;
+        await fs.outputFile(path.join(config.publicDir, 'index.html'), source);
+        await fs.outputFile(path.join(config.publicDir, appDir, 'app.js'), `import("/${appDir}/chunk.js")`);
+        await fs.outputFile(path.join(config.publicDir, appDir, 'app.json'), `"/${appDir}/"`);
+        await require('../server/createWebApp').applyRootPath(config);
+        assert.strictEqual(await fs.readFile(path.join(config.publicDir, 'index.html'), 'utf8'), `<script src="/root/${appDir}/app.js"></script>`);
+        assert.strictEqual(await fs.readFile(path.join(config.publicDir, appDir, 'app.js'), 'utf8'), `import("/root/${appDir}/chunk.js")`);
+        assert.strictEqual(await fs.readFile(path.join(config.publicDir, appDir, 'app.json'), 'utf8'), `"/${appDir}/"`);
+
         const app = require('express')();
         require('../server/static')(app, config);
         const server = http.createServer(app);
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         try {
-            // Express keeps ".." in req.path for raw request paths.
-            await new Promise((resolve, reject) => http.get({host: '127.0.0.1', port: server.address().port, path: '/root/../../outside.js'},
-                res => res.resume().on('end', resolve)).on('error', reject));
-            assert.strictEqual(await fs.pathExists(`${outside}.replaced`), false, 'No flag file outside publicDir');
+            const res = await fetch(`http://127.0.0.1:${server.address().port}/root/`);
+            assert.strictEqual(await res.text(), `<script src="/root/${appDir}/app.js"></script>`, 'Applied once, not again on request');
+            assert.deepStrictEqual((await fs.readdir(config.publicDir)).sort(), [appDir, 'index.html'].sort(), 'No flag files');
         } finally {
             await new Promise(resolve => server.close(resolve));
         }
@@ -461,6 +468,6 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

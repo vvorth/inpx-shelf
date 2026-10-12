@@ -6,7 +6,6 @@ const {pipeline} = require('stream/promises');
 const express = require('express');
 const utils = require('./core/utils');
 const bookConverter = require('./core/BookConverter');
-const webAppDir = require('../build/appdir');
 const externalTools = require('./core/ExternalTools');
 
 const log = new (require('./core/AppLogger'))().log;//singleton
@@ -458,37 +457,6 @@ module.exports = (app, config, webWorker = null, security = null) => {
 
     //иначе просто отдаем запрошенный файл из /public-files
     app.use(config.bookPathStatic, express.static(config.bookDir));
-
-    if (config.rootPathStatic) {
-        //подмена rootPath в файлах статики WebApp при необходимости
-        app.use(config.rootPathStatic, async(req, res, next) => {
-            if (req.method !== 'GET' && req.method !== 'HEAD') {
-                return next();
-            }
-
-            try {
-                const reqPath = (req.path == '/' ? '/index.html' : req.path);
-                const ext = path.extname(reqPath);
-                if (ext == '.html' || ext == '.js' || ext == '.css') {
-                    const reqFile = path.resolve(config.publicDir, `.${reqPath}`);
-                    const flagFile = `${reqFile}.replaced`;
-
-                    //req.path сохраняет "..": не выходим за пределы каталога WebApp
-                    if (reqFile.startsWith(path.resolve(config.publicDir) + path.sep)
-                        && !await fs.pathExists(flagFile) && await fs.pathExists(reqFile)) {
-                        const content = await fs.readFile(reqFile, 'utf8');
-                        const re = new RegExp(`/${webAppDir}`, 'g');
-                        await fs.writeFile(reqFile, content.replace(re, `${config.rootPathStatic}/${webAppDir}`));
-                        await fs.writeFile(flagFile, '');
-                    }
-                }
-            } catch(e) {
-                log(LM_ERR, e.message);
-            }
-
-            return next();
-        });
-    }
 
     //статика файлов WebApp
     const webAppStaticOptions = {
