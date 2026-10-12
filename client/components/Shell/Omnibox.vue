@@ -93,7 +93,7 @@ class Omnibox {
 
         //«/» в любом месте приложения ставит курсор в поиск
         this.keyHook = (event) => {
-            if (event.type !== 'keydown' || event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey)
+            if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey)
                 return;
             const target = event.target;
             const tag = (target && target.tagName) || '';

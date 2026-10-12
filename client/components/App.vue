@@ -94,15 +94,10 @@ class App {
                 this.keyHooks.splice(i, 1);
         }
 
-        document.addEventListener('keyup', (event) => {
-            this.keyHook(event);
-        });
-        document.addEventListener('keypress', (event) => {
-            this.keyHook(event);
-        });
+        //только keydown: иначе Enter в диалоге срабатывает несколько раз
         document.addEventListener('keydown', (event) => {
             this.keyHook(event);
-        });        
+        });
     }
 
     mounted() {
