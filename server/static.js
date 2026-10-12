@@ -11,6 +11,7 @@ const externalTools = require('./core/ExternalTools');
 
 const log = new (require('./core/AppLogger'))().log;//singleton
 const {t, getLang} = require('./core/i18n');
+const {escapeHtml} = require('../shared/safeHtml');
 const runtimeWarnings = new Set();
 
 function logRuntimeWarningOnce(message) {
@@ -101,10 +102,6 @@ async function writeCachedCover(cacheDir, cacheKey, cover) {
 function normalizeWebAppBasePath(rootPathStatic = '') {
     const root = String(rootPathStatic || '').trim().replace(/^\/+|\/+$/g, '');
     return root ? `/${root}/` : '/';
-}
-
-function escapeHtml(value) {
-    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function jsString(value) {
