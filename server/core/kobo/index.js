@@ -510,6 +510,45 @@ class KoboService {
     async sync(req, res, device, token) {
         const incoming = decodeSyncToken(req.headers[syncTokenHeader]);
         const fresh = !incoming || incoming.d !== device.id || incoming.g !== device.generation;
+        const sync = await this.startSync(req, token, device, fresh);
+        this.syncRemovedBooks(sync);
+        await this.syncNewBooks(sync);
+        await this.syncChangedBooks(sync);
+        this.syncReadFlags(sync);
+        // 5) one collection per bound list (computed against the updated book set)
+        const tags = this.syncTags(Object.assign({}, device, {books: sync.books, tags: sync.tagsBefore}),
+            sync.lists, sync.wanted, sync.results, sync.orphanUids);
+        await this.saveSyncResult(sync, tags);
+
+        const {results, refreshed} = sync;
+        let more = sync.more;
+        if (sync.newItems || results.length)
+            log(`Kobo: sync for device ${device.id}: ${results.length} item(s)${refreshed ? `, ${refreshed} updated file(s)` : ''}${more ? ', more pending' : ''}`);
+
+        // Store purchases join only the last page of our own items, as their token advances separately.
+        let storeToken = (device.storeProxy && incoming ? incoming.store || incoming.s || '' : '');
+        if (device.storeProxy && !more) {
+            try {
+                const store = await this.mergeStoreSync(req, token, storeToken);
+                results.push(...store.items);
+                storeToken = store.token;
+                more = store.more;
+                for (const [name, value] of Object.entries(store.headers))
+                    res.set(name, value);
+            } catch (e) {
+                log(LM_WARN, `Kobo: store sync failed: ${e.message}`);
+            }
+        }
+
+        res.set(syncTokenHeader, encodeSyncToken({id: device.id, generation: sync.generation}, storeToken));
+        if (more)
+            res.set('x-kobo-sync', 'continue');
+        sendJson(res, results);
+    }
+
+    // What the phases of one sync share: the wanted books, the device's rows as this sync changes them,
+    // the reading states it sets, and its results.
+    async startSync(req, token, device, fresh) {
         // A reset from the UI while conversions are awaited bumps it in place: this sync must not undo it.
         const generation = device.generation;
         const {lists, wanted, orphanUids} = await this.collectWanted(device);
@@ -542,14 +581,24 @@ class KoboService {
                     delete books[uuid];
             }
         }
-        const tagsBefore = (fresh ? {} : device.tags);
         const savedStates = this.store.data.states[device.userId] || {};
         const states = {};
-        const stateFor = uuid => (states[uuid] || (savedStates[uuid] ? JSON.parse(JSON.stringify(savedStates[uuid])) : null));
-        const now = new Date().toISOString();
-        const results = [];
+        return {
+            req, token, device, generation, lists, wanted, orphanUids, startBooks, startTags, books, states,
+            tagsBefore: (fresh ? {} : device.tags),
+            stateFor: uuid => (states[uuid] || (savedStates[uuid] ? JSON.parse(JSON.stringify(savedStates[uuid])) : null)),
+            now: new Date().toISOString(),
+            results: [],
+            fingerprints: new Map(),
+            deadline: 0,
+            more: false,
+            newItems: 0,
+            refreshed: 0,
+        };
+    }
 
-        // 1) books that left every bound list
+    // 1) books that left every bound list
+    syncRemovedBooks({device, books, wanted, orphanUids, results}) {
         for (const [uuid, row] of Object.entries(books)) {
             if (wanted.has(uuid)) {
                 row.detached = false;
@@ -569,22 +618,22 @@ class KoboService {
                 delete books[uuid];
             }
         }
+    }
 
-        // 2) new books, announced only once their file (and exact size) exists
-        const deadline = Date.now() + this.prepareBudgetMs;
-        const fingerprints = new Map();
-        let more = false;
-        let newItems = 0;
+    // 2) new books, announced only once their file (and exact size) exists
+    async syncNewBooks(sync) {
+        const {req, token, books, wanted, states, stateFor, now, results} = sync;
+        sync.deadline = Date.now() + this.prepareBudgetMs;
         for (const item of wanted.values()) {
             if (books[item.uuid])
                 continue;
             if (results.length >= syncItemLimit) {
-                more = true;
+                sync.more = true;
                 break;
             }
             const target = this.targetFormat(item.book);
-            const fingerprint = (target ? await this.conversionFingerprint(item.book, target, fingerprints) : '');
-            const prepared = await this.prepare(item, deadline, fingerprint);
+            const fingerprint = (target ? await this.conversionFingerprint(item.book, target, sync.fingerprints) : '');
+            const prepared = await this.prepare(item, sync.deadline, fingerprint);
             if (!prepared.ready)
                 continue;
 
@@ -611,22 +660,24 @@ class KoboService {
             }
             results.push({NewEntitlement: entitlement});
             books[item.uuid] = row;
-            newItems++;
+            sync.newItems++;
         }
+    }
 
-        // 3) books that changed after they were announced. The file: edited fb2cng config or version,
-        //    another target format, or a flushed cache regenerated with a different size (noticed on
-        //    download). The metadata: admin title/author/series edits, or a re-index that changed them.
-        //    A refresh asked from the UI re-announces the book with both, changed or not.
-        let refreshed = 0;
+    // 3) books that changed after they were announced. The file: edited fb2cng config or version,
+    //    another target format, or a flushed cache regenerated with a different size (noticed on
+    //    download). The metadata: admin title/author/series edits, or a re-index that changed them.
+    //    A refresh asked from the UI re-announces the book with both, changed or not.
+    async syncChangedBooks(sync) {
+        const {req, token, books, wanted, stateFor, now, results, deadline} = sync;
         for (const item of wanted.values()) {
             const row = books[item.uuid];
-            if (more || !row || row.sentAt === now || row.deletedOnDevice)
+            if (sync.more || !row || row.sentAt === now || row.deletedOnDevice)
                 continue;
             // Announced before metadata hashes were recorded: adopt the one of what was sent then.
             row.metaHash = row.metaHash || this.metadataHash(item.book);
             const target = this.targetFormat(item.book);
-            const fingerprint = target && await this.conversionFingerprint(item.book, target, fingerprints);
+            const fingerprint = target && await this.conversionFingerprint(item.book, target, sync.fingerprints);
             let fileChanged = false;
             if (target && fingerprint) {
                 const sameFormat = (target.convertTo === row.convertTo);
@@ -650,7 +701,7 @@ class KoboService {
             if (!fileChanged && !metaChanged && !forced)
                 continue;
             if (results.length >= syncItemLimit) {
-                more = true;
+                sync.more = true;
                 break;
             }
             if (fileChanged || (forced && target)) {
@@ -664,7 +715,7 @@ class KoboService {
                     if (forced)
                         row.revision = (row.revision || 0) + 1;
                     metaHash = this.metadataHash(item.book, row);
-                    refreshed++;
+                    sync.refreshed++;
                 } else if (forced && !prepared.failed) {
                     // Still converting (or the converter is busy): the refresh goes out on a later sync.
                     continue;
@@ -685,14 +736,17 @@ class KoboService {
                 entitlement.ReadingState = this.readingStateResponse(item.uuid, row, state);
             results.push({ChangedEntitlement: entitlement});
         }
+    }
 
-        // 4) "read" ticked or unticked in the web UI since the last sync
+    // 4) "read" ticked or unticked in the web UI since the last sync
+    syncReadFlags(sync) {
+        const {books, wanted, states, stateFor, now, results} = sync;
         for (const item of wanted.values()) {
             const row = books[item.uuid];
             if (!row || row.sentAt === now || row.changedAt === now || row.deletedOnDevice || row.listRead === item.read)
                 continue;
             if (results.length >= syncItemLimit) {
-                more = true;
+                sync.more = true;
                 break;
             }
             row.listRead = item.read;
@@ -707,10 +761,9 @@ class KoboService {
             row.status = status;
             results.push({ChangedReadingState: {ReadingState: this.readingStateResponse(item.uuid, row, state)}});
         }
+    }
 
-        // 5) one collection per bound list (computed against the updated book set)
-        const tags = this.syncTags(Object.assign({}, device, {books, tags: tagsBefore}), lists, wanted, results, orphanUids);
-
+    async saveSyncResult({device, generation, books, startBooks, startTags, states, now}, tags) {
         await this.store.saveSync(device.id, (target, data) => {
             // Only states changed by this sync: a concurrent state PUT must not be overwritten.
             data.states[device.userId] = Object.assign(data.states[device.userId] || {}, states);
@@ -736,29 +789,6 @@ class KoboService {
             target.books = books;
             target.tags = tags;
         });
-
-        if (newItems || results.length)
-            log(`Kobo: sync for device ${device.id}: ${results.length} item(s)${refreshed ? `, ${refreshed} updated file(s)` : ''}${more ? ', more pending' : ''}`);
-
-        // Store purchases join only the last page of our own items, as their token advances separately.
-        let storeToken = (device.storeProxy && incoming ? incoming.store || incoming.s || '' : '');
-        if (device.storeProxy && !more) {
-            try {
-                const store = await this.mergeStoreSync(req, token, storeToken);
-                results.push(...store.items);
-                storeToken = store.token;
-                more = store.more;
-                for (const [name, value] of Object.entries(store.headers))
-                    res.set(name, value);
-            } catch (e) {
-                log(LM_WARN, `Kobo: store sync failed: ${e.message}`);
-            }
-        }
-
-        res.set(syncTokenHeader, encodeSyncToken({id: device.id, generation}, storeToken));
-        if (more)
-            res.set('x-kobo-sync', 'continue');
-        sendJson(res, results);
     }
 
     // ------------------------------------------------------------------ per-book endpoints

@@ -6,13 +6,13 @@ Node.js 24 server. Entry: `index.js`.
 
 - `config/` — `base.js` defaults; `index.js` `propsToSave` lists the keys read from and written to `config.json`. `application_env` = `development` runs webpack inside the server: measure memory and speed without it (the release binary runs in production mode).
 - `controllers/WebSocketController.js` — WebSocket API: one `switch` on `action`, handlers call `WebWorker` methods. Read-only actions are listed in `readOnlyActions`; every other action needs the CSRF token.
-- `static.js` — HTTP routes for books, covers, downloads. `core/opds/` — OPDS feed. `core/kobo/` — Kobo sync. `core/HealthRoutes.js` — health and metrics.
+- `static.js` — HTTP routes for books, covers, downloads. `core/opds/` — OPDS feed. `core/kobo/` — Kobo sync: `index.js` (service, routes, sync phases) with mixins `Preparation`, `Covers`, `StoreProxy`. `core/HealthRoutes.js` — health and metrics.
 - `core/WebWorker.js` — the application service: library access, books, reader, shelves, admin. `AdminBackup.js` is mixed into it.
 - `core/search/` — library database:
   - `CatalogSearch.js` imports INPX (`LibraryImport.js`, `InpxParser.js`) into `library.sqlite` and is the main-thread API (`catalogSearch` on the worker).
   - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).
 - `core/StateStore.js` — `state.sqlite`: prepared-book file cache, access-password sessions.
-- `core/ReadingListStore.js` — `reading-lists.json`: loading, normalizing, saving, metadata overrides; `core/readingLists/` mixins add profiles (`Users`), lists (`Lists`), reader state, reader settings and discovery. Every async method runs in the store lock. `core/kobo/KoboStore.js` — `kobo-sync.json`. Writes go through `FilePersistence` transactions.
+- `core/ReadingListStore.js` — `reading-lists.json`: loading, normalizing, saving, metadata overrides; `core/readingLists/` mixins add profiles (`Users`), lists (`Lists`), reader state, reader settings and discovery. Every async method except the password checks runs in the store lock. `core/kobo/KoboStore.js` — `kobo-sync.json`. Writes go through `FilePersistence` transactions.
 - `core/BackupTransaction.js` — the files a full backup contains and restores.
 
 ## Rules
