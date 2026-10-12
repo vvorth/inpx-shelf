@@ -20,20 +20,6 @@ FROM build-deps AS build
 COPY . .
 RUN npm run build:linux
 
-FROM ${NODE_IMAGE} AS webp-tools
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update \
-    && apt-get install -y --no-install-recommends webp \
-    && mkdir -p /webp-runtime/bin /webp-runtime/lib \
-    && cp /usr/bin/dwebp /webp-runtime/bin/dwebp \
-    && ldd /usr/bin/dwebp \
-        | awk '{ if ($(NF-1) ~ /^\//) print $(NF-1) }' \
-        | sort -u \
-        | xargs -I{} cp -L {} /webp-runtime/lib/ \
-    && rm -rf /var/lib/apt/lists/*
-
 FROM ${NODE_IMAGE} AS fb2cng-tools
 
 ARG FB2CNG_VERSION
@@ -54,17 +40,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # MuPDF apt installs that would otherwise sit above the binary.
 FROM ${RUNTIME_IMAGE} AS base-tools
 
-ENV LD_LIBRARY_PATH=/usr/local/lib
 WORKDIR /app
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates p7zip-full libjxl-tools tini \
+    && apt-get install -y --no-install-recommends ca-certificates p7zip-full libjxl-tools webp tini \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=webp-tools /webp-runtime/bin/dwebp /usr/local/bin/dwebp
-COPY --from=webp-tools /webp-runtime/lib/ /usr/local/lib/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
