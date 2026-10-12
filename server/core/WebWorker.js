@@ -2075,7 +2075,8 @@ class WebWorker {
             if (!book)
                 continue;
 
-            result.push({
+            //полная запись книги: «Читаю сейчас» показывается теми же карточками, что и каталог
+            result.push(Object.assign({}, book, {
                 bookUid: item.bookUid,
                 title: book.title || t('common.untitled'),
                 author: book.author || '',
@@ -2088,7 +2089,7 @@ class WebWorker {
                 textOffset: Math.max(-1, Math.round(Number(item.progress.textOffset || -1) || -1)),
                 textSnippet: String(item.progress.textSnippet || '').trim(),
                 updatedAt: String(item.progress.updatedAt || '').trim(),
-            });
+            }));
         }
 
         return {

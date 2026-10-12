@@ -69,7 +69,20 @@
                         <div v-if="!readingNow.length" class="page-empty page-empty--inline">
                             {{ $t('lists.noBooksInProgress') }}
                         </div>
-                        <div v-else class="table-wrap">
+                        <div v-if="readingNow.length" class="lists-tools">
+                            <q-space />
+                            <q-btn-toggle
+                                :model-value="view"
+                                :options="viewOptions"
+                                dense
+                                no-caps
+                                unelevated
+                                toggle-color="primary"
+                                @update:model-value="setSetting('listsView', $event)"
+                            />
+                        </div>
+                        <BookCollection v-if="readingNow.length && view !== 'table'" :books="readingNow" :states="readingStates" :view="view" />
+                        <div v-else-if="readingNow.length" class="table-wrap">
                             <table class="data-table">
                                 <tbody>
                                     <tr v-for="book in readingNow" :key="book.bookUid">
@@ -399,6 +412,10 @@ class ListsPage {
             {icon: 'la la-table', value: 'table', attrs: {'aria-label': t('lists.asTable'), title: t('lists.asTable')}},
             ...bookViewOptions(),
         ];
+    }
+
+    get readingStates() {
+        return Object.fromEntries(this.readingNow.map(book => [book.bookUid, {percent: Number(book.percent) || 0}]));
     }
 
     //все книги открытого списка в нём есть; прочитанное - по отметке списка
