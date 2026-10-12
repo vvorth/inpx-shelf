@@ -69,6 +69,7 @@ class WebAccess {
         }
     }
 
+    //число использований токена (1 - первый вход по паролю) или false; без пароля - true
     async hasAccess(accessToken) {
         if (this.freeAccess)
             return true;
@@ -83,7 +84,7 @@ class WebAccess {
                 accessRec.saved = false;
                 if (accessRec.used === 1)
                     await this.saveAccess(accessToken);
-                return true;
+                return accessRec.used;
             }
         }
 

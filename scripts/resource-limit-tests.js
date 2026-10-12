@@ -164,6 +164,17 @@ async function testProfileLoginRateLimitSurvivesOtherSuccesses() {
     assert.doesNotThrow(() => security.checkLoginRate(req, 'access'));
 }
 
+// The access token rides on every message: only its first use is a login that clears failures.
+async function testAccessTokenFirstUseIsTheLogin() {
+    const access = Object.assign(Object.create(require('../server/core/WebAccess').prototype), {
+        config: {accessPassword: 'secret'}, freeAccess: false, accessTimeout: 0, accessMap: new Map(), saveAccess: async() => {},
+    });
+    const token = require('../server/core/utils').getBufHash('secret' + access.newToken(), 'sha256', 'hex');
+    assert.strictEqual(await access.hasAccess(token), 1);
+    assert.strictEqual(await access.hasAccess(token), 2);
+    assert.strictEqual(await access.hasAccess('wrong'), false);
+}
+
 // Behind nginx with $proxy_add_x_forwarded_for the client controls the first entries.
 async function testClientIpIgnoresSpoofedForwardedFor() {
     const security = new Security({trustProxy: true, trustedProxyCidrs: ['172.18.0.0/16']});
@@ -175,4 +186,4 @@ async function testClientIpIgnoresSpoofedForwardedFor() {
 }
 
 module.exports = [testClientIpIgnoresSpoofedForwardedFor, testConversionQueueLimitsAndRecovery, testConverterProcessTimeoutAndBoundedErrors,
-    testOpdsAuthenticationRateLimit, testProfileLoginRateLimitSurvivesOtherSuccesses, testConversionPublishesOnlyCompletedFiles];
+    testOpdsAuthenticationRateLimit, testProfileLoginRateLimitSurvivesOtherSuccesses, testAccessTokenFirstUseIsTheLogin, testConversionPublishesOnlyCompletedFiles];

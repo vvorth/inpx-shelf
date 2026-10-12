@@ -102,7 +102,8 @@ class WebSocketController {
             this.send({_rok: 1}, req, ws);
 
             //access
-            if (!await this.webAccess.hasAccess(req.accessToken)) {
+            const access = await this.webAccess.hasAccess(req.accessToken);
+            if (!access) {
                 if (this.security && req.accessToken) {
                     this.security.checkLoginRate(ws.req);
                     this.security.recordLoginAttempt(ws.req, false);
@@ -111,7 +112,8 @@ class WebSocketController {
                 const salt = this.webAccess.newToken();
                 this.send({error: 'need_access_token', salt}, req, ws);
                 return;
-            } else if (this.security && req.accessToken) {
+            } else if (this.security && req.accessToken && access === 1) {
+                //вход - только первый запрос с новым токеном: иначе каждый запрос сбрасывал бы счётчик неудачных попыток
                 this.security.recordLoginAttempt(ws.req, true);
             }
 
