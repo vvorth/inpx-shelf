@@ -316,8 +316,15 @@ class StdDialog {
         this.$refs.dialog.hide();
     }
 
+    //диалог один на всё приложение: каждый вызов ждёт закрытия предыдущего, иначе первый промис не разрешится
+    enqueue(show) {
+        const result = (this.queue || Promise.resolve()).then(() => new Promise(show));
+        this.queue = result;
+        return result;
+    }
+
     alert(message, caption, opts) {
-        return new Promise((resolve) => {
+        return this.enqueue((resolve) => {
             this.init(message, caption, opts);
 
             this.hideTrigger = () => {
@@ -334,7 +341,7 @@ class StdDialog {
     }
 
     confirm(message, caption, opts) {
-        return new Promise((resolve) => {
+        return this.enqueue((resolve) => {
             this.init(message, caption, opts);
 
             this.hideTrigger = () => {
@@ -351,7 +358,7 @@ class StdDialog {
     }
 
     prompt(message, caption, opts) {
-        return new Promise((resolve) => {
+        return this.enqueue((resolve) => {
             this.enableValidator = false;
             this.init(message, caption, opts);
 
@@ -373,7 +380,7 @@ class StdDialog {
     }
 
     password(message, caption, opts) {
-        return new Promise((resolve) => {
+        return this.enqueue((resolve) => {
             this.enableValidator = false;
             this.init(message, caption, opts);
 
@@ -398,7 +405,7 @@ class StdDialog {
     }
 
     profileLogin(message, caption, opts) {
-        return new Promise((resolve) => {
+        return this.enqueue((resolve) => {
             this.enableValidator = false;
             this.init(message, caption, opts);
 
@@ -424,7 +431,7 @@ class StdDialog {
     }
 
     getHotKey(message, caption, opts) {
-        return new Promise((resolve) => {
+        return this.enqueue((resolve) => {
             this.init(message, caption, opts);
 
             this.hideTrigger = () => {
