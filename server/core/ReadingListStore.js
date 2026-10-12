@@ -668,8 +668,7 @@ class ReadingListStore {
     // a write anywhere (atomic rename) changes its inode. Callers get a copy they may mutate.
     async load() {
         await this.ensureData();
-        const stat = await fs.stat(this.file);
-        const stamp = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+        const stamp = this.fileStamp(await fs.stat(this.file));
         if (this.loaded && this.loaded.stamp === stamp && !this.config.resetAdminPassword)
             return structuredClone(this.loaded.data);
         this.loaded = null;
@@ -696,7 +695,7 @@ class ReadingListStore {
         this.config.resetAdminPassword = false;
         // After a write the stamp read above is stale: the next load reads the file again.
         if (!changed && !reset)
-            this.loaded = {stamp, data: structuredClone(data)};
+            this.persisted = this.loaded = {stamp, data: structuredClone(data)};
         return data;
     }
 
@@ -735,16 +734,30 @@ class ReadingListStore {
         return await this.writeDataNow(await prepare());
     }
 
-    async rebaseReaderProgressGeneration(data) {
-        let current = null;
-        if (await fs.pathExists(this.file)) {
-            try {
-                current = JSON.parse(await fs.readFile(this.file, 'utf8'));
-            } catch (e) {
-                current = null;
-            }
+    // What the file holds now: the copy this instance last read or wrote while the file is unchanged,
+    // otherwise (another writer, a restore) the file itself. Read only; null when missing or unparsable.
+    async persistedData() {
+        let stat;
+        try {
+            stat = await fs.stat(this.file);
+        } catch (e) {
+            return null;
         }
+        if (this.persisted && this.persisted.stamp === this.fileStamp(stat))
+            return this.persisted.data;
+        try {
+            return JSON.parse(await fs.readFile(this.file, 'utf8'));
+        } catch (e) {
+            return null;
+        }
+    }
 
+    fileStamp(stat) {
+        return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+    }
+
+    async rebaseReaderProgressGeneration(data) {
+        const current = await this.persistedData();
         const currentUsers = Array.isArray(current && current.users) ? current.users : [];
         const targetUsers = Array.isArray(data && data.users) ? data.users : [];
         const resetAt = this.nowIso();
@@ -764,16 +777,11 @@ class ReadingListStore {
         return data;
     }
 
+    // A save of a snapshot loaded before a progress reset must not bring the reset progress back.
     async preserveReaderProgressResetState(data) {
-        if (!await fs.pathExists(this.file))
+        const current = await this.persistedData();
+        if (!current)
             return data;
-
-        let current;
-        try {
-            current = JSON.parse(await fs.readFile(this.file, 'utf8'));
-        } catch (e) {
-            return data;
-        }
 
         const currentUsers = Array.isArray(current && current.users) ? current.users : [];
         const targetUsers = Array.isArray(data && data.users) ? data.users : [];
@@ -813,8 +821,11 @@ class ReadingListStore {
         return data;
     }
 
+    // `data` is a private copy: it becomes what persistedData() compares the next save against.
     async writeDataNow(data) {
-        await writeFileAtomic(this.file, JSON.stringify(data, null, 2));
+        this.persisted = null;
+        await writeFileAtomic(this.file, JSON.stringify(data));
+        this.persisted = {stamp: this.fileStamp(await fs.stat(this.file)), data};
     }
 
     async getSharedDiscoveryConfig() {
