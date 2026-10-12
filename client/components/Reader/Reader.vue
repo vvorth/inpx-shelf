@@ -1376,6 +1376,9 @@ const componentOptions = {
         readerSourceKey: {
             immediate: true,
             handler() {
+                // Сохраняем отложенный прогресс прежней книги до смены её состояния
+                if (this.saveProgressDebounced)
+                    this.saveProgressDebounced.flush();
                 this.loadReader();// no await
             },
         },
@@ -1639,8 +1642,9 @@ class Reader {
             this.flushProgress();
         };
 
-        this.saveProgressDebounced = _.debounce(() => {
-            this.queuePersistProgress();// no await
+        // uid книги фиксируется при вызове: отложенное сохранение не должно попасть в другую книгу
+        this.saveProgressDebounced = _.debounce((bookUid) => {
+            this.queuePersistProgress(bookUid);// no await
         }, 800);
 
         this.savePreferencesDebounced = _.debounce(() => {
@@ -8611,7 +8615,7 @@ class Reader {
             updatedAt: new Date().toISOString(),
         });
         this.writeStoredReaderProgress();
-        this.saveProgressDebounced();
+        this.saveProgressDebounced(this.bookUid);
     }
 
     isReaderTapInteractiveTarget(target = null) {
@@ -9637,8 +9641,8 @@ class Reader {
         return true;
     }
 
-    async persistProgress() {
-        if (!this.bookUid)
+    async persistProgress(bookUid = this.bookUid) {
+        if (!bookUid)
             return;
         if (
             this.isPagedMode
@@ -9652,7 +9656,7 @@ class Reader {
         const requestProgress = this.normalizeReaderProgress(Object.assign({}, this.progress, {
             sectionId: this.currentSectionId || this.progress.sectionId || '',
         }));
-        this.writeStoredReaderProgress(requestProgress);
+        this.writeStoredReaderProgress(requestProgress, bookUid);
 
         if (this.readerProfileWarningVisible && !this.hasReaderProfileAccessToken)
             return;
@@ -9670,7 +9674,9 @@ class Reader {
             updatedAt: requestProgress.updatedAt,
             generation: this.readerProgressGeneration,
         };
-        let response = await api.updateReaderProgress(this.bookUid, progressPatch, {suppressProfileLogin: true});
+        let response = await api.updateReaderProgress(bookUid, progressPatch, {suppressProfileLogin: true});
+        if (bookUid !== this.bookUid)
+            return;
         let rawResponseProgress = (response && response.progress ? response.progress : {});
         const responseGeneration = Number(rawResponseProgress && rawResponseProgress.generation);
         if (Number.isFinite(responseGeneration)) {
@@ -9701,7 +9707,9 @@ class Reader {
             || String(responseProgress.sectionId || '') !== String(requestProgress.sectionId || '')
         );
         if (responseDiffers) {
-            response = await api.updateReaderProgress(this.bookUid, Object.assign({}, progressPatch, {force: true}), {suppressProfileLogin: true});
+            response = await api.updateReaderProgress(bookUid, Object.assign({}, progressPatch, {force: true}), {suppressProfileLogin: true});
+            if (bookUid !== this.bookUid)
+                return;
             rawResponseProgress = (response && response.progress ? response.progress : {});
             const forcedGeneration = Number(rawResponseProgress && rawResponseProgress.generation);
             if (Number.isFinite(forcedGeneration))
@@ -9716,8 +9724,8 @@ class Reader {
         this.writeStoredReaderProgress();
     }
 
-    queuePersistProgress() {
-        const request = this.persistProgress()
+    queuePersistProgress(bookUid = this.bookUid) {
+        const request = this.persistProgress(bookUid)
             .catch(() => {})
             .finally(() => {
                 if (this.progressSavePromise === request)
@@ -9958,8 +9966,8 @@ class Reader {
         }
     }
 
-    writeStoredReaderProgress(progress = null) {
-        if (typeof localStorage === 'undefined' || !this.bookUid)
+    writeStoredReaderProgress(progress = null, bookUid = this.bookUid) {
+        if (typeof localStorage === 'undefined' || !bookUid)
             return;
 
         try {
@@ -9973,7 +9981,7 @@ class Reader {
                 ? byUser[userId]
                 : globalProgress;
             const existingProgress = existingBucket && typeof existingBucket === 'object'
-                ? this.normalizeReaderProgress(existingBucket[this.bookUid] || {})
+                ? this.normalizeReaderProgress(existingBucket[bookUid] || {})
                 : null;
             const protectForwardProgress = !!(
                 this.isPagedMode
@@ -9997,11 +10005,11 @@ class Reader {
 
             if (userId) {
                 const scoped = (byUser[userId] && typeof byUser[userId] === 'object') ? byUser[userId] : {};
-                scoped[this.bookUid] = nextProgress;
+                scoped[bookUid] = nextProgress;
                 byUser[userId] = scoped;
             }
 
-            globalProgress[this.bookUid] = nextProgress;
+            globalProgress[bookUid] = nextProgress;
 
             localStorage.setItem(readerProgressStorageKey, JSON.stringify({
                 progress: globalProgress,
