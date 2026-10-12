@@ -1301,9 +1301,10 @@ class WebWorker {
 
         const items = [];
         let updatedAt = 0;
+        const booksByUid = await this.getBookRecordsByUids(rows.map(item => item.bookUid));
 
         for (const item of rows) {
-            const book = await this.getBookRecordByUid(item.bookUid);
+            const book = booksByUid.get(item.bookUid);
             if (!book)
                 continue;
 
@@ -1375,12 +1376,13 @@ class WebWorker {
 
         const items = [];
         const seenBookUids = new Set();
+        const booksByUid = await this.getBookRecordsByUids(candidates.map(item => item.bookUid));
 
         for (const item of candidates) {
             if (!item.bookUid || seenBookUids.has(item.bookUid))
                 continue;
 
-            const book = await this.getBookRecordByUid(item.bookUid);
+            const book = booksByUid.get(item.bookUid);
             if (!book)
                 continue;
 
@@ -1596,15 +1598,6 @@ class WebWorker {
             updatedAt: 0,
         };
         const signals = new Map();
-        const bookCache = new Map();
-        const loadBook = async(bookUid = '') => {
-            const normalizedBookUid = String(bookUid || '').trim();
-            if (!normalizedBookUid)
-                return null;
-            if (!bookCache.has(normalizedBookUid))
-                bookCache.set(normalizedBookUid, await this.getBookRecordByUid(normalizedBookUid));
-            return bookCache.get(normalizedBookUid);
-        };
         const addWeight = (map, key, amount) => {
             const normalizedKey = String(key || '').trim().toLowerCase();
             if (!normalizedKey || !Number(amount))
@@ -1678,8 +1671,9 @@ class WebWorker {
                 profile.knownBookUids.add(String(bookUid || '').trim());
         }
 
+        const booksByUid = await this.getBookRecordsByUids(Array.from(signals.keys()));
         for (const [bookUid, signal] of signals)
-            applyPositiveBook(await loadBook(bookUid), signal);
+            applyPositiveBook(booksByUid.get(bookUid), signal);
         profile.signalCount = signals.size;
 
         taste.authors.forEach(author => addWeight(profile.authorWeights, author, 5));
@@ -2109,8 +2103,9 @@ class WebWorker {
             .slice(0, Math.max(0, limit));
 
         const result = [];
+        const booksByUid = await this.getBookRecordsByUids(rows.map(item => item.bookUid));
         for (const item of rows) {
-            const book = await this.getBookRecordByUid(item.bookUid);
+            const book = booksByUid.get(item.bookUid);
             if (!book)
                 continue;
 

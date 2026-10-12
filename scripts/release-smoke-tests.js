@@ -1059,7 +1059,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
 
 async function testProfileReadingSummaryLeavesOutReadBooks() {
     const worker = makeWorker();
-    worker.getBookRecordByUid = async() => ({title: 'Книга', author: 'Автор', ext: 'fb2'});
+    worker.catalogSearch = {getBooksByUids: async uids => uids.map(uid => ({_uid: uid, title: 'Книга', author: 'Автор', ext: 'fb2'}))};
     const summary = await worker.buildUserReadingSummary({readerProgress: {
         reading: {percent: 0.5},
         finished: {percent: 1},
@@ -1869,7 +1869,7 @@ async function testPersonalDiscoveryUsesColdStartTaste() {
         getLists: async() => [],
         normalizeEntries: entries => (Array.isArray(entries) ? entries : []),
     };
-    worker.getBookRecordByUid = async() => null;
+    worker.catalogSearch = {getBooksByUids: async() => []};
 
     const profile = await worker.buildPersonalDiscoveryTasteProfile({
         id: 'cold-reader',
@@ -1918,7 +1918,7 @@ async function testPersonalDiscoveryUsesEngagementTopicsAndDismissals() {
         getLists: async() => [],
         normalizeEntries: entries => (Array.isArray(entries) ? entries : []),
     };
-    worker.getBookRecordByUid = async bookUid => books[bookUid] || null;
+    worker.catalogSearch = {getBooksByUids: async uids => uids.map(uid => books[uid]).filter(Boolean)};
 
     const profile = await worker.buildPersonalDiscoveryTasteProfile({
         id: 'reader',
@@ -1967,7 +1967,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
         getLists: async() => [],
         normalizeEntries: entries => (Array.isArray(entries) ? entries : []),
     };
-    worker.getBookRecordByUid = async bookUid => (bookUid === 'favorite' ? favorite : null);
+    const getBooksByUids = async uids => (uids.includes('favorite') ? [favorite] : []);
 
     const user = {
         id: 'reader',
@@ -1996,6 +1996,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
             index.open(file);
             worker.catalogSearch = {
                 ready: true,
+                getBooksByUids,
                 similarCandidates: async request => index.similarCandidates(request),
                 loadBooks: async ids => index.getBooks(ids),
             };
