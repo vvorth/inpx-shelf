@@ -34,7 +34,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 
 ## Before finishing
 
-- `npm run test:release` passes. The runner stops at the first failure without printing `not ok`: compare the count of `ok` lines with the previous run.
+- `npm run test:release` passes (`fail 0` in the summary).
 - UI text changed: `npm run test:i18n`. Client changed: `npm run build:client`.
 - `npx eslint` on touched files adds no new errors (some files have old ones).
 

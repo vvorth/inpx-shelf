@@ -2085,14 +2085,8 @@ const tests = [
     testPersonalDiscoveryDiversifiesAuthorsAndSeries,
 ];
 
-(async() => {
-    await ensureLogger();
-
-    for (const test of tests) {
-        await test();
-        console.log(`ok ${test.name}`);
-    }
-})().catch((e) => {
-    console.error(e && e.stack || e);
-    process.exitCode = 1;
-});
+//node:test: упавший тест печатает not ok, остальные продолжают, код выхода ненулевой
+const {test, before} = require('node:test');
+before(ensureLogger);
+for (const t of tests)
+    test(t.name, () => t());
