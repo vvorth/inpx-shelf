@@ -1350,6 +1350,7 @@ import {t, tm, formatDateTime} from '../../share/i18n';
 const readerPreferencesStorageKey = 'inpx.reader.preferences.v1';
 const readerProgressStorageKey = 'inpx.reader.progress.v1';
 const {readerPreferencesVersion, readerDefaults, einkReaderDefaults, migrateReaderPreferences} = require('../../../shared/readerPreferences');
+const pagedPageTextCache = new WeakMap();
 const readerDeviceProfileKeys = ['regularProfile', 'compactProfile'];
 const readerDeviceScopedPreferenceKeys = new Set([
     'readMode',
@@ -5104,13 +5105,31 @@ class Reader {
         return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    // <template> разбирает HTML без загрузки и декодирования картинок (data: URL до мегабайт)
+    parseInertHtml(html = '') {
+        const template = document.createElement('template');
+        template.innerHTML = String(html || '');
+        return template;
+    }
+
     stripHtml(html = '') {
         if (typeof document === 'undefined')
             return String(html || '');
 
-        const host = document.createElement('div');
-        host.innerHTML = String(html || '');
-        return String(host.textContent || host.innerText || '');
+        return String(this.parseInertHtml(html).content.textContent || '');
+    }
+
+    // Текст страницы считается один раз на страницу текущей разбивки
+    getPagedPageText(page = null) {
+        const html = String((page && page.html) || '');
+        if (!page)
+            return '';
+        const cached = pagedPageTextCache.get(page);
+        if (cached && cached.html === html)
+            return cached.text;
+        const text = this.stripHtml(html);
+        pagedPageTextCache.set(page, {html, text});
+        return text;
     }
 
     getReaderDocumentSearchText() {
@@ -5137,10 +5156,9 @@ class Reader {
         if (!safeQuery || typeof document === 'undefined')
             return html;
 
-        const host = document.createElement('div');
-        host.innerHTML = String(html || '');
+        const host = this.parseInertHtml(html);
         const pattern = new RegExp(this.escapeRegExp(safeQuery), 'gi');
-        const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+        const walker = document.createTreeWalker(host.content, NodeFilter.SHOW_TEXT);
         const textNodes = [];
 
         while (walker.nextNode())
@@ -5189,8 +5207,7 @@ class Reader {
 
         const results = [];
         for (let index = 0; index < this.pagedPages.length; index += 1) {
-            const page = this.pagedPages[index] || {};
-            const text = this.stripHtml(page.html || '').toLowerCase();
+            const text = this.getPagedPageText(this.pagedPages[index]).toLowerCase();
             if (text.includes(query))
                 results.push({pageIndex: index});
         }
@@ -8920,9 +8937,7 @@ class Reader {
         if (!safeId || !this.readerHtml || typeof document === 'undefined')
             return false;
 
-        const host = document.createElement('div');
-        host.innerHTML = this.readerHtml;
-        return !!host.querySelector(`#${this.escapeCssId(safeId)}`);
+        return !!this.parseInertHtml(this.readerHtml).content.querySelector(`#${this.escapeCssId(safeId)}`);
     }
 
     handleReaderAnnotationClick(event) {
@@ -9421,8 +9436,7 @@ class Reader {
         if (!safeId || typeof document === 'undefined')
             return -1;
 
-        const sourceHost = document.createElement('div');
-        sourceHost.innerHTML = this.readerHtml || '';
+        const sourceHost = this.parseInertHtml(this.readerHtml).content;
         const target = sourceHost.querySelector(`#${this.escapeCssId(safeId)}`)
             || Array.from(sourceHost.querySelectorAll('[name]')).find((node) => node.getAttribute('name') === safeId);
         if (!target)
@@ -9440,10 +9454,8 @@ class Reader {
         if (!textNeedles.length)
             return -1;
 
-        const pageHost = document.createElement('div');
         for (let index = 0; index < this.pagedPages.length; index += 1) {
-            pageHost.innerHTML = String((this.pagedPages[index] && this.pagedPages[index].html) || '');
-            const pageText = this.normalizeReaderSearchText(pageHost.textContent || '');
+            const pageText = this.normalizeReaderSearchText(this.getPagedPageText(this.pagedPages[index]));
             if (textNeedles.some((needle) => pageText.includes(needle)))
                 return index;
         }
