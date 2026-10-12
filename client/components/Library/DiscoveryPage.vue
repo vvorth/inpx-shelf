@@ -168,6 +168,11 @@ const componentOptions = {
         TastePanel,
     },
     watch: {
+        //в закрытом окне книги могли отметить прочитанное или изменить списки
+        '$route.query.book'(uid, old) {
+            if (old && !uid && this.isOwnRoute)
+                this.loadStates();
+        },
         '$route.path'() {
             if (this.isOwnRoute)
                 this.onEnter();

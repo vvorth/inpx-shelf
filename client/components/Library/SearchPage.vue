@@ -251,6 +251,11 @@ const componentOptions = {
         BookCollection,
     },
     watch: {
+        //в закрытом окне книги могли отметить прочитанное или изменить списки
+        '$route.query.book'(uid, old) {
+            if (old && !uid && this.$route.path === '/search')
+                this.loadStates(this.books);
+        },
         queryKey() {
             if (this.$route.path === '/search')
                 this.load();

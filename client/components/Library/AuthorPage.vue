@@ -175,6 +175,11 @@ const componentOptions = {
         BookCollection,
     },
     watch: {
+        //в закрытом окне книги могли отметить прочитанное или изменить списки
+        '$route.query.book'(uid, old) {
+            if (old && !uid && this.$route.path.startsWith('/author/'))
+                this.loadStates();
+        },
         '$route.params.name'() {
             if (this.$route.path.startsWith('/author/'))
                 this.load();
@@ -426,14 +431,17 @@ class AuthorPage {
         } finally {
             this.loading = false;
         }
+        await this.loadStates();
+    }
 
-        if (this.books.length && isSignedIn(this.$store.state.config)) {
-            try {
-                const result = await this.api.getBookStates(this.books.map(bookUid));
-                this.states = (result && result.states) || {};
-            } catch (e) {
-                this.states = {};
-            }
+    async loadStates() {
+        if (!this.books.length || !isSignedIn(this.$store.state.config))
+            return;
+        try {
+            const result = await this.api.getBookStates(this.books.map(bookUid));
+            this.states = (result && result.states) || {};
+        } catch (e) {
+            this.states = {};
         }
     }
 }

@@ -257,6 +257,11 @@ const componentOptions = {
         BookCollection,
     },
     watch: {
+        //в закрытом окне книги могли отметить прочитанное или убрать книгу из списка
+        '$route.query.book'(uid, old) {
+            if (old && !uid && this.isActive)
+                this.load();
+        },
         '$store.state.config'() {
             if (this.isActive)
                 this.load();

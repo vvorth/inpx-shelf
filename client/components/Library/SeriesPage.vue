@@ -96,6 +96,11 @@ const componentOptions = {
         AddToListDialog,
     },
     watch: {
+        //в закрытом окне книги могли отметить прочитанное или изменить списки
+        '$route.query.book'(uid, old) {
+            if (old && !uid && this.$route.path.startsWith('/series/'))
+                this.loadStates();
+        },
         '$route.params.name'() {
             if (this.$route.path.startsWith('/series/'))
                 this.load();

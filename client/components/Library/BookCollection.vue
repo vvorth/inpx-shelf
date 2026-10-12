@@ -44,7 +44,7 @@
                         <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
                         <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('bookCollection.read', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
-                        <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
+                        <span v-if="!isExternal(book) && Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                         <div class="foot-actions">
                             <BookQuickActions :book="book" :signed-in="signedIn" :in-list="!!stateOf(book).inList" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
                         </div>
@@ -83,7 +83,7 @@
                     <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
                     <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                     <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
-                    <span v-else-if="Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
+                    <span v-if="!isExternal(book) && Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
                     <div class="row-actions">
                         <BookQuickActions :book="book" :signed-in="signedIn" :in-list="!!stateOf(book).inList" @lists="openLists(book)" @used="$emit('interaction', {book, type: $event})" />
                     </div>
@@ -110,6 +110,12 @@ import {loadGenres, genreName, bookGenres} from '../../share/genres';
 
 const componentOptions = {
     emits: ['interaction'],
+    watch: {
+        //страница перечитала состояния - поправки после окна списков больше не нужны
+        states() {
+            this.changedStates = {};
+        },
+    },
     components: {
         BookCard,
         BookCover,
