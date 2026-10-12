@@ -394,14 +394,6 @@ function pickReleaseFromPayload(payload, channel = 'stable') {
         .sort((a, b) => compareReleaseVersions(b.tag_name, a.tag_name))[0] || null;
 }
 
-function decodeHtmlBuffer(data) {
-    let text = iconv.decode(data, 'utf8');
-    if (text.includes('\uFFFD'))
-        text = iconv.decode(data, 'win1251');
-
-        return text;
-}
-
 function decodeArchiveText(data) {
     let text = iconv.decode(data, 'utf8');
     if (text.includes('\uFFFD'))
@@ -4034,7 +4026,7 @@ class WebWorker {
 
             let html = '';
             try {
-                html = decodeHtmlBuffer(await zipReader.extractToBuf(entryName));
+                html = decodeArchiveText(await zipReader.extractToBuf(entryName));
             } catch(e) {
                 log(LM_WARN, `author info ${archive.file}:${entryName}: ${e.message}`);
                 continue;
@@ -4350,22 +4342,12 @@ class WebWorker {
 
     extractFb2Contents(parser) {
         const result = [];
-        const getNodeText = (node) => {
-            const parts = [];
-            node.eachDeepSelf((item) => {
-                if (item.type === parser.TEXT || item.type === parser.CDATA)
-                    parts.push(item.value);
-            });
-
-            return parts.join(' ').replace(/\s+/g, ' ').trim();
-        };
-
         const walk = (sections, level = 0) => {
             for (const section of sections) {
                 const titleNode = section.$$('\/title/');
                 let title = '';
                 if (titleNode && titleNode.count)
-                    title = getNodeText(titleNode);
+                    title = this.extractFb2NodeText(titleNode, parser);
 
                 if (title)
                     result.push({title, level});
