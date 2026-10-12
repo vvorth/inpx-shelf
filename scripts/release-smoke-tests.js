@@ -489,7 +489,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.doesNotMatch(readerSource, /\{\{ readerNoteReturnPoint \? uiText\.noteReturn : uiText\.back \}\}/);
     assert.match(readerSource, /\.reader-back-btn--note-return :deep\(\.block\) \{\s*display: none;/);
     assert.doesNotMatch(readerSource, /class="reader-note-return-btn"/);
-    assert.match(readerSource, /v-if="bookUid && isCompactLayout && \(showCompactStatusBar \|\| !compactChromeHidden \|\| controlsOpen\)"/);
+    assert.match(readerSource, /v-if="bookUid && isCompactLayout"\s*ref="readerMobileFooter"/);
     assert.match(readerSource, /v-if="bookUid && showDesktopStatusBar"/);
 
     const goBackStart = readerSource.indexOf('    goBack() {');
@@ -604,15 +604,17 @@ async function testReaderDefersViewportRefreshAcrossScreenUnlock() {
     assert.match(readerSource, /await this\.waitForStablePagedStage\(\);\s*if \(this\.deferViewportRefreshForVisibility\(true\)\)/);
 }
 
-async function testReaderCancelsStaleCompactChromePagination() {
+// Hiding the reader bars keeps their place: the text does not jump and pages are not rebuilt.
+async function testReaderChromeToggleKeepsLayout() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const toggle = readerSource.slice(readerSource.indexOf('    async setReaderChromeHidden('), readerSource.indexOf('    async toggleCompactChromeVisibility('));
 
-    assert.match(readerSource, /compactChromeTransitionId = 0;/);
-    assert.match(readerSource, /const transitionId = \+\+this\.compactChromeTransitionId;/);
-    assert.match(readerSource, /if \(this\.pagedBuildInProgress\)\s*this\.pagedBuildNeedsRefresh = true;/);
-    assert.match(readerSource, /await this\.afterLayoutRefreshPaint\(\);\s*if \(transitionId !== this\.compactChromeTransitionId\)\s*return;/);
-    assert.match(readerSource, /if \(this\.pagedBuildInProgress\)\s*await this\.waitForPagedBuildIdle\(2400\);/);
-    assert.match(readerSource, /requestAnimationFrame\(\(\) => \{\s*if \(transitionId !== this\.compactChromeTransitionId\)/);
+    assert.ok(toggle.includes('this.chromeHidden = nextHidden;'));
+    assert.doesNotMatch(toggle, /beginLayoutRefresh|pagedBuild|requestAnimationFrame|updateScrollerViewport/);
+    assert.doesNotMatch(readerSource, /v-show="!readerChromeHidden"/);
+    assert.match(readerSource, /'reader-toolbar--hidden': readerChromeHidden/);
+    assert.match(readerSource, /'reader-mobile-bar--hidden': compactChromeHidden/);
+    assert.match(readerSource, /\.reader-toolbar--hidden \{\s*opacity: 0;\s*visibility: hidden;/);
 }
 
 async function testReaderHomeFieldsIgnoreGlobalDarkTheme() {
@@ -2057,7 +2059,7 @@ const tests = [
     testReaderTextShadowDefaultsOff,
     testReaderPaginationResumesAcrossViewportGeometry,
     testReaderDefersViewportRefreshAcrossScreenUnlock,
-    testReaderCancelsStaleCompactChromePagination,
+    testReaderChromeToggleKeepsLayout,
     testReaderHomeFieldsIgnoreGlobalDarkTheme,
     testReaderImageDataUrlsAreValidated,
     testConvertedBookFileNames,

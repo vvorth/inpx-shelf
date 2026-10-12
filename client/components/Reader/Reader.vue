@@ -3,12 +3,17 @@
         ref="page"
         class="reader-page"
         :class="[readerThemeClass, readerBackgroundClass, {'reader-page--immersive': readerChromeHidden}]"
-        :style="readerThemeStyle"
+        :style="readerPageStyle"
     >
+        <!-- Панель не убирается из разметки, а гаснет: область чтения не меняет размер, текст не прыгает -->
         <div
-            v-show="!readerChromeHidden"
+            ref="readerToolbar"
             class="reader-toolbar"
-            :class="{'reader-toolbar--home': !bookUid}"
+            :class="{
+                'reader-toolbar--home': !bookUid,
+                'reader-toolbar--hidden': readerChromeHidden,
+                'reader-toolbar--overlay': readerToolbarOverlay,
+            }"
         >
             <div class="reader-toolbar-main">
                 <q-btn
@@ -797,6 +802,7 @@
                     ref="readerShell"
                     class="reader-shell"
                     :class="{
+                        'reader-shell--under-toolbar': readerToolbarOverlay,
                         'reader-shell--paged': activePreferences.readMode === 'paged',
                     }"
                     :style="readerShellStyle"
@@ -941,7 +947,7 @@
         </template>
 
         <div
-            v-if="bookUid && isCompactLayout && (showCompactStatusBar || !compactChromeHidden || controlsOpen)"
+            v-if="bookUid && isCompactLayout"
             ref="readerMobileFooter"
             class="reader-mobile-footer"
             :style="readerMobileFooterStyle"
@@ -970,10 +976,11 @@
             </div>
 
             <div
-                v-if="!compactChromeHidden && !controlsOpen"
+                v-if="!controlsOpen"
                 class="reader-mobile-bar"
                 :class="{
                     'reader-mobile-bar--with-contents': hasContentsMenu,
+                    'reader-mobile-bar--hidden': compactChromeHidden,
                 }"
             >
                 <q-btn
@@ -1522,7 +1529,8 @@ class Reader {
     compactChromeBuildLastActivityAt = 0;
     compactChromeStatusHold = false;
     compactChromeViewportRefreshSuppressedUntil = 0;
-    compactChromeTransitionId = 0;
+    readerToolbarHeight = 0;
+    toolbarResizeObserver = null;
     serverBackgroundImage = null;
     profileWarningNotifiedKey = '';
     fontFamilyOptions = [
@@ -3097,6 +3105,25 @@ class Reader {
         return !!(this.bookUid && this.chromeHidden);
     }
 
+    //в режиме прокрутки панель лежит поверх текста: в начале книги под ней пустой фон, дальше - текст
+    get readerToolbarOverlay() {
+        return !!this.bookUid && !this.isPagedMode;
+    }
+
+    get readerScrollTopInset() {
+        return (this.readerToolbarOverlay ? this.readerToolbarHeight : 0);
+    }
+
+    get readerPageStyle() {
+        return Object.assign({'--reader-toolbar-height': `${this.readerToolbarHeight}px`}, this.readerThemeStyle);
+    }
+
+    //позиция элемента в области прокрутки так, чтобы он оказался под панелью, а не за ней
+    readerScrollTargetTop(scroller, target) {
+        const offset = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        return Math.max(0, offset - 18 - this.readerScrollTopInset);
+    }
+
     get showToolbarActions() {
         return this.controlsOpen;
     }
@@ -3270,26 +3297,7 @@ class Reader {
         if (this.chromeHidden === nextHidden)
             return;
 
-        const transitionId = ++this.compactChromeTransitionId;
-        this.beginLayoutRefresh(this.isCompactLayout ? 'compact-chrome' : 'reader-chrome');
-        if (this.isPagedMode) {
-            // A second center tap can arrive while pagination for the first
-            // chrome state is still running. Cancel that geometry immediately;
-            // waiting for the later ResizeObserver callback lets the stale job
-            // keep the compact-chrome pending flags alive indefinitely.
-            if (this.pagedBuildInProgress)
-                this.pagedBuildNeedsRefresh = true;
-            this.compactChromePagedBuildPending = true;
-            this.compactChromeAwaitingCalibration = true;
-            this.compactChromeInitialTotalPages = Math.max(1, this.totalPages || 1);
-            this.beginCompactChromeStatusHold(2600);
-        }
-        this.touchCompactChromeBuildActivity();
-        this.cancelCompactChromeBuildPendingClear();
-        await this.afterLayoutRefreshPaint();
-        if (transitionId !== this.compactChromeTransitionId)
-            return;
-
+        //размер области чтения не меняется, поэтому страницы не перестраиваются
         this.chromeHidden = nextHidden;
         if (this.chromeHidden) {
             const hadOpenControls = this.controlsOpen;
@@ -3300,31 +3308,6 @@ class Reader {
             if (hadOpenControls)
                 this.applyPendingReaderSettingsReflow();
         }
-
-        this.$nextTick(() => {
-            if (transitionId !== this.compactChromeTransitionId)
-                return;
-            this.runAfterLayoutRefreshPaint(async() => {
-                if (transitionId !== this.compactChromeTransitionId)
-                    return;
-                if (this.pagedBuildInProgress)
-                    await this.waitForPagedBuildIdle(2400);
-                if (transitionId !== this.compactChromeTransitionId)
-                    return;
-                this.updateScrollerViewport();
-                requestAnimationFrame(() => {
-                    if (transitionId !== this.compactChromeTransitionId)
-                        return;
-                    if (this.isPagedMode)
-                        this.setCurrentPagedPage(this.currentPageIndex, false);
-                    this.endLayoutRefresh(180);
-                    if (this.compactChromePagedBuildPending) {
-                        this.compactChromeAwaitingCalibration = false;
-                        this.scheduleCompactChromeBuildPendingClear(760);
-                    }
-                });
-            });
-        });
     }
 
     async toggleCompactChromeVisibility() {
@@ -3887,12 +3870,25 @@ class Reader {
             this.scheduleViewportRefresh({calibrate: false});
         });
         this.resizeObserver.observe(scroller);
+
+        const toolbar = this.$refs.readerToolbar;
+        if (toolbar) {
+            this.toolbarResizeObserver = new ResizeObserver(() => {
+                if (toolbar.offsetHeight)
+                    this.readerToolbarHeight = toolbar.offsetHeight;
+            });
+            this.toolbarResizeObserver.observe(toolbar);
+        }
     }
 
     detachScrollerObserver() {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
+        }
+        if (this.toolbarResizeObserver) {
+            this.toolbarResizeObserver.disconnect();
+            this.toolbarResizeObserver = null;
         }
     }
 
@@ -5337,7 +5333,7 @@ class Reader {
             target = readerTextAnchors.findReaderNodeByTextSnippet(scroller.querySelector('.reader-html'), anchor.textSnippet);
 
         if (target) {
-            scroller.scrollTop = Math.max(0, target.offsetTop - 18);
+            scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
             this.updateCurrentSectionFromScroll();
             return true;
         }
@@ -5345,7 +5341,7 @@ class Reader {
         if (anchor.sectionId) {
             target = scroller.querySelector(`#${this.escapeCssId(anchor.sectionId)}`);
             if (target) {
-                scroller.scrollTop = Math.max(0, target.offsetTop - 18);
+                scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
                 this.updateCurrentSectionFromScroll();
                 return true;
             }
@@ -7305,7 +7301,6 @@ class Reader {
         this.progressPersistPendingAfterPagedBuild = false;
         this.compactChromePagedBuildPending = false;
         this.compactChromeAwaitingCalibration = false;
-        this.compactChromeTransitionId += 1;
         this.dynamicBottomClipCompensationCompact = 0;
         this.dynamicBottomClipCompensationRegular = 0;
         this.bottomClipCompensationGeometryKey = '';
@@ -7560,7 +7555,7 @@ class Reader {
                 if (this.isPagedMode)
                     this.setPagedScroll(this.getPagedOffset(target));
                 else
-                    scroller.scrollTop = Math.max(0, target.offsetTop - 18);
+                    scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
                 this.updateCurrentSectionFromScroll();
                 return;
             }
@@ -7645,13 +7640,14 @@ class Reader {
         }
 
         const scroller = this.$refs.scroller;
+        const visibleTop = scroller.getBoundingClientRect().top + this.readerScrollTopInset;
         let activeId = this.currentSectionId;
         for (const item of this.contents) {
             const target = scroller.querySelector(`#${this.escapeCssId(item.id)}`);
             if (!target)
                 continue;
 
-            if (target.offsetTop - scroller.scrollTop <= 80) {
+            if (target.getBoundingClientRect().top - visibleTop <= 80) {
                 activeId = item.id;
             } else {
                 break;
@@ -7983,7 +7979,7 @@ class Reader {
             if (!target)
                 return;
 
-            const top = Math.max(0, target.offsetTop - 18);
+            const top = this.readerScrollTargetTop(scroller, target);
             scroller.scrollTo({top, behavior: 'smooth'});
         });
     }
@@ -8109,7 +8105,7 @@ class Reader {
             if (!target)
                 return;
 
-            const top = Math.max(0, target.offsetTop - 18);
+            const top = this.readerScrollTargetTop(scroller, target);
             scroller.scrollTo({top, behavior: 'smooth'});
         });
     }
@@ -8458,7 +8454,8 @@ class Reader {
             return;
         }
 
-        const pageHeight = Math.max(1, scroller.clientHeight);
+        //строки за видимой панелью не пропускаем
+        const pageHeight = Math.max(1, scroller.clientHeight - (this.readerChromeHidden ? 0 : this.readerScrollTopInset));
         const nextTop = Math.max(0, Math.min(
             scroller.scrollHeight - scroller.clientHeight,
             scroller.scrollTop + delta * pageHeight,
@@ -9127,6 +9124,20 @@ export default vueComponent(Reader);
     background: color-mix(in srgb, var(--reader-surface) 92%, transparent);
     backdrop-filter: blur(10px);
     overflow: visible;
+    transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.reader-toolbar--hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.reader-toolbar--overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
 }
 
 .reader-toolbar-main {
@@ -9957,6 +9968,10 @@ export default vueComponent(Reader);
     padding: 28px 18px 72px;
 }
 
+.reader-shell--under-toolbar {
+    padding-top: calc(28px + var(--reader-toolbar-height, 0px));
+}
+
 .reader-shell--paged {
     min-height: 100%;
     box-sizing: border-box;
@@ -10636,6 +10651,11 @@ export default vueComponent(Reader);
     justify-content: center;
     min-width: 180px;
     max-width: min(620px, 100%);
+}
+
+.reader-mobile-bar--hidden {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .reader-mobile-bar {
