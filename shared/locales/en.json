@@ -1512,6 +1512,7 @@
             "settings": "Export settings JSON",
             "settingsBackupInfo": "The settings JSON is only for moving the configuration. Users, lists, progress and bookmarks are not included.",
             "settingsImport": "Restore settings JSON",
+            "settingsImportConfirm": "Restore settings from the file? Current settings, including sign-in and proxy settings, will be replaced right away; a wrong file can lock everyone out.",
             "subtitle": "Full backup and separate configuration export.",
             "title": "Backup"
         },

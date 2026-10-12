@@ -640,6 +640,7 @@ class AdminPage {
             backupImport: t('settings.backup.backupImport'),
             settings: t('settings.backup.settings'),
             settingsImport: t('settings.backup.settingsImport'),
+            settingsImportConfirm: t('settings.backup.settingsImportConfirm'),
             restoreNote: t('settings.backup.restoreNote'),
             restoreConfirm: t('settings.backup.restoreConfirm'),
             restored: t('settings.backup.restored'),
@@ -1775,6 +1776,10 @@ class AdminPage {
         const file = input && input.files && input.files[0];
         if (!file)
             return;
+        if (!await this.$root.stdDialog.confirm(this.backupUi.settingsImportConfirm, this.backupUi.settingsImport)) {
+            input.value = '';
+            return;
+        }
 
         this.settingsImportLoading = true;
         try {
