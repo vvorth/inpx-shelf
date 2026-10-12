@@ -3579,7 +3579,8 @@ class WebWorker {
         const libDir = sourceLibDir || this.config.libDir;
         const cacheKey = `${libDir}::${subDir}`;
 
-        if (!this.fblibraryArchives[cacheKey] || !this.fblibraryArchives[cacheKey].length) {
+        //пустой список тоже запоминается до переиндексации: иначе каждая обложка заново читает каталоги
+        if (!this.fblibraryArchives[cacheKey]) {
             const result = [];
             const dir = await this.resolveLibraryAssetDir(subDir, libDir);
 
