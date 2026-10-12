@@ -1344,10 +1344,9 @@ import ReaderEnvironment from './readerEnvironment.js';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 import _ from 'lodash';
 const readerProgress = require('../../share/readerProgress');
+const readerStorage = require('../../share/readerStorage');
 import {t, tm, formatDateTime} from '../../share/i18n';
 
-const readerPreferencesStorageKey = 'inpx.reader.preferences.v1';
-const readerProgressStorageKey = 'inpx.reader.progress.v1';
 const {readerPreferencesVersion, readerDefaults, einkReaderDefaults, migrateReaderPreferences} = require('../../../shared/readerPreferences');
 const pagedPageTextCache = new WeakMap();
 const readerDeviceProfileKeys = ['regularProfile', 'compactProfile'];
@@ -9200,35 +9199,11 @@ class Reader {
     }
 
     readStoredReaderPreferences() {
-        if (typeof localStorage === 'undefined')
-            return null;
-
-        try {
-            const parsed = JSON.parse(localStorage.getItem(readerPreferencesStorageKey) || '{}');
-            const byUser = (parsed && parsed.byUser && typeof parsed.byUser === 'object') ? parsed.byUser : {};
-            const userId = String(this.currentUserId || '').trim();
-            return (userId && byUser[userId]) || parsed.preferences || null;
-        } catch (e) {
-            return null;
-        }
+        return readerStorage.readPreferences(String(this.currentUserId || '').trim());
     }
 
     readStoredReaderProgress() {
-        if (typeof localStorage === 'undefined' || !this.bookUid)
-            return null;
-
-        try {
-            const parsed = JSON.parse(localStorage.getItem(readerProgressStorageKey) || '{}');
-            const byUser = (parsed && parsed.byUser && typeof parsed.byUser === 'object') ? parsed.byUser : {};
-            const userId = String(this.currentUserId || '').trim();
-            const bucket = (userId && byUser[userId] && typeof byUser[userId] === 'object')
-                ? byUser[userId]
-                : ((parsed && parsed.progress && typeof parsed.progress === 'object') ? parsed.progress : {});
-            const progress = bucket && typeof bucket === 'object' ? bucket[this.bookUid] : null;
-            return progress && typeof progress === 'object' ? progress : null;
-        } catch (e) {
-            return null;
-        }
+        return readerStorage.readProgress(String(this.currentUserId || '').trim(), this.bookUid);
     }
 
     readerProgressAfterReset(progress = null, resetAt = '', generation = 0) {
@@ -9236,120 +9211,21 @@ class Reader {
     }
 
     clearStoredReaderProgress(bookUid = '', options = {}) {
-        if (typeof localStorage === 'undefined')
-            return;
-
-        try {
-            const raw = localStorage.getItem(readerProgressStorageKey);
-            if (!raw)
-                return;
-
-            const parsed = JSON.parse(raw);
-            const byUser = (parsed && parsed.byUser && typeof parsed.byUser === 'object') ? parsed.byUser : {};
-            const globalProgress = (parsed && parsed.progress && typeof parsed.progress === 'object') ? parsed.progress : {};
-            const userId = String(this.currentUserId || '').trim();
-            const clearAll = options && options.all === true;
-            const normalizedBookUid = String(bookUid || '').trim();
-            const knownBookUids = Array.isArray(options && options.bookUids)
-                ? options.bookUids.map((uid) => String(uid || '').trim()).filter(Boolean)
-                : [];
-
-            if (clearAll) {
-                Object.keys(globalProgress).forEach((uid) => delete globalProgress[uid]);
-                if (userId)
-                    byUser[userId] = {};
-                knownBookUids.forEach((uid) => delete globalProgress[uid]);
-            } else if (normalizedBookUid) {
-                delete globalProgress[normalizedBookUid];
-                if (userId && byUser[userId] && typeof byUser[userId] === 'object')
-                    delete byUser[userId][normalizedBookUid];
-            }
-
-            localStorage.setItem(readerProgressStorageKey, JSON.stringify({
-                progress: globalProgress,
-                byUser,
-            }));
-        } catch (e) {
-            // ignore storage failures
-        }
+        readerStorage.clearProgress(String(this.currentUserId || '').trim(), bookUid, options);
     }
 
     writeStoredReaderPreferences() {
-        if (typeof localStorage === 'undefined')
-            return;
-
-        try {
-            const raw = localStorage.getItem(readerPreferencesStorageKey);
-            const parsed = raw ? JSON.parse(raw) : {};
-            const byUser = (parsed && parsed.byUser && typeof parsed.byUser === 'object') ? parsed.byUser : {};
-            const userId = String(this.currentUserId || '').trim();
-            const preferences = _.cloneDeep(this.preferences);
-
-            if (userId)
-                byUser[userId] = preferences;
-
-            // Фон хранится один раз: в копии пользователя, а не ещё и в общей
-            localStorage.setItem(readerPreferencesStorageKey, JSON.stringify({
-                preferences: (userId ? _.omit(preferences, ['backgroundImage', 'backgroundImageName']) : preferences),
-                byUser,
-            }));
-        } catch (e) {
-            // ignore storage failures
-        }
+        readerStorage.writePreferences(String(this.currentUserId || '').trim(), this.preferences);
     }
 
     writeStoredReaderProgress(progress = null, bookUid = this.bookUid) {
-        if (typeof localStorage === 'undefined' || !bookUid)
-            return;
-
-        try {
-            const raw = localStorage.getItem(readerProgressStorageKey);
-            const parsed = raw ? JSON.parse(raw) : {};
-            const byUser = (parsed && parsed.byUser && typeof parsed.byUser === 'object') ? parsed.byUser : {};
-            const userId = String(this.currentUserId || '').trim();
-            const nextProgress = this.normalizeReaderProgress(progress || this.progress);
-            const globalProgress = (parsed && parsed.progress && typeof parsed.progress === 'object') ? parsed.progress : {};
-            const existingBucket = (userId && byUser[userId] && typeof byUser[userId] === 'object')
-                ? byUser[userId]
-                : globalProgress;
-            const existingProgress = existingBucket && typeof existingBucket === 'object'
-                ? this.normalizeReaderProgress(existingBucket[bookUid] || {})
-                : null;
-            const protectForwardProgress = !!(
+        readerStorage.writeProgress(String(this.currentUserId || '').trim(), bookUid, progress || this.progress, {
+            protectForward: !!(
                 this.isPagedMode
                 && (this.loading || this.bookPreparing || this.restorePending || this.pagedBuildInProgress || !this.pagedPages.length)
-            );
-            if (protectForwardProgress && existingProgress) {
-                const existingTime = Date.parse(existingProgress.updatedAt || '');
-                const nextTime = Date.parse(nextProgress.updatedAt || '');
-                if (
-                    Number.isFinite(existingTime)
-                    && Number.isFinite(nextTime)
-                    && nextTime > existingTime
-                    && nextTime - existingTime < 120000
-                    && (
-                        existingProgress.pageIndex > nextProgress.pageIndex
-                        || existingProgress.percent > nextProgress.percent + 0.0001
-                    )
-                )
-                    return;
-            }
-
-            if (userId) {
-                const scoped = (byUser[userId] && typeof byUser[userId] === 'object') ? byUser[userId] : {};
-                scoped[bookUid] = nextProgress;
-                byUser[userId] = readerProgress.trimMap(scoped);
-            }
-
-            globalProgress[bookUid] = nextProgress;
-
-            localStorage.setItem(readerProgressStorageKey, JSON.stringify({
-                progress: readerProgress.trimMap(globalProgress),
-                byUser,
-            }));
-        } catch (e) {
-            // ignore storage failures
-        }
+            ),
+            generation: this.readerProgressGeneration,
+        });
     }
 
     normalizeReaderProgress(progress = {}) {
