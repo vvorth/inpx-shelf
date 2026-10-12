@@ -1433,7 +1433,6 @@
         "seriesReadMarksCleared": "Series read marks cleared",
         "startWithTheFirst": "Start with the first",
         "theLibraryHasNo": "The library has no books in this series.",
-        "thisBookIsNot": "This book is not in the library",
         "thisSeriesHasNo": "This series has no books in your languages."
     },
     "server": {

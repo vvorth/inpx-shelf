@@ -58,29 +58,20 @@
                 </q-btn>
             </div>
 
-            <ol v-else class="series-list">
-                <li v-for="row in rows" :key="row.key" class="series-row" :class="{'series-row--missing': !row.book}">
-                    <span class="series-no num">{{ row.no || '—' }}</span>
-                    <template v-if="row.book">
-                        <router-link class="series-cover" :to="bookLink(row.book)">
-                            <BookCover :book="row.book" :progress="stateOf(row.book).percent || 0" small />
-                        </router-link>
-                        <div class="series-main">
-                            <router-link class="series-title" :to="bookLink(row.book)">
-                                {{ row.book.title || $t('common.untitled') }}
-                            </router-link>
-                            <div class="card-hint">
-                                {{ bookMeta(row.book) }}
-                            </div>
-                        </div>
-                        <span v-if="stateOf(row.book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
-                        <span v-else-if="stateOf(row.book).percent > 0" class="pill num">{{ Math.round(stateOf(row.book).percent * 100) }}%</span>
-                    </template>
-                    <div v-else class="series-main card-hint">
-                        {{ $t('series.thisBookIsNot') }}
-                    </div>
-                </li>
-            </ol>
+            <template v-else>
+                <div class="series-controls">
+                    <q-btn-toggle
+                        :model-value="view"
+                        :options="viewOptions"
+                        dense
+                        no-caps
+                        unelevated
+                        toggle-color="primary"
+                        @update:model-value="$store.commit('setSettings', {bookView: $event})"
+                    />
+                </div>
+                <BookCollection :books="sortedBooks" :states="states" :view="view" show-serno />
+            </template>
         </div>
 
         <AddToListDialog v-if="books.length" v-model="readingListsDialogVisible" :book="books[0]" :series="name" />
@@ -90,17 +81,18 @@
 <script>
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
-import BookCover from './BookCover.vue';
+import BookCollection from './BookCollection.vue';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
 import {bookUid, bookAuthors} from '../../share/bookActions';
 import {myLanguages, languageMatches} from '../../share/languages';
+import {bookView, bookViewOptions} from '../../share/bookView';
 
 const componentOptions = {
     components: {
-        BookCover,
+        BookCollection,
         AddToListDialog,
     },
     watch: {
@@ -149,7 +141,7 @@ class SeriesPage {
         return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([author]) => author);
     }
 
-    //книги по номеру; пропуски в нумерации показываются отдельными строками
+    //книги по номеру; пропуски в нумерации - строки без книги, они считаются в сводке
     get rows() {
         const rows = [];
         const numbered = this.visibleBooks.filter(book => Number(book.serno) > 0);
@@ -175,6 +167,19 @@ class SeriesPage {
         this.visibleBooks.filter(book => !(Number(book.serno) > 0))
             .forEach((book, index) => rows.push({key: `x-${index}`, no: 0, book}));
         return rows;
+    }
+
+    //книги по номеру в серии, без номера - в конце
+    get sortedBooks() {
+        return this.rows.map(row => row.book).filter(Boolean);
+    }
+
+    get view() {
+        return bookView(this.$store.state.settings);
+    }
+
+    get viewOptions() {
+        return bookViewOptions();
     }
 
     //книги на «Моих языках»; пропуски нумерации считаются только среди них
@@ -217,10 +222,6 @@ class SeriesPage {
 
     bookLink(book) {
         return `/book/${encodeURIComponent(bookUid(book))}`;
-    }
-
-    bookMeta(book) {
-        return [bookAuthors(book).join(', '), book.lang, String(book.ext || '').toUpperCase()].filter(Boolean).join(' · ');
     }
 
     openBook(book) {
@@ -291,59 +292,9 @@ export default vueComponent(SeriesPage);
     font-size: 16px;
 }
 
-.series-list {
+.series-controls {
     display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius);
-    background: var(--app-surface);
-}
-
-.series-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--app-border);
-}
-
-.series-row:last-child {
-    border-bottom: 0;
-}
-
-.series-row--missing {
-    background: var(--app-surface-2);
-}
-
-.series-no {
-    width: 32px;
-    flex: none;
-    color: var(--app-muted);
-    font-weight: 600;
-    text-align: right;
-}
-
-.series-cover {
-    width: 40px;
-    flex: none;
-}
-
-.series-main {
-    flex: 1;
-    min-width: 0;
-}
-
-.series-title {
-    color: var(--app-text) !important;
-    font-family: var(--app-font-serif);
-    font-weight: 600;
-    text-decoration: none;
-}
-
-.series-title:hover {
-    color: var(--app-primary) !important;
+    justify-content: flex-end;
+    margin-bottom: 12px;
 }
 </style>

@@ -15,7 +15,7 @@
         <div v-else-if="view === 'cards'" class="cards-grid">
             <article v-for="book in books" :key="keyOf(book)" class="wide-card">
                 <component :is="linkTag(book)" class="wide-card-cover" v-bind="linkAttrs(book)" @click="opened(book)">
-                    <BookCover :book="book" :progress="stateOf(book).percent || 0" />
+                    <BookCover :book="book" :progress="coverProgress(book)" />
                 </component>
                 <div class="wide-card-body">
                     <component :is="linkTag(book)" class="book-title-link wide-card-title" v-bind="linkAttrs(book)" @click="opened(book)">
@@ -56,7 +56,7 @@
         <ol v-else class="rows">
             <li v-for="book in books" :key="keyOf(book)" class="row-item">
                 <component :is="linkTag(book)" class="row-cover" v-bind="linkAttrs(book)" @click="opened(book)">
-                    <BookCover :book="book" :progress="stateOf(book).percent || 0" small />
+                    <BookCover :book="book" :progress="coverProgress(book)" small />
                 </component>
                 <div class="row-main">
                     <component :is="linkTag(book)" class="book-title-link row-title" v-bind="linkAttrs(book)" @click="opened(book)">
@@ -169,6 +169,12 @@ class BookCollection {
     stateOf(book) {
         const uid = bookUid(book);
         return this.changedStates[uid] || this.states[uid] || {};
+    }
+
+    //в карточках и строках прочитанное отмечено рядом с текстом: галочка на обложке не нужна
+    coverProgress(book) {
+        const state = this.stateOf(book);
+        return (state.read ? 0 : state.percent || 0);
     }
 
     authorsOf(book) {
