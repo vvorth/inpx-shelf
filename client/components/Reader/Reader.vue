@@ -28,7 +28,7 @@
                     @click="goBack"
                 />
 
-                <div class="reader-book-meta">
+                <div v-if="bookUid" class="reader-book-meta">
                     <div
                         class="reader-book-title"
                         :class="{'is-expanded': isCompactLayout && readerMetaExpanded}"
@@ -164,11 +164,11 @@
                 />
 
                 <div class="reader-controls-header">
-                    <div class="reader-controls-tabs">
-                        <q-btn flat dense no-caps :class="{'is-active': readerControlsTab === 'text'}" @click="setReaderControlsTab('text')">{{ uiText.controlsText }}</q-btn>
-                        <q-btn flat dense no-caps :class="{'is-active': readerControlsTab === 'page'}" @click="setReaderControlsTab('page')">{{ uiText.controlsPage }}</q-btn>
-                        <q-btn flat dense no-caps :class="{'is-active': readerControlsTab === 'background'}" @click="setReaderControlsTab('background')">{{ uiText.controlsBackground }}</q-btn>
-                        <q-btn flat dense no-caps :class="{'is-active': readerControlsTab === 'status'}" @click="setReaderControlsTab('status')">{{ uiText.controlsStatus }}</q-btn>
+                    <div class="tabs reader-controls-tabs">
+                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'text'}" @click="setReaderControlsTab('text')">{{ uiText.controlsText }}</button>
+                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'page'}" @click="setReaderControlsTab('page')">{{ uiText.controlsPage }}</button>
+                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'background'}" @click="setReaderControlsTab('background')">{{ uiText.controlsBackground }}</button>
+                        <button type="button" class="tab" :class="{'is-active': readerControlsTab === 'status'}" @click="setReaderControlsTab('status')">{{ uiText.controlsStatus }}</button>
                     </div>
 
                     <div class="reader-controls-state">
@@ -588,8 +588,7 @@
             <div class="reader-home-panel">
                 <div class="reader-home-head">
                     <div>
-                        <div class="reader-home-kicker">{{ uiText.readerWebApp }}</div>
-                        <h1 class="reader-home-title">{{ uiText.readerHomeTitle }}</h1>
+                        <h1 class="page-title">{{ uiText.readerHomeTitle }}</h1>
                         <div class="reader-home-subtitle">{{ readerHomeSubtitle }}</div>
                     </div>
                     <div class="reader-home-actions">
@@ -619,17 +618,17 @@
 
                 <div v-if="!readerHomeLoading && !readerHomeCanLogin" class="reader-home-tools">
                     <div class="reader-home-tabs">
-                        <div class="reader-home-tab-list">
+                        <div class="tabs reader-home-tab-list">
                             <button
                                 v-for="item in readerHomeFilterOptions"
                                 :key="item.value"
                                 type="button"
-                                class="reader-home-tab"
+                                class="tab"
                                 :class="{'is-active': readerHomeFilter === item.value}"
                                 :disabled="readerHomeResetting"
                                 @click="setReaderHomeFilter(item.value)"
                             >
-                                {{ item.label }} <span>{{ readerHomeCounters[item.value] || 0 }}</span>
+                                {{ item.label }} <span class="tab-count">{{ readerHomeCounters[item.value] || 0 }}</span>
                             </button>
                         </div>
                         <div class="reader-home-tab-actions">
@@ -638,7 +637,7 @@
                                 dense
                                 no-caps
                                 icon="la la-undo-alt"
-                                class="reader-home-reset-btn reader-home-action-btn reader-home-action-btn--danger"
+                                class="reader-home-reset-btn"
                                 :disable="readerHomeResetting || !(readerHomeCounters.all > 0)"
                                 :loading="readerHomeResetting"
                                 @click="resetReaderHomeProgress"
@@ -650,7 +649,7 @@
                                 dense
                                 round
                                 icon="la la-sync"
-                                class="reader-home-refresh-btn reader-home-action-btn"
+                                class="reader-home-refresh-btn reader-icon-btn"
                                 :aria-label="uiText.refresh"
                                 :disable="readerHomeResetting"
                                 @click="loadReaderHome"
@@ -703,6 +702,7 @@
                         :key="book.bookUid"
                         class="reader-home-book"
                     >
+                        <BookCover class="reader-home-cover" :book="readerHomeCoverBook(book)" :progress="book.percent" small />
                         <div class="reader-home-book-main">
                             <div class="reader-home-book-title">{{ book.title || uiText.untitledBook }}</div>
                             <div v-if="book.author" class="reader-home-book-meta">{{ book.author }}</div>
@@ -1140,10 +1140,10 @@
                 </div>
 
                 <div class="reader-dialog-body">
-                    <div class="reader-dialog-tabs">
+                    <div class="tabs reader-dialog-tabs">
                         <button
                             type="button"
-                            class="reader-dialog-tab"
+                            class="tab"
                             :class="{'is-active': currentPlacesTab === 'progress'}"
                             @click="currentPlacesTab = 'progress'"
                         >
@@ -1151,19 +1151,19 @@
                         </button>
                         <button
                             type="button"
-                            class="reader-dialog-tab"
+                            class="tab"
                             :class="{'is-active': currentPlacesTab === 'bookmarks'}"
                             @click="currentPlacesTab = 'bookmarks'"
                         >
-                            {{ uiText.bookmarks }} <span v-if="plainBookmarks.length">{{ plainBookmarks.length }}</span>
+                            {{ uiText.bookmarks }} <span v-if="plainBookmarks.length" class="tab-count">{{ plainBookmarks.length }}</span>
                         </button>
                         <button
                             type="button"
-                            class="reader-dialog-tab"
+                            class="tab"
                             :class="{'is-active': currentPlacesTab === 'notes'}"
                             @click="currentPlacesTab = 'notes'"
                         >
-                            {{ uiText.notes }} <span v-if="noteBookmarks.length">{{ noteBookmarks.length }}</span>
+                            {{ uiText.notes }} <span v-if="noteBookmarks.length" class="tab-count">{{ noteBookmarks.length }}</span>
                         </button>
                     </div>
 
@@ -1333,6 +1333,7 @@
 <script>
 import vueComponent from '../vueComponent.js';
 import ReaderEnvironment from './readerEnvironment.js';
+import BookCover from '../Library/BookCover.vue';
 import ReaderDebugPanel from './ReaderDebugPanel.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 const readerTextAnchors = require('./readerTextAnchors');
@@ -1368,7 +1369,7 @@ const readerDeviceScopedPreferenceKeys = new Set([
 ]);
 
 const componentOptions = {
-    components: {ReaderDebugPanel},
+    components: {ReaderDebugPanel, BookCover},
     watch: {
         readerSourceKey: {
             immediate: true,
@@ -1863,6 +1864,11 @@ class Reader {
         return this.bookUid ? this.authorLine : this.readerHomeSubtitle;
     }
 
+    //BookCover берёт обложку по _uid, а у списка читалки это bookUid
+    readerHomeCoverBook(book) {
+        return {_uid: book.bookUid, title: book.title, author: book.author, genre: book.genre};
+    }
+
     get readerHomeAuthorized() {
         const current = this.currentSelectedProfile;
         return !!(current && !this.readerAnonymousProfile && (!current.requiresLogin || this.config.profileAuthorized));
@@ -2089,7 +2095,17 @@ class Reader {
         };
     }
 
+    //диалоги рисуются вне .reader-page: им тоже нужны соответствия --app-* для общих классов (.tabs)
     get readerDialogStyle() {
+        return Object.assign({
+            '--app-text': 'var(--reader-text)',
+            '--app-muted': 'var(--reader-muted)',
+            '--app-border': 'var(--reader-border)',
+            '--app-primary': 'var(--reader-accent)',
+        }, this.readerDialogThemeStyle);
+    }
+
+    get readerDialogThemeStyle() {
         if (this.preferences.theme === 'eink') {
             const themeStyle = this.readerThemeStyle;
             return Object.assign({}, themeStyle, {
@@ -2240,7 +2256,6 @@ class Reader {
             profileLoggedInShort: t('reader.profileLoggedInShort'),
             profileOpenShort: t('reader.profileOpenShort'),
             refresh: t('reader.refresh'),
-            readerWebApp: 'INPX Reader',
             readerHomeTitle: t('reader.readerHomeTitle'),
             readerHomeEmptyTitle: t('reader.readerHomeEmptyTitle'),
             readerHomeEmptyText: t('reader.readerHomeEmptyText'),
@@ -9083,6 +9098,13 @@ export default vueComponent(Reader);
 <style scoped>
 .reader-page {
     --q-primary: var(--reader-accent);
+    /* общие классы библиотеки (.tabs, .page-title) внутри читалки берут цвета её темы */
+    --app-text: var(--reader-text);
+    --app-muted: var(--reader-muted);
+    --app-border: var(--reader-border);
+    --app-primary: var(--reader-accent);
+    --app-surface: var(--reader-surface);
+    --app-accent-soft: var(--reader-accent-soft);
     /* формы и шрифт заголовков как в библиотеке */
     --reader-radius: 6px;
     --reader-radius-lg: 8px;
@@ -9153,6 +9175,10 @@ export default vueComponent(Reader);
     gap: 12px;
     width: 100%;
     min-width: 0;
+}
+
+.reader-back-btn :deep(.q-btn__content) {
+    flex-wrap: nowrap;
 }
 
 .reader-back-btn--note-return {
@@ -9436,7 +9462,6 @@ export default vueComponent(Reader);
     color: var(--reader-muted);
 }
 
-.reader-controls-tabs,
 .reader-theme-switch,
 .reader-stepper {
     display: inline-flex;
@@ -9454,14 +9479,17 @@ export default vueComponent(Reader);
 .reader-controls-tabs {
     flex: 1 1 auto;
     min-width: 0;
-    background: color-mix(in srgb, var(--reader-surface) 82%, var(--reader-surface-2) 18%);
+}
+
+.reader-controls-tabs .tab,
+.reader-dialog-tabs .tab {
+    cursor: pointer;
 }
 
 .reader-stepper {
     flex-wrap: nowrap;
 }
 
-.reader-controls-tabs :deep(.q-btn),
 .reader-theme-switch :deep(.q-btn),
 .reader-stepper :deep(.q-btn) {
     min-height: 30px;
@@ -9470,7 +9498,6 @@ export default vueComponent(Reader);
     font-size: 12px;
 }
 
-.reader-controls-tabs :deep(.q-btn),
 .reader-theme-switch :deep(.q-btn) {
     flex: 1 1 0;
     min-width: 0;
@@ -9481,10 +9508,9 @@ export default vueComponent(Reader);
     padding: 0;
 }
 
-.reader-controls-tabs :deep(.q-btn.is-active),
 .reader-theme-switch :deep(.q-btn.is-active) {
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
+    background: var(--reader-accent);
+    color: var(--reader-on-accent);
 }
 
 .reader-font-select {
@@ -9593,23 +9619,8 @@ export default vueComponent(Reader);
     margin-bottom: 18px;
 }
 
-.reader-home-kicker {
-    margin-bottom: 6px;
-    color: var(--reader-accent);
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
-.reader-home-title {
-    margin: 0;
-    color: var(--reader-text);
-    font-size: 30px;
-    line-height: 1.15;
-}
-
 .reader-home-subtitle {
-    margin-top: 8px;
+    margin-top: 4px;
     color: var(--reader-muted);
     font-size: 14px;
 }
@@ -9643,16 +9654,20 @@ export default vueComponent(Reader);
 
 .reader-home-tabs {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 8px;
 }
 
 .reader-home-tab-list {
-    display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
-    gap: 8px;
     min-width: 0;
+}
+
+.reader-home-tab-list .tab {
+    cursor: pointer;
 }
 
 .reader-home-tab-actions {
@@ -9660,49 +9675,16 @@ export default vueComponent(Reader);
     flex: 0 0 auto;
     align-items: center;
     gap: 8px;
-}
-
-.reader-home-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 38px;
-    padding: 8px 12px;
-    border: 1px solid var(--reader-border);
-    border-radius: 8px;
-    background: var(--reader-surface);
-    color: var(--reader-muted);
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.reader-home-tab span {
-    min-width: 24px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-    text-align: center;
-    font-size: 12px;
-}
-
-.reader-home-tab.is-active {
-    border-color: var(--reader-accent);
-    color: var(--reader-accent);
-}
-
-.reader-home-refresh-btn {
-    flex: 0 0 auto;
-    width: 42px;
-    height: 42px;
-    min-height: 42px;
-    padding: 0;
+    padding-bottom: 4px;
 }
 
 .reader-home-reset-btn {
-    min-height: 42px;
-    padding: 6px 12px;
+    color: var(--reader-muted);
     white-space: nowrap;
+}
+
+.reader-home-reset-btn:hover {
+    color: #c45143;
 }
 
 .reader-home-search-row {
@@ -9770,7 +9752,7 @@ export default vueComponent(Reader);
 
 .reader-home-book {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 14px;
     align-items: center;
     padding: 14px;
@@ -9779,10 +9761,15 @@ export default vueComponent(Reader);
     background: var(--reader-surface);
 }
 
+.reader-home-cover {
+    width: 52px;
+}
+
 .reader-home-book-title {
     color: var(--reader-text);
+    font-family: var(--app-font-serif, Georgia, serif);
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 600;
     line-height: 1.25;
 }
 
@@ -9817,19 +9804,19 @@ export default vueComponent(Reader);
 }
 
 .reader-home-action-btn {
-    min-height: 38px;
-    padding: 6px 12px;
+    min-height: 36px;
+    padding: 4px 12px;
     border: 1px solid var(--reader-border);
-    border-radius: 8px;
-    background: var(--reader-surface-2);
+    border-radius: var(--reader-radius);
+    background: transparent;
     color: var(--reader-text);
-    font-weight: 800;
+    font-weight: 600;
 }
 
 .reader-home-action-btn--primary {
-    border-color: color-mix(in srgb, var(--reader-accent) 34%, var(--reader-border));
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
+    border-color: var(--reader-accent);
+    background: var(--reader-accent);
+    color: var(--reader-on-accent);
 }
 
 .reader-home-action-btn--muted {
@@ -9837,14 +9824,9 @@ export default vueComponent(Reader);
     color: var(--reader-muted);
 }
 
-.reader-home-action-btn--danger {
-    border-color: color-mix(in srgb, #c45143 48%, var(--reader-border));
-    background: color-mix(in srgb, #c45143 10%, var(--reader-surface-2));
-    color: color-mix(in srgb, #c45143 76%, var(--reader-text));
-}
 
-.reader-home-action-btn:hover,
-.reader-home-action-btn:focus {
+.reader-home-action-btn:not(.reader-home-action-btn--primary):hover,
+.reader-home-action-btn:not(.reader-home-action-btn--primary):focus {
     color: var(--reader-accent);
 }
 
@@ -10955,26 +10937,9 @@ export default vueComponent(Reader);
 }
 
 .reader-dialog-tabs {
-    display: flex;
-    gap: 8px;
     flex-wrap: wrap;
 }
 
-.reader-dialog-tab {
-    padding: 8px 12px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-}
-
-.reader-dialog-tab.is-active {
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
-}
 
 .reader-continue-card {
     display: flex;
@@ -11107,6 +11072,7 @@ export default vueComponent(Reader);
 
 /* тёмная и светлая темы - палитра библиотеки (App.vue) */
 .reader-theme-dark {
+    --reader-on-accent: #0d1d18;
     --reader-bg: #121715;
     --reader-surface: #1a201e;
     --reader-surface-2: #222a27;
@@ -11118,6 +11084,7 @@ export default vueComponent(Reader);
 }
 
 .reader-theme-sepia {
+    --reader-on-accent: #ffffff;
     --reader-bg: #f4ecdd;
     --reader-surface: #fbf6ec;
     --reader-surface-2: #efe4d2;
@@ -11129,6 +11096,7 @@ export default vueComponent(Reader);
 }
 
 .reader-theme-light {
+    --reader-on-accent: #ffffff;
     --reader-bg: #f4f6f5;
     --reader-surface: #ffffff;
     --reader-surface-2: #eef3f1;
@@ -11140,6 +11108,7 @@ export default vueComponent(Reader);
 }
 
 .reader-theme-eink {
+    --reader-on-accent: var(--reader-eink-bg, #f3f3ee);
     --reader-bg: var(--reader-eink-bg, #f3f3ee);
     --reader-surface: var(--reader-eink-surface, #fbfbf7);
     --reader-surface-2: var(--reader-eink-surface-2, #efefe8);
@@ -11381,8 +11350,12 @@ export default vueComponent(Reader);
 
     .reader-home-head,
     .reader-home-book {
-        grid-template-columns: 1fr;
+        grid-template-columns: auto minmax(0, 1fr);
         display: grid;
+    }
+
+    .reader-home-book-actions {
+        grid-column: 1 / -1;
     }
 
     .reader-home-actions,
@@ -11402,10 +11375,6 @@ export default vueComponent(Reader);
 
     .reader-home-tab-actions {
         justify-content: flex-end;
-    }
-
-    .reader-home-reset-btn {
-        flex: 1 1 auto;
     }
 
     .reader-home-search-row {
@@ -11593,11 +11562,10 @@ export default vueComponent(Reader);
     }
 
     .reader-controls-tabs {
-        min-height: 38px;
         flex-wrap: nowrap;
+        overflow-x: auto;
     }
 
-    .reader-controls-tabs :deep(.q-btn),
     .reader-theme-switch :deep(.q-btn),
     .reader-stepper :deep(.q-btn) {
         min-height: 36px;
