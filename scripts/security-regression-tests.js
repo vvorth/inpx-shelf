@@ -305,6 +305,26 @@ async function testRootPathRewriteAtExtraction() {
     });
 }
 
+// A failed cover write must not leave a partial file under the cached name.
+async function testCoverCacheWriteIsAtomic() {
+    await temporary(async(dir) => {
+        const {writeCachedCover} = require('../server/static');
+        const writeFile = fs.writeFile;
+        fs.writeFile = async(file, data) => {
+            await writeFile(file, data.subarray(0, 2));
+            throw new Error('simulated disk full');
+        };
+        try {
+            await assert.rejects(writeCachedCover(dir, 'cover', {contentType: 'image/png', data: Buffer.from('png-data')}), /disk full/);
+        } finally {
+            fs.writeFile = writeFile;
+        }
+        assert.deepStrictEqual(await fs.readdir(dir), []);
+        await writeCachedCover(dir, 'cover', {contentType: 'image/png', data: Buffer.from('png-data')});
+        assert.strictEqual(await fs.readFile(path.join(dir, 'cover.png'), 'utf8'), 'png-data');
+    });
+}
+
 // OPDS sends the password with every request: a repeated success must skip scrypt.
 async function testRepeatedPasswordCheckSkipsScrypt() {
     const profilePassword = require('../server/core/ProfilePassword');
@@ -468,6 +488,6 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

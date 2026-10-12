@@ -95,7 +95,8 @@ async function writeCachedCover(cacheDir, cacheKey, cover) {
         return;
 
     await fs.ensureDir(cacheDir);
-    await fs.writeFile(`${cacheDir}/${cacheKey}${ext}`, cover.data);
+    //обложка отдаётся как immutable: под своим именем - только целиком записанный файл
+    await utils.prepareCachedFile(`${cacheDir}/${cacheKey}${ext}`, file => fs.writeFile(file, cover.data));
 }
 
 function normalizeWebAppBasePath(rootPathStatic = '') {
