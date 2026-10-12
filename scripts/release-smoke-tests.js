@@ -369,8 +369,8 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
     assert.match(readerSource, /contentsPanelView === 'annotation'/);
     assert.match(readerSource, /this\.findPagedPageIndexByAnchor\(targetId\)/);
     assert.match(readerSource, /this\.readerHtmlHasAnchor\(targetId\)/);
-    assert.match(readerSource, /\.filter\(\(img\) => !img\.closest\('\.reader-annotation-html'\)\)/);
-    assert.match(readerSource, /\.filter\(\(link\) => !link\.closest\('\.reader-annotation-html'\)\)/);
+    assert.match(readerSource, /img\.closest\('\.reader-annotation-html, \.reader-page-sheet--measure'\)/);
+    assert.match(readerSource, /link\.closest\('\.reader-annotation-html'\)/);
     assert.strictEqual((readerSource.match(/src="\$\{this\.escapeHtml\(src\)\}"/g) || []).length, 2);
 
     const handlerStart = readerSource.indexOf('    handleReaderAnnotationClick(event) {');

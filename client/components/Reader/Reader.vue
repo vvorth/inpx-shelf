@@ -786,6 +786,9 @@
                 @scroll="onScroll"
                 @wheel="handleReaderWheel"
                 @click="handleReaderTap"
+                @click.capture="handleReaderLinkClick"
+                @load.capture="handleReaderImageReady"
+                @error.capture="handleReaderImageReady"
                 @touchstart.passive="handleReaderTouchStart"
                 @touchend="handleReaderTouchEnd"
                 @touchcancel="handleReaderTouchCancel"
@@ -1548,8 +1551,6 @@ class Reader {
     ];
     compactChromeStatusHoldTimer = null;
     compactChromeStatusHoldUntil = 0;
-    boundReaderImages = new WeakSet();
-    boundReaderLinks = new WeakSet();
     layoutRefreshing = false;
     layoutRefreshTimer = null;
     spacingReflowTimer = null;
@@ -1659,12 +1660,7 @@ class Reader {
         this.$nextTick(() => {
             this.attachScrollerObserver();
             this.updateScrollerViewport();
-            this.bindReaderImageListeners();
         });
-    }
-
-    updated() {
-        this.bindReaderImageListeners();
     }
 
     activated() {
@@ -5079,44 +5075,24 @@ class Reader {
         this.completeCompactChromeCalibration();
     }
 
-    bindReaderImageListeners() {
-        if (typeof window === 'undefined' || !this.$refs || !this.$refs.page)
+    handleReaderImageReady(event) {
+        const img = event && event.target;
+        // Измерительный лист пагинации ждёт свои картинки сам
+        if (!img || img.tagName !== 'IMG' || img.closest('.reader-annotation-html, .reader-page-sheet--measure'))
+            return;
+        this.scheduleImageLayoutRefresh();
+    }
+
+    handleReaderLinkClick(event) {
+        const link = this.getReaderInternalLink(event && event.target);
+        if (!link || link.closest('.reader-annotation-html'))
             return;
 
-        const images = Array.from(this.$refs.page.querySelectorAll('img'))
-            .filter((img) => !img.closest('.reader-annotation-html'));
-        for (const img of images) {
-            if (this.boundReaderImages.has(img))
-                continue;
-
-            this.boundReaderImages.add(img);
-            if (img.complete)
-                continue;
-
-            const handleImageReady = () => {
-                this.scheduleImageLayoutRefresh();
-            };
-
-            img.addEventListener('load', handleImageReady, {once: true});
-            img.addEventListener('error', handleImageReady, {once: true});
-        }
-
-        const links = Array.from(this.$refs.page.querySelectorAll('a[href], .reader-note-link'))
-            .filter((link) => !link.closest('.reader-annotation-html'))
-            .filter((link) => this.getReaderLinkTarget(link));
-        for (const link of links) {
-            if (this.boundReaderLinks.has(link))
-                continue;
-
-            this.boundReaderLinks.add(link);
-            link.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                this.jumpToReaderAnchor(this.getReaderLinkTarget(link), {
-                    returnPoint: this.captureReaderNoteReturnPoint(),
-                });
-            });
-        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.jumpToReaderAnchor(this.getReaderLinkTarget(link), {
+            returnPoint: this.captureReaderNoteReturnPoint(),
+        });
     }
 
     escapeRegExp(value = '') {
@@ -9036,7 +9012,6 @@ class Reader {
                 const pageIndex = this.findPagedPageIndexByAnchor(safeId);
                 if (pageIndex >= 0) {
                     this.setCurrentPagedPage(pageIndex, false);
-                    this.bindReaderImageListeners();
                 }
 
                 return;
