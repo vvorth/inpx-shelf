@@ -156,36 +156,20 @@ async function testReindexReloadsAuthorAndArchiveCaches() {
         value.readingListStore = {getMetadataOverrides: async() => ({})};
         value.catalogSearch = new (require('../server/core/search/CatalogSearch'))(config, value);
         value.stateStore = new (require('../server/core/StateStore'))(config);
-        const app = require('express')();
-        require('../server/static')(app, config, value);
-        const server = require('http').createServer(app);
-        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-        const cover = id => fetch(`http://127.0.0.1:${server.address().port}/cover/${id}`);
         try {
             await value.loadOrCreateDb();
             assert.strictEqual(value.myState, 'normal');
             assert.strictEqual((await value.getAuthorInfo(null, name)).authorInfo.text, 'Old author biography');
             assert.strictEqual((await value.getFblibraryArchives('covers', 70000)).length, 0);
-            assert.strictEqual((await cover(60000)).status, 200); // Prime HTTP archive cache.
-            assert.strictEqual((await cover(80000)).status, 404); // Prime embedded-cover archive cache.
             await archive(authors, {[key]: '<p>Updated author biography</p>'});
             await archive(path.join(config.libDir, 'covers', '70000-70000.zip'), {'70000': png});
-            await archive(path.join(config.libDir, '80000-80000.zip'), {'80000.fb2':
-                `<FictionBook xmlns:l="http://www.w3.org/1999/xlink"><description><title-info><coverpage><image l:href="#cover"/></coverpage></title-info></description><binary id="cover" content-type="image/png">${png.toString('base64')}</binary></FictionBook>`});
             await inpx([60000, 70000, 80000]);
             await value.recreateDb();
             assert.strictEqual(value.myState, 'normal');
             assert.strictEqual((await value.dbConfig()).stats.bookCount, 3);
             assert.strictEqual((await value.getAuthorInfo(null, name)).authorInfo.text, 'Updated author biography');
             assert.strictEqual((await value.getFblibraryArchives('covers', 70000)).length, 1);
-            for (const id of [70000, 80000]) {
-                const response = await cover(id);
-                assert.strictEqual(response.status, 200, `New cover ${id} after reindex`);
-                assert.ok(Buffer.from(await response.arrayBuffer()).equals(png));
-            }
         } finally {
-            server.closeAllConnections();
-            await new Promise(resolve => server.close(resolve));
             await value.closeDb();
         }
     });

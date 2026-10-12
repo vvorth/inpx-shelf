@@ -1439,6 +1439,9 @@ async function testCoverCacheRoutesAndCleaner() {
         const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
         await fs.writeFile(path.join(coverDir, 'source-a-123.jpg'), jpg);
 
+        const book = {_uid: 'uid-123', sourceId: 'source-a', libid: 123, file: '123', ext: 'fb2'};
+        await fs.writeFile(path.join(coverDir, `${require('../server/core/BookAssets').coverCacheKey(book)}.jpg`), jpg);
+
         await withStaticServer({
             coverDir,
             bookDir: path.join(dir, 'book'),
@@ -1446,23 +1449,21 @@ async function testCoverCacheRoutesAndCleaner() {
             publicFilesDir: path.join(dir, 'public-files'),
             publicDir: path.join(dir, 'public'),
             tempDir: path.join(dir, 'tmp'),
-            libDir: dir,
-            librarySources: [{id: 'source-a', name: 'Source A', libDir: dir, inpx: path.join(dir, 'a.inpx')}],
         }, async(server) => {
-            const cached = await request(server, '/cover/source-a/123');
+            const cached = await request(server, '/cover/by-uid?uid=uid-123');
             assert.strictEqual(cached.status, 200);
             assert.match(cached.headers['content-type'] || '', /image\/jpeg/);
             assert.deepStrictEqual(cached.body, jpg);
 
-            const missing = await request(server, '/cover/source-a/not-a-number');
+            const missing = await request(server, '/cover/by-uid?uid=missing');
             assert.strictEqual(missing.status, 404);
-        });
+        }, {getBookRecordByUid: async uid => (uid === book._uid ? book : null), getBookCover: async() => null});
 
         await fs.writeFile(path.join(coverDir, 'empty.jpg'), '');
         await fs.writeFile(path.join(coverDir, 'bad.webp'), 'not cached here');
         const worker = makeWorker();
         const cleaned = await worker.cleanBrokenCoverCacheFiles(coverDir);
-        assert.strictEqual(cleaned.checked, 3);
+        assert.strictEqual(cleaned.checked, 4);
         assert.strictEqual(cleaned.removed, 2);
         assert.strictEqual(await fs.pathExists(path.join(coverDir, 'source-a-123.jpg')), true);
         assert.strictEqual(await fs.pathExists(path.join(coverDir, 'empty.jpg')), false);
