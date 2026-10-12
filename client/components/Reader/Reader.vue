@@ -1754,12 +1754,7 @@ class Reader {
     }
 
     get hasReaderProfileAccessToken() {
-        const api = this.$root && this.$root.api ? this.$root.api : null;
-        return !!String(
-            this.settings.profileAccessToken
-            || (api && api.profileAccessToken)
-            || '',
-        ).trim();
+        return !!String(this.settings.profileAccessToken || '').trim();
     }
 
     get currentSelectedProfile() {
