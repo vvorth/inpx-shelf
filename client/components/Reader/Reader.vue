@@ -1776,7 +1776,9 @@ class Reader {
             return null;
         if (current.requiresLogin && !this.config.profileAuthorized)
             return null;
-        return current.readerPreferences || null;
+        //настройки есть только в currentUserProfile, а не в общем списке профилей (его видит админ)
+        const own = this.config.currentUserProfile;
+        return (own && own.id === current.id ? own.readerPreferences : current.readerPreferences) || null;
     }
 
     get readerProfileNeedsLogin() {
@@ -9974,7 +9976,8 @@ export default vueComponent(Reader);
     padding: 28px 18px 72px;
 }
 
-.reader-shell--under-toolbar {
+/* двойной класс: правила для телефона ниже не должны сбросить отступ под панель */
+.reader-shell.reader-shell--under-toolbar {
     padding-top: calc(28px + var(--reader-toolbar-height, 0px));
 }
 
@@ -11622,7 +11625,7 @@ export default vueComponent(Reader);
     }
 
     .reader-shell {
-        padding: 2px 2px 10px;
+        padding: 2px 16px 10px;
     }
 
     .reader-shell--paged {
