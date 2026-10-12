@@ -88,11 +88,14 @@
                 <div class="device-sub">
                     {{ $t('meDevices.syncedLists') }}
                 </div>
-                <div v-if="!readingLists.length" class="card-hint">
-                    {{ $t('profiles.noReadingLists') }}
+                <div>
+                    {{ syncedListNames(device) || $t('meDevices.noListsSyncedYet') }}
                 </div>
-                <div class="device-lists">
-                    <q-checkbox v-for="list in readingLists" :key="list.id" v-model="device.draft.listIds" :val="list.id" dense :label="list.name" />
+                <div class="card-hint">
+                    {{ $t('meDevices.turnOnSyncFor') }}
+                    <router-link to="/lists">
+                        {{ $t('profiles.lists') }}
+                    </router-link>.
                 </div>
                 <q-checkbox v-model="device.draft.keepRemovedBooks" dense :label="$t('meDevices.keepBooksOnThe')" />
                 <div class="card-hint">
@@ -225,6 +228,11 @@ class MeDevices {
         }));
     }
 
+    syncedListNames(device) {
+        const ids = device.listIds || [];
+        return this.readingLists.filter(list => ids.includes(list.id)).map(list => list.name).join(', ');
+    }
+
     async loadKoboDevices() {
         this.koboLoading = true;
         try {
@@ -337,12 +345,6 @@ export default vueComponent(MeDevices);
 .device-sub {
     margin-top: 6px;
     font-weight: 600;
-}
-
-.device-lists {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
 }
 
 .device-add {

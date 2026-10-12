@@ -979,6 +979,7 @@
         "never": "never",
         "newLink": "New link",
         "noDevicesYet": "No devices yet.",
+        "noListsSyncedYet": "No lists synced yet.",
         "on": "On",
         "opdsCatalog": "OPDS catalog",
         "refreshBooksOnDevice": "Refresh books on device",
@@ -989,6 +990,7 @@
         "syncAgain": "Sync again",
         "syncedLists": "Synced lists",
         "theAdministratorProfileIs": "The administrator profile is not published in OPDS.",
+        "turnOnSyncFor": "Turn on syncing for a list on the page",
         "waitingForRefresh": "waiting for refresh",
         "whenOffABook": "When off, a book removed from all selected lists is deleted from the Kobo on the next sync.",
         "whenOnABook": "When on, a book from the selected lists that was deleted on the Kobo is downloaded again on the next sync. To take a book off the device, remove it from the list."
@@ -1123,7 +1125,6 @@
         "logout": "Log out of profile",
         "name": "Name",
         "newPassword": "New password",
-        "noReadingLists": "This profile has no reading lists yet.",
         "personalTelegramChatId": "Personal Telegram chat id",
         "profileBackupHint": "Saves personal lists, reading progress, bookmarks, hidden books and reader settings. The profile password is not exported.",
         "profileBackupImportConfirm": "Restore the JSON backup into the current profile? Lists, progress, bookmarks and personal settings will be added or updated.",
