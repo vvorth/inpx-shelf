@@ -618,7 +618,8 @@ async function testReaderChromeToggleKeepsLayout() {
 }
 
 async function testReaderHomeFieldsIgnoreGlobalDarkTheme() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = (await Promise.all(['Reader.vue', 'ReaderHome.vue']
+        .map(file => fs.readFile(path.resolve(__dirname, '../client/components/Reader', file), 'utf8')))).join('\n');
 
     assert.match(
         readerSource,
