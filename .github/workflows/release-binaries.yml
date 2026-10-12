@@ -18,7 +18,8 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   GITHUB_TOKEN: ${{ github.token }}
-  FB2CNG_RELEASE_API: https://api.github.com/repos/rupor-github/fb2cng/releases/latest
+  # Same version as FB2CNG_VERSION in the Dockerfile; update fbc_sha256 below with it.
+  FB2CNG_RELEASE_API: https://api.github.com/repos/rupor-github/fb2cng/releases/tags/v1.2.3
 
 jobs:
   release-smoke-tests:
@@ -59,21 +60,25 @@ jobs:
             target: linux
             build_script: build:linux
             fbc_asset: fbc-linux-amd64.zip
+            fbc_sha256: 726cdc9b7f3aee32f534c3abc93215e7acb3775fd26a49ce855c489ac738a5ab
           - os: ubuntu-24.04-arm
             label: Linux arm64
             target: linux-arm64
             build_script: build:linux-arm64
             fbc_asset: fbc-linux-arm64.zip
+            fbc_sha256: cc13ba0a70376cb7cb1b75364a50fcace40014483a4f0b75e1bad710503557e9
           - os: windows-latest
             label: Windows x64
             target: win
             build_script: build:win
             fbc_asset: fbc-windows-amd64.zip
+            fbc_sha256: 45e4ca7e21a597c6377af7ad3a169c3159bc6fab2ba26ec936c0cf74880a8166
           - os: macos-15-intel
             label: macOS x64
             target: macos
             build_script: build:macos
             fbc_asset: fbc-darwin-amd64.zip
+            fbc_sha256: 07813e8221b1264fe28a4c0b204d8ba5e2f1f0d4cd27b7d670314b1debdd64a2
 
     steps:
       - name: Checkout
@@ -123,7 +128,7 @@ jobs:
             Where-Object { $_.name -eq '${{ matrix.fbc_asset }}' } |
             Select-Object -First 1
           if (-not $fb2cngAsset) {
-            throw 'Unable to find fb2cng asset ${{ matrix.fbc_asset }} in the latest release'
+            throw 'Unable to find fb2cng asset ${{ matrix.fbc_asset }} in the release'
           }
 
           $fbcArchive = Join-Path $env:RUNNER_TEMP $fb2cngAsset.name
@@ -133,6 +138,10 @@ jobs:
           }
 
           Invoke-WebRequest -Uri $fb2cngAsset.browser_download_url -OutFile $fbcArchive
+          $fbcHash = (Get-FileHash -Path $fbcArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($fbcHash -ne '${{ matrix.fbc_sha256 }}') {
+            throw "SHA-256 mismatch for $($fb2cngAsset.name): $fbcHash"
+          }
           Expand-Archive -Path $fbcArchive -DestinationPath $fbcExtract -Force
 
           $fbcFileName = if ('${{ matrix.target }}' -eq 'win') { 'fbc.exe' } else { 'fbc' }

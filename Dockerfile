@@ -4,6 +4,8 @@ ARG NODE_IMAGE=node:24-bookworm-slim
 ARG RUNTIME_IMAGE=debian:bookworm-slim
 ARG FB2CNG_VERSION=v1.2.3
 ARG FB2CNG_ARCH=linux-amd64
+# SHA-256 of fbc-${FB2CNG_ARCH}.zip: update with FB2CNG_VERSION/FB2CNG_ARCH and in release-binaries.yml.
+ARG FB2CNG_SHA256=726cdc9b7f3aee32f534c3abc93215e7acb3775fd26a49ce855c489ac738a5ab
 
 FROM ${NODE_IMAGE} AS build-deps
 
@@ -24,12 +26,14 @@ FROM ${NODE_IMAGE} AS fb2cng-tools
 
 ARG FB2CNG_VERSION
 ARG FB2CNG_ARCH
+ARG FB2CNG_SHA256
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates unzip wget \
     && wget -O /tmp/fbc.zip "https://github.com/rupor-github/fb2cng/releases/download/${FB2CNG_VERSION}/fbc-${FB2CNG_ARCH}.zip" \
+    && echo "${FB2CNG_SHA256}  /tmp/fbc.zip" | sha256sum -c - \
     && unzip /tmp/fbc.zip -d /fb2cng-runtime \
     && chmod +x /fb2cng-runtime/fbc \
     && rm -rf /tmp/fbc.zip /var/lib/apt/lists/*
