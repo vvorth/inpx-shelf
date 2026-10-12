@@ -517,6 +517,28 @@ function libraryAssetDirCandidates(subDir = '', libDir = '') {
     ];
 }
 
+//Файлы каталога и его подкаталогов; каталоги, которые не прочитать, пропускаются
+async function* walkFiles(dir) {
+    const stack = [dir];
+    while (stack.length) {
+        const current = stack.pop();
+        let list = [];
+        try {
+            list = await fs.readdir(current, {withFileTypes: true});
+        } catch (e) {
+            continue;
+        }
+
+        for (const entry of list) {
+            const filePath = path.join(current, entry.name);
+            if (entry.isDirectory())
+                stack.push(filePath);
+            else
+                yield filePath;
+        }
+    }
+}
+
 //singleton
 let instance = null;
 
@@ -2494,35 +2516,21 @@ class WebWorker {
         if (own && own.isFile())
             return Object.assign(result, {size: own.size, files: 1});
 
-        const stack = [dir];
-        while (stack.length) {
-            const current = stack.pop();
-            let list = [];
+        for await (const filePath of walkFiles(dir)) {
+            let stat = null;
             try {
-                list = await fs.readdir(current);
+                stat = await fs.stat(filePath);
             } catch (e) {
                 continue;
             }
+            if (stat.isDirectory())
+                continue;
 
-            for (const name of list) {
-                const filePath = path.join(current, name);
-                let stat = null;
-                try {
-                    stat = await fs.stat(filePath);
-                } catch (e) {
-                    continue;
-                }
-
-                if (stat.isDirectory()) {
-                    stack.push(filePath);
-                } else {
-                    result.files++;
-                    result.size += stat.size;
-                    if (result.files >= maxFiles) {
-                        result.truncated = true;
-                        return result;
-                    }
-                }
+            result.files++;
+            result.size += stat.size;
+            if (result.files >= maxFiles) {
+                result.truncated = true;
+                return result;
             }
         }
 
@@ -2535,29 +2543,11 @@ class WebWorker {
         if (!dir || !await fs.pathExists(dir))
             return result;
 
-        const stack = [dir];
-        while (stack.length && result.length < maxFiles) {
-            const current = stack.pop();
-            let list = [];
-            try {
-                list = await fs.readdir(current, {withFileTypes: true});
-            } catch (e) {
-                continue;
-            }
-
-            for (const entry of list) {
-                const filePath = path.join(current, entry.name);
-                if (entry.isDirectory()) {
-                    stack.push(filePath);
-                    continue;
-                }
-
-                if (normalizedExts.has(path.extname(entry.name).toLowerCase()))
-                    result.push(filePath);
-
-                if (result.length >= maxFiles)
-                    break;
-            }
+        for await (const filePath of walkFiles(dir)) {
+            if (normalizedExts.has(path.extname(filePath).toLowerCase()))
+                result.push(filePath);
+            if (result.length >= maxFiles)
+                break;
         }
 
         return result;
@@ -2568,30 +2558,12 @@ class WebWorker {
         if (!dir || !await fs.pathExists(dir))
             return result;
 
-        const stack = [dir];
-        while (stack.length) {
-            const current = stack.pop();
-            let list = [];
-            try {
-                list = await fs.readdir(current, {withFileTypes: true});
-            } catch (e) {
-                continue;
-            }
-
-            for (const entry of list) {
-                const filePath = path.join(current, entry.name);
-                if (entry.isDirectory()) {
-                    stack.push(filePath);
-                    continue;
-                }
-
-                if (['.zip', '.7z', '.fb2', '.epub'].includes(path.extname(entry.name).toLowerCase()))
-                    result.count++;
-
-                if (result.count >= maxFiles) {
-                    result.truncated = true;
-                    return result;
-                }
+        for await (const filePath of walkFiles(dir)) {
+            if (['.zip', '.7z', '.fb2', '.epub'].includes(path.extname(filePath).toLowerCase()))
+                result.count++;
+            if (result.count >= maxFiles) {
+                result.truncated = true;
+                return result;
             }
         }
 
