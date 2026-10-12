@@ -746,10 +746,12 @@ async function testAdminSettingsRestoreKeepsSecrets() {
                 passwordSet: true,
             },
             coverCacheSize: 128,
+            converterPaths: {sevenZip: '/tmp/not-7z'},
         },
     });
 
     assert.strictEqual(patch.coverCacheSize, 128);
+    assert.ok(!Object.hasOwn(patch, 'converterPaths'), 'programs to run come only from the local config.json');
     assert.strictEqual(patch.opds.enabled, false);
     assert.strictEqual(patch.opds.password, 'current-secret');
     assert.strictEqual(Object.prototype.hasOwnProperty.call(patch.opds, 'passwordSet'), false);

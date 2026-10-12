@@ -63,7 +63,6 @@ module.exports = {
             'adminEventLogEnabled',
             'adminEventLogSize',
             'inpxCheckInterval',
-            'converterPaths',
             'server',
             'opds',
             'telegramShareEnabled',
@@ -223,9 +222,11 @@ module.exports = {
                     const secretStore = new SecretStore({dataDir: folder});
                     const {config: decoded} = await secretStore.unprotectConfig(archive['config.json']);
                     this.normalizeImportedAdminSettings(decoded);
-                    // Keep machine-local storage paths, including the recovery journal location.
+                    // Keep machine-local paths, including the recovery journal location. Converter paths
+                    // are programs the server runs: only config.json on this machine may set them.
                     runtimePatch = Object.assign(_.pick(decoded, ConfigManager.propsToSave), {
                         dataDir: this.config.dataDir, tempDir: this.config.tempDir, logDir: this.config.logDir,
+                        converterPaths: this.config.converterPaths,
                     });
                     const protectedConfig = await secretStore.protectConfig(runtimePatch);
                     if (await fs.pathExists(path.join(folder, 'secret.key')))
