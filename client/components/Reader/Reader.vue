@@ -1500,7 +1500,6 @@ class Reader {
     statusClockText = '';
     statusClockTimer = null;
     profileReaderPreferencesApplied = false;
-    snapTimer = null;
     pageTurnTimer = null;
     scrollFrame = 0;
     pageTurnAnimating = false;
@@ -1534,7 +1533,6 @@ class Reader {
     compactChromePagedBuildPending = false;
     compactChromeAwaitingCalibration = false;
     compactChromeInitialTotalPages = 0;
-    compactChromeLatestTotalPages = 0;
     compactChromeBuildSettleTimer = null;
     compactChromeBuildLastActivityAt = 0;
     compactChromeStatusHold = false;
@@ -1544,7 +1542,6 @@ class Reader {
     wakeLockSupported = false;
     wakeLockActive = false;
     wakeLockRequested = false;
-    wakeLockError = '';
     environmentAttached = false;
     serverBackgroundImage = null;
     profileWarningNotifiedKey = '';
@@ -1681,7 +1678,6 @@ class Reader {
     deactivated() {
         this.detachEnvironment();
         this.flushProgress();
-        this.clearSnapTimer();
         this.clearSpacingReflowTimer();
         clearTimeout(this.pageTurnTimer);
         if (this.savePreferencesDebounced && this.savePreferencesDebounced.flush)
@@ -1724,7 +1720,6 @@ class Reader {
 
     beforeUnmount() {
         this.detachEnvironment();
-        this.clearSnapTimer();
         this.clearSpacingReflowTimer();
         this.clearReaderReflowAnchorHighlight();
         if (this.pagePaddingPreviewTimer) {
@@ -2106,7 +2101,6 @@ class Reader {
 
     async requestWakeLock() {
         this.wakeLockRequested = true;
-        this.wakeLockError = '';
         if (!this.wakeLockSupported || document.visibilityState !== 'visible')
             return false;
 
@@ -2122,7 +2116,6 @@ class Reader {
             });
             return true;
         } catch (e) {
-            this.wakeLockError = e.message || String(e);
             this.wakeLock = null;
             this.wakeLockActive = false;
             return false;
@@ -2890,24 +2883,6 @@ class Reader {
         return this.highlightHtmlMatches(page.html || '', this.searchQuery);
     }
 
-    pageHtmlContainsReaderSnippet(html = '', textSnippet = '') {
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
-        if (!safeSnippet || safeSnippet.length < 24)
-            return false;
-
-        const needles = [
-            safeSnippet.slice(0, 160),
-            safeSnippet.slice(0, 120),
-            safeSnippet.slice(0, 80),
-            safeSnippet.slice(0, 48),
-            safeSnippet.slice(0, 24),
-        ].filter(value => value.length >= 24);
-        if (!needles.length)
-            return false;
-
-        return needles.some(needle => this.getHtmlReaderSearchText(html).includes(needle));
-    }
-
     get hasSearchResults() {
         return this.searchResults.length > 0;
     }
@@ -3403,7 +3378,6 @@ class Reader {
             this.compactChromePagedBuildPending = true;
             this.compactChromeAwaitingCalibration = true;
             this.compactChromeInitialTotalPages = Math.max(1, this.totalPages || 1);
-            this.compactChromeLatestTotalPages = this.compactChromeInitialTotalPages;
             this.beginCompactChromeStatusHold(2600);
         }
         this.touchCompactChromeBuildActivity();
@@ -4435,7 +4409,6 @@ class Reader {
             this.compactChromePagedBuildPending = false;
             this.compactChromeAwaitingCalibration = false;
             this.compactChromeInitialTotalPages = 0;
-            this.compactChromeLatestTotalPages = 0;
             this.compactChromeBuildLastActivityAt = 0;
             this.clearCompactChromeStatusHold();
         }, Math.max(120, Math.round(Number(delayMs || 0) || 0)));
@@ -4448,7 +4421,6 @@ class Reader {
         const total = Math.max(1, Number(this.totalPages || 1) || 1);
         if (!this.compactChromeInitialTotalPages)
             this.compactChromeInitialTotalPages = total;
-        this.compactChromeLatestTotalPages = total;
 
         if (total !== this.compactChromeInitialTotalPages) {
             this.compactChromeAwaitingCalibration = false;
@@ -5723,219 +5695,6 @@ class Reader {
         };
     }
 
-    trimPagedPageHtmlBeforeSnippet(html = '', textSnippet = '') {
-        const safeHtml = String(html || '');
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
-        if (!safeHtml || safeSnippet.length < 24 || typeof document === 'undefined')
-            return '';
-
-        const host = document.createElement('div');
-        host.innerHTML = safeHtml;
-        const target = this.findReaderNodeByTextSnippet(host, safeSnippet);
-        const textPosition = this.findReaderTextPositionBySnippet(host, safeSnippet)
-            || this.findReaderTextPositionByDocumentSnippet(host, safeSnippet);
-        if (!target && !textPosition)
-            return '';
-
-        const trimNode = (textPosition && textPosition.node) || target;
-        if (textPosition && textPosition.node) {
-            textPosition.node.nodeValue = String(textPosition.node.nodeValue || '').slice(textPosition.offset);
-        } else {
-            this.trimReaderNodeTextBeforeSnippet(target, safeSnippet);
-        }
-        this.removeReaderContentBeforeNode(host, trimNode);
-        return host.innerHTML || '';
-    }
-
-    findReaderTextPositionBySnippet(root = null, textSnippet = '') {
-        if (!root || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function')
-            return null;
-
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
-        const needles = [
-            safeSnippet.slice(0, 120),
-            safeSnippet.slice(0, 80),
-            safeSnippet.slice(0, 48),
-            safeSnippet.slice(0, 24),
-        ].filter(value => value.length >= 24);
-        if (!needles.length)
-            return null;
-
-        const walker = document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (node) => (
-                    this.normalizeReaderSearchText(node.nodeValue || '').length
-                        ? NodeFilter.FILTER_ACCEPT
-                        : NodeFilter.FILTER_REJECT
-                ),
-            },
-        );
-        let current = walker.nextNode();
-        while (current) {
-            const rawText = String(current.nodeValue || '');
-            const normalized = this.normalizeReaderSearchText(rawText).toLowerCase();
-            if (normalized) {
-                for (const needle of needles) {
-                    const normalizedIndex = normalized.indexOf(needle);
-                    if (normalizedIndex < 0)
-                        continue;
-
-                    const offset = this.mapNormalizedTextIndexToRawOffset(rawText, normalizedIndex);
-                    return {node: current, offset};
-                }
-            }
-            current = walker.nextNode();
-        }
-
-        return null;
-    }
-
-    findReaderTextPositionByDocumentSnippet(root = null, textSnippet = '') {
-        if (!root || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function')
-            return null;
-
-        const safeSnippet = this.normalizeReaderSearchText(textSnippet).toLowerCase();
-        const needles = [
-            safeSnippet.slice(0, 160),
-            safeSnippet.slice(0, 120),
-            safeSnippet.slice(0, 80),
-            safeSnippet.slice(0, 48),
-            safeSnippet.slice(0, 24),
-        ].filter(value => value.length >= 24);
-        if (!needles.length)
-            return null;
-
-        const fullText = this.getReaderRootSearchText(root);
-        const needle = needles.find(value => fullText.includes(value));
-        if (!needle)
-            return null;
-
-        const targetIndex = fullText.indexOf(needle);
-        if (targetIndex < 0)
-            return null;
-
-        const walker = document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (node) => (
-                    this.normalizeReaderSearchText(node.nodeValue || '').length
-                        ? NodeFilter.FILTER_ACCEPT
-                        : NodeFilter.FILTER_REJECT
-                ),
-            },
-        );
-        let normalizedOffset = 0;
-        let current = walker.nextNode();
-
-        while (current) {
-            const rawText = String(current.nodeValue || '');
-            const nodeText = this.normalizeReaderSearchText(rawText).toLowerCase();
-            if (!nodeText) {
-                current = walker.nextNode();
-                continue;
-            }
-
-            const nodeStart = normalizedOffset;
-            const nodeEnd = nodeStart + nodeText.length;
-            if (targetIndex <= nodeEnd) {
-                const localIndex = Math.max(0, targetIndex - nodeStart);
-                return {
-                    node: current,
-                    offset: this.mapNormalizedTextIndexToRawOffset(rawText, localIndex),
-                };
-            }
-
-            normalizedOffset = nodeEnd + 1;
-            current = walker.nextNode();
-        }
-
-        return null;
-    }
-
-    mapNormalizedTextIndexToRawOffset(rawText = '', normalizedIndex = 0) {
-        const raw = String(rawText || '');
-        const targetIndex = Math.max(0, Math.round(Number(normalizedIndex || 0) || 0));
-        let normalizedCount = 0;
-        let inWhitespace = true;
-
-        for (let index = 0; index < raw.length; index += 1) {
-            const char = raw[index];
-            if (/\s/.test(char)) {
-                if (!inWhitespace) {
-                    if (normalizedCount >= targetIndex)
-                        return index;
-                    normalizedCount += 1;
-                    inWhitespace = true;
-                }
-                continue;
-            }
-
-            if (normalizedCount >= targetIndex)
-                return index;
-
-            normalizedCount += 1;
-            inWhitespace = false;
-        }
-
-        return raw.length;
-    }
-
-    trimReaderNodeTextBeforeSnippet(node = null, textSnippet = '') {
-        if (!node)
-            return;
-
-        const needles = [
-            String(textSnippet || '').slice(0, 120),
-            String(textSnippet || '').slice(0, 80),
-            String(textSnippet || '').slice(0, 48),
-            String(textSnippet || '').slice(0, 24),
-        ].filter(value => value.length >= 24);
-        if (!needles.length)
-            return;
-
-        const rawText = String(node.textContent || '');
-        const normalizedRaw = this.normalizeReaderSearchText(rawText).toLowerCase();
-        const needle = needles.find(value => normalizedRaw.includes(value));
-        if (!needle)
-            return;
-
-        const rawNeedle = String(needle || '').slice(0, 24);
-        const directIndex = rawText.toLowerCase().indexOf(rawNeedle);
-        if (directIndex >= 0) {
-            node.textContent = rawText.slice(directIndex);
-            return;
-        }
-
-        const words = rawNeedle.split(/\s+/).filter(Boolean);
-        const firstWord = words[0] || '';
-        if (!firstWord)
-            return;
-
-        const wordIndex = rawText.toLowerCase().indexOf(firstWord);
-        if (wordIndex >= 0)
-            node.textContent = rawText.slice(wordIndex);
-    }
-
-    removeReaderContentBeforeNode(root = null, target = null) {
-        if (!root || !target)
-            return;
-
-        let node = target;
-        while (node && node !== root) {
-            let sibling = node.previousSibling;
-            while (sibling) {
-                const previous = sibling.previousSibling;
-                if (sibling.parentNode)
-                    sibling.parentNode.removeChild(sibling);
-                sibling = previous;
-            }
-            node = node.parentNode;
-        }
-    }
-
     async scheduleReaderReflowAnchorHighlight(anchor = null) {
         if (!anchor || typeof window === 'undefined')
             return;
@@ -6038,7 +5797,6 @@ class Reader {
         this.beginLayoutRefresh();
         this.restorePending = true;
         this.restoreFromSavedProgress = false;
-        this.clearSnapTimer();
         this.requestBottomClipCalibration();
         this.runAfterLayoutRefreshPaint(() => {
             this.updateScrollerViewport();
@@ -6100,13 +5858,6 @@ class Reader {
             this.pagePaddingPreviewTimer = null;
             this.pagePaddingPreviewEdge = '';
         }, 1800);
-    }
-
-    clearSnapTimer() {
-        if (this.snapTimer) {
-            clearTimeout(this.snapTimer);
-            this.snapTimer = null;
-        }
     }
 
     applyVerticalSectionAlignment() {
@@ -7627,19 +7378,6 @@ class Reader {
                 const fastInfo = this.isCompactLayout ? null : this.getFastPagedUnitInfo(unit);
                 if (fastInfo && fastLineBudget > 2 && (!currentUnits.length || currentEstimatedLines > 0)) {
                     if (currentUnits.length && currentEstimatedLines + fastInfo.lines > fastLineBudget) {
-                        if (this.isCompactLayout) {
-                            const fitCurrentPageDomSplit = this.splitUnitToFitCurrentPage(unit, currentUnits);
-                            if (fitCurrentPageDomSplit.length) {
-                                stats.domSplits += 1;
-                                stats.generatedDomSplitUnits += fitCurrentPageDomSplit.length;
-                                queue.splice(index, 1, ...fitCurrentPageDomSplit);
-                                index -= 1;
-                                applyUnits(currentUnits);
-                                await maybeYield(index + 1);
-                                continue;
-                            }
-                        }
-
                         const fitCurrentPageSplit = this.splitFastRootByLineBudget(
                             fastInfo.root,
                             unit,
@@ -7652,19 +7390,6 @@ class Reader {
                             index -= 1;
                             await maybeYield(index + 1);
                             continue;
-                        }
-
-                        if (this.isCompactLayout) {
-                            const fitCurrentPageDomSplit = this.splitUnitToFitCurrentPage(unit, currentUnits);
-                            if (fitCurrentPageDomSplit.length) {
-                                stats.domSplits += 1;
-                                stats.generatedDomSplitUnits += fitCurrentPageDomSplit.length;
-                                queue.splice(index, 1, ...fitCurrentPageDomSplit);
-                                index -= 1;
-                                applyUnits(currentUnits);
-                                await maybeYield(index + 1);
-                                continue;
-                            }
                         }
 
                         finalizePage();
@@ -9505,12 +9230,6 @@ class Reader {
             scroller.scrollTop + delta * pageHeight,
         ));
         scroller.scrollTo({top: nextTop, behavior: 'smooth'});
-    }
-
-    snapToNearestPage() {
-        if (!this.isPagedMode)
-            return;
-        this.setCurrentPagedPage(this.currentPagedPageIndex, false);
     }
 
     async addCurrentBookmark() {
