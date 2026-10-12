@@ -36,8 +36,6 @@
   "devDependencies": {
     "@babel/core": "^7.24.3",
     "@babel/eslint-parser": "^7.24.1",
-    "@babel/eslint-plugin": "^7.23.5",
-    "@babel/plugin-proposal-decorators": "^7.24.1",
     "@babel/preset-env": "^7.24.3",
     "@vue/compiler-sfc": "^3.2.22",
     "@yao-pkg/pkg": "6.22.0",

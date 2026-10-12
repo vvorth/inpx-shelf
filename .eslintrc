@@ -8,9 +8,6 @@
     "eslint:recommended",
     "plugin:vue/recommended"
   ],
-  "plugins": [
-    "@babel"
-  ],
   "env": {
     "es6": true,
     "browser": true,

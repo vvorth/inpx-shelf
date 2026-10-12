@@ -28,12 +28,7 @@ module.exports = {
                 test: /\.js$/,
                 loader: 'babel-loader',
                 exclude: /node_modules/,
-                options: {
-                    presets: [['@babel/preset-env', { targets: { esmodules: true } }]],
-                    plugins: [
-                        ['@babel/plugin-proposal-decorators', { legacy: true }]
-                    ]
-                }
+                //настройки babel в .babelrc: его же читает @babel/eslint-parser
             },
             {
                 test: /\.(gif|png)$/,
