@@ -124,9 +124,31 @@ async function testAuthorInfoIndexBuildsOnce() {
     assert.strictEqual(builds, 3);
 }
 
+//файл, извлечённый из архива, не остаётся во временном каталоге, если в кеше нет только описания книги
+async function testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing() {
+    await temporary(async(dir) => {
+        const config = {tempDir: path.join(dir, 'tmp'), bookDir: path.join(dir, 'book'), bookPathStatic: '/book'};
+        await fs.ensureDir(config.tempDir);
+        await fs.ensureDir(config.bookDir);
+        const worker = bareWorker({config, scheduleCacheClean: () => {}, stateStore: {putBookFile: () => {}}});
+        worker.extractBook = async() => {
+            const file = path.join(config.tempDir, 'extracted');
+            await fs.writeFile(file, 'book text');
+            return file;
+        };
+        const hash = require('crypto').createHash('sha256').update('book text').digest('hex');
+        await fs.writeFile(path.join(config.bookDir, hash), 'gzipped earlier');
+
+        assert.strictEqual(await worker.restoreBook('uid', 'folder.zip', '1.txt', 'book.txt', dir), `/book/${hash}`);
+        assert.deepStrictEqual(await fs.readdir(config.tempDir), []);
+        assert.strictEqual((await fs.readJson(path.join(config.bookDir, `${hash}.d.json`))).size, 9);
+    });
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
     testLibraryRebuildsDoNotOverlap,
     testAuthorInfoIndexBuildsOnce,
+    testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing,
 ];

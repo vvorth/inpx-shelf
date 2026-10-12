@@ -4177,6 +4177,8 @@ class WebWorker {
                 await fs.remove(extractedFile);
                 await fs.move(tmpFile, bookFile, {overwrite: true});
             } else {
+                if (extractedFile)
+                    await fs.remove(extractedFile);
                 await utils.touchFile(bookFile);
             }
         } else {
@@ -4288,7 +4290,9 @@ class WebWorker {
 
         let cacheChanged = await utils.ensureGunzipFile(gzipFile, rawFile, size);
 
+        //описание (.d.json) нужно вместе с файлом: очистка кеша удаляет самые старые файлы первыми
         await utils.touchFile(gzipFile);
+        await utils.touchFile(`${gzipFile}.d.json`);
         await utils.touchFile(rawFile);
 
         const book = await this.getBookRecordByUid(bookUid);
