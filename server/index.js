@@ -238,7 +238,7 @@ async function main() {
         server,
         maxPayload: require('./core/RequestLimits').transportLimit(config),
         verifyClient: (info, done) => {
-            done(security.verifyWebSocket(info.req), 403, 'Forbidden');
+            done(security.verifyWebSocket(info.req, wss.clients), 403, 'Forbidden');
         },
     });
 

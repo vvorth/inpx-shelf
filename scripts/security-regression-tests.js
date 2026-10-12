@@ -325,6 +325,19 @@ async function testCoverCacheWriteIsAtomic() {
     });
 }
 
+// One address cannot hold an unbounded number of WebSockets; behind a trusted proxy the client address counts.
+async function testWebSocketConnectionsCappedPerIp() {
+    const security = new Security({trustProxy: true, trustedProxyCidrs: ['10.0.0.1/32']});
+    security.secret = 'test-secret';
+    const direct = ip => ({headers: {}, socket: {remoteAddress: ip}});
+    const proxied = ip => ({headers: {'x-forwarded-for': ip}, socket: {remoteAddress: '10.0.0.1'}});
+    const clients = Array.from({length: 50}, () => ({req: proxied('192.0.2.1')}));
+    assert.strictEqual(security.verifyWebSocket(proxied('192.0.2.1'), clients), false);
+    assert.strictEqual(security.verifyWebSocket(proxied('192.0.2.2'), clients), true);
+    assert.strictEqual(security.verifyWebSocket(direct('10.0.0.1'), clients), true, 'The proxy address itself is not the client');
+    assert.strictEqual(security.verifyWebSocket(direct('192.0.2.1'), clients.slice(1)), true);
+}
+
 // OPDS sends the password with every request: a repeated success must skip scrypt.
 async function testRepeatedPasswordCheckSkipsScrypt() {
     const profilePassword = require('../server/core/ProfilePassword');
@@ -488,6 +501,6 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

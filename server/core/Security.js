@@ -9,6 +9,7 @@ const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
 const proxyAuthCookieName = 'inpx_web_proxy_auth';
+const maxWebSocketsPerIp = 50;
 
 function parseIpv4(value = '') {
     const normalized = String(value || '').trim()
@@ -433,7 +434,19 @@ class Security {
         };
     }
 
-    verifyWebSocket(req) {
+    verifyWebSocket(req, clients = []) {
+        // Each open socket holds memory and timers: cap them per client address.
+        const ip = this.clientIp(req);
+        let count = 0;
+        for (const client of clients) {
+            if (client.req && this.clientIp(client.req) === ip)
+                count++;
+        }
+        if (count >= maxWebSocketsPerIp) {
+            logSecurityWarning(`WebSocket forbidden: too many connections, remote=${ip || '-'}`);
+            return false;
+        }
+
         const auth = this.verifyRequiredAuth(req);
         if (!auth.ok) {
             logSecurityWarning(`WebSocket forbidden: auth failed, status=${auth.status || 401}, remote=${this.clientIp(req) || '-'}`);
