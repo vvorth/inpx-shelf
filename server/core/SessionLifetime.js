@@ -17,6 +17,13 @@ function makeRoom(sessions, now = Date.now()) {
         }
         lastSweep.set(sessions, now);
     }
+    // Sessions without a profile go first: cookie-less hits must not log users out.
+    for (const [key, session] of sessions) {
+        if (sessions.size < maxSessions)
+            break;
+        if (!session.profileAccessToken)
+            sessions.delete(key);
+    }
     while (sessions.size >= maxSessions)
         sessions.delete(sessions.keys().next().value);
 }

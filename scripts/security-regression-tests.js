@@ -123,9 +123,12 @@ async function testSessionLifetimeAndMalformedCookies() {
     assert.strictEqual(security.unpackProxyAuthCookie(security.proxyAuthCookieValue('a.b')), 'a.b');
     const oldTime = Date.now() - lifetime.maxAgeMs - 1;
     assert.strictEqual(security.unpackProxyAuthCookie(`reader.${oldTime}.${security.sign(`proxy:reader:${oldTime}`)}`), '');
+    const loggedIn = security.ensureSession({headers: {}});
+    loggedIn.profileAccessToken = 'profile-token';
     for (let i = 0; i < lifetime.maxSessions + 10; i++)
         security.ensureSession({headers: {}});
     assert.strictEqual(security.sessions.size, lifetime.maxSessions);
+    assert.strictEqual(security.sessions.get(loggedIn.id), loggedIn, 'Anonymous sessions are evicted before logged-in ones');
 }
 
 async function testProfileCredentialChangesRevokeSessions() {
