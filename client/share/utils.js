@@ -1,13 +1,12 @@
 import dayjs from 'dayjs';
-import {Buffer} from 'safe-buffer';
 //import _ from 'lodash';
 
 export function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export function toHex(buf) {
-    return Buffer.from(buf).toString('hex');
+export function toHex(bytes) {
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export function downloadJson(data, fileName) {

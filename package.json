@@ -77,7 +77,6 @@
     "nodemailer": "^10.0.10",
     "pngjs": "^7.0.0",
     "quasar": "^2.32.3",
-    "safe-buffer": "^5.2.1",
     "vue": "^3.2.37",
     "vue-router": "^4.3.0",
     "vuex": "^4.1.0",
