@@ -6,51 +6,22 @@ const express = require('express');
 const {t} = require('../i18n');
 const KoboStore = require('./KoboStore');
 const defaultResources = require('./resources');
-const {BookMetadata, epubMetadata} = require('../BookMetadata');
-const {coverCacheKey} = require('../BookAssets');
-const bookConverter = require('../BookConverter');
-const imageUtils = require('../ImageUtils');
-const {writeFileAtomic} = require('../FilePersistence');
-
-// Resolved lazily: Security requires this module before the logger may be initialized.
-function log(...args) {
-    return new (require('../AppLogger'))().log(...args);
-}
+const {BookMetadata} = require('../BookMetadata');
+const {log, rootPath, syncTokenHeader, busyConversionCodes} = require('./common');
 
 const syncItemLimit = 100;
 // Kobo sync requests must answer quickly; conversions that take longer finish
 // in the background and are announced on a later sync.
 const prepareBudgetMs = 20000;
-const prepareRetryMs = 10*60*1000;
-// Stay well below the shared conversion queue so web downloads keep working.
-const prepareConcurrency = 2;
-const preparedEntryLimit = 2000;
-// Background preparation of books added to bound lists (one at a time, so sync keeps a slot).
-const prewarmQueueLimit = 5000;
-const prewarmAttempts = 3;
 const prewarmBusyRetryMs = 5000;
-const busyConversionCodes = new Set(['INPX_CONVERSION_QUEUE_FULL', 'INPX_CONVERSION_QUEUE_TIMEOUT']);
 // Looking an orphan up by libid scans the whole book table: at most once an hour per book.
 const rekeyRetryMs = 60*60*1000;
 const rekeyCheckedLimit = 10000;
 const uuidNamespace = 'b0f7c0a4-5a43-4b8e-9d0e-6f1a8c2e4d17';
 const zeroUuid = '00000000-0000-0000-0000-000000000001';
-const syncTokenHeader = 'x-kobo-synctoken';
 const koboStoreUrl = 'https://storeapi.kobo.com';
-const koboImageUrl = 'https://cdn.kobo.com/book-images';
-const storeTimeoutMs = 10000;
-const coverMaxSide = 3000;
-const coverDefaultQuality = 85;
-const coverCacheTypes = [['.jpg', 'image/jpeg'], ['.png', 'image/png'], ['.gif', 'image/gif']];
-// Hop-by-hop headers and ones fetch() already decoded must not be relayed.
-const skippedStoreHeaders = new Set(['host', 'connection', 'content-length', 'content-encoding', 'transfer-encoding',
-    'keep-alive', 'accept-encoding', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded', 'cookie']);
 
 let activeService = null;
-
-function rootPath(config) {
-    return `${String(config.rootPathStatic || '').replace(/\/$/, '')}/kobo`;
-}
 
 function uuidv5(name, namespace = uuidNamespace) {
     const ns = Buffer.from(namespace.replace(/-/g, ''), 'hex');
@@ -123,14 +94,6 @@ function errorStatus(error) {
     if (busyConversionCodes.has(error && error.code))
         return 503;
     return (/^404\b/.test(String((error && error.message) || '')) ? 404 : 500);
-}
-
-function sleep(ms) {
-    return new Promise(resolve => {
-        const timer = setTimeout(resolve, ms);
-        if (timer.unref)
-            timer.unref();
-    });
 }
 
 class KoboService {
@@ -301,14 +264,6 @@ class KoboService {
         return {authors: String(book.author || '').split(',').map(name => name.trim()).filter(Boolean), fromFile: false};
     }
 
-    async fileAuthors(file) {
-        try {
-            return (await epubMetadata(file, this.config)).authors || [];
-        } catch (e) {
-            return [];
-        }
-    }
-
     async bookRecord(bookUid) {
         return this.withOverrides(await this.worker.getBookRecordByUid(bookUid), await this.metadataOverrides());
     }
@@ -376,176 +331,7 @@ class KoboService {
         return true;
     }
 
-    targetFormat(book) {
-        const ext = String(book.ext || '').toLowerCase();
-        if (ext === 'epub')
-            return {convertTo: '', koboFormats: ['EPUB3', 'EPUB']};
-        if (ext !== 'fb2' || this.config.conversionEnabled === false)
-            return null;
-        const formats = (Array.isArray(this.config.conversionFormats) ? this.config.conversionFormats : []);
-        if (formats.includes('kepub'))
-            return {convertTo: 'kepub', koboFormats: ['KEPUB']};
-        if (formats.includes('epub'))
-            return {convertTo: 'epub', koboFormats: ['EPUB']};
-        return null;
-    }
-
-    // Identifies how a converted file is produced (fb2cng config contents and version, converter
-    // paths): the same signature the shared conversion cache is keyed by. Memoized per sync.
-    async conversionFingerprint(book, target, memo) {
-        if (!target.convertTo)
-            return 'raw';
-        const key = `${String(book.ext || '').toLowerCase()}:${target.convertTo}`;
-        if (!memo.has(key)) {
-            memo.set(key, bookConverter.getConversionCacheInfo({
-                cacheBasePath: 'kobo-fingerprint',
-                sourceFileName: `book.${String(book.ext || '').toLowerCase()}`,
-                format: target.convertTo,
-                config: this.config,
-            }).then(info => info.fingerprint, error => {
-                log(LM_WARN, `Kobo: cannot check the conversion settings: ${error.message}`);
-                return null;
-            }));
-        }
-        return await memo.get(key);
-    }
-
-    preparedKey(bookUid, convertTo, fingerprint) {
-        return `${bookUid}:${convertTo}:${fingerprint || ''}`;
-    }
-
-    // Starts (once per conversion fingerprint) the file preparation and reports whether it is ready right now.
-    async prepare(item, deadline, fingerprint = '') {
-        const target = this.targetFormat(item.book);
-        if (!target)
-            return {unsupported: true};
-
-        const key = this.preparedKey(item.bookUid, target.convertTo, fingerprint);
-        let entry = this.prepared.get(key);
-        if (entry && entry.error && Date.now() - entry.at > prepareRetryMs) {
-            this.prepared.delete(key);
-            entry = null;
-        }
-        if (!entry) {
-            const inflight = [...this.prepared.values()].filter(item => !item.result && !item.error).length;
-            if (inflight >= prepareConcurrency)
-                return {pending: true};
-            entry = {at: Date.now()};
-            entry.promise = (async() => {
-                const prepared = await this.worker.getPreparedBookFile(item.bookUid, target.convertTo);
-                const stat = await fs.stat(prepared.rawFile);
-                return Object.assign({}, target, {size: stat.size, authors: await this.fileAuthors(prepared.rawFile)});
-            })().then(result => {
-                entry.result = result;
-                return result;
-            }, error => {
-                entry.error = error;
-                entry.at = Date.now();
-                if (busyConversionCodes.has(error.code)) {
-                    // The shared converter was busy: nothing wrong with the book, try again next time.
-                    entry.busy = true;
-                    if (this.prepared.get(key) === entry)
-                        this.prepared.delete(key);
-                } else {
-                    log(LM_WARN, `Kobo: cannot prepare ${item.bookUid}: ${error.message}`);
-                }
-                return null;
-            });
-            this.prepared.set(key, entry);
-            // Drop the oldest finished entry; running ones (at most prepareConcurrency) stay.
-            if (this.prepared.size > preparedEntryLimit) {
-                for (const [oldKey, old] of this.prepared) {
-                    if (old.result || old.error) {
-                        this.prepared.delete(oldKey);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (entry.result || entry.error)
-            return {ready: entry.result || null, failed: !!entry.error, busy: !!entry.busy};
-
-        const remaining = deadline - Date.now();
-        if (remaining > 0)
-            await Promise.race([entry.promise, sleep(remaining)]);
-        return {ready: entry.result || null, failed: !!entry.error, busy: !!entry.busy, pending: !entry.result && !entry.error};
-    }
-
-    // ------------------------------------------------------------------ pre-warm
-    // Books added to a list bound to a device start preparing right away, so the next sync can
-    // announce them instead of waiting for the conversion. Fire and forget: errors are only logged.
-    prewarmBooks(userId, listId, bookUids = []) {
-        const data = this.store.data;
-        if (!data || !data.devices.some(device => device.userId === userId && device.listIds.includes(listId)))
-            return;
-        this.enqueuePrewarm(userId, bookUids);
-    }
-
-    // Every book of the given lists (a list was just bound, or lists were imported).
-    prewarmLists(userId, listIds = null) {
-        const task = (async() => {
-            await this.store.load();
-            const bound = new Set(this.store.data.devices.filter(device => device.userId === userId)
-                .flatMap(device => device.listIds));
-            const store = this.worker.readingListStore;
-            const {lists} = await this.boundLists(userId, (listIds || [...bound]).filter(listId => bound.has(listId)));
-            for (const list of lists)
-                this.enqueuePrewarm(userId, store.normalizeEntries(list.books).map(entry => entry.bookUid));
-        })().catch(e => log(LM_WARN, `Kobo: cannot queue books for preparation: ${e.message}`))
-            .finally(() => this.prewarmListTasks.delete(task));
-        this.prewarmListTasks.add(task);
-    }
-
-    // Resolves once no background preparation is queued or running.
-    async idle() {
-        while (this.prewarmListTasks.size || this.prewarmRunning) {
-            await Promise.all([...this.prewarmListTasks]);
-            if (this.prewarmRunning)
-                await this.prewarmRunning;
-        }
-    }
-
-    enqueuePrewarm(userId, bookUids = []) {
-        // Books a device of this profile already has are prepared already.
-        const sent = new Set(this.store.data.devices.filter(device => device.userId === userId)
-            .flatMap(device => Object.values(device.books).map(row => row.bookUid)));
-        for (const bookUid of bookUids) {
-            if (bookUid && !sent.has(bookUid) && this.prewarmQueue.size < prewarmQueueLimit)
-                this.prewarmQueue.add(bookUid);
-        }
-        if (this.prewarmQueue.size && !this.prewarmRunning) {
-            this.prewarmRunning = this.runPrewarm()
-                .catch(e => log(LM_WARN, `Kobo: book preparation stopped: ${e.message}`))
-                .finally(() => {
-                    this.prewarmRunning = null;
-                });
-        }
-    }
-
-    async runPrewarm() {
-        const fingerprints = new Map();
-        while (this.prewarmQueue.size) {
-            const bookUid = this.prewarmQueue.values().next().value;
-            this.prewarmQueue.delete(bookUid);
-            const book = await this.worker.getBookRecordByUid(bookUid);
-            const target = book && this.targetFormat(book);
-            if (!target)
-                continue;
-            const fingerprint = await this.conversionFingerprint(book, target, fingerprints);
-            const item = {bookUid, book};
-            for (let attempt = 1; attempt <= prewarmAttempts; attempt++) {
-                // Waits for this book's conversion; a slot taken by a running sync is retried.
-                let prepared = await this.prepare(item, Date.now() + this.prewarmBusyRetryMs, fingerprint);
-                while (prepared.pending && !prepared.ready && this.prepared.has(this.preparedKey(bookUid, target.convertTo, fingerprint)))
-                    prepared = await this.prepare(item, Date.now() + this.prewarmBusyRetryMs, fingerprint);
-                if (prepared.ready || (prepared.failed && !prepared.busy))
-                    break;
-                await sleep(this.prewarmBusyRetryMs);
-            }
-        }
-    }
-
+    // ------------------------------------------------------------------ book metadata
     async readExtraMetadata(book) {
         try {
             return await this.metadata.read(book);
@@ -1168,86 +954,6 @@ class KoboService {
         res.status(removed ? 200 : 201).send('');
     }
 
-    async cover(req, res, device) {
-        const row = device.books[req.params.uuid];
-        const book = row && await this.worker.getBookRecordByUid(row.bookUid);
-        if (!book) {
-            if (device.storeProxy && /^[0-9a-f-]{36}$/i.test(req.params.uuid)) {
-                const {uuid, width, height} = req.params;
-                return res.redirect(307, `${koboImageUrl}/${uuid}/${encodeURIComponent(width)}/${encodeURIComponent(height)}/false/image.jpg`);
-            }
-            return res.sendStatus(404);
-        }
-
-        const cacheDir = this.config.coverDir || `${this.config.publicFilesDir}/cover`;
-        const key = coverCacheKey(book);
-        const size = this.coverSize(req.params);
-        const resizedFile = size && `${cacheDir}/${key}-kobo-${size.width}x${size.height}-q${size.quality}.jpg`;
-        if (resizedFile && await this.sendCoverFile(res, resizedFile, 'image/jpeg'))
-            return;
-
-        const cover = await this.sourceCover(book, cacheDir, key);
-        if (!cover)
-            return res.sendStatus(404);
-        let reply = cover;
-        if (size) {
-            // One at a time: pure-JS decoding holds the event loop, and repeated requests find the file made.
-            const run = this.coverQueue.then(async() => {
-                if (await fs.pathExists(resizedFile))
-                    return {contentType: 'image/jpeg', data: await fs.readFile(resizedFile)};
-                // null: already a JPEG that fits, cached under the sized name as well.
-                const data = imageUtils.fitToJpeg(cover.data, size.width, size.height, size.quality) || cover.data;
-                // sendCoverFile serves any file it finds: never a half-written one.
-                await writeFileAtomic(resizedFile, data);
-                return {contentType: 'image/jpeg', data};
-            });
-            this.coverQueue = run.catch(() => {});
-            try {
-                reply = await run;
-            } catch (error) {
-                log(LM_WARN, `Kobo: cover of ${row.bookUid} served at its original size: ${error.message}`);
-            }
-        }
-        res.set('Cache-Control', 'public, max-age=2592000, immutable');
-        res.type(reply.contentType).send(reply.data);
-    }
-
-    // The size a cover URL asks for; null (send the original) when it isn't a usable one.
-    coverSize(params) {
-        const width = parseInt(params.width, 10);
-        const height = parseInt(params.height, 10);
-        if (!(width > 0 && height > 0))
-            return null;
-        const quality = parseInt(params.quality, 10);
-        return {
-            width: Math.min(width, coverMaxSide),
-            height: Math.min(height, coverMaxSide),
-            quality: (quality > 0 && quality <= 100 ? Math.max(quality, 30) : coverDefaultQuality),
-        };
-    }
-
-    async sendCoverFile(res, file, type) {
-        if (!await fs.pathExists(file))
-            return false;
-        await fs.utimes(file, new Date(), new Date());
-        res.set('Cache-Control', 'public, max-age=2592000, immutable');
-        res.type(type).sendFile(file);
-        return true;
-    }
-
-    // The book's cover from the shared cover cache (the one /cover/by-uid fills), made and cached if missing.
-    async sourceCover(book, cacheDir, key) {
-        for (const [ext, contentType] of coverCacheTypes) {
-            const file = `${cacheDir}/${key}${ext}`;
-            if (await fs.pathExists(file))
-                return {contentType, data: await fs.readFile(file)};
-        }
-        const cover = await this.worker.getBookCover(book);
-        if (cover)
-            await require('../../static').writeCachedCover(cacheDir, key, cover);
-        return cover;
-    }
-
     async download(req, res, device) {
         const row = device.books[req.params.uuid];
         if (!row)
@@ -1326,81 +1032,6 @@ class KoboService {
             TrackingId: crypto.randomUUID(),
             UserKey: String(body.UserKey || ''),
         });
-    }
-
-    // ------------------------------------------------------------------ Kobo Store proxy
-    storeTarget(req, token) {
-        const prefix = `${rootPath(this.config)}/${token}`;
-        const url = String(req.originalUrl || '');
-        const rest = (url.startsWith(prefix) ? url.slice(prefix.length) : url);
-        return `${this.storeUrl}${rest || '/'}`;
-    }
-
-    async storeRequest(req, token, extraHeaders = {}) {
-        const headers = {};
-        for (const [key, value] of Object.entries(req.headers)) {
-            if (!skippedStoreHeaders.has(key.toLowerCase()) && value !== undefined)
-                headers[key] = (Array.isArray(value) ? value.join(', ') : String(value));
-        }
-        for (const [key, value] of Object.entries(extraHeaders)) {
-            if (value)
-                headers[key] = value;
-            else
-                delete headers[key];
-        }
-        const hasBody = !['GET', 'HEAD'].includes(req.method) && req.rawBody && req.rawBody.length;
-        return await fetch(this.storeTarget(req, token), {
-            method: req.method,
-            headers,
-            body: (hasBody ? req.rawBody : undefined),
-            redirect: 'manual',
-            signal: AbortSignal.timeout(storeTimeoutMs),
-        });
-    }
-
-    async relayStoreResponse(res, response) {
-        for (const [key, value] of response.headers) {
-            const name = key.toLowerCase();
-            if (!skippedStoreHeaders.has(name) && name !== 'set-cookie')
-                res.set(key, value);
-        }
-        res.status(response.status).send(Buffer.from(await response.arrayBuffer()));
-    }
-
-    // Requests inpx-shelf does not answer itself go to the Kobo Store when the device
-    // opted in (purchased books, store pages); otherwise they get `fallback`.
-    async storeOr(req, res, device, token, fallback) {
-        if (!device.storeProxy)
-            return fallback();
-        // The firmware turns redirected POSTs into GETs, so only GETs are redirected.
-        if (req.method === 'GET')
-            return res.redirect(307, this.storeTarget(req, token));
-        try {
-            await this.relayStoreResponse(res, await this.storeRequest(req, token));
-        } catch (e) {
-            log(LM_WARN, `Kobo: store request ${req.method} ${req.path} failed: ${e.message}`);
-            if (!res.headersSent)
-                fallback();
-        }
-    }
-
-    async mergeStoreSync(req, token, storeToken) {
-        const response = await this.storeRequest(req, token, {[syncTokenHeader]: storeToken});
-        if (!response.ok)
-            throw new Error(`HTTP ${response.status}`);
-        const items = await response.json();
-        const headers = {};
-        for (const name of ['x-kobo-sync-mode', 'x-kobo-recent-reads']) {
-            const value = response.headers.get(name);
-            if (value)
-                headers[name] = value;
-        }
-        return {
-            items: (Array.isArray(items) ? items : []),
-            token: response.headers.get(syncTokenHeader) || storeToken,
-            more: response.headers.get('x-kobo-sync') === 'continue',
-            headers,
-        };
     }
 
     // ------------------------------------------------------------------ routing
@@ -1491,6 +1122,8 @@ class KoboService {
         return router;
     }
 }
+
+Object.assign(KoboService.prototype, require('./Preparation'), require('./Covers'), require('./StoreProxy'));
 
 function init(app, config, worker, security) {
     if (!config.koboEnabled)
