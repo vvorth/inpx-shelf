@@ -157,8 +157,10 @@ module.exports = {
         const stamp = createdAt.toISOString().replace(/[:.]/g, '-');
         const fileName = `inpx-shelf-backup-${stamp}-${utils.randomHexString(4)}.zip`;
         const outFile = path.join(backupDir, fileName);
+        //в архиве secret.key: только владельцу, и под своим именем - только целиком записанный
+        const tempFile = `${outFile}.tmp`;
         const zipFile = new yazl.ZipFile();
-        const output = fs.createWriteStream(outFile);
+        const output = fs.createWriteStream(tempFile, {mode: 0o600});
         const done = new Promise((resolve, reject) => {
             output.on('finish', resolve);
             output.on('error', reject);
@@ -181,7 +183,12 @@ module.exports = {
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'kobo-sync.json'), 'kobo-sync.json');
 
         zipFile.end();
-        await done;
+        try {
+            await done;
+            await fs.rename(tempFile, outFile);
+        } finally {
+            await fs.remove(tempFile);
+        }
 
         return {
             success: true,
@@ -221,14 +228,12 @@ module.exports = {
                     const secretStore = new SecretStore({dataDir: folder});
                     const {config: decoded} = await secretStore.unprotectConfig(archive['config.json']);
                     this.normalizeImportedAdminSettings(decoded);
-                    // Keep machine-local paths, including the recovery journal location. Converter paths
-                    // are programs the server runs: only config.json on this machine may set them.
-                    // Release links stay too: an upstream inpx-web backup would point update checks at upstream.
-                    runtimePatch = Object.assign(_.pick(decoded, ConfigManager.propsToSave), {
-                        dataDir: this.config.dataDir, tempDir: this.config.tempDir, logDir: this.config.logDir,
-                        converterPaths: this.config.converterPaths,
-                        latestReleaseLink: this.config.latestReleaseLink, checkReleaseLink: this.config.checkReleaseLink,
-                    });
+                    // Keep machine-local settings: storage paths (including the recovery journal location),
+                    // programs the server runs and file filters, the remote library. Release links stay too:
+                    // an upstream inpx-web backup would point update checks at upstream.
+                    const localKeys = ['dataDir', 'tempDir', 'logDir', 'converterPaths', 'allowUnsafeFilter', 'inpxFilterFile',
+                        'remoteLib', 'allowRemoteLib', 'latestReleaseLink', 'checkReleaseLink'];
+                    runtimePatch = Object.assign(_.omit(_.pick(decoded, ConfigManager.propsToSave), localKeys), _.pick(this.config, localKeys));
                     const protectedConfig = await secretStore.protectConfig(runtimePatch);
                     if (await fs.pathExists(path.join(folder, 'secret.key')))
                         content['secret.key'] = await fs.readFile(path.join(folder, 'secret.key'));

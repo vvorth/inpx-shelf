@@ -783,6 +783,11 @@ async function testAdminBackupArchiveAndDownload() {
                 enabled: true,
                 password: 'full-backup-secret',
             },
+            // machine-local: a restore must not take these from the backup
+            allowUnsafeFilter: true,
+            inpxFilterFile: '/elsewhere/filter.json',
+            converterPaths: {fb2cng: '/elsewhere/tool'},
+            allowRemoteLib: true,
         });
         await fs.writeJson(path.join(dataDir, 'reading-lists.json'), {
             version: 5,
@@ -822,6 +827,9 @@ async function testAdminBackupArchiveAndDownload() {
         assert.match(result.fileName, /^inpx-shelf-backup-.+\.zip$/);
         assert.strictEqual(result.link, `/admin-backups/${encodeURIComponent(result.fileName)}`);
         assert.strictEqual(await fs.pathExists(path.join(dataDir, 'backups', result.fileName)), true);
+        assert.deepStrictEqual(await fs.readdir(path.join(dataDir, 'backups')), [result.fileName], 'No temporary files left');
+        if (process.platform !== 'win32')
+            assert.strictEqual((await fs.stat(path.join(dataDir, 'backups', result.fileName))).mode & 0o777, 0o600, 'The backup holds secret.key');
 
         const StreamZip = require('node-stream-zip');
         const zip = new StreamZip.async({file: path.join(dataDir, 'backups', result.fileName)});
@@ -959,6 +967,10 @@ async function testAdminBackupArchiveAndDownload() {
         const restoredSecrets = await new (require('../server/core/SecretStore'))({dataDir: restoreDataDir})
             .unprotectConfig(await fs.readJson(restoreConfigFile));
         assert.strictEqual(restoredSecrets.config.opds.password, 'full-backup-secret');
+        for (const key of ['allowUnsafeFilter', 'inpxFilterFile', 'converterPaths', 'allowRemoteLib']) {
+            assert.strictEqual(restoredSecrets.config[key], undefined, key);
+            assert.strictEqual(restoreWorker.config[key], undefined, key);
+        }
         assert.strictEqual((await fs.readFile(path.join(restoreDataDir, 'secret.key'), 'utf8')), backupSecretKey);
 
         const restoredLists = await restoreWorker.readingListStore.load();
