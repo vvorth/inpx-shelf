@@ -4868,8 +4868,14 @@ class WebWorker {
         try {
             for (const config of this.cacheDirConfig())
                 await fs.ensureDir(config.dir);
+        } catch (e) {
+            log(LM_FATAL, e.message);
+            asyncExit.exit(1);
+            return;
+        }
 
-            while (1) {// eslint-disable-line no-constant-condition
+        while (1) {// eslint-disable-line no-constant-condition
+            try {
                 const delay = this.cacheCleanNextScheduledDelay();
                 if (delay === null) {
                     await utils.sleep(60*1000);
@@ -4880,10 +4886,11 @@ class WebWorker {
                 } else {
                     await utils.sleep(Math.min(delay, 60*1000));//интервал проверки не чаще 1 минуты
                 }
+            } catch (e) {
+                //сбой одной очистки не должен останавливать сервер
+                log(LM_ERR, `periodicCleanDir: ${e.stack || e.message}`);
+                await utils.sleep(60*1000);
             }
-        } catch (e) {
-            log(LM_FATAL, e.message);
-            asyncExit.exit(1);
         }
     }
 
