@@ -1,5 +1,5 @@
 import { defineComponent } from 'vue';
-import _ from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
 
 export default function(componentClass) {    
     const comp = {};
@@ -23,7 +23,7 @@ export default function(componentClass) {
             data[prop] = obj[prop];
         }
     }
-    comp.data = () => _.cloneDeep(data);
+    comp.data = () => cloneDeep(data);
     
     //methods
     const methods = {};

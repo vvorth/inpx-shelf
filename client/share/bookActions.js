@@ -1,6 +1,5 @@
 //Действия с книгой (скачать, читать, отправить, ссылка) - общие для каталога и страницы книги.
 //vm - любой компонент: нужны vm.$root.api, vm.$root.notify, vm.$root.stdDialog, vm.$router, vm.$store.
-import axios from 'axios';
 
 import * as utils from './utils';
 import {t} from './i18n';
@@ -79,24 +78,6 @@ export function canReadOnline(config = {}, book = {}) {
     return !!(config.onlineReaderEnabled && String(book.ext || '').toLowerCase() === 'fb2');
 }
 
-async function errorMessage(error) {
-    if (error.response && error.response.data) {
-        const responseData = error.response.data;
-        if (typeof(responseData) === 'string')
-            return responseData;
-
-        if (responseData && typeof(responseData.text) === 'function') {
-            try {
-                return await responseData.text();
-            } catch(e) {
-                // ignore
-            }
-        }
-    }
-
-    return error.message;
-}
-
 //options.liberamaReady / options.submitUrl - встраивание в liberama, только для каталога
 export async function runBookAction(vm, book, action, format = '', options = {}) {
     const root = vm.$root;
@@ -147,7 +128,9 @@ export async function runBookAction(vm, book, action, format = '', options = {})
         if (settings.downloadAsZip && !format && action == 'copyLink') {
             href += '/zip';
             //подождем формирования zip-файла
-            await axios.head(href);
+            const zipResponse = await fetch(href, {method: 'HEAD'});
+            if (!zipResponse.ok)
+                throw new Error(`HTTP ${zipResponse.status} ${zipResponse.statusText}`.trim());
         }
 
         if (format)
@@ -181,7 +164,7 @@ export async function runBookAction(vm, book, action, format = '', options = {})
             window.open(url, '_blank');
         }
     } catch(e) {
-        root.stdDialog.alert(await errorMessage(e), t('common.error'));
+        root.stdDialog.alert(e.message, t('common.error'));
     }
 
     return null;
