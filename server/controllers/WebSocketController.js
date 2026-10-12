@@ -10,6 +10,15 @@ const i18n = require('../core/i18n');
 
 const cleanPeriod = 1*60*1000;//1 минута
 const closeSocketOnIdle = 5*60*1000;//5 минут
+//только чтение; всё остальное, в том числе новые действия, требует CSRF-токен
+const readOnlyActions = new Set([
+    'test', 'get-config', 'get-worker-state', 'get-author-book-list', 'get-author-info', 'get-series-book-list',
+    'get-genre-tree', 'get-discovery-shelves', 'get-admin-dashboard', 'get-admin-dashboard-metrics', 'get-admin-events',
+    'export-admin-settings', 'get-book-link', 'get-author-aliases', 'admin-author-names-status', 'catalog-names',
+    'catalog-search', 'catalog-suggest', 'get-book', 'get-book-states', 'get-book-info', 'get-reader-state',
+    'get-user-reading-library', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'export-reading-lists',
+    'get-kobo-devices', 'get-inpx-file',
+]);
 
 class WebSocketController {
     constructor(wss, webAccess, config, security = null) {
@@ -321,55 +330,7 @@ class WebSocketController {
     }
 
     isCsrfProtectedAction(action = '') {
-        return new Set([
-            'admin-author-names-update',
-            'logout',
-            'login-user-profile',
-            'logout-user-profile',
-            'create-user-profile',
-            'update-user-profile',
-            'delete-user-profile',
-            'update-discovery-preferences',
-            'record-discovery-events',
-            'update-shared-discovery-config',
-            'update-admin-integrations',
-            'update-admin-opds',
-            'update-admin-event-log',
-            'add-admin-test-event',
-            'update-admin-library-sources',
-            'admin-diagnose-library-source',
-            'update-admin-cache',
-            'admin-clean-cache',
-            'admin-clean-broken-covers',
-            'admin-rebuild-cover',
-            'admin-reindex',
-            'import-admin-settings',
-            'import-admin-backup',
-            'update-reader-progress',
-            'delete-reader-progress',
-            'clear-reader-progress',
-            'update-reader-preferences',
-            'add-reader-bookmark',
-            'delete-reader-bookmark',
-            'create-reading-list',
-            'rename-reading-list',
-            'set-reading-list-visibility',
-            'delete-reading-list',
-            'import-reading-lists',
-            'update-reading-list-book',
-            'set-reading-list-book-read',
-            'mark-reader-books-read',
-            'mark-series-read',
-            'add-series-to-reading-list',
-            'send-book-telegram',
-            'send-book-email',
-            'create-kobo-device',
-            'update-kobo-device',
-            'regenerate-kobo-device-token',
-            'reset-kobo-device',
-            'refresh-kobo-device',
-            'delete-kobo-device',
-        ]).has(action);
+        return !readOnlyActions.has(action);
     }
 
     getOnlineMetrics() {

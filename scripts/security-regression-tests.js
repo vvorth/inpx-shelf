@@ -375,6 +375,16 @@ async function testDialogsEscapeMessages() {
     assert.match(notify, /if \(!html\) \{\s*message = escapeHtml\(message\);\s*caption = \(caption \? escapeHtml\(caption\) : caption\);/);
 }
 
-module.exports = [testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+// Reads are listed; every other action, including one added later, needs the CSRF token.
+async function testWriteActionsNeedCsrf() {
+    const {WebSocketController} = require('../server/controllers');
+    const isProtected = action => WebSocketController.prototype.isCsrfProtectedAction(action);
+    for (const action of ['update-book-metadata', 'create-admin-backup', 'test-admin-integration', 'update-reader-progress', 'future-write'])
+        assert.strictEqual(isProtected(action), true, action);
+    for (const action of ['get-config', 'catalog-search', 'get-book'])
+        assert.strictEqual(isProtected(action), false, action);
+}
+
+module.exports = [testWriteActionsNeedCsrf, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

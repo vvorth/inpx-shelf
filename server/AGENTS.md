@@ -5,7 +5,7 @@ Node.js 24 server. Entry: `index.js`.
 ## Map
 
 - `config/` — `base.js` defaults; `index.js` `propsToSave` lists the keys read from and written to `config.json`. `application_env` = `development` runs webpack inside the server: measure memory and speed without it (the release binary runs in production mode).
-- `controllers/WebSocketController.js` — WebSocket API: one `switch` on `action`, handlers call `WebWorker` methods. CSRF-protected actions are listed in `isCsrfProtectedAction`.
+- `controllers/WebSocketController.js` — WebSocket API: one `switch` on `action`, handlers call `WebWorker` methods. Read-only actions are listed in `readOnlyActions`; every other action needs the CSRF token.
 - `static.js` — HTTP routes for books, covers, downloads. `core/opds/` — OPDS feed. `core/kobo/` — Kobo sync. `core/HealthRoutes.js` — health and metrics.
 - `core/WebWorker.js` — the application service: library access, books, reader, shelves, admin. `AdminBackup.js` is mixed into it.
 - `core/search/` — library database:
