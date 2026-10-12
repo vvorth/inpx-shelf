@@ -10,6 +10,7 @@ const {BookMetadata, epubMetadata} = require('../BookMetadata');
 const {coverCacheKey} = require('../BookAssets');
 const bookConverter = require('../BookConverter');
 const imageUtils = require('../ImageUtils');
+const {writeFileAtomic} = require('../FilePersistence');
 
 // Resolved lazily: Security requires this module before the logger may be initialized.
 function log(...args) {
@@ -1198,8 +1199,8 @@ class KoboService {
                     return {contentType: 'image/jpeg', data: await fs.readFile(resizedFile)};
                 // null: already a JPEG that fits, cached under the sized name as well.
                 const data = imageUtils.fitToJpeg(cover.data, size.width, size.height, size.quality) || cover.data;
-                await fs.ensureDir(cacheDir);
-                await fs.writeFile(resizedFile, data);
+                // sendCoverFile serves any file it finds: never a half-written one.
+                await writeFileAtomic(resizedFile, data);
                 return {contentType: 'image/jpeg', data};
             });
             this.coverQueue = run.catch(() => {});
