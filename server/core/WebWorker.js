@@ -759,19 +759,24 @@ class WebWorker {
         };
     }
 
+    //Пароль (scrypt, ~0.3 с) проверяется вне блокировки хранилища профилей. Если за это время
+    //у профиля сменили пароль или логин или удалили его (сессии отозваны), вход не состоится.
     async loginUserProfile(login = '', password = '') {
         this.checkMyState();
-        return withFileTransaction(this.readingListStore.file, async() => {
-            const user = await this.readingListStore.findUserByLogin(login);
-            if (!user || !user.passwordHash)
-                throw new Error(t('errors.invalidLogin'));
-            if (!await this.readingListStore.verifyUserPassword(user.id, password))
-                throw new Error(t('errors.invalidLogin'));
-            return {
-                userId: user.id,
-                profileAccessToken: this.createProfileSession(user.id),
-            };
-        });
+        const user = await this.readingListStore.findUserByLogin(login);
+        if (!user || !user.passwordHash)
+            throw new Error(t('errors.invalidLogin'));
+        const revocation = this.sessionRevocation(user.id);
+        if (!await this.readingListStore.verifyUserPassword(user.id, password) || this.sessionRevocation(user.id) !== revocation)
+            throw new Error(t('errors.invalidLogin'));
+        return {
+            userId: user.id,
+            profileAccessToken: this.createProfileSession(user.id),
+        };
+    }
+
+    sessionRevocation(userId) {
+        return (this.profileSessionRevocations && this.profileSessionRevocations.get(userId)) || 0;
     }
 
     async createUserProfile(profile = {}) {
@@ -802,6 +807,9 @@ class WebWorker {
     }
 
     revokeUserSessions(userId) {
+        if (!this.profileSessionRevocations)
+            this.profileSessionRevocations = new Map();
+        this.profileSessionRevocations.set(userId, this.sessionRevocation(userId) + 1);
         for (const [token, session] of this.profileSessions) {
             if (session.userId === userId)
                 this.profileSessions.delete(token);

@@ -237,6 +237,31 @@ async function testLibraryAssetCaches() {
     });
 }
 
+//вход в профиль проверяет пароль вне блокировки хранилища и не создаёт сессию, если пароль сменили во время проверки
+async function testProfileLoginChecksPasswordOutsideTheStoreLock() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const profilePassword = require('../server/core/ProfilePassword');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        const user = await store.createUser({name: 'Carol', login: 'carol', passwordHash: await profilePassword.hash('carol-pass')});
+        const worker = bareWorker({checkMyState: () => {}, readingListStore: store, profileSessions: new Map()});
+
+        let done = false;
+        const login = worker.loginUserProfile('carol', 'carol-pass').then(result => (done = true, result));
+        await store.getUser(user.id);
+        assert.strictEqual(done, false, 'store calls do not wait for scrypt');
+        assert.strictEqual((await login).userId, user.id);
+
+        const passwordHash = await profilePassword.hash('new-pass');
+        const raced = worker.loginUserProfile('carol', 'carol-pass');
+        await new Promise(resolve => setImmediate(resolve));
+        await worker.updateUserProfile(user.id, {passwordHash});
+        await assert.rejects(raced, error => error.message === require('../server/core/i18n').t('errors.invalidLogin'));
+        assert.strictEqual(worker.profileSessions.size, 0);
+        assert.strictEqual((await worker.loginUserProfile('carol', 'new-pass')).userId, user.id);
+    });
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
@@ -247,4 +272,5 @@ module.exports = [
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
     testLibraryAssetCaches,
+    testProfileLoginChecksPasswordOutsideTheStoreLock,
 ];
