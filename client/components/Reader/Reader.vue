@@ -1499,6 +1499,7 @@ class Reader {
     profileReaderPreferencesApplied = false;
     snapTimer = null;
     pageTurnTimer = null;
+    scrollFrame = 0;
     pageTurnAnimating = false;
     pageTurnDirection = 1;
     pagePaddingPreviewEdge = '';
@@ -1725,6 +1726,10 @@ class Reader {
             this.pagePaddingPreviewTimer = null;
         }
         clearTimeout(this.pageTurnTimer);
+        if (this.scrollFrame) {
+            cancelAnimationFrame(this.scrollFrame);
+            this.scrollFrame = 0;
+        }
         if (this.imageLayoutFrame) {
             cancelAnimationFrame(this.imageLayoutFrame);
             this.imageLayoutFrame = 0;
@@ -8584,10 +8589,18 @@ class Reader {
     }
 
     onScroll() {
-        if (this.loading || !this.$refs.scroller)
+        // Не чаще одного раза за кадр: расчёт читает offsetTop всех разделов оглавления
+        if (this.scrollFrame || this.loading || this.isPagedMode || !this.$refs.scroller)
             return;
 
-        if (this.isPagedMode)
+        this.scrollFrame = requestAnimationFrame(() => {
+            this.scrollFrame = 0;
+            this.handleScrollFrame();
+        });
+    }
+
+    handleScrollFrame() {
+        if (this.loading || this.isPagedMode || !this.$refs.scroller)
             return;
 
         const scroller = this.$refs.scroller;
@@ -8600,7 +8613,7 @@ class Reader {
             sectionId: this.currentSectionId || '',
             updatedAt: new Date().toISOString(),
         });
-        this.writeStoredReaderProgress();
+        // Локальная копия пишется в отложенном сохранении (persistProgress)
         this.saveProgressDebounced(this.bookUid);
     }
 
@@ -9991,13 +10004,13 @@ class Reader {
             if (userId) {
                 const scoped = (byUser[userId] && typeof byUser[userId] === 'object') ? byUser[userId] : {};
                 scoped[bookUid] = nextProgress;
-                byUser[userId] = scoped;
+                byUser[userId] = readerProgress.trimMap(scoped);
             }
 
             globalProgress[bookUid] = nextProgress;
 
             localStorage.setItem(readerProgressStorageKey, JSON.stringify({
-                progress: globalProgress,
+                progress: readerProgress.trimMap(globalProgress),
                 byUser,
             }));
         } catch (e) {

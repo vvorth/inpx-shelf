@@ -2069,6 +2069,7 @@ const tests = [
     ...require('./audit-stage4-tests'),
     ...require('./resource-limit-tests'),
     ...require('./dependency-smoke-tests'),
+    ...require('./reader-tests'),
     ...require('./security-regression-tests'),
     ...require('./kobo-sync-tests'),
     ...require('./inpx-parser-tests'),

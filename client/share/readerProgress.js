@@ -124,4 +124,15 @@ function afterReset(progress = null, resetAt = '', generation = 0) {
     return (Number.isFinite(progressTime) && progressTime > resetTime) ? progress : null;
 }
 
-module.exports = {normalize, hasPlace, merge, shouldUpload, afterReset};
+//Копия прогресса в localStorage не растёт бесконечно: остаются limit самых свежих книг
+function trimMap(map = {}, limit = 500) {
+    const entries = Object.entries(map || {});
+    if (entries.length <= limit)
+        return map;
+
+    const time = progress => Date.parse((progress && progress.updatedAt) || '') || 0;
+    entries.sort((a, b) => time(b[1]) - time(a[1]));
+    return Object.fromEntries(entries.slice(0, limit));
+}
+
+module.exports = {normalize, hasPlace, merge, shouldUpload, afterReset, trimMap};
