@@ -250,5 +250,32 @@ async function testOpdsScopeNeedsAnOpdsProfile() {
     });
 }
 
-module.exports = [testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
+// A stored row that fails today's validation (edited by hand, older rules) keeps its data and lists.
+async function testInvalidStoredRowsAreRepairedNotDropped() {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-repair-'));
+    try {
+        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        await fs.writeJson(store.file, {version: 5, users: [
+            {id: 'admin', name: 'Admin', login: 'admin', isAdmin: true},
+            {id: 'long', name: 'N'.repeat(100), readerProgress: {book: {percent: 0.5}}},
+            {id: 'odd', name: 'Odd', login: 'bad login!'},
+        ], lists: [
+            {id: 'list-long', userId: 'long', name: 'Long list', books: ['book']},
+            {id: 'list-odd', userId: 'odd', name: ' ', books: ['other']},
+        ]});
+        await store.createList('admin', 'Write once');
+        const data = await store.load();
+        const long = data.users.find(user => user.id === 'long');
+        assert.strictEqual(long.name, 'N'.repeat(80));
+        assert.strictEqual(long.readerProgress.book.percent, 0.5);
+        assert.strictEqual(data.users.find(user => user.id === 'odd').login, 'bad login!');
+        assert.strictEqual(data.lists.find(list => list.id === 'list-long').userId, 'long');
+        const odd = data.lists.find(list => list.id === 'list-odd');
+        assert.deepStrictEqual([odd.userId, odd.name, odd.books.length], ['odd', 'list-odd', 1]);
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
+module.exports = [testInvalidStoredRowsAreRepairedNotDropped, testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

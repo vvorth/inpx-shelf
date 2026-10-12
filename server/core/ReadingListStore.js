@@ -495,12 +495,14 @@ class ReadingListStore {
         return result;
     }
 
-    normalizeUser(item, fallback = {}) {
+    // repair: a stored row that fails validation keeps its data; the name is cut to size, the login kept as is.
+    normalizeUser(item, fallback = {}, repair = false) {
         const now = this.nowIso();
         const normalized = Object.assign({}, fallback, item);
         normalized.id = String(normalized.id || '').trim() || this.makeId();
-        normalized.name = this.validateUserName(normalized.name || fallback.name || t('profiles.defaultUserName'));
-        normalized.login = this.validateLogin(normalized.login || '');
+        const name = normalized.name || fallback.name || t('profiles.defaultUserName');
+        normalized.name = (repair ? this.normalizeName(name).slice(0, 80) || t('profiles.defaultUserName') : this.validateUserName(name));
+        normalized.login = (repair ? this.normalizeLogin(normalized.login) : this.validateLogin(normalized.login || ''));
         normalized.passwordHash = String(normalized.passwordHash || '').trim();
         normalized.emailTo = String(normalized.emailTo || '').trim();
         normalized.telegramChatId = String(normalized.telegramChatId || '').trim();
@@ -518,12 +520,12 @@ class ReadingListStore {
         return normalized;
     }
 
-    normalizeList(item, defaultUserId) {
+    normalizeList(item, defaultUserId, repair = false) {
         const now = this.nowIso();
         const normalized = Object.assign({}, item);
         normalized.id = String(normalized.id || '').trim() || this.makeId();
         normalized.userId = String(normalized.userId || defaultUserId || '').trim();
-        normalized.name = this.validateName(normalized.name);
+        normalized.name = (repair ? this.normalizeName(normalized.name).slice(0, 120) || normalized.id : this.validateName(normalized.name));
         normalized.visibility = this.normalizeVisibility(normalized.visibility);
         normalized.createdAt = normalized.createdAt || now;
         normalized.updatedAt = normalized.updatedAt || now;
@@ -536,13 +538,16 @@ class ReadingListStore {
         const source = Object.assign({version: 5, users: [], lists: [], sharedDiscoveryConfig: {}, metadataOverrides: {}}, data || {});
         let users = [];
 
-        if (Array.isArray(source.users) && source.users.length) {
-            for (const item of source.users) {
-                try {
-                    users.push(this.normalizeUser(item, defaultUser));
-                } catch (e) {
-                    // ignore malformed user rows
-                }
+        // A row failing validation is repaired, never dropped: the next save would delete the profile's
+        // data and hand its lists to the first profile.
+        for (const item of (Array.isArray(source.users) ? source.users : [])) {
+            if (!item || typeof(item) !== 'object')
+                continue;
+            try {
+                users.push(this.normalizeUser(item, defaultUser));
+            } catch (e) {
+                this.warnRepaired(`profile "${item.id}"`, e);
+                users.push(this.normalizeUser(item, defaultUser, true));
             }
         }
 
@@ -561,14 +566,18 @@ class ReadingListStore {
         const defaultUserId = users[0].id;
         const lists = [];
         for (const item of (Array.isArray(source.lists) ? source.lists : [])) {
+            if (!item || typeof(item) !== 'object')
+                continue;
+            let normalized;
             try {
-                const normalized = this.normalizeList(item, defaultUserId);
-                if (!seenUserIds.has(normalized.userId))
-                    normalized.userId = defaultUserId;
-                lists.push(normalized);
+                normalized = this.normalizeList(item, defaultUserId);
             } catch (e) {
-                // ignore malformed lists
+                this.warnRepaired(`list "${item.id}"`, e);
+                normalized = this.normalizeList(item, defaultUserId, true);
             }
+            if (!seenUserIds.has(normalized.userId))
+                normalized.userId = defaultUserId;
+            lists.push(normalized);
         }
 
         return {
@@ -578,6 +587,16 @@ class ReadingListStore {
             sharedDiscoveryConfig: this.normalizeSharedDiscoveryConfig(source.sharedDiscoveryConfig),
             metadataOverrides: this.normalizeMetadataOverrides(source.metadataOverrides),
         };
+    }
+
+    // Every save normalizes the store again: say it once per row and problem.
+    warnRepaired(what, error) {
+        const message = `reading-lists.json: ${what} kept with its invalid field repaired: ${error.message}`;
+        this.repairWarnings = this.repairWarnings || new Set();
+        if (!this.repairWarnings.has(message)) {
+            this.repairWarnings.add(message);
+            logWarning(message);
+        }
     }
 
     async applyAdminBootstrap(data) {
