@@ -511,7 +511,7 @@ class CatalogIndex {
 
     //Условия запроса как проверки по колонкам. Фасетные поля проверяются отдельно,
     //чтобы счётчик каждого фильтра считался без его собственного условия.
-    compileFilter(filters, excludes, options, hitSet) {
+    compileFilter(filters, excludes, options) {
         const c = this.columns;
         const toSet = (field, values) => {
             const set = new Set();
@@ -578,8 +578,6 @@ class CatalogIndex {
             if (hideDeleted && (flags & 2))
                 return false;
             if (copyFlag && (flags & copyFlag))
-                return false;
-            if (hitSet && !hitSet[id])
                 return false;
             if (exactIds && !exactIds.has(id))
                 return false;
@@ -771,17 +769,21 @@ class CatalogIndex {
         //текстовая часть: совпадения FTS с оценкой
         const text = this.resolveText(Object.assign({}, parsed, {exact: []}));
         const hasText = !!text.expression;
-        let hits = null;
-        let hitSet = null;
-        if (hasText) {
-            hits = this.db.prepare(`SELECT rowid AS id, bm25(book_fts, 10.0, 6.0, 4.0, 1.0) AS score FROM book_fts WHERE book_fts MATCH ?`).all(text.expression);
-            hitSet = new Uint8Array(c.maxId + 1);
-            for (const hit of hits)
-                hitSet[hit.id] = 1;
+        const sort = String(request.sort || (hasText ? 'relevance' : 'date'));
+        //оценка bm25 нужна только сортировке по релевантности; иначе хватает id совпадений
+        let hitIds = null;
+        let scored = null;
+        if (hasText && sort === 'relevance') {
+            scored = this.db.prepare(`SELECT rowid AS id, bm25(book_fts, 10.0, 6.0, 4.0, 1.0) AS score FROM book_fts WHERE book_fts MATCH ?`).all(text.expression);
+            hitIds = scored.map(hit => hit.id);
+        } else if (hasText) {
+            hitIds = [];
+            for (const row of this.db.prepare('SELECT rowid AS id FROM book_fts WHERE book_fts MATCH ?').iterate(text.expression))
+                hitIds.push(row.id);
         }
 
         const exactIds = (parsed.exact.length ? this.exactIdSet(parsed.exact) : null);
-        const filter = this.compileFilter(filters, parsed.excludes, {showDeleted: !!request.showDeleted, hideCopies: !!request.hideCopies, exactIds}, null);
+        const filter = this.compileFilter(filters, parsed.excludes, {showDeleted: !!request.showDeleted, hideCopies: !!request.hideCopies, exactIds});
 
         //один проход: итог, отметки прошедших книг и счётчики фасетов
         const counts = {};
@@ -827,19 +829,18 @@ class CatalogIndex {
             }
         };
 
-        if (hits) {
-            for (const hit of hits)
-                visit(hit.id);
+        if (hitIds) {
+            for (const id of hitIds)
+                visit(id);
         } else {
             for (let id = 1; id <= c.maxId; id++)
                 visit(id);
         }
 
         //страница результата
-        const sort = String(request.sort || (hasText ? 'relevance' : 'date'));
         const ids = [];
-        if (sort === 'relevance' && hits) {
-            const ranked = hits.filter(hit => pass[hit.id]);
+        if (scored) {
+            const ranked = scored.filter(hit => pass[hit.id]);
             ranked.sort((a, b) => a.score - b.score || c.librate[b.id] - c.librate[a.id] || a.id - b.id);
             for (const hit of ranked.slice(offset, offset + limit))
                 ids.push(hit.id);
