@@ -109,6 +109,21 @@ async function testFb2CoverAfterBinaryWithoutAttributes() {
     }
 }
 
+// The cover is found without the book tree: custom xlink prefix, last binary with the id wins, png type.
+function testFb2CoverWithoutTree() {
+    const helper = new Fb2Helper();
+    const cover = body => helper.findCover('<?xml version="1.0"?><FictionBook xmlns:xl="http://www.w3.org/1999/xlink">'
+        + `<description><title-info><coverpage>\n<image xl:href="#c"/></coverpage></title-info></description>${body}</FictionBook>`);
+    let result = cover('<body/><binary id="c" content-type="image/jpeg">QUFB</binary><binary content-type="image/png" id="c">\nQkJC\n</BINARY>');
+    assert.strictEqual(result.cover.toString(), 'BBB');
+    assert.strictEqual(result.coverExt, '.png');
+    result = cover('<binary id="other">QUFB</binary>');
+    assert.deepStrictEqual(result, {cover: null, coverExt: ''});
+    result = cover('<binary id="c" content-type="image/png"></binary>');
+    assert.deepStrictEqual(result, {cover: null, coverExt: '.png'});
+    assert.deepStrictEqual(helper.findCover('<FictionBook><description/><binary id="c">QUFB</binary></FictionBook>'), {cover: null, coverExt: ''});
+}
+
 // Normalized UTF-8 skips the decode/encode round trip; anything else is still rewritten.
 async function testFb2NormalizedUtf8IsReturnedAsIs() {
     const helper = new Fb2Helper();
@@ -125,4 +140,4 @@ async function testFb2NormalizedUtf8IsReturnedAsIs() {
         assert.strictEqual(helper.checkEncoding(Buffer.from(input)).toString(), expected, input);
 }
 
-module.exports = [testFb2NormalizedUtf8IsReturnedAsIs, testFb2CoverAfterBinaryWithoutAttributes, testFb2XmlEncodingDeclarationsAndByteOrder, testFb2DownloadsNormalizeEncodingAndRepairLegacyCache];
+module.exports = [testFb2NormalizedUtf8IsReturnedAsIs, testFb2CoverAfterBinaryWithoutAttributes, testFb2CoverWithoutTree, testFb2XmlEncodingDeclarationsAndByteOrder, testFb2DownloadsNormalizeEncodingAndRepairLegacyCache];

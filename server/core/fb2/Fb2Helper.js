@@ -4,6 +4,7 @@ const {isUtf8} = require('buffer');
 const textUtils = require('./textUtils');
 
 const Fb2Parser = require('../fb2/Fb2Parser');
+const sax = require('../xml/sax');
 const utils = require('../utils');
 const {t} = require('../i18n');
 
@@ -57,46 +58,81 @@ class Fb2Helper {
     async getDescAndCover(bookFile) {
         let data = await fs.readFile(bookFile);
         data = await this.decompressIfNeeded(data);
+        const text = this.checkEncoding(data).toString();
 
-        data = this.checkEncoding(data);
-
-        const parser = new Fb2Parser();
-
-        parser.fromString(data.toString(), {
-            lowerCase: true,
-        });
-
-        const coverImage = parser.$$('/description/title-info/coverpage/image');
-
-        let cover = null;
-        let coverExt = '';
-        if (coverImage.count) {
-            const coverAttrs = coverImage.attrs();
-            const href = coverAttrs[`${parser.xlinkNS}:href`];
-
-            if (href) {
-                const binaryId = (href[0] == '#' ? href.substring(1) : href);
-
-                //найдем нужный image
-                for (const node of parser.$$array('/binary')) {
-                    let attrs = node.attrs();
-                    if (!attrs)
-                        continue;
-
-                    if (attrs.id === binaryId) {
-                        let coverType = attrs['content-type'];
-                        coverType = (coverType == 'image/jpg' || coverType == 'application/octet-stream' ? 'image/jpeg' : coverType);
-                        coverExt = (coverType == 'image/png' ? '.png' : '.jpg');
-
-                        const base64 = node.text();
-                        cover = (base64 ? Buffer.from(base64, 'base64') : null);
-                    }
+        // Дерево всей книги строим только по запросу: для обложки хватает поиска по тексту.
+        let fb2 = null;
+        return {
+            ...this.findCover(text),
+            get fb2() {
+                if (!fb2) {
+                    fb2 = new Fb2Parser();
+                    fb2.fromString(text, {lowerCase: true});
                 }
+                return fb2;
+            },
+        };
+    }
+
+    // То же, что /description/title-info/coverpage/image и последний <binary> с этим id.
+    findCover(text) {
+        const result = {cover: null, coverExt: ''};
+        const image = block(block(block(text, 'description'), 'title-info'), 'coverpage').match(/<image(?=[\s/>])[^>]*>/i);
+        if (!image)
+            return result;
+
+        const root = text.match(/<fictionbook(?=[\s/>])[^>]*>/i);
+        let ns = 'l';
+        for (const [key, value] of (root ? tagAttrs(root[0]) : [])) {
+            if (value == 'http://www.w3.org/1999/xlink') {
+                ns = key.split(':')[1] || ns;
+                break;
             }
         }
+        const href = tagAttrs(image[0]).get(`${ns}:href`);
+        if (!href)
+            return result;
 
-        return {fb2: parser, cover, coverExt};
+        const binaryId = (href[0] == '#' ? href.substring(1) : href);
+        let binary = null;
+        let binaryAttrs = null;
+        const binaries = /<binary(?=[\s/>])[^>]*>/gi;
+        for (let match; (match = binaries.exec(text));) {
+            const attrs = tagAttrs(match[0]);
+            if (attrs.get('id') === binaryId) {
+                binary = match;
+                binaryAttrs = attrs;
+            }
+        }
+        if (!binary)
+            return result;
+
+        let coverType = binaryAttrs.get('content-type');
+        coverType = (coverType == 'image/jpg' || coverType == 'application/octet-stream' ? 'image/jpeg' : coverType);
+        result.coverExt = (coverType == 'image/png' ? '.png' : '.jpg');
+
+        let base64 = '';
+        if (!binary[0].endsWith('/>')) {
+            const start = binary.index + binary[0].length;
+            const close = /<\/binary\s*>/gi;
+            close.lastIndex = start;
+            const end = close.exec(text);
+            base64 = text.slice(start, end ? end.index : text.length).trim();
+        }
+        result.cover = (base64 ? Buffer.from(base64, 'base64') : null);
+        return result;
     }
+}
+
+function block(text, name) {
+    const match = text.match(new RegExp(`<${name}(?=[\\s/>])[^>]*>[\\s\\S]*?</${name}\\s*>`, 'i'));
+    return match ? match[0] : '';
+}
+
+// Атрибуты тега так же, как их читает XmlParser с lowerCase.
+function tagAttrs(tag) {
+    const tail = tag.replace(/^<[^\s/>]*/, '').replace(/\/?>$/, '');
+    return new Map(Array.from(sax.getAttrsSync(tail, true).values(), attr => [attr.fn, attr.value]));
 }
 
 module.exports = Fb2Helper;
