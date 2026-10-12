@@ -4091,6 +4091,7 @@ class WebWorker {
 
     async getBookLink(bookUid) {
         this.checkMyState();
+        const notFound = () => Object.assign(new Error(t('errors.fileNotFound')), {status: 404});
 
         try {
             let link = '';
@@ -4099,7 +4100,7 @@ class WebWorker {
             //найдем downFileName, libFolder, libFile
             const book = await this.getBookRecordByUid(bookUid);
             if (!book)
-                throw new Error(t('errors.fileNotFound'));
+                throw notFound();
 
             let downFileName = book.file;
             const authors = book.author.split(',');
@@ -4161,13 +4162,13 @@ class WebWorker {
             }
 
             if (!link)
-                throw new Error(t('errors.fileNotFound'));
+                throw notFound();
 
             return {link, libFolder, libFile, downFileName, size};
         } catch(e) {
             log(LM_ERR, `getBookLink error: ${e.message}`);
-            if (e.message.indexOf('ENOENT') >= 0)
-                throw new Error(t('errors.fileNotFound'));
+            if (e.status !== 404 && e.message.indexOf('ENOENT') >= 0)
+                throw notFound();
             throw e;
         }
     }

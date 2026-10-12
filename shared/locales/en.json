@@ -379,6 +379,7 @@
         "bookIdRequired": "Book id is not specified",
         "bookNotFound": "Book not found",
         "bookNotInList": "Book not found in the list",
+        "bookPrepareFailed": "Could not prepare the book, see the server log for details",
         "bookTitleRequired": "Book title must not be empty",
         "cannotDeleteAdmin": "Cannot delete the administrator profile",
         "cannotDeleteLastUser": "Cannot delete the last user",

@@ -375,6 +375,32 @@ async function testDialogsEscapeMessages() {
     assert.match(notify, /if \(!html\) \{\s*message = escapeHtml\(message\);\s*caption = \(caption \? escapeHtml\(caption\) : caption\);/);
 }
 
+// A missing book is a 404 in any interface language; other errors keep server paths in the log.
+async function testBookByUidStatusAndHiddenPaths() {
+    await temporary(async(dir) => {
+        const config = {dataDir: dir, rootPathStatic: '', bookPathStatic: '/book', publicDir: path.join(dir, 'public'),
+            bookDir: path.join(dir, 'book'), tempDir: dir};
+        const worker = {getBookLink: async uid => {
+            if (uid === 'missing')
+                throw Object.assign(new Error('not here'), {status: 404});
+            throw new Error(`7z failed on ${dir}/lib/archive.7z`);
+        }};
+        const app = require('express')();
+        require('../server/static')(app, config, worker);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const get = uid => fetch(`http://127.0.0.1:${server.address().port}/book/by-uid?uid=${uid}`);
+            assert.strictEqual((await get('missing')).status, 404);
+            const failed = await get('broken');
+            assert.strictEqual(failed.status, 500);
+            assert.ok(!(await failed.text()).includes(dir));
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+}
+
 // Reads are listed; every other action, including one added later, needs the CSRF token.
 async function testWriteActionsNeedCsrf() {
     const {WebSocketController} = require('../server/controllers');
@@ -385,6 +411,6 @@ async function testWriteActionsNeedCsrf() {
         assert.strictEqual(isProtected(action), false, action);
 }
 
-module.exports = [testWriteActionsNeedCsrf, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages,testRootPathRewriteStaysInPublicDir, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

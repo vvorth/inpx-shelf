@@ -372,7 +372,9 @@ module.exports = (app, config, webWorker = null, security = null) => {
             res.redirect(302, href);
         } catch(e) {
             log(LM_ERR, `book by uid error: ${e.message}`);
-            res.status(e.message && e.message.indexOf('404') >= 0 ? 404 : 500).send(e.message);
+            //пути сервера из ошибок 7z и файловой системы остаются в журнале
+            const status = (e.status === 404 ? 404 : 500);
+            res.status(status).type('text/plain; charset=utf-8').send(status === 404 ? e.message : t('errors.bookPrepareFailed'));
         }
     });
 
