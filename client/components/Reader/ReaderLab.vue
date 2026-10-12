@@ -135,7 +135,8 @@ class ReaderLab {
             return '';
 
         try {
-            return new TextDecoder(normalized).decode(bytes);
+            // fatal: иначе utf-8 «успешно» декодирует cp1251 в мусор и до следующей кодировки не доходит
+            return new TextDecoder(normalized, {fatal: true}).decode(bytes);
         } catch (e) {
             return '';
         }
@@ -175,7 +176,7 @@ class ReaderLab {
                 return text;
         }
 
-        return fallbackText;
+        return fallbackText || new TextDecoder('utf-8').decode(bytes);
     }
 
     async maybeLoadSampleFromRoute() {
