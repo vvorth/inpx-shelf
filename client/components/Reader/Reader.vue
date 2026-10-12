@@ -1588,6 +1588,8 @@ class Reader {
     pagedCommittedCalibrationGeneration = 0;
     pagedTextMeasureCanvas = null;
     pagedTextMeasureContext = null;
+    pagedMeasureAvailableHeight = 0;
+    pagedAppliedBottomClipCompensation = 0;
     readerDebug = {
         measureAvailableHeight: 0,
         measureContentHeight: 0,
@@ -4986,12 +4988,14 @@ class Reader {
             return;
         }
 
-        this.readerDebug = Object.assign({}, this.readerDebug, {
-            liveSheetHeight: Math.round(metrics.sheetRect.height),
-            liveSafeBottom: Math.round(metrics.safeBottom),
-            liveTextBottom: Math.round(metrics.textBottom),
-            liveOverflowPx: Math.round(metrics.overflow),
-        });
+        if (this.readerDebugEnabled) {
+            this.readerDebug = Object.assign({}, this.readerDebug, {
+                liveSheetHeight: Math.round(metrics.sheetRect.height),
+                liveSafeBottom: Math.round(metrics.safeBottom),
+                liveTextBottom: Math.round(metrics.textBottom),
+                liveOverflowPx: Math.round(metrics.overflow),
+            });
+        }
 
         if (!this.isCompactLayout) {
             this.bottomClipCompensationPendingKey = '';
@@ -5012,8 +5016,8 @@ class Reader {
             linePx * 2,
             Math.round(linePx * (this.isCompactLayout ? 3.8 : 4.6)),
         );
-        const measuredAvailableHeight = Math.max(0, Number(this.readerDebug.measureAvailableHeight || 0) || 0);
-        const appliedDynamicCompensation = Math.max(0, Number(this.readerDebug.totalBottomClipCompensation || 0) || 0);
+        const measuredAvailableHeight = this.pagedMeasureAvailableHeight;
+        const appliedDynamicCompensation = this.pagedAppliedBottomClipCompensation;
         const rawMeasureHeight = measuredAvailableHeight + appliedDynamicCompensation;
         const maxDynamicCompensation = Math.min(
             configuredMaxDynamicCompensation,
@@ -6193,12 +6197,16 @@ class Reader {
         );
         const availableHeight = Math.max(0, rawAvailableHeight - appliedDynamicCompensation);
 
-        this.readerDebug = Object.assign({}, this.readerDebug, {
-            measureAvailableHeight: Math.round(availableHeight),
-            baseBottomClipCompensation: 0,
-            totalBottomClipCompensation: appliedDynamicCompensation,
-            pagedContentSafetyInset: 0,
-        });
+        this.pagedMeasureAvailableHeight = Math.round(availableHeight);
+        this.pagedAppliedBottomClipCompensation = appliedDynamicCompensation;
+        if (this.readerDebugEnabled) {
+            this.readerDebug = Object.assign({}, this.readerDebug, {
+                measureAvailableHeight: Math.round(availableHeight),
+                baseBottomClipCompensation: 0,
+                totalBottomClipCompensation: appliedDynamicCompensation,
+                pagedContentSafetyInset: 0,
+            });
+        }
         return availableHeight;
     }
 
@@ -6325,10 +6333,12 @@ class Reader {
             this.measureContentInnerHeight(contentNode),
         );
 
-        this.readerDebug = Object.assign({}, this.readerDebug, {
-            measureContentHeight: Math.round(measuredHeight),
-            measureOverflowPx: Math.round(measuredHeight - availableHeight),
-        });
+        if (this.readerDebugEnabled) {
+            this.readerDebug = Object.assign({}, this.readerDebug, {
+                measureContentHeight: Math.round(measuredHeight),
+                measureOverflowPx: Math.round(measuredHeight - availableHeight),
+            });
+        }
 
         return measuredHeight > Math.max(0, availableHeight - 12);
     }
@@ -7515,6 +7525,8 @@ class Reader {
         };
         const publishStats = (status = stats.status) => {
             stats.status = status;
+            if (!this.readerDebugEnabled)
+                return;
             stats.durationMs = Math.max(0, Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - buildStartedAt));
             stats.fallbackRoots = Array.from(fallbackRoots.entries())
                 .sort((a, b) => b[1] - a[1])
