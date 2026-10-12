@@ -212,5 +212,14 @@ async function testCatalogSearchRebuildEditsAndThreadRestart() {
     });
 }
 
-module.exports = [testCatalogSearchRebuildEditsAndThreadRestart, testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
+// Search and suggest queries are capped in length and word count before they reach FTS.
+function testSearchQueryIsCapped() {
+    const CatalogIndex = require('../server/core/search/CatalogIndex');
+    const parsed = new CatalogIndex().parseQuery(`${Array.from({length: 300}, (_, i) => `w${i}`).join(' ')} author:${'x'.repeat(50)}`);
+    assert.strictEqual(parsed.free.length, 12);
+    assert.deepStrictEqual(parsed.columns, [], 'A power field past the length cap is dropped');
+    assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
+}
+
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
     testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];

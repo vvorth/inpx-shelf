@@ -9,6 +9,10 @@ const {buildLookup, englishName} = require('./AuthorNames');
 
 const schemaVersion = '8';
 const maxLimit = 200;
+//длинный запрос из сотен слов превращается в огромное выражение FTS и перебор опечаток: режем
+const maxQueryLength = 200;
+const maxQueryTokens = 12;
+const queryTokens = value => tokens(String(value || '').substring(0, maxQueryLength)).slice(0, maxQueryTokens);
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
     ['author', 'author'], ['автор', 'author'],//i18n-ignore: данные поиска
@@ -344,7 +348,7 @@ class CatalogIndex {
     //---------- разбор запроса ----------
     parseQuery(q = '') {
         const result = {free: [], columns: [], filters: {}, excludes: {}, exact: []};
-        const text = String(q || '').replace(/(^|\s)(-?)([\p{L}]+):(=?)("([^"]*)"|\S+)/gu, (match, lead, minus, field, eq, raw, quoted) => {
+        const text = String(q || '').substring(0, maxQueryLength).replace(/(^|\s)(-?)([\p{L}]+):(=?)("([^"]*)"|\S+)/gu, (match, lead, minus, field, eq, raw, quoted) => {
             const key = powerFields.get(field.toLowerCase());
             if (!key)
                 return match;
@@ -354,7 +358,7 @@ class CatalogIndex {
                 if (eq)
                     result.exact.push({field: key, value: normalize(value)});
                 else
-                    result.columns.push({field: key, tokens: tokens(value)});
+                    result.columns.push({field: key, tokens: queryTokens(value)});
             } else {
                 const target = (minus ? result.excludes : result.filters);
                 const values = value.split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
@@ -363,7 +367,7 @@ class CatalogIndex {
             return lead;
         });
 
-        result.free = tokens(text);
+        result.free = queryTokens(text);
         return result;
     }
 
@@ -931,7 +935,7 @@ class CatalogIndex {
         const table = (isAuthor ? 'author' : 'series');
         const limit = Math.max(1, Math.min(200, parseInt(request.limit, 10) || 50));
         const offset = Math.max(0, parseInt(request.offset, 10) || 0);
-        const words = tokens(request.q);
+        const words = queryTokens(request.q);
         const aliasOf = this.db.prepare('SELECT alias FROM author_alias WHERE author_id = ?');
         const describe = (row) => {
             const alias = (isAuthor ? (aliasOf.get(row.id) || {}).alias : '');
