@@ -6,13 +6,10 @@
                     {{ $t('common.readingLists') }}
                 </h1>
                 <div v-if="canUseLists" class="page-actions">
-                    <q-btn flat dense no-caps icon="la la-file-export" @click="exportLists">
-                        {{ $t('readingLists.export') }}
+                    <q-btn flat dense no-caps icon="la la-database" to="/me/data">
+                        {{ $t('readingLists.backup') }}
+                        <q-tooltip>{{ $t('readingLists.backupHint') }}</q-tooltip>
                     </q-btn>
-                    <q-btn flat dense no-caps icon="la la-file-import" @click="openImport">
-                        {{ $t('readingLists.import') }}
-                    </q-btn>
-                    <input ref="importInput" type="file" accept="application/json,.json" style="display: none" @change="onImportSelected">
                 </div>
             </header>
 
@@ -250,7 +247,6 @@ import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
 import {bookAuthors} from '../../share/bookActions';
-import {downloadJson} from '../../share/utils';
 import {bookViews, bookViewOptions} from '../../share/bookView';
 
 const readingNowId = '__reading__';
@@ -624,39 +620,6 @@ class ListsPage {
                 list.readCount = Math.max(0, (Number(list.readCount || 0) || 0) - 1);
             list.bookCount = Math.max(0, (Number(list.bookCount || 0) || 0) - 1);
             this.books = this.books.filter(item => item.bookUid !== book.bookUid);
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('common.error'));
-        }
-    }
-
-    async exportLists() {
-        try {
-            const data = await this.api.exportReadingLists();
-            downloadJson(data, `reading-lists-${new Date().toISOString().substring(0, 10)}.json`);
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('common.error'));
-        }
-    }
-
-    openImport() {
-        const input = this.$refs.importInput;
-        if (!input)
-            return;
-        input.value = '';
-        input.click();
-    }
-
-    async onImportSelected(event) {
-        const file = event.target.files && event.target.files[0];
-        if (!file)
-            return;
-        if (!await this.$root.stdDialog.confirm(t('profiles.profileBackupImportConfirm'), t('profiles.profileBackupTitle')))
-            return;
-
-        try {
-            const result = await this.api.importReadingLists(JSON.parse(await file.text()));
-            await this.load();
-            this.$root.notify.success(t('readingLists.importedListsBooks', {lists: result.importedLists, books: result.importedBooks}));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         }

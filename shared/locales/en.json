@@ -1367,9 +1367,8 @@
         "sampleLoadFailedStatus": "Could not load sample: {status}"
     },
     "readingLists": {
-        "export": "Export",
-        "import": "Import",
-        "importedListsBooks": "Imported lists: {lists}, books: {books}",
+        "backup": "Back up in My data",
+        "backupHint": "Lists, reading progress, bookmarks and settings are exported and imported in Profile and devices → My data",
         "listNameRequired": "List name must not be empty",
         "loadingBooks": "Loading books...",
         "loadingLists": "Loading lists...",
