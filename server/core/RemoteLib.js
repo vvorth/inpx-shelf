@@ -1,4 +1,5 @@
 const fs = require('fs-extra');
+const https = require('https');
 const path = require('path');
 const utils = require('./utils');
 
@@ -15,7 +16,10 @@ class RemoteLib {
         if (!instance) {
             this.config = config;
 
-            this.wsc = new WebSocketConnection(config.remoteLib.url, 10, 30, {rejectUnauthorized: false});
+            // Сертификат сервера проверяем всегда, кроме явно разрешённого ignoreCertErrors (самоподписанный).
+            const ignoreCertErrors = config.remoteLib.ignoreCertErrors === true;
+            this.wsc = new WebSocketConnection(config.remoteLib.url, 10, 30, ignoreCertErrors ? {rejectUnauthorized: false} : {});
+            this.httpsAgent = ignoreCertErrors ? new https.Agent({rejectUnauthorized: false}) : undefined;
 
             this.remoteHost = config.remoteLib.url.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://');
 
@@ -63,10 +67,10 @@ class RemoteLib {
 
     async downloadBook(bookUid) {
         try {
-            const response = await await this.wsRequest({action: 'get-book-link', bookUid});
+            const response = await this.wsRequest({action: 'get-book-link', bookUid});
             const link = response.link;
 
-            const buf = await this.down.load(`${this.remoteHost}${link}`, {decompress: false});
+            const buf = await this.down.load(`${this.remoteHost}${link}`, {decompress: false, httpsAgent: this.httpsAgent});
 
             const hash = path.basename(link);
             const publicPath = `${this.config.bookDir}/${hash}`;

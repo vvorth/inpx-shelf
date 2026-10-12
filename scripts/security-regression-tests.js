@@ -221,6 +221,47 @@ async function testDownloaderVerifiesTlsCertificates() {
     }
 }
 
+// RemoteLib verifies the server certificate (WebSocket and book download) unless remoteLib.ignoreCertErrors is set.
+async function testRemoteLibVerifiesTlsCertificates() {
+    const https = require('https');
+    const {WebSocketServer} = require('ws');
+    const cert = await fs.readFile(path.join(__dirname, 'fixtures/tls/localhost-cert.pem'));
+    const key = await fs.readFile(path.join(__dirname, 'fixtures/tls/localhost-key.pem'));
+    const server = https.createServer({key, cert}, (_req, res) => res.end('book'));
+    const wss = new WebSocketServer({server});
+    wss.on('connection', ws => ws.on('message', data => {
+        const {requestId} = JSON.parse(data);
+        ws.send(JSON.stringify({requestId, _rok: 1}));
+        ws.send(JSON.stringify({requestId, link: '/book/abc123'}));
+    }));
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const modulePath = require.resolve('../server/core/RemoteLib');
+    await temporary(async dir => {
+        for (const ignoreCertErrors of [false, true]) {
+            delete require.cache[modulePath];// RemoteLib is a module-level singleton
+            const RemoteLib = require(modulePath);
+            const remoteLib = new RemoteLib({remoteLib: {url: `wss://127.0.0.1:${server.address().port}`, ignoreCertErrors},
+                maxPayloadSize: 1, bookDir: dir, inpxFile: path.join(dir, 'x.inpx')});
+            try {
+                if (ignoreCertErrors) {
+                    assert.strictEqual(await remoteLib.downloadBook('uid'), 'abc123');
+                    assert.strictEqual(await fs.readFile(path.join(dir, 'abc123'), 'utf8'), 'book');
+                } else {
+                    await assert.rejects(remoteLib.downloadBook('uid'), /502/);
+                }
+            } finally {
+                remoteLib.wsc.close();
+                if (remoteLib.httpsAgent)
+                    remoteLib.httpsAgent.destroy();
+            }
+        }
+    });
+    delete require.cache[modulePath];
+    wss.close();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+}
+
 async function testBookRouteRejectsTraversal() {
     await temporary(async(dir) => {
         const config = {dataDir: path.join(dir, 'data'), rootPathStatic: '', bookPathStatic: '/book',
@@ -605,4 +646,4 @@ module.exports = [
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
-    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded];
+    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded, testRemoteLibVerifiesTlsCertificates];

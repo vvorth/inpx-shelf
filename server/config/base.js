@@ -97,6 +97,7 @@ module.exports = {
     remoteLib: { // на клиенте
         accessPassword: '',
         url: 'wss://remoteInpxWeb.ru',
+        ignoreCertErrors: false, // true: не проверять TLS-сертификат сервера (самоподписанный)
     },
     */
 
