@@ -250,77 +250,7 @@
                         </section>
                     </template>
 
-                    <template v-else-if="section === 'integrations'">
-                        <section class="card">
-                            <h2 class="card-title">{{ $t('settings.mail.title') }}</h2>
-                            <div class="card-hint">{{ $t('admin.theTelegramBotAnd') }}</div>
-                <div class="admin-mail-section">
-                    <div class="admin-mail-section-head">
-                        <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="$t('settings.mail.telegramEnabled')" />
-                        <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="telegramTestLoading" @click="testTelegram">
-                            {{ $t('settings.mail.test') }}
-                        </q-btn>
-                    </div>
-                    <div class="admin-mail-grid">
-                        <q-input v-model="integrations.telegramBotToken" outlined dense clearable :type="telegramTokenVisible ? 'text' : 'password'" label="Telegram bot token">
-                            <template #append>
-                                <q-icon :name="telegramTokenVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="telegramTokenVisible = !telegramTokenVisible" />
-                            </template>
-                        </q-input>
-                        <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :label="$t('settings.mail.telegramCaption')" />
-                    </div>
-                </div>
-
-                <div class="admin-mail-section">
-                    <div class="admin-mail-section-head">
-                        <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :label="$t('settings.mail.smtpEnabled')" />
-                        <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="smtpTestLoading" @click="testSmtp">
-                            {{ $t('settings.mail.test') }}
-                        </q-btn>
-                    </div>
-                    <div class="admin-mail-grid">
-                        <q-input v-model="integrations.smtpHost" outlined dense clearable label="SMTP host" />
-                        <q-input v-model.number="integrations.smtpPort" outlined dense type="number" label="SMTP port" />
-                        <q-input v-model="integrations.smtpUser" outlined dense clearable label="SMTP user" />
-                        <q-input v-model="integrations.smtpPass" outlined dense clearable :type="smtpPassVisible ? 'text' : 'password'" label="SMTP password">
-                            <template #append>
-                                <q-icon :name="smtpPassVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="smtpPassVisible = !smtpPassVisible" />
-                            </template>
-                        </q-input>
-                        <q-input v-model="integrations.emailFrom" outlined dense clearable label="Email from" />
-                        <q-input v-model="integrations.emailTo" outlined dense clearable :label="$t('settings.mail.emailTo')" />
-                        <q-checkbox v-model="integrations.smtpSecure" size="34px" label="SMTP secure / SSL" />
-                    </div>
-                </div>
-
-                <div class="admin-mail-actions">
-                    <q-btn color="primary" dense no-caps icon="la la-save" :loading="integrationSaveLoading" @click="saveIntegrations">
-                        {{ $t('settings.mail.save') }}
-                    </q-btn>
-                </div>
-                        </section>
-
-                        <section class="card">
-                            <h2 class="card-title">{{ $t('settings.opds.title') }}</h2>
-                            <div class="card-hint">{{ $t('settings.opds.subtitle') }}</div>
-                <div class="admin-mail-grid">
-                    <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="$t('settings.opds.enabled')" />
-                    <q-input v-model="opdsSettings.root" outlined dense clearable :label="$t('settings.opds.root')" />
-                    <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="$t('settings.opds.lang')" />
-                    <q-input v-model="opdsSettings.user" outlined dense clearable :label="$t('settings.opds.user')" />
-                    <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="$t('settings.opds.password')">
-                        <template #append>
-                            <q-icon :name="opdsPasswordVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="opdsPasswordVisible = !opdsPasswordVisible" />
-                        </template>
-                    </q-input>
-                </div>
-                <div class="admin-mail-actions">
-                    <q-btn color="primary" dense no-caps icon="la la-save" :loading="opdsSaveLoading" @click="saveOpdsSettings">
-                        {{ $t('settings.opds.save') }}
-                    </q-btn>
-                </div>
-                        </section>
-                    </template>
+                    <AdminIntegrations v-else-if="section === 'integrations'" />
 
                     <template v-else-if="section === 'storage'">
                 <div class="admin-subsection">
@@ -399,42 +329,7 @@
                 </div>
                     </template>
 
-                    <section v-else-if="section === 'backups'" class="card">
-                        <h2 class="card-title">{{ $t('settings.backup.title') }}</h2>
-                <div class="admin-backup-note">
-                    <div>{{ $t('settings.backup.fullBackupInfo') }}</div>
-                    <div>{{ $t('settings.backup.settingsBackupInfo') }}</div>
-                    <div>{{ $t('settings.backup.restoreNote') }}</div>
-                </div>
-                <div class="admin-backup-actions">
-                    <q-btn color="primary" dense no-caps icon="la la-download" :loading="backupLoading" @click="createBackup">
-                        {{ $t('settings.backup.backup') }}
-                    </q-btn>
-                    <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="backupImportLoading" @click="openBackupImport">
-                        {{ $t('settings.backup.backupImport') }}
-                    </q-btn>
-                    <q-btn outline color="primary" dense no-caps icon="la la-file-export" :loading="settingsExportLoading" @click="exportSettings">
-                        {{ $t('settings.backup.settings') }}
-                    </q-btn>
-                    <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="settingsImportLoading" @click="openSettingsImport">
-                        {{ $t('settings.backup.settingsImport') }}
-                    </q-btn>
-                    <input
-                        ref="settingsImportInput"
-                        type="file"
-                        accept="application/json,.json"
-                        style="display: none"
-                        @change="onSettingsImportSelected"
-                    />
-                    <input
-                        ref="backupImportInput"
-                        type="file"
-                        accept="application/zip,.zip"
-                        style="display: none"
-                        @change="onBackupImportSelected"
-                    />
-                </div>
-                    </section>
+                    <AdminBackups v-else-if="section === 'backups'" @restored="loadSettings" />
 
                     <template v-else-if="section === 'log'">
                 <div class="admin-subsection">
@@ -478,15 +373,18 @@ import vueComponent from '../vueComponent.js';
 import DiscoverySourceDialog from './DiscoverySourceDialog.vue';
 import AdminUsers from './AdminUsers.vue';
 import AdminAuthorNames from './AdminAuthorNames.vue';
+import AdminIntegrations from './AdminIntegrations.vue';
+import AdminBackups from './AdminBackups.vue';
 import {t, formatDateTime} from '../../share/i18n';
 import {isAdmin} from '../../share/session';
-import {downloadJson} from '../../share/utils';
 
 const componentOptions = {
     components: {
         DiscoverySourceDialog,
         AdminUsers,
         AdminAuthorNames,
+        AdminIntegrations,
+        AdminBackups,
     },
     watch: {
         settings() {
@@ -504,17 +402,6 @@ class AdminPage {
     discoveryExternalSource = '';
     discoveryExternalName = '';
     discoverySourceDialogVisible = false;
-    integrationSaveLoading = false;
-    smtpTestLoading = false;
-    telegramTestLoading = false;
-    backupLoading = false;
-    backupImportLoading = false;
-    settingsExportLoading = false;
-    settingsImportLoading = false;
-    opdsSaveLoading = false;
-    smtpPassVisible = false;
-    telegramTokenVisible = false;
-    opdsPasswordVisible = false;
     adminLoading = false;
     adminCleanLoading = false;
     adminCleanBookCacheLoading = false;
@@ -541,8 +428,6 @@ class AdminPage {
     adminEventCategory = 'all';
     adminEventLogEnabled = true;
     adminEventLogSize = 300;
-    integrations = this.makeDefaultIntegrations();
-    opdsSettings = this.makeDefaultOpdsSettings();
     get adminEventLevelOptions() {
         return [
             {label: t('settings.allLevels'), value: 'all'},
@@ -569,14 +454,6 @@ class AdminPage {
         {label: '500', value: 500},
         {label: '1000', value: 1000},
     ];
-
-    get opdsLangOptions() {
-        return [
-            {label: t('settings.automaticReaderAppLanguage'), value: ''},
-            {label: t('langNames.ru'), value: 'ru'},
-            {label: t('langNames.en'), value: 'en'},
-        ];
-    }
 
     get adminCacheFrequencyOptions() {
         return [
@@ -713,49 +590,6 @@ class AdminPage {
         return t('settings.awardsShowcase', {name});
     }
 
-    makeDefaultIntegrations() {
-        return {
-            telegramShareEnabled: false,
-            telegramBotToken: '',
-            telegramChatId: '',
-            telegramCaptionTemplate: '${AUTHOR} - ${TITLE}',
-            emailShareEnabled: false,
-            smtpHost: '',
-            smtpPort: 587,
-            smtpSecure: false,
-            smtpUser: '',
-            smtpPass: '',
-            emailFrom: '',
-            emailTo: '',
-        };
-    }
-
-    makeDefaultOpdsSettings() {
-        return {
-            enabled: true,
-            root: '/opds',
-            user: '',
-            password: '',
-            lang: '',
-        };
-    }
-
-    loadIntegrations() {
-        const source = this.config.adminIntegrations || {};
-        this.integrations = Object.assign(this.makeDefaultIntegrations(), source, {
-            smtpPort: parseInt(source.smtpPort, 10) || 587,
-            telegramBotToken: source.telegramBotToken || (source.telegramBotTokenSet ? '__KEEP__' : ''),
-            smtpPass: source.smtpPass || (source.smtpPassSet ? '__KEEP__' : ''),
-        });
-    }
-
-    loadOpdsSettings() {
-        const source = this.config.adminOpds || {};
-        this.opdsSettings = Object.assign(this.makeDefaultOpdsSettings(), source, {
-            password: source.password || (source.passwordSet ? '__KEEP__' : ''),
-        });
-    }
-
     loadSettings() {
         const settings = this.settings;
         const configExternalSource = (String(this.discoveryConfig.externalSource || 'none').trim().toLowerCase() === 'none'
@@ -778,8 +612,6 @@ class AdminPage {
             ? 'none'
             : 'wikidata-awards');
         this.discoveryExternalName = String(settings.discoveryExternalName || this.discoveryConfig.externalName || '').trim();
-        this.loadIntegrations();
-        this.loadOpdsSettings();
     }
 
     makeDefaultAdminCacheSettings() {
@@ -1544,190 +1376,6 @@ class AdminPage {
         }
     }
 
-    async saveIntegrations(options = {}) {
-        if (!this.canEditExternalDiscovery)
-            return false;
-
-        this.integrationSaveLoading = true;
-        try {
-            const result = await this.api.updateAdminIntegrations(this.integrations);
-            if (result && result.integrations)
-                this.integrations = Object.assign(this.makeDefaultIntegrations(), result.integrations);
-            await this.api.updateConfig();
-            if (!options.quiet)
-                this.$root.notify.success(t('settings.mail.saved'));
-            return true;
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-            return false;
-        } finally {
-            this.integrationSaveLoading = false;
-        }
-    }
-
-    async testSmtp() {
-        const saved = await this.saveIntegrations({quiet: true});
-        if (!saved)
-            return;
-
-        this.smtpTestLoading = true;
-        try {
-            const result = await this.api.testAdminIntegration('smtp');
-            this.$root.notify.success((result && result.message) || 'SMTP ok');
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-        } finally {
-            this.smtpTestLoading = false;
-        }
-    }
-
-    async testTelegram() {
-        const saved = await this.saveIntegrations({quiet: true});
-        if (!saved)
-            return;
-
-        this.telegramTestLoading = true;
-        try {
-            const result = await this.api.testAdminIntegration('telegram');
-            this.$root.notify.success((result && result.message) || 'Telegram ok');
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-        } finally {
-            this.telegramTestLoading = false;
-        }
-    }
-
-    async saveOpdsSettings() {
-        if (!this.canEditExternalDiscovery)
-            return false;
-
-        this.opdsSaveLoading = true;
-        try {
-            const result = await this.api.updateAdminOpds(this.opdsSettings);
-            if (result && result.opds)
-                this.opdsSettings = Object.assign(this.makeDefaultOpdsSettings(), result.opds);
-            await this.api.updateConfig();
-            this.$root.notify.success(t('settings.opds.saved'));
-            return true;
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-            return false;
-        } finally {
-            this.opdsSaveLoading = false;
-        }
-    }
-
-    async exportSettings() {
-        this.settingsExportLoading = true;
-        try {
-            const result = await this.api.exportAdminSettings();
-            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            downloadJson(result, `inpx-shelf-settings-${stamp}.json`);
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-        } finally {
-            this.settingsExportLoading = false;
-        }
-    }
-
-    openSettingsImport() {
-        const input = this.$refs.settingsImportInput;
-        if (!input)
-            return;
-
-        input.value = '';
-        input.click();
-    }
-
-    openBackupImport() {
-        const input = this.$refs.backupImportInput;
-        if (!input)
-            return;
-
-        input.value = '';
-        input.click();
-    }
-
-    arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        const chunkSize = 0x8000;
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += chunkSize)
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-        return btoa(binary);
-    }
-
-    async onSettingsImportSelected(event) {
-        const input = event && event.target;
-        const file = input && input.files && input.files[0];
-        if (!file)
-            return;
-        if (!await this.$root.stdDialog.confirm(t('settings.backup.settingsImportConfirm'), t('settings.backup.settingsImport'))) {
-            input.value = '';
-            return;
-        }
-
-        this.settingsImportLoading = true;
-        try {
-            const data = JSON.parse(await file.text());
-            await this.api.importAdminSettings(data);
-            await this.api.updateConfig();
-            this.loadSettings();
-            this.$root.notify.success(t('settings.settingsRestored'));
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-        } finally {
-            this.settingsImportLoading = false;
-            if (input)
-                input.value = '';
-        }
-    }
-
-    async onBackupImportSelected(event) {
-        const input = event && event.target;
-        const file = input && input.files && input.files[0];
-        if (!file)
-            return;
-
-        const confirmed = await this.$root.stdDialog.confirm(
-            t('settings.backup.restoreConfirm'),
-            t('settings.backup.backupImport'),
-        );
-        if (!confirmed) {
-            input.value = '';
-            return;
-        }
-
-        this.backupImportLoading = true;
-        try {
-            const contentBase64 = this.arrayBufferToBase64(await file.arrayBuffer());
-            await this.api.importAdminBackup({fileName: file.name, contentBase64});
-            await this.api.updateConfig();
-            this.loadSettings();
-            this.$root.notify.success(t('settings.backup.restored'));
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-        } finally {
-            this.backupImportLoading = false;
-            if (input)
-                input.value = '';
-        }
-    }
-
-    async createBackup() {
-        this.backupLoading = true;
-        try {
-            const result = await this.api.createAdminBackup();
-            if (result && result.link) {
-                window.location.href = result.link;
-                this.$root.notify.success(t('settings.backup.ready'));
-            }
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
-        } finally {
-            this.backupLoading = false;
-        }
-    }
 }
 
 export default vueComponent(AdminPage);
@@ -1747,55 +1395,9 @@ export default vueComponent(AdminPage);
     color: var(--app-muted);
 }
 
-.admin-backup-note {
-    padding: 8px 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    color: var(--app-muted);
-    font-size: 12px;
-    line-height: 1.4;
-}
-
-.admin-backup-note > div + div {
-    margin-top: 6px;
-}
-
-.admin-mail-section {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid var(--app-border);
-}
-
-.admin-mail-section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.admin-mail-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 8px;
-}
-
-.admin-mail-wide,
-.admin-mail-actions {
-    grid-column: span 2;
-}
-
 .admin-mail-actions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 12px;
-}
-
-.admin-backup-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
     margin-top: 12px;
 }
 
@@ -2130,10 +1732,6 @@ export default vueComponent(AdminPage);
     font-weight: 700;
 }
 
-.password-visibility-toggle {
-    cursor: pointer;
-}
-
 @media (max-width: 720px) {
     .admin-dashboard-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2158,15 +1756,6 @@ export default vueComponent(AdminPage);
     .admin-cover-actions,
     .admin-task-row {
         grid-template-columns: 1fr;
-    }
-
-    .admin-mail-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .admin-mail-wide,
-    .admin-mail-actions {
-        grid-column: span 1;
     }
 
     .admin-mail-actions {
