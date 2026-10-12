@@ -215,6 +215,27 @@ async function testReadingListBookReadSavesOnce() {
     });
 }
 
+//архивы обложек книги и справки об авторах кешируются до сброса кешей библиотеки; справок не больше 1000
+async function testLibraryAssetCaches() {
+    await temporary(async(libDir) => {
+        await fs.outputFile(path.join(libDir, 'a.zip'), '');
+        await fs.outputFile(path.join(libDir, 'covers', 'a.zip'), '');
+        const worker = bareWorker({config: {libDir}});
+        worker.resetLibraryAssetCaches();
+
+        assert.strictEqual((await worker.getBookAssetArchives('covers', 'a.zip')).length, 1);
+        await fs.remove(path.join(libDir, 'covers'));
+        assert.strictEqual((await worker.getBookAssetArchives('covers', 'a.zip')).length, 1);
+        worker.resetLibraryAssetCaches();
+        assert.strictEqual((await worker.getBookAssetArchives('covers', 'a.zip')).length, 0);
+
+        worker.findAuthorInfo = async() => null;
+        for (let i = 0; i < 1001; i++)
+            await worker.getAuthorInfo(null, `Author ${i}`);
+        assert.strictEqual(worker.authorInfoCache.size, 1000);
+    });
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
@@ -224,4 +245,5 @@ module.exports = [
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
+    testLibraryAssetCaches,
 ];

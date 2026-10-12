@@ -664,6 +664,7 @@ class WebWorker {
     resetLibraryAssetCaches() {
         this.libraryAssetGeneration = (this.libraryAssetGeneration || 0) + 1;
         this.fblibraryArchives = {};
+        this.bookAssetArchives = new Map();
         this.authorInfoCache = new Map();
         this.authorInfoIndex = null;
         this.reviewArchiveStates = new Map();
@@ -3784,6 +3785,13 @@ class WebWorker {
 
     async getBookAssetArchives(subDir, libFolder, sourceLibDir = '') {
         const libDir = sourceLibDir || this.config.libDir;
+        //как fblibraryArchives: найденные архивы помнятся до сброса кешей ресурсов библиотеки
+        const cacheKey = `${libDir}::${subDir}::${libFolder}`;
+        if (!this.bookAssetArchives)
+            this.bookAssetArchives = new Map();
+        if (this.bookAssetArchives.has(cacheKey))
+            return this.bookAssetArchives.get(cacheKey);
+
         const bookArchive = await this.resolveLibraryArchivePath(`${libDir}/${libFolder}`, libDir);
         const baseName = path.basename(bookArchive, path.extname(bookArchive));
         const dirs = Array.from(new Set([
@@ -3800,8 +3808,11 @@ class WebWorker {
                     exact.push({file: path.join(dir, name)});
             }
         }
-        return exact
+        const result = exact
             .filter((archive, index, all) => all.findIndex(item => item.file === archive.file) === index);
+        if (result.length)
+            this.bookAssetArchives.set(cacheKey, result);
+        return result;
     }
 
     async getBookCover(book) {
@@ -4055,6 +4066,8 @@ class WebWorker {
             return {authorInfo: this.authorInfoCache.get(cacheKey)};
 
         const authorInfo = await this.findAuthorInfo(authorName);
+        if (this.authorInfoCache.size >= 1000)
+            this.authorInfoCache.delete(this.authorInfoCache.keys().next().value);
         this.authorInfoCache.set(cacheKey, authorInfo);
         return {authorInfo};
     }
