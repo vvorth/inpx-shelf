@@ -30,13 +30,15 @@ module.exports = {
         const {users, currentUser} = await this.readingListStore.getUsers(currentUserId);
         return {
             users: users
-                .map((item) => ({
+                .map((item, index) => ({
                     id: item.id,
                     name: getUserDisplayName(item),
                     login: item.login || '',
                     requiresLogin: !!item.passwordHash,
                     anonymousProfile: isAnonymousDefaultUser(item),
                     isAdmin: !!item.isAdmin,
+                    //главный администратор - первый профиль, его восстанавливает adminLogin из конфига
+                    mainAdmin: index === 0 && !!item.isAdmin,
                     opdsEnabled: item.opdsEnabled !== false,
                     opdsAuthEnabled: item.opdsAuthEnabled === true,
                     currentReadingCount: Object.values(item.readerProgress || {}).filter(isReadingInProgress).length,

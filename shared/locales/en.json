@@ -77,6 +77,7 @@
         "tableEmpty": "The table hasn't been downloaded yet."
     },
     "adminUsers": {
+        "adminHint": "Full access to settings, users and backups. Needs a login and password.",
         "edit": "Edit",
         "generate": "Generate",
         "giveTheUserTheir": "Give the user their login and password. They can change the password in their profile.",
@@ -381,7 +382,9 @@
         "bookNotInList": "Book not found in the list",
         "bookPrepareFailed": "Could not prepare the book, see the server log for details",
         "bookTitleRequired": "Book title must not be empty",
+        "adminCredentialsRequired": "The administrator needs a login and password",
         "cannotDeleteAdmin": "Cannot delete the administrator profile",
+        "cannotRemoveMainAdmin": "Cannot remove the role from the main administrator",
         "cannotDeleteLastUser": "Cannot delete the last user",
         "conversionFailed": "Could not convert the book, see the server log for details",
         "conversionQueueFull": "The conversion queue is full. Try again later.",

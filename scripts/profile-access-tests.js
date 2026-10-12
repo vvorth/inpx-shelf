@@ -303,6 +303,34 @@ async function testPasswordCheckDoesNotHoldTheStore() {
     }
 }
 
-module.exports = [testInvalidStoredRowsAreRepairedNotDropped, testPasswordCheckDoesNotHoldTheStore,
+// The admin role can be given to a profile with a login and password; the last admin keeps it, nobody changes their own role.
+async function testAdminRoleToggle() {
+    await fixture({}, async({config, worker, alice, bob, connect}) => {
+        const call = await connect();
+        const cfg = await call({action: 'get-config'});
+        const login = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken: cfg.csrfToken});
+        const admin = {userId: login.userId, profileAccessToken: login.profileAccessToken, csrfToken: cfg.csrfToken};
+        const update = (targetUserId, profile, as = admin) => call({action: 'update-user-profile', targetUserId, profile, ...as});
+
+        assert.match((await update(bob.id, {isAdmin: true})).error, /login and password|логин и пароль/);
+        assert.strictEqual((await update(alice.id, {isAdmin: true})).user.isAdmin, true);
+        const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: cfg.csrfToken});
+        const asAlice = {userId: alice.id, profileAccessToken: aliceLogin.profileAccessToken, csrfToken: cfg.csrfToken};
+        await worker.requireAdmin(alice.id, aliceLogin.profileAccessToken);
+        assert.strictEqual((await update(alice.id, {isAdmin: false}, asAlice)).user.isAdmin, true, 'Own role is not changed');
+        assert.strictEqual((await update(alice.id, {isAdmin: false})).user.isAdmin, false);
+        assert.match((await update('admin', {isAdmin: false}, asAlice)).error, /.+/, 'A reader cannot change roles');
+        await worker.readingListStore.updateUser(alice.id, {isAdmin: true});
+        assert.match((await update('admin', {isAdmin: false}, asAlice)).error, /main administrator|главного администратора/);
+        const profiles = (await worker.getUserProfiles()).users;
+        assert.deepStrictEqual(profiles.filter(item => item.mainAdmin).map(item => item.id), ['admin']);
+        const created = await call({action: 'create-user-profile', profile: {name: 'Dora', login: 'dora', password: 'dora-pass', isAdmin: true}, ...asAlice});
+        assert.strictEqual(created.user.isAdmin, true);
+        assert.match((await call({action: 'create-user-profile', profile: {name: 'Eve', isAdmin: true}, ...asAlice})).error, /.+/);
+        assert.ok(config);
+    });
+}
+
+module.exports = [testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped, testPasswordCheckDoesNotHoldTheStore,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

@@ -158,10 +158,13 @@ module.exports = {
             telegramChatId: profile.telegramChatId,
             opdsEnabled: profile.opdsEnabled,
             opdsAuthEnabled: profile.opdsAuthEnabled,
-            isAdmin: false,
+            isAdmin: profile.isAdmin === true,
         });
         if (user.opdsAuthEnabled && (!user.login || !user.passwordHash))
             throw new Error(t('errors.opdsCredentialsRequired'));
+        //без пароля requireAdmin пропустил бы любого, кто выбрал этот профиль
+        if (user.isAdmin && (!user.login || !user.passwordHash))
+            throw new Error(t('errors.adminCredentialsRequired'));
 
         data.users.push(user);
         await this.save(data);
@@ -193,8 +196,16 @@ module.exports = {
             target.opdsAuthEnabled = (patch.opdsAuthEnabled === true);
         if (utilsHasProp(patch, 'readerPreferences'))
             target.readerPreferences = this.normalizeReaderPreferences(patch.readerPreferences);
+        if (utilsHasProp(patch, 'isAdmin')) {
+            //первый профиль - главный администратор из конфига (applyAdminBootstrap): без него запуск выбрал бы другого
+            if (target.isAdmin && patch.isAdmin !== true && data.users[0] && data.users[0].id === target.id)
+                throw new Error(t('errors.cannotRemoveMainAdmin'));
+            target.isAdmin = (patch.isAdmin === true);
+        }
         if (target.opdsAuthEnabled && (!target.login || !target.passwordHash))
             throw new Error(t('errors.opdsCredentialsRequired'));
+        if (target.isAdmin && (!target.login || !target.passwordHash))
+            throw new Error(t('errors.adminCredentialsRequired'));
         target.updatedAt = this.nowIso();
 
         await this.save(data);

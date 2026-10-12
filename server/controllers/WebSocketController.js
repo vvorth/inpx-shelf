@@ -864,7 +864,9 @@ class WebSocketController {
         if (profile.password)
             profile.passwordHash = await this.webWorker.hashProfilePassword(passwordLogin, profile.password);
         delete profile.password;
-        delete profile.isAdmin;
+        //роль меняет только администратор и только у чужого профиля: себя случайно не разжаловать
+        if (isOwnProfile)
+            delete profile.isAdmin;
 
         const result = await this.webWorker.updateUserProfile(req.targetUserId, profile);
         this.send(result, req, ws);

@@ -34,6 +34,9 @@
                 </div>
                 <q-toggle v-model="draft.opdsEnabled" :label="$t('profiles.showProfileInOpds')" />
                 <q-toggle v-model="draft.opdsAuthEnabled" :disable="!draft.login || !draft.password" :label="$t('profiles.requireOpdsAuth')" />
+                <q-toggle v-model="draft.isAdmin" :disable="!draft.login || !draft.password" :label="$t('profiles.defaultAdminName')">
+                    <q-tooltip>{{ $t('adminUsers.adminHint') }}</q-tooltip>
+                </q-toggle>
                 <div class="card-hint">
                     {{ $t('adminUsers.giveTheUserTheir') }}
                 </div>
@@ -108,6 +111,9 @@
                                         <q-toggle v-model="edit.opdsEnabled" :label="$t('profiles.showProfileInOpds')" />
                                         <q-toggle v-model="edit.opdsAuthEnabled" :disable="!edit.login || !user.requiresLogin" :label="$t('profiles.requireOpdsAuth')" />
                                     </template>
+                                    <q-toggle v-model="edit.isAdmin" :disable="user.mainAdmin || !edit.login || !user.requiresLogin" :label="$t('profiles.defaultAdminName')">
+                                        <q-tooltip>{{ $t('adminUsers.adminHint') }}</q-tooltip>
+                                    </q-toggle>
                                     <div class="card-actions">
                                         <q-btn type="submit" color="primary" unelevated dense no-caps>
                                             {{ $t('common.save') }}
@@ -136,7 +142,7 @@ import {currentProfile} from '../../share/session';
 const passwordWords = ['amber', 'birch', 'cedar', 'delta', 'ember', 'fjord', 'grove', 'heron', 'iris', 'juniper', 'koala', 'lumen', 'maple', 'nova', 'otter', 'plum', 'quartz', 'raven', 'sage', 'tulip'];
 
 function emptyDraft() {
-    return {name: '', login: '', password: '', emailTo: '', telegramChatId: '', opdsEnabled: true, opdsAuthEnabled: false};
+    return {name: '', login: '', password: '', emailTo: '', telegramChatId: '', opdsEnabled: true, opdsAuthEnabled: false, isAdmin: false};
 }
 
 class AdminUsers {
@@ -208,12 +214,13 @@ class AdminUsers {
             login: user.login || '',
             opdsEnabled: user.opdsEnabled !== false,
             opdsAuthEnabled: user.opdsAuthEnabled === true,
+            isAdmin: user.isAdmin === true,
         };
     }
 
     async saveEdit(user) {
         //email и chat id читатель задаёт сам: get-config не отдаёт их для чужих профилей
-        const patch = {name: this.edit.name, login: this.edit.login};
+        const patch = {name: this.edit.name, login: this.edit.login, isAdmin: this.edit.isAdmin};
         if (!user.isAdmin) {
             patch.opdsEnabled = this.edit.opdsEnabled;
             patch.opdsAuthEnabled = this.edit.opdsAuthEnabled;
