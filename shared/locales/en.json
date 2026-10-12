@@ -349,7 +349,8 @@
             "clarke": "Arthur C. Clarke Award",
             "booker": "Booker Prize",
             "pulitzer": "Pulitzer Prize for Fiction",
-            "goncourt": "Prix Goncourt"
+            "goncourt": "Prix Goncourt",
+            "bornThisMonth": "Writers born this month"
         }
     },
     "discoverySource": {

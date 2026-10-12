@@ -1599,6 +1599,13 @@ async function testWikidataAwardsShelf() {
     const literal = value => ({type: 'literal', value});
     axios.get = async(url, options) => {
         queries.push(options.params.query);
+        //писатели месяца: лауреат с языком оригинала и книга, которой нет среди лауреатов
+        if (options.params.query.includes('P569'))
+            return {data: {results: {bindings: [
+                {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q25217632'}, titleEn: literal('The Fifth Season'), langs: literal('en')},
+                {work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q645394'}, titleEn: literal('The Left Hand of Darkness'),
+                    authorEn: literal('Ursula K. Le Guin'), langs: literal('en')},
+            ]}}};
         return {data: {results: {bindings: [
             {
                 work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q25217632'},
@@ -1628,8 +1635,9 @@ async function testWikidataAwardsShelf() {
         const worker = makeAwardsWorker();
         const hugo = await worker.buildExternalDiscoveryShelfV2(8, worker.getDiscoveryConfig({externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032'}));
         assert.match(queries[0], /wd:Q255032 wd:Q266012/);
+        assert.match(queries[1], new RegExp(`MONTH\\(\\?born\\) = ${new Date().getUTCMonth() + 1}\\)`));
         assert.strictEqual(hugo.sourceUrl, 'https://www.wikidata.org/wiki/Q255032');
-        assert.strictEqual(hugo.genreOptions.length, 8);
+        assert.strictEqual(hugo.genreOptions.length, 9);
         assert.deepStrictEqual(hugo.items.map(book => book._uid), ['local-1']);
         assert.strictEqual(hugo.items[0].discoveryUrl, 'https://www.wikidata.org/wiki/Q25217632');
         assert.strictEqual(hugo.discoveryHasMore, false);
@@ -1643,7 +1651,13 @@ async function testWikidataAwardsShelf() {
         assert.strictEqual(all.sourceUrl, '');
         assert.strictEqual(all.items.length, 1);
         assert.strictEqual(all.discoveryHasMore, true);
-        assert.strictEqual(queries.length, 1);
+        assert.strictEqual(queries.length, 2);
+        //«Все премии» - без писателей месяца; у писателей месяца нет ссылки на премию
+        const allAwards = await worker.buildExternalDiscoveryShelfV2(8, worker.getDiscoveryConfig());
+        assert.deepStrictEqual(allAwards.items.map(book => book.title), ['The Fifth Season', 'Network Effect']);
+        const born = await worker.buildExternalDiscoveryShelfV2(8, worker.getDiscoveryConfig({externalBrowseUrl: 'born-this-month'}));
+        assert.deepStrictEqual(born.items.map(book => book.title), ['The Fifth Season', 'The Left Hand of Darkness']);
+        assert.strictEqual(born.sourceUrl, '');
 
         //все премии готовятся заранее, повторный прогрев берёт их из кеша
         const searches = [];
@@ -1653,11 +1667,20 @@ async function testWikidataAwardsShelf() {
             return bookSearch(query);
         };
         await worker.warmExternalDiscoveryShelves();
-        assert.strictEqual(Array.from(worker.discoveryCache.keys()).filter(key => key.startsWith('discovery:test-hash:external:')).length, 9);
+        assert.strictEqual(Array.from(worker.discoveryCache.keys()).filter(key => key.startsWith('discovery:test-hash:external:')).length, 10);
         const warmSearches = searches.length;
         await worker.warmExternalDiscoveryShelves();
         assert.strictEqual(searches.length, warmSearches);
-        assert.strictEqual(queries.length, 1);
+        assert.strictEqual(queries.length, 2);
+
+        //писатели месяца не загрузились: полки премий всё равно есть
+        axios.get = async(url, options) => {
+            if (options.params.query.includes('P569'))
+                throw new Error('timeout');
+            return {data: {results: {bindings: [{work: {type: 'uri', value: 'http://www.wikidata.org/entity/Q1'}, titleEn: literal('Dune'), awards: literal('Q255032')}]}}};
+        };
+        const withoutBorn = await makeAwardsWorker().fetchWikidataAwardWinners();
+        assert.deepStrictEqual(withoutBorn.items.map(item => item.title), ['Dune']);
 
         axios.get = async() => {
             throw new Error('HTTP 429');
@@ -1695,6 +1718,10 @@ async function testAwardsShelfEditionsAndOrder() {
     ]);
     assert.deepStrictEqual(items[1].books.map(book => book._uid).sort(), ['en', 'ru', 'ru-2', 'uk'], 'a longer title is another book');
     assert.deepStrictEqual(items[1].books.map(book => book.lang), ['ru', 'ru', 'en', 'uk']);
+    //оригинал идёт перед переводами
+    const original = await worker.matchExternalItems([{title: 'Нейромант', author: 'Уильям Гибсон', url: 'u:neuro', langs: ['en'],//i18n-ignore: тестовые данные
+        alternates: [{title: 'Neuromancer', author: 'William Gibson'}]}]);
+    assert.deepStrictEqual(original.items[0].books.map(book => book.lang), ['en', 'ru', 'ru', 'uk']);
 
     worker.getWikidataAwardMatches = async() => ({items});
     const shelf = await worker.buildExternalDiscoveryShelfV2(5, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',

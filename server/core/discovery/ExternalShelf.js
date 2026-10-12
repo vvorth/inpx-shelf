@@ -16,7 +16,7 @@ const discoveryCacheTtl = 15*60*1000;//15 minutes
 //наибольший срок обновления внешней витрины (externalTtlMinutes); записи без своего срока живут столько
 const discoveryCacheMaxTtl = 10080*60*1000;
 
-const externalDiscoveryCacheVersion = 'v9';
+const externalDiscoveryCacheVersion = 'v10';
 
 function buildExternalFeedIdentity(item = {}) {
     const title = normalizeDiscoveryText(item.title || '');
@@ -40,6 +40,13 @@ const wikidataAwards = [
     {id: 'Q187300', label: 'discovery.award.goncourt'},
 ];
 
+//не премия: заметные произведения писателей, родившихся в текущем месяце; меняется раз в месяц
+const bornThisMonth = {id: 'born-this-month', label: 'discovery.award.bornThisMonth'};
+const shelfOptions = [...wikidataAwards, bornThisMonth];
+
+//на полку писателей месяца идут книги не моложе этого: витрина старых книг
+const bornThisMonthMinAge = 20;
+
 const wikidataEntityUrl = 'https://www.wikidata.org/wiki/';
 
 //столько книг клиент просит на первой странице вкладки (DiscoveryPage), такие полки готовятся заранее
@@ -54,16 +61,33 @@ function readerLanguages(value) {
         .filter(code => /^[a-z]{2,3}$/.test(code)))].sort().slice(0, 10);
 }
 
-function findWikidataAward(url = '') {
-    return wikidataAwards.find(award => wikidataEntityUrl + award.id === String(url || '').trim()) || null;
+function optionValue(option) {
+    return (option === bornThisMonth ? option.id : wikidataEntityUrl + option.id);
 }
+
+function findWikidataAward(url = '') {
+    return shelfOptions.find(option => optionValue(option) === String(url || '').trim()) || null;
+}
+
+//месяц полки писателей месяца: от него зависят запрос и ключи кеша
+function currentMonth(now = new Date()) {
+    return now.toISOString().slice(0, 7);
+}
+
+const sparqlLabel = (subject, name, lang) => `OPTIONAL { ${subject} rdfs:label ?${name} FILTER(LANG(?${name}) = "${lang}") }`;
+
+//названия, авторы и языки оригинала (ISO 639-1) произведения
+const sparqlWorkColumns = `?work (SAMPLE(?ru) AS ?titleRu) (SAMPLE(?en) AS ?titleEn)
+        (GROUP_CONCAT(DISTINCT ?authorRuLabel; separator=", ") AS ?authorRu)
+        (GROUP_CONCAT(DISTINCT ?authorEnLabel; separator=", ") AS ?authorEn)
+        (GROUP_CONCAT(DISTINCT ?langCode; separator=" ") AS ?langs)`;
+const sparqlWorkDetails = `OPTIONAL { ?work wdt:P407/wdt:P218 ?langCode }
+        ${sparqlLabel('?work', 'ru', 'ru')} ${sparqlLabel('?work', 'en', 'en')}
+        ${sparqlLabel('?author', 'authorRuLabel', 'ru')} ${sparqlLabel('?author', 'authorEnLabel', 'en')}`;
 
 function buildWikidataAwardsQuery() {
     const values = wikidataAwards.map(award => `wd:${award.id}`).join(' ');
-    const label = (subject, name, lang) => `OPTIONAL { ${subject} rdfs:label ?${name} FILTER(LANG(?${name}) = "${lang}") }`;
-    return `SELECT ?work (SAMPLE(?ru) AS ?titleRu) (SAMPLE(?en) AS ?titleEn)
-        (GROUP_CONCAT(DISTINCT ?authorRuLabel; separator=", ") AS ?authorRu)
-        (GROUP_CONCAT(DISTINCT ?authorEnLabel; separator=", ") AS ?authorEn)
+    return `SELECT ${sparqlWorkColumns}
         (GROUP_CONCAT(DISTINCT STRAFTER(STR(?award), "/entity/"); separator=" ") AS ?awards)
         (MAX(YEAR(?date)) AS ?year)
     WHERE {
@@ -71,9 +95,29 @@ function buildWikidataAwardsQuery() {
         ?work p:P166 ?statement. ?statement ps:P166 ?award.
         OPTIONAL { ?statement pq:P585 ?date }
         ?work wdt:P50 ?author.
-        ${label('?work', 'ru', 'ru')} ${label('?work', 'en', 'en')}
-        ${label('?author', 'authorRuLabel', 'ru')} ${label('?author', 'authorEnLabel', 'en')}
+        ${sparqlWorkDetails}
     } GROUP BY ?work ORDER BY DESC(?year)`;
+}
+
+//романисты, поэты и драматурги, родившиеся в этом месяце (точная дата), и их заметные произведения;
+//известность автора - число статей о нём в Википедиях
+function buildWikidataBornThisMonthQuery(now = new Date()) {
+    return `SELECT ${sparqlWorkColumns} (MAX(?sitelinks) AS ?rank)
+    WHERE {
+        {
+            SELECT ?work ?author ?sitelinks WHERE {
+                VALUES ?occupation { wd:Q6625963 wd:Q49757 wd:Q214917 }
+                ?author wdt:P106 ?occupation; wdt:P800 ?work; wikibase:sitelinks ?sitelinks.
+                FILTER(?sitelinks >= 30)
+                ?work wdt:P50 ?author.
+                ?author p:P569 ?birth. ?birth a wikibase:BestRank; psv:P569 ?birthValue.
+                ?birthValue wikibase:timeValue ?born; wikibase:timePrecision ?precision.
+                FILTER(?precision >= 11 && MONTH(?born) = ${now.getUTCMonth() + 1})
+                FILTER NOT EXISTS { ?work wdt:P577 ?published FILTER(YEAR(?published) > ${now.getUTCFullYear() - bornThisMonthMinAge}) }
+            } LIMIT 600
+        }
+        ${sparqlWorkDetails}
+    } GROUP BY ?work ORDER BY DESC(?rank)`;
 }
 
 //ответ SPARQL -> книги для сопоставления: русское название, английское - запасным вариантом
@@ -98,6 +142,7 @@ function parseWikidataAwardWinners(data = {}) {
             alternates: (titleRu && titleEn && titleEn !== titleRu
                 ? [{title: titleEn, author: authorEn || authorRu, authors: [authorRu, authorEn].filter(Boolean).join(', ')}] : []),
             awards: value(binding, 'awards').split(' ').filter(Boolean),
+            langs: value(binding, 'langs').split(' ').filter(Boolean),
         });
     }
     return result;
@@ -416,10 +461,11 @@ module.exports = {
                 }
             }
 
-            //названия в Викиданных русские и английские: такие издания идут первыми
+            //первым идёт оригинал, затем русский и английский перевод (названия в Викиданных русские и английские)
+            const preferred = [...(item.langs || []), 'ru', 'en'];
             const rank = book => {
-                const position = ['ru', 'en'].indexOf(String(book.lang || '').trim().toLowerCase());
-                return (position < 0 ? 2 : position);
+                const position = preferred.indexOf(String(book.lang || '').trim().toLowerCase());
+                return (position < 0 ? preferred.length : position);
             };
             const books = [...found.values()]
                 .sort((a, b) => (rank(a.book) - rank(b.book)) || (b.score - a.score))
@@ -433,20 +479,40 @@ module.exports = {
         return {items: result};
     },
 
+    async queryWikidata(query) {
+        const response = await axios.get('https://query.wikidata.org/sparql', {
+            params: {query},
+            timeout: 60000,
+            headers: {
+                //Викиданные требуют User-Agent с контактом
+                'User-Agent': `${this.config.name}/${this.config.version} (https://github.com/vvorth/inpx-shelf)`,
+                'Accept': 'application/sparql-results+json',
+            },
+        });
+        return parseWikidataAwardWinners(response.data);
+    },
+
     async fetchWikidataAwardWinners(discovery = {}) {
         try {
-            const response = await axios.get('https://query.wikidata.org/sparql', {
-                params: {query: buildWikidataAwardsQuery()},
-                timeout: 60000,
-                headers: {
-                    //Викиданные требуют User-Agent с контактом
-                    'User-Agent': `${this.config.name}/${this.config.version} (https://github.com/vvorth/inpx-shelf)`,
-                    'Accept': 'application/sparql-results+json',
-                },
-            });
-            const items = parseWikidataAwardWinners(response.data);
+            const items = await this.queryWikidata(buildWikidataAwardsQuery());
             if (!items.length)
                 throw new Error(t('errors.externalReadFailed'));
+
+            //писатели месяца не обязательны: без них полки премий работают
+            let born = [];
+            try {
+                born = await this.queryWikidata(buildWikidataBornThisMonthQuery());
+            } catch (e) {
+                log(LM_WARN, `Wikidata born-this-month: ${e.message}`);
+            }
+            //произведение и лауреат, и книга писателя месяца: одна запись с обеими отметками
+            const byUrl = new Map(items.map(item => [item.url, item]));
+            for (const item of born) {
+                if (byUrl.has(item.url))
+                    byUrl.get(item.url).awards.push(bornThisMonth.id);
+                else
+                    items.push(Object.assign(item, {awards: [bornThisMonth.id]}));
+            }
             return {items};
         } catch (e) {
             const details = String(e && e.message || '').trim();
@@ -458,7 +524,7 @@ module.exports = {
     //лауреаты всех премий загружаются одним запросом раз в период обновления витрины
     async getWikidataAwardWinners(discovery = {}, forceRefresh = false) {
         return this.rememberPersistedDiscovery(
-            `wikidata-awards:${externalDiscoveryCacheVersion}`,
+            `wikidata-awards:${externalDiscoveryCacheVersion}:${currentMonth()}`,
             () => this.fetchWikidataAwardWinners(discovery),
             discovery.externalTtlMinutes * 60 * 1000,
             {forceRefresh},
@@ -468,7 +534,7 @@ module.exports = {
     async getWikidataAwardMatches(discovery = {}, forceRefresh = false) {
         const inpxHash = String((await this.dbConfig()).inpxHash || '');
         return this.rememberPersistedDiscovery(
-            `wikidata-matches:${inpxHash}:${externalDiscoveryCacheVersion}`,
+            `wikidata-matches:${inpxHash}:${externalDiscoveryCacheVersion}:${currentMonth()}`,
             async() => this.matchExternalItems((await this.getWikidataAwardWinners(discovery, forceRefresh)).items),
             discovery.externalTtlMinutes * 60 * 1000,
             {forceRefresh},
@@ -490,7 +556,8 @@ module.exports = {
         const seenBookUids = new Set();
         let inLibrary = 0;
         for (const {awards, books} of matches) {
-            if (award && !awards.includes(award.id))
+            //«Все премии» - только лауреаты
+            if (award ? !awards.includes(award.id) : !awards.some(id => id !== bornThisMonth.id))
                 continue;
             if (books[0].discoveryMissingLocal) {
                 missing.push(books[0]);
@@ -519,11 +586,11 @@ module.exports = {
                 : msg('discovery.shelf.externalCounts', libraryCounts)),
             source: 'external',
             sourceName,
-            sourceUrl: (award ? wikidataEntityUrl + award.id : ''),
+            sourceUrl: (award && award !== bornThisMonth ? wikidataEntityUrl + award.id : ''),
             updatedAt: Date.now(),
             discoveryStale: false,
             discoveryHasMore: books.length > limit,
-            genreOptions: wikidataAwards.map(item => ({label: msg(item.label), value: wikidataEntityUrl + item.id})),
+            genreOptions: shelfOptions.map(item => ({label: msg(item.label), value: optionValue(item)})),
             items: books.slice(0, limit),
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
@@ -534,7 +601,7 @@ module.exports = {
         //полка кешируется целыми страницами клиента: любой размер не даёт своего ключа
         const pageLimit = Math.ceil(limit / externalShelfPageSize) * externalShelfPageSize;
         const shelf = await this.rememberPersistedDiscovery(
-            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${discovery.externalSource}:${discovery.externalName}:${pageLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
+            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${currentMonth()}:${discovery.externalSource}:${discovery.externalName}:${pageLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
             () => this.buildExternalDiscoveryShelfV2(pageLimit, discovery, refetch),
             discovery.externalTtlMinutes * 60 * 1000,
             {forceRefresh},
@@ -557,7 +624,7 @@ module.exports = {
                 return;
 
             const inpxHash = String((await this.dbConfig()).inpxHash || '').trim();
-            for (const browseUrl of ['', ...wikidataAwards.map(award => wikidataEntityUrl + award.id)])
+            for (const browseUrl of ['', ...shelfOptions.map(optionValue)])
                 await this.rememberExternalDiscoveryShelf(inpxHash, this.getDiscoveryConfig({externalBrowseUrl: browseUrl}));
         } catch (e) {
             log(LM_ERR, `warmExternalDiscoveryShelves: ${e.message}`);
