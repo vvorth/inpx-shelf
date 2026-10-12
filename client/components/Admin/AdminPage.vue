@@ -480,6 +480,7 @@ import AdminUsers from './AdminUsers.vue';
 import AdminAuthorNames from './AdminAuthorNames.vue';
 import {t, formatDateTime} from '../../share/i18n';
 import {isAdmin} from '../../share/session';
+import {downloadJson} from '../../share/utils';
 
 const componentOptions = {
     components: {
@@ -1729,24 +1730,12 @@ class AdminPage {
         }
     }
 
-    downloadJsonFile(fileName, data) {
-        const blob = new Blob([JSON.stringify(data, null, 4)], {type: 'application/json;charset=utf-8'});
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-    }
-
     async exportSettings() {
         this.settingsExportLoading = true;
         try {
             const result = await this.api.exportAdminSettings();
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            this.downloadJsonFile(`inpx-shelf-settings-${stamp}.json`, result);
+            downloadJson(result, `inpx-shelf-settings-${stamp}.json`);
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
         } finally {

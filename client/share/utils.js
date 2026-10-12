@@ -10,6 +10,19 @@ export function toHex(buf) {
     return Buffer.from(buf).toString('hex');
 }
 
+export function downloadJson(data, fileName) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json;charset=utf-8'});
+    const href = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    //сразу после click() часть браузеров ещё не начала загрузку
+    setTimeout(() => window.URL.revokeObjectURL(href), 1000);
+}
+
 export function keyEventToCode(event) {
     let result = [];
     let code = event.code;

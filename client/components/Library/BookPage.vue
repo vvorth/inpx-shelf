@@ -202,7 +202,7 @@ import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
-import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline} from '../../share/bookActions';
+import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline, authorRoute, seriesRoute, loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 import {myLanguages, languageMatches, bookLang} from '../../share/languages';
 
@@ -332,11 +332,11 @@ class BookPage {
     }
 
     authorLink(name) {
-        return `/author/${encodeURIComponent(name || '')}`;
+        return authorRoute(name);
     }
 
     seriesLink(name) {
-        return `/series/${encodeURIComponent(name || '')}`;
+        return seriesRoute(name);
     }
 
     async load() {
@@ -375,14 +375,8 @@ class BookPage {
     }
 
     async loadStates(books) {
-        if (!this.signedIn)
-            return;
-        try {
-            const result = await this.api.getBookStates(books.map(bookUid));
-            this.states = Object.assign({}, this.states, (result && result.states) || {});
-        } catch (e) {
-            //прогресс не обязателен для страницы
-        }
+        if (this.signedIn)
+            this.states = Object.assign({}, this.states, await loadBookStates(this.api, books));
     }
 
     async loadLists() {

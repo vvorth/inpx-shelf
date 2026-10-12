@@ -138,7 +138,7 @@ import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
-import {bookUid, bookAuthors} from '../../share/bookActions';
+import {bookUid, bookAuthors, bookRoute, seriesRoute, loadBookStates} from '../../share/bookActions';
 import {myLanguages, bookLang, languageMatches} from '../../share/languages';
 
 //до стольки книг (после фильтра языков) все разделы открыты сразу
@@ -394,11 +394,11 @@ class AuthorPage {
     }
 
     seriesLink(series) {
-        return `/series/${encodeURIComponent(series)}`;
+        return seriesRoute(series);
     }
 
     bookLink(book) {
-        return `/book/${encodeURIComponent(bookUid(book))}`;
+        return bookRoute(book);
     }
 
     async load() {
@@ -435,14 +435,8 @@ class AuthorPage {
     }
 
     async loadStates() {
-        if (!this.books.length || !isSignedIn(this.$store.state.config))
-            return;
-        try {
-            const result = await this.api.getBookStates(this.books.map(bookUid));
-            this.states = (result && result.states) || {};
-        } catch (e) {
-            this.states = {};
-        }
+        if (isSignedIn(this.$store.state.config))
+            this.states = (await loadBookStates(this.api, this.books)) || {};
     }
 }
 

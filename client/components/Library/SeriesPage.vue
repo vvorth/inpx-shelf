@@ -86,7 +86,7 @@ import AddToListDialog from './AddToListDialog.vue';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
-import {bookUid, bookAuthors} from '../../share/bookActions';
+import {bookUid, bookAuthors, bookRoute, loadBookStates} from '../../share/bookActions';
 import {myLanguages, languageMatches} from '../../share/languages';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
@@ -225,12 +225,8 @@ class SeriesPage {
         return this.states[bookUid(book)] || {};
     }
 
-    bookLink(book) {
-        return `/book/${encodeURIComponent(bookUid(book))}`;
-    }
-
     openBook(book) {
-        this.$router.push(this.bookLink(book));
+        this.$router.push(bookRoute(book));
     }
 
     async load() {
@@ -256,14 +252,8 @@ class SeriesPage {
     }
 
     async loadStates() {
-        if (!this.books.length || !this.signedIn)
-            return;
-        try {
-            const result = await this.api.getBookStates(this.books.map(bookUid));
-            this.states = (result && result.states) || {};
-        } catch (e) {
-            this.states = {};
-        }
+        if (this.signedIn)
+            this.states = (await loadBookStates(this.api, this.books)) || {};
     }
 
     async toggleSeriesRead() {

@@ -239,7 +239,7 @@ import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
-import {bookUid} from '../../share/bookActions';
+import {bookUid, loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
 import {myLanguages, allLanguages, languageName} from '../../share/languages';
 
@@ -637,14 +637,8 @@ class SearchPage {
     }
 
     async loadStates(books) {
-        if (!this.signedIn || !books.length)
-            return;
-        try {
-            const result = await this.api.getBookStates(books.map(bookUid));
-            this.states = Object.assign({}, this.states, (result && result.states) || {});
-        } catch (e) {
-            //отметки прочитанного не обязательны
-        }
+        if (this.signedIn)
+            this.states = Object.assign({}, this.states, await loadBookStates(this.api, books));
     }
 
 }

@@ -26,24 +26,13 @@ import vueComponent from '../vueComponent.js';
 
 import {t} from '../../share/i18n';
 import {currentProfile} from '../../share/session';
+import {downloadJson} from '../../share/utils';
 
 class MeData {
     busy = false;
 
     created() {
         this.api = this.$root.api;
-    }
-
-    downloadJson(data, fileName) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json;charset=utf-8'});
-        const href = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = href;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => window.URL.revokeObjectURL(href), 1000);
     }
 
     async exportBackup() {
@@ -55,7 +44,7 @@ class MeData {
             const login = String(profile.login || profile.id || 'profile')
                 .replace(/[^a-z0-9._-]+/gi, '-')
                 .replace(/^-+|-+$/g, '') || 'profile';
-            this.downloadJson(data, `inpx-shelf-profile-${login}-${stamp}.json`);
+            downloadJson(data, `inpx-shelf-profile-${login}-${stamp}.json`);
             this.$root.notify.success(t('profiles.profileBackupReady'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));

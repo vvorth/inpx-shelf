@@ -148,7 +148,7 @@ import TastePanel from './TastePanel.vue';
 
 import {t, tm, formatDateTime} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
-import {bookUid} from '../../share/bookActions';
+import {bookUid, loadBookStates} from '../../share/bookActions';
 import {bookView, bookViewOptions} from '../../share/bookView';
 import {myLanguages, languageMatches} from '../../share/languages';
 import {externalDiscovery, discoveryRouteLabel} from '../../share/discoveryRoutes';
@@ -479,15 +479,9 @@ class DiscoveryPage {
     async loadStates() {
         if (!this.signedIn)
             return;
-        const uids = [...new Set(this.rawShelves.flatMap(shelf => (shelf.items || []).map(bookUid)).filter(Boolean))];
-        if (!uids.length)
-            return;
-        try {
-            const result = await this.api.getBookStates(uids);
-            this.states = (result && result.states) || {};
-        } catch (e) {
-            //отметки прочитанного не обязательны
-        }
+        const states = await loadBookStates(this.api, this.rawShelves.flatMap(shelf => shelf.items || []));
+        if (states)
+            this.states = states;
     }
 
     recordImpressions() {

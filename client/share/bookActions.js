@@ -11,6 +11,32 @@ export function bookUid(book = {}) {
     return String(book._uid || book.bookUid || '').trim();
 }
 
+//адреса страниц книги, автора и серии
+export function bookRoute(book = {}) {
+    return `/book/${encodeURIComponent(bookUid(book))}`;
+}
+
+export function authorRoute(name = '') {
+    return `/author/${encodeURIComponent(name || '')}`;
+}
+
+export function seriesRoute(name = '') {
+    return `/series/${encodeURIComponent(name || '')}`;
+}
+
+//отметки книг (прочитано, прогресс, в списке): {_uid: state}; null, если сервер не ответил
+export async function loadBookStates(api, books = []) {
+    const uids = [...new Set(books.map(bookUid).filter(Boolean))];
+    if (!uids.length)
+        return {};
+    try {
+        const result = await api.getBookStates(uids);
+        return (result && result.states) || {};
+    } catch (e) {
+        return null;
+    }
+}
+
 export function conversionFormats(config = {}, book = {}) {
     if (config.conversionEnabled === false)
         return [];

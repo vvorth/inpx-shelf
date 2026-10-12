@@ -14,7 +14,7 @@
 import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 
-import {bookAuthors, bookUid} from '../../share/bookActions';
+import {bookAuthors, bookRoute} from '../../share/bookActions';
 import {isExternalOnly} from '../../share/discovery';
 
 const componentOptions = {
@@ -41,15 +41,11 @@ class BookCard {
     get linkAttrs() {
         return (this.external
             ? {href: this.book.discoveryUrl || undefined, target: '_blank', rel: 'noopener'}
-            : {to: this.bookLink(this.book)});
+            : {to: bookRoute(this.book)});
     }
 
     get author() {
         return bookAuthors(this.book).join(', ');
-    }
-
-    bookLink(book) {
-        return `/book/${encodeURIComponent(bookUid(book))}`;
     }
 }
 

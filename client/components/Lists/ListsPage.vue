@@ -87,7 +87,7 @@
                                 <tbody>
                                     <tr v-for="book in readingNow" :key="book.bookUid">
                                         <td>
-                                            <router-link class="book-title" :to="bookLink(book.bookUid)">
+                                            <router-link class="book-title" :to="bookLink(book)">
                                                 {{ book.title }}
                                             </router-link>
                                             <div class="book-meta">
@@ -199,7 +199,7 @@
                                                 <q-checkbox :model-value="book.read" dense :aria-label="$t('common.read')" @update:model-value="toggleRead(book, $event)" />
                                             </td>
                                             <td>
-                                                <router-link class="book-title" :to="bookLink(book.bookUid)">
+                                                <router-link class="book-title" :to="bookLink(book)">
                                                     {{ book.title || $t('common.untitled') }}
                                                 </router-link>
                                                 <div class="book-meta show-narrow">
@@ -249,7 +249,8 @@ import BookCollection from '../Library/BookCollection.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {refreshReadingLists} from '../../share/readingLists';
-import {bookAuthors} from '../../share/bookActions';
+import {bookAuthors, bookRoute, authorRoute, seriesRoute} from '../../share/bookActions';
+import {downloadJson} from '../../share/utils';
 import {bookViews, bookViewOptions} from '../../share/bookView';
 
 const readingNowId = '__reading__';
@@ -475,11 +476,11 @@ class ListsPage {
     }
 
     authorLink(name) {
-        return `/author/${encodeURIComponent(name || '')}`;
+        return authorRoute(name);
     }
 
     seriesLink(name) {
-        return `/series/${encodeURIComponent(name || '')}`;
+        return seriesRoute(name);
     }
 
     bookMeta(book) {
@@ -497,8 +498,8 @@ class ListsPage {
         return Math.max(0, Math.min(100, Math.round((Number(value || 0) || 0) * 100)));
     }
 
-    bookLink(bookUid) {
-        return `/book/${encodeURIComponent(bookUid)}`;
+    bookLink(book) {
+        return bookRoute(book);
     }
 
     openReader(bookUid) {
@@ -640,22 +641,10 @@ class ListsPage {
         }
     }
 
-    downloadJson(data, fileName) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json;charset=utf-8'});
-        const href = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = href;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => window.URL.revokeObjectURL(href), 1000);
-    }
-
     async exportLists() {
         try {
             const data = await this.api.exportReadingLists();
-            this.downloadJson(data, `reading-lists-${new Date().toISOString().substring(0, 10)}.json`);
+            downloadJson(data, `reading-lists-${new Date().toISOString().substring(0, 10)}.json`);
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         }

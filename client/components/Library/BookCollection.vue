@@ -105,7 +105,7 @@ import {isExternalOnly} from '../../share/discovery';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {isSignedIn} from '../../share/session';
-import {bookAuthors, bookUid} from '../../share/bookActions';
+import {bookAuthors, bookUid, bookRoute, authorRoute, seriesRoute} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 
 const componentOptions = {
@@ -165,7 +165,7 @@ class BookCollection {
     linkAttrs(book) {
         return (this.isExternal(book)
             ? {href: book.discoveryUrl || undefined, target: '_blank', rel: 'noopener'}
-            : {to: this.bookLink(book)});
+            : {to: bookRoute(book)});
     }
 
     opened(book) {
@@ -202,16 +202,12 @@ class BookCollection {
         return '★'.repeat(Math.max(0, Math.min(5, Number(book.librate) || 0)));
     }
 
-    bookLink(book) {
-        return `/book/${encodeURIComponent(bookUid(book))}`;
-    }
-
     authorLink(name) {
-        return `/author/${encodeURIComponent(name)}`;
+        return authorRoute(name);
     }
 
     seriesLink(name) {
-        return `/series/${encodeURIComponent(name)}`;
+        return seriesRoute(name);
     }
 
     openLists(book) {
