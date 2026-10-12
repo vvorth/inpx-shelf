@@ -103,7 +103,9 @@ async function fixture(options, test) {
 
 async function testProxyHeaderRequiredWithOldCookie() {
     await fixture({requireAuth: true, authMode: 'proxy', trustProxy: true, trustedProxyCidrs: ['127.0.0.1/32']}, async({security, request, connect}) => {
-        const cookie = `inpx_web_proxy_auth=${security.proxyAuthCookieValue('alice')}; broken=%ZZ`;
+        // the cookie that older versions signed for a proxy user
+        const issuedAt = Date.now();
+        const cookie = `inpx_web_proxy_auth=alice.${issuedAt}.${security.sign(`proxy:alice:${issuedAt}`)}; broken=%ZZ`;
         const headers = {'Remote-User': 'alice', cookie};
         const ok = await request('/', headers);
         assert.strictEqual(ok.status, 200);

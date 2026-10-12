@@ -65,38 +65,6 @@ function getBufHash(buf, hashName, enc) {
     return hash.digest(enc);
 }
 
-function intersectSet(arrSet) {
-    if (!arrSet.length)
-        return new Set();
-
-    let min = 0;
-    let size = arrSet[0].size;
-    for (let i = 1; i < arrSet.length; i++) {
-        if (arrSet[i].size < size) {
-            min = i;
-            size = arrSet[i].size;
-        }
-    }
-
-    const result = new Set();
-    for (const elem of arrSet[min]) {
-        let inAll = true;
-        for (let i = 0; i < arrSet.length; i++) {
-            if (i === min)
-                continue;
-            if (!arrSet[i].has(elem)) {
-                inAll = false;
-                break;
-            }
-        }
-
-        if (inAll)
-            result.add(elem);
-    }
-
-    return result;
-}
-
 function randomHexString(len) {
     return crypto.randomBytes(len).toString('hex')
 }
@@ -178,10 +146,6 @@ function gunzipBuffer(buf) {
     });
 }
 
-function toUnixPath(dir) {
-    return dir.replace(/\\/g, '/');
-}
-
 function makeValidFileName(fileName, repl = '_') {
     let f = fileName.replace(/[\x00\\/:*"<>|]/g, repl); // eslint-disable-line no-control-regex
     f = f.trim();
@@ -243,7 +207,6 @@ module.exports = {
     freeMemory,
     getFileHash,
     getBufHash,
-    intersectSet,
     randomHexString,
     gzipFile,
     gunzipFile,
@@ -251,7 +214,6 @@ module.exports = {
     ensureGunzipFile,
     gzipBuffer,
     gunzipBuffer,
-    toUnixPath,
     makeValidFileName,
     makeValidFileNameOrEmpty,
     cutString,

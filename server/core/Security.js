@@ -8,7 +8,6 @@ const sessionCookieName = 'inpx_web_session';
 const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
-const proxyAuthCookieName = 'inpx_web_proxy_auth';
 const maxWebSocketsPerIp = 50;
 
 function parseIpv4(value = '') {
@@ -291,48 +290,6 @@ class Security {
         return String(req.headers[headerName] || '').trim();
     }
 
-    proxyAuthCookieValue(user = '') {
-        const normalized = String(user || '').trim();
-        const issuedAt = Date.now();
-        return `${normalized}.${issuedAt}.${this.sign(`proxy:${normalized}:${issuedAt}`)}`;
-    }
-
-    unpackProxyAuthCookie(raw = '') {
-        const value = String(raw || '');
-        const splitAt = value.lastIndexOf('.');
-        if (splitAt <= 0)
-            return '';
-
-        const payload = value.slice(0, splitAt);
-        const timeAt = payload.lastIndexOf('.');
-        if (timeAt <= 0)
-            return '';
-        const user = payload.slice(0, timeAt);
-        const issuedAt = Number(payload.slice(timeAt + 1));
-        if (!Number.isSafeInteger(issuedAt) || issuedAt > Date.now() || Date.now() - issuedAt >= sessionLifetime.maxAgeMs)
-            return '';
-        const signature = value.slice(splitAt + 1);
-        const expected = this.sign(`proxy:${user}:${issuedAt}`);
-        return timingSafeStringEqual(signature, expected) ? user : '';
-    }
-
-    setProxyAuthCookie(req, res, user = '') {
-        const nextCookie = `${proxyAuthCookieName}=${encodeURIComponent(this.proxyAuthCookieValue(user))}; ${this.cookieOptions(req)}`;
-        const current = res.getHeader('Set-Cookie');
-        if (!current) {
-            res.setHeader('Set-Cookie', nextCookie);
-        } else if (Array.isArray(current)) {
-            res.setHeader('Set-Cookie', current.concat(nextCookie));
-        } else {
-            res.setHeader('Set-Cookie', [current, nextCookie]);
-        }
-    }
-
-    hasLocalProxyAuthCookie(req) {
-        const cookies = this.parseCookies(req.headers.cookie || '');
-        return !!this.unpackProxyAuthCookie(cookies[proxyAuthCookieName] || '');
-    }
-
     bearerToken(req) {
         const match = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
         return match ? match[1].trim() : '';
@@ -390,10 +347,6 @@ class Security {
         return {ok: true};
     }
 
-    isSameOrigin(req) {
-        return this.sameOriginCheck(req).ok;
-    }
-
     normalizeOrigin(value = '') {
         try {
             return new URL(String(value || '').trim()).origin;
@@ -411,13 +364,12 @@ class Security {
         if (!normalizedOrigin)
             return {ok: false, origin, expectedOrigins: []};
 
+        // X-Forwarded-* is taken from any client here: it only widens what the Origin may match.
         const hosts = [
-            this.forwardedHost(req),
             this.headerFirstValue(req, 'x-forwarded-host'),
             this.requestHost(req),
         ].filter(Boolean);
         const protos = [
-            this.forwardedProto(req),
             this.headerFirstValue(req, 'x-forwarded-proto'),
             this.requestProto(req),
         ].filter(Boolean);

@@ -120,9 +120,6 @@ async function testSessionLifetimeAndMalformedCookies() {
     assert.deepStrictEqual(security.parseCookies('bad=%ZZ; good=value'), {good: 'value'});
     assert.strictEqual(security.unpackSessionId(`id.${'я'.repeat(64)}`), '');
     assert.strictEqual(security.hasValidCsrf({headers: {}}, 'я'.repeat(64)), false);
-    assert.strictEqual(security.unpackProxyAuthCookie(security.proxyAuthCookieValue('a.b')), 'a.b');
-    const oldTime = Date.now() - lifetime.maxAgeMs - 1;
-    assert.strictEqual(security.unpackProxyAuthCookie(`reader.${oldTime}.${security.sign(`proxy:reader:${oldTime}`)}`), '');
     const loggedIn = security.ensureSession({headers: {}});
     loggedIn.profileAccessToken = 'profile-token';
     for (let i = 0; i < lifetime.maxSessions + 10; i++)
