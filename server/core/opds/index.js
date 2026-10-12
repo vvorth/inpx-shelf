@@ -35,6 +35,15 @@ function scopeGuard(getWorker) {
     };
 }
 
+// ?author[]=x and ?a[b]=x parse to arrays and objects; the pages expect strings.
+function stringQuery(req, res, next) {
+    for (const [key, value] of Object.entries(req.query || {})) {
+        if (typeof value !== 'string')
+            req.query[key] = (Array.isArray(value) && typeof value[0] === 'string' ? value[0] : '');
+    }
+    next();
+}
+
 module.exports = function(app, config, security = new (require('../Security'))(config)) {
     if (!config.opds || !config.opds.enabled)
         return;
@@ -102,12 +111,13 @@ module.exports = function(app, config, security = new (require('../Security'))(c
             }
         } catch (e) {
             log(LM_ERR, `OPDS: ${e.message}, url: ${req.originalUrl}`);
-            res.status(500).send({error: e.message});
+            res.status(500).send({error: 'Internal server error'});
         }
     };
 
     const opdsPaths = [opdsRoot, `${opdsRoot}/*`];
 
+    app.use(opdsPaths, stringQuery);
     app.use(opdsPaths, new (require('../ProfileAccess'))(config, root.webWorker, security).httpGuard(true));
     app.use(opdsPaths, require('./Auth')(config, (...args) => root.webWorker.verifyOpdsPassword(...args), security));
     app.use(opdsPaths, scopeGuard(() => root.webWorker));
@@ -116,3 +126,4 @@ module.exports = function(app, config, security = new (require('../Security'))(c
 };
 
 module.exports.scopeGuard = scopeGuard;
+module.exports.stringQuery = stringQuery;

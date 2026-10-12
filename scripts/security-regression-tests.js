@@ -341,6 +341,13 @@ async function testWebSocketConnectionsCappedPerIp() {
     assert.strictEqual(security.verifyWebSocket(direct('192.0.2.1'), clients.slice(1)), true);
 }
 
+// OPDS pages call string methods on query values: bracket syntax must not reach them as arrays or objects.
+async function testOpdsQueryValuesAreStrings() {
+    const req = {query: {author: ['a', 'b'], term: {x: '1'}, user: 'reader', list: [{}]}};
+    require('../server/core/opds').stringQuery(req, null, () => {});
+    assert.deepStrictEqual(req.query, {author: 'a', term: '', user: 'reader', list: ''});
+}
+
 // OPDS sends the password with every request: a repeated success must skip scrypt.
 async function testRepeatedPasswordCheckSkipsScrypt() {
     const profilePassword = require('../server/core/ProfilePassword');
@@ -504,6 +511,6 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testOpdsQueryValuesAreStrings, testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];
