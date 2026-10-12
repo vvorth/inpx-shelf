@@ -262,7 +262,22 @@ async function testProfileLoginChecksPasswordOutsideTheStoreLock() {
     });
 }
 
+//контроллер передаёт раздел и размеры персональных полок: иначе «ещё» у похожих книг ничего не меняет
+async function testDiscoveryRequestKeepsSectionAndPersonalLimits() {
+    const Controller = require('../server/controllers/WebSocketController');
+    let options = null;
+    const controller = Object.assign(Object.create(Controller.prototype), {
+        webWorker: {getDiscoveryShelvesV2: async(value) => { options = value; return {shelves: []}; }},
+        send() {},
+    });
+    await controller.getDiscoveryShelves({section: 'personal', personalLimit: 12, personalSimilarLimit: 24}, {});
+    assert.strictEqual(options.section, 'personal');
+    assert.strictEqual(options.personalLimit, 12);
+    assert.strictEqual(options.personalSimilarLimit, 24);
+}
+
 module.exports = [
+    testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
     testLibraryRebuildsDoNotOverlap,
