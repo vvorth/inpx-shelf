@@ -416,20 +416,24 @@ class AuthorPage {
         this.aliases = [];
         this.api.getAuthorAliases(name)
             .then((result) => {
-                if (name === this.name)
+                if (name === this.loadedName)
                     this.aliases = (result && result.aliases) || [];
             })
             .catch(() => {});
         try {
             const result = await this.api.getAuthorBooksByName(name);
-            if (name !== this.name)
+            if (name !== this.loadedName)
                 return;
             const showDeleted = !!this.$store.state.settings.showDeleted;
             this.books = (result.books || []).filter(book => showDeleted || !book.del);
         } catch (e) {
+            if (name !== this.loadedName)
+                return;
             this.error = tm(e.message);
         } finally {
-            this.loading = false;
+            //ответ на устаревший запрос не снимает загрузку текущего
+            if (name === this.loadedName)
+                this.loading = false;
         }
         await this.loadStates();
     }

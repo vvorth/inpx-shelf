@@ -356,16 +356,19 @@ class BookPage {
         this.states = {};
         try {
             const result = await this.api.getBook(uid);
-            if (uid !== this.uid)
+            if (uid !== this.loadedUid)
                 return;
             this.book = result.book;
             if (!this.dialogUid)
                 this.$root.setAppTitle(this.book.title);
         } catch (e) {
-            this.error = tm(e.message);
+            if (uid === this.loadedUid)
+                this.error = tm(e.message);
             return;
         } finally {
-            this.loading = false;
+            //ответ на устаревший запрос не снимает загрузку текущего
+            if (uid === this.loadedUid)
+                this.loading = false;
         }
 
         loadGenres(this.api).then(() => this.genresReady++).catch(() => {});
@@ -380,14 +383,18 @@ class BookPage {
     }
 
     async loadLists() {
-        if (!this.signedIn)
+        const book = this.book;
+        if (!this.signedIn || !book)
             return;
+        let inLists = [];
         try {
-            const result = await this.api.getReadingLists(bookUid(this.book));
-            this.inLists = ((result && result.lists) || []).filter(list => list.containsBook).map(list => list.name);
+            const result = await this.api.getReadingLists(bookUid(book));
+            inLists = ((result && result.lists) || []).filter(list => list.containsBook).map(list => list.name);
         } catch (e) {
-            this.inLists = [];
+            //списки не обязательны для страницы
         }
+        if (book === this.book)
+            this.inLists = inLists;
     }
 
     async loadRelated() {
@@ -425,9 +432,11 @@ class BookPage {
             this.annotation = this.extractAnnotation(bookInfo);
         } catch (e) {
             //подробности ошибки (пути на сервере) читателю не нужны
-            this.infoError = t('book.couldNotOpenThe');
+            if (book === this.book)
+                this.infoError = t('book.couldNotOpenThe');
         } finally {
-            this.infoLoading = false;
+            if (book === this.book)
+                this.infoLoading = false;
         }
     }
 
