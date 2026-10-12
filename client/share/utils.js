@@ -5,10 +5,6 @@ export function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export function toHex(bytes) {
-    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
 export function downloadJson(data, fileName) {
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json;charset=utf-8'});
     const href = window.URL.createObjectURL(blob);

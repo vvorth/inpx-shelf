@@ -29,7 +29,7 @@ import vueComponent from '../vueComponent.js';
 
 import wsc from './webSocketConnection';
 import * as utils from '../../share/utils';
-import * as cryptoUtils from '../../share/cryptoUtils';
+const {sha256Hex} = require('../../../shared/sha256');
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tm, getLang} from '../../share/i18n';
@@ -249,7 +249,7 @@ class Api {
                 if (response && response.error == 'need_access_token' && response.salt)
                     salt = response.salt;
 
-                const accessToken = utils.toHex(cryptoUtils.sha256(result.value + salt));
+                const accessToken = sha256Hex(result.value + salt);
                 this.commit('setSettings', {accessToken});
             }
         } finally {

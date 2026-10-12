@@ -37,4 +37,13 @@ async function testServiceWorkerCachesOnlyAppShellNavigation() {
     assert.deepStrictEqual(await runServiceWorkerNavigation('/', 'text/html', 503), []);
 }
 
-module.exports = [testServiceWorkerCachesOnlyAppShellNavigation];
+// Пароль доступа клиент хэширует сам (по http нет crypto.subtle), сервер сравнивает hex: результат должен совпадать с Node.
+async function testClientSha256MatchesNode() {
+    const {sha256Hex} = require('../shared/sha256');
+    const crypto = require('crypto');
+    assert.strictEqual(sha256Hex('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    for (const value of ['', 'пароль', 'x'.repeat(55), 'x'.repeat(56), 'x'.repeat(64), 'p\u{1F600}'.repeat(300)])
+        assert.strictEqual(sha256Hex(value), crypto.createHash('sha256').update(value, 'utf8').digest('hex'), `length ${value.length}`);
+}
+
+module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode];
