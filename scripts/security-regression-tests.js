@@ -576,6 +576,20 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
+// A PNG header claiming 20000x20000 is rejected before pngjs allocates the whole image.
+function testHugePngIsRejectedBeforeDecoding() {
+    const {PNG} = require('pngjs');
+    const imageUtils = require('../server/core/ImageUtils');
+    const small = new PNG({width: 2, height: 2});
+    small.data.fill(255);
+    const png = PNG.sync.write(small);
+    assert.ok(imageUtils.fitToJpeg(png, 10, 10).length > 0);
+    const huge = Buffer.from(png);
+    huge.writeUInt32BE(20000, 16);
+    huge.writeUInt32BE(20000, 20);
+    assert.throws(() => imageUtils.fitToJpeg(huge, 10, 10), /20000x20000/);
+}
+
 module.exports = [
     testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
@@ -583,5 +597,5 @@ module.exports = [
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
-    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates
+    testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding
 ];

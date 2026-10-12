@@ -123,6 +123,11 @@ function decodeRgba(buf) {
         return {width, height, data};
     }
     if (type === 'image/png') {
+        // Размер из IHDR проверяем до декодирования: pngjs сразу выделяет память под всё изображение.
+        const headerWidth = buf.length >= 24 ? buf.readUInt32BE(16) : 0;
+        const headerHeight = buf.length >= 24 ? buf.readUInt32BE(20) : 0;
+        if (!headerWidth || !headerHeight || headerWidth*headerHeight > maxDecodePixels)
+            throw new Error(t('errors.coverSizeInvalid', {width: headerWidth, height: headerHeight}));
         const {width, height, data} = PNG.sync.read(buf);
         return {width, height, data};
     }
