@@ -38,6 +38,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && chmod +x /fb2cng-runtime/fbc \
     && rm -rf /tmp/fbc.zip /var/lib/apt/lists/*
 
+# The webp package pulls OpenGL, Mesa and LLVM (~200 MB) for its vwebp viewer; only dwebp is needed.
+# Same base image as the runtime, so its libraries come from apt there (no copied libc).
+FROM ${RUNTIME_IMAGE} AS webp-tools
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends webp \
+    && rm -rf /var/lib/apt/lists/*
+
 # Runtime stages are split into "*-tools" layers (OS packages, external
 # converters) and thin final stages that only add the app binary on top.
 # A JS/TS change then only rebuilds the last COPY instead of re-running the
@@ -49,8 +59,11 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates p7zip-full libjxl-tools webp tini \
+    && apt-get install -y --no-install-recommends ca-certificates p7zip-full libjxl-tools tini \
+        libwebp7 libwebpdemux2 libpng16-16 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=webp-tools /usr/bin/dwebp /usr/bin/dwebp
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
