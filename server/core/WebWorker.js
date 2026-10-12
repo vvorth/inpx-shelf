@@ -457,6 +457,37 @@ function getAuthorArchiveEntryHash(entryName = '') {
     return /^[a-f0-9]{32}$/.test(baseName) ? baseName : '';
 }
 
+//Показы и открытия книги на витрине. suppressed: показана трижды за месяц и ни разу не открыта
+function discoveryEngagement(book = {}, profile = {}) {
+    const discoveryEvent = ((profile.discoveryEvents || {})[String(book._uid || book.bookUid || '').trim()] || {});
+    const impressionCount = Math.max(0, Number(discoveryEvent.impressionCount) || 0);
+    const openCount = Math.max(0, Number(discoveryEvent.openCount) || 0);
+    const lastShownTime = Date.parse(String(discoveryEvent.lastShownAt || ''));
+    const shownAgeDays = Number.isFinite(lastShownTime)
+        ? Math.max(0, Math.floor((Date.now() - lastShownTime) / 86400000))
+        : Number.MAX_SAFE_INTEGER;
+
+    return {
+        suppressed: impressionCount >= 3 && openCount === 0 && shownAgeDays < 30,
+        //штраф за пропущенные показы (не больше maxPenalty) и недавний показ, прибавка за открытия
+        apply(score, maxPenalty) {
+            score -= Math.min(maxPenalty, Math.max(0, impressionCount - Math.max(1, openCount * 2)) * 10);
+            if (impressionCount > 0 && shownAgeDays < 7)
+                score -= 8;
+            return score + Math.min(12, openCount * 4);
+        },
+    };
+}
+
+//Добавка 0..1 по _uid книги, постоянная при одном зерне: разводит равные оценки
+function discoveryRotation(book = {}, rotationSeed = 0) {
+    const numericSeed = Number(rotationSeed) || 0;
+    const stableHash = String(book._uid || book.id || '')
+        .split('')
+        .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + numericSeed) % 9973, numericSeed);
+    return stableHash / 9973;
+}
+
 //singleton
 let instance = null;
 
@@ -1689,7 +1720,6 @@ class WebWorker {
         const genreKeys = this.getPersonalDiscoveryFeatureKeys(book.genre);
         const keywordKeys = this.getPersonalDiscoveryFeatureKeys(book.keywords, 'keywords');
         const languageKey = String(book.lang || '').trim().toLowerCase();
-        const bookUid = String(book._uid || book.bookUid || '').trim();
         let contentScore = 0;
 
         contentScore += getWeight(profile.authorWeights, authorKey) * 32;
@@ -1702,21 +1732,11 @@ class WebWorker {
         let score = contentScore;
         score += Math.min(8, getWeight(profile.languageWeights, languageKey) * 2);
 
-        const discoveryEvent = ((profile.discoveryEvents || {})[bookUid] || {});
-        const impressionCount = Math.max(0, Number(discoveryEvent.impressionCount) || 0);
-        const openCount = Math.max(0, Number(discoveryEvent.openCount) || 0);
-        const lastShownTime = Date.parse(String(discoveryEvent.lastShownAt || ''));
-        const shownAgeDays = Number.isFinite(lastShownTime)
-            ? Math.max(0, Math.floor((Date.now() - lastShownTime) / 86400000))
-            : Number.MAX_SAFE_INTEGER;
-        if (impressionCount >= 3 && openCount === 0 && shownAgeDays < 30)
+        const engagement = discoveryEngagement(book, profile);
+        if (engagement.suppressed)
             return 0;
 
-        const ignoredImpressions = Math.max(0, impressionCount - Math.max(1, openCount * 2));
-        score -= Math.min(50, ignoredImpressions * 10);
-        if (impressionCount > 0 && shownAgeDays < 7)
-            score -= 8;
-        score += Math.min(12, openCount * 4);
+        score = engagement.apply(score, 50);
         if (score <= 0)
             return 0;
 
@@ -1727,26 +1747,14 @@ class WebWorker {
             score += Math.max(0, 12 - (Math.min(ageDays, 365) * 12 / 365));
         }
 
-        const numericSeed = Number(rotationSeed) || 0;
-        const stableHash = String(book._uid || book.id || '')
-            .split('')
-            .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + numericSeed) % 9973, numericSeed);
-        score += (stableHash / 9973) * 8;
+        score += discoveryRotation(book, rotationSeed) * 8;
         return score;
     }
 
     scorePersonalDiscoveryExplorationCandidate(book = {}, profile = {}, rotationSeed = 0) {
         const languageKey = String(book.lang || '').trim().toLowerCase();
-        const bookUid = String(book._uid || book.bookUid || '').trim();
-
-        const discoveryEvent = ((profile.discoveryEvents || {})[bookUid] || {});
-        const impressionCount = Math.max(0, Number(discoveryEvent.impressionCount) || 0);
-        const openCount = Math.max(0, Number(discoveryEvent.openCount) || 0);
-        const lastShownTime = Date.parse(String(discoveryEvent.lastShownAt || ''));
-        const shownAgeDays = Number.isFinite(lastShownTime)
-            ? Math.max(0, Math.floor((Date.now() - lastShownTime) / 86400000))
-            : Number.MAX_SAFE_INTEGER;
-        if (impressionCount >= 3 && openCount === 0 && shownAgeDays < 30)
+        const engagement = discoveryEngagement(book, profile);
+        if (engagement.suppressed)
             return 0;
 
         let score = 22;
@@ -1758,16 +1766,9 @@ class WebWorker {
             const ageDays = Math.max(0, Math.floor((Date.now() - bookTime) / 86400000));
             score += Math.max(0, 14 - (Math.min(ageDays, 730) * 14 / 730));
         }
-        score -= Math.min(40, Math.max(0, impressionCount - Math.max(1, openCount * 2)) * 10);
-        if (impressionCount > 0 && shownAgeDays < 7)
-            score -= 8;
-        score += Math.min(12, openCount * 4);
+        score = engagement.apply(score, 40);
 
-        const numericSeed = Number(rotationSeed) || 0;
-        const stableHash = String(book._uid || book.id || '')
-            .split('')
-            .reduce((sum, char) => ((sum * 33) + char.charCodeAt(0) + numericSeed) % 9973, numericSeed);
-        score += (stableHash / 9973) * 10;
+        score += discoveryRotation(book, rotationSeed) * 10;
         return Math.max(0, score);
     }
 
