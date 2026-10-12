@@ -363,12 +363,7 @@ class DiscoveryPage {
             }));
         }
         if (this.kind === 'bestsellers') {
-            //лауреат показывается в издании на «Моих языках», если оно есть в библиотеке
-            const languages = myLanguages(this.config, this.settings);
-            const edition = book => ((this.allLanguages || !book.lang || languageMatches(book, languages)) ? book
-                : (book.discoveryEditions || []).find(item => languageMatches(item, languages)) || book);
-            return shelves.filter(shelf => shelf.source === 'external')
-                .map(shelf => Object.assign({}, shelf, {items: (shelf.items || []).map(edition)}));
+            return shelves.filter(shelf => shelf.source === 'external');
         }
         return [];
     }

@@ -1671,8 +1671,8 @@ async function testWikidataAwardsShelf() {
     }
 }
 
-// Award winners: a partial title needs the right author, every language keeps its own copy,
-// and the shelf lists the books in the library first.
+// Award winners: a partial title needs the right author, every copy with the winner's title is listed
+// (the page keeps those in the reader's languages), and the shelf lists the books in the library first.
 async function testAwardsShelfEditionsAndOrder() {
     const worker = makeWorker();
     assert.strictEqual(worker.pickDiscoveryBookMatchV2({title: 'The Everlasting', author: 'Alix E. Harrow'},
@@ -1681,22 +1681,26 @@ async function testAwardsShelfEditionsAndOrder() {
     const library = [
         {_uid: 'uk', title: 'Нейромант', author: 'Гибсон Уильям', lang: 'uk'},//i18n-ignore: тестовые данные
         {_uid: 'ru', title: 'Нейромант', author: 'Гибсон Уильям', lang: 'ru'},//i18n-ignore: тестовые данные
+        {_uid: 'ru-2', title: 'Нейромант', author: 'Гибсон Уильям', lang: 'ru'},//i18n-ignore: тестовые данные
         {_uid: 'en', title: 'Neuromancer', author: 'Gibson William', lang: 'en'},
+        {_uid: 'other', title: 'Нейромант. Возвращение', author: 'Гибсон Уильям', lang: 'ru'},//i18n-ignore: тестовые данные
     ];
-    worker.bookSearch = async query => ({found: library.filter(book => query.title.slice(1) === book.title)});
+    worker.bookSearch = async query => ({found: library.filter(book => (query.title[0] === '*'
+        ? book.title.includes(query.title.slice(1)) : book.title === query.title.slice(1)))});
     const {items} = await worker.matchExternalItems([
         {title: 'Новинка', author: 'Автор Новый', url: 'u:new', awards: ['Q255032'], alternates: []},//i18n-ignore: тестовые данные
         {title: 'Нейромант', author: 'Уильям Гибсон', url: 'u:neuro', awards: ['Q255032'],//i18n-ignore: тестовые данные
             alternates: [{title: 'Neuromancer', author: 'William Gibson'}]},
     ]);
-    const neuromancer = items[1].book;
-    assert.deepStrictEqual([neuromancer._uid, ...neuromancer.discoveryEditions.map(book => book._uid)].sort(), ['en', 'ru', 'uk']);
+    assert.deepStrictEqual(items[1].books.map(book => book._uid).sort(), ['en', 'ru', 'ru-2', 'uk'], 'a longer title is another book');
+    assert.deepStrictEqual(items[1].books.map(book => book.lang), ['ru', 'ru', 'en', 'uk']);
 
     worker.getWikidataAwardMatches = async() => ({items});
-    const shelf = await worker.buildExternalDiscoveryShelfV2(1, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',
+    const shelf = await worker.buildExternalDiscoveryShelfV2(5, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',
         externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032'}));
-    assert.strictEqual(shelf.items[0].discoveryUrl, 'u:neuro', 'books in the library come before newer missing winners');
-    assert.strictEqual(shelf.discoveryHasMore, true);
+    assert.deepStrictEqual(shelf.items.map(book => book.discoveryUrl), ['u:neuro', 'u:neuro', 'u:neuro', 'u:neuro', 'u:new'],
+        'all copies in the library come before newer missing winners');
+    assert.strictEqual(shelf.discoveryHasMore, false);
     assert.deepStrictEqual([shelf.subtitle.params.inLibrary, shelf.subtitle.params.notInLibrary], [1, 1]);
 }
 

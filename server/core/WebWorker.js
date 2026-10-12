@@ -50,7 +50,7 @@ const stateToText = {
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
 const personalDiscoveryCacheTtl = 10*60*1000;
-const externalDiscoveryCacheVersion = 'v7';
+const externalDiscoveryCacheVersion = 'v8';
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
 const bookInfoVersion = 'fb2-encoding-v8';
@@ -906,7 +906,7 @@ class WebWorker {
         let best = null;
         let bestKind = '';
         let bestScore = -Infinity;
-        const byLang = new Map();
+        const copies = [];
 
         for (const book of books) {
             const bookTitle = normalizeDiscoveryText(book.title || '');
@@ -955,13 +955,12 @@ class WebWorker {
                 best = book;
                 bestKind = kind;
             }
-            const lang = String(book.lang || '').trim().toLowerCase();
-            if (score >= 450 && !(byLang.has(lang) && byLang.get(lang).score >= score))
-                byLang.set(lang, {book, score});
+            //переиздания: то же название и тот же автор; книги с названием, лишь содержащим это, - другие («Падение Гипериона»)
+            if (bookTitle === title && (authorScore > 0 || !authorTokens.length) && !book.del)
+                copies.push({book, score});
         }
 
-        //byLang - лучшее издание на каждом языке: читателю показывается издание на его языках
-        return (bestScore >= 450 ? {book: best, kind: bestKind, score: bestScore, byLang} : null);
+        return (bestScore >= 450 ? {book: best, kind: bestKind, score: bestScore, copies} : null);
     }
 
     makeExternalDiscoveryPlaceholder(item = {}, index = 0) {
@@ -988,8 +987,8 @@ class WebWorker {
         };
     }
 
-    //каждый лауреат сопоставляется с библиотекой один раз для всех премий; издания ищутся по всем названиям
-    //(русскому и английскому), чтобы у каждого языка было своё
+    //каждый лауреат сопоставляется с библиотекой один раз для всех премий; книги ищутся по всем названиям
+    //(русскому и английскому), и на полку идут все издания: страница оставит те, что на «Моих языках»
     async matchExternalItems(items = []) {
         const result = [];
         const seen = new Set();
@@ -1000,30 +999,29 @@ class WebWorker {
             if (externalKey)
                 seen.add(externalKey);
 
-            let primary = null;
-            const byLang = new Map();
+            const found = new Map();
             for (const variant of [item, ...(item.alternates || [])]) {
                 const match = this.pickDiscoveryBookMatchV2(variant, await this.findExternalDiscoveryCandidates(variant, 32));
                 if (!match)
                     continue;
-                primary = primary || match.book;
-                for (const [lang, edition] of match.byLang) {
-                    if (!(byLang.has(lang) && byLang.get(lang).score >= edition.score))
-                        byLang.set(lang, edition);
+                //лучшее совпадение остаётся, даже если название совпало не полностью
+                for (const copy of [{book: match.book, score: match.score}, ...match.copies]) {
+                    if (!(found.has(copy.book._uid) && found.get(copy.book._uid).score >= copy.score))
+                        found.set(copy.book._uid, copy);
                 }
             }
 
-            //названия в Викиданных русские и английские: главным показывается такое издание, если оно есть
-            const preferred = ['ru', 'en'].find(lang => byLang.has(lang));
-            if (preferred)
-                primary = byLang.get(preferred).book;
-            const withUrl = book => Object.assign({}, book, {discoveryUrl: item.url});
+            //названия в Викиданных русские и английские: такие издания идут первыми
+            const rank = book => {
+                const position = ['ru', 'en'].indexOf(String(book.lang || '').trim().toLowerCase());
+                return (position < 0 ? 2 : position);
+            };
+            const books = [...found.values()]
+                .sort((a, b) => (rank(a.book) - rank(b.book)) || (b.score - a.score))
+                .map(copy => Object.assign({}, copy.book, {discoveryUrl: item.url}));
             result.push({
                 awards: item.awards || [],
-                book: (primary
-                    ? Object.assign(withUrl(primary), {discoveryEditions: [...byLang.values()]
-                        .filter(edition => edition.book._uid !== primary._uid).map(edition => withUrl(edition.book))})
-                    : this.makeExternalDiscoveryPlaceholder(item, index)),
+                books: (books.length ? books : [this.makeExternalDiscoveryPlaceholder(item, index)]),
             });
             await utils.processLoop();
         }
@@ -1082,19 +1080,25 @@ class WebWorker {
         const local = [];
         const missing = [];
         const seenBookUids = new Set();
-        for (const {awards, book} of matches) {
+        let inLibrary = 0;
+        for (const {awards, books} of matches) {
             if (award && !awards.includes(award.id))
                 continue;
-            if (book.discoveryMissingLocal) {
-                missing.push(book);
-            } else if (!seenBookUids.has(book._uid)) {
-                seenBookUids.add(book._uid);
-                local.push(book);
+            if (books[0].discoveryMissingLocal) {
+                missing.push(books[0]);
+                continue;
+            }
+            inLibrary++;
+            for (const book of books) {
+                if (!seenBookUids.has(book._uid)) {
+                    seenBookUids.add(book._uid);
+                    local.push(book);
+                }
             }
         }
         const books = local.concat(missing);
         const sourceName = (discovery.externalName || msg('discovery.externalSource'));
-        const libraryCounts = {inLibrary: local.length, notInLibrary: missing.length};
+        const libraryCounts = {inLibrary, notInLibrary: missing.length};
 
         return {
             id: 'external-source',
