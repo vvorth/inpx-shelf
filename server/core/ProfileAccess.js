@@ -120,7 +120,6 @@ class ProfileAccess {
             if (user && await this.worker.readingListStore.verifyUserPassword(user.id, credentials.password))
                 identity = {user, opds: true, bound: true};
         }
-        this.security.checkLoginRate(req, 'opds');
         this.security.recordLoginAttempt(req, !!identity, 'opds');
         return identity;
     }
