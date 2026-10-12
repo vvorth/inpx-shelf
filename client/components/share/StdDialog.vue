@@ -11,14 +11,13 @@
     >
         <slot></slot>
 
-        <!--------------------------------------------------->
-        <div v-show="type == 'alert'" :class="dialogContentClass" :style="dialogContentStyle">
+        <div v-if="type" :class="dialogContentClass" :style="dialogContentStyle">
             <div class="header row">
                 <div class="caption col row items-center q-ml-md">
                     <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
                     <div v-html="captionHtml"></div>
                 </div>
-                <div class="close-icon column justify-center items-center">
+                <div v-if="closable" class="close-icon column justify-center items-center">
                     <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
                         <q-icon name="la la-times" size="18px"></q-icon>
                     </q-btn>
@@ -27,220 +26,81 @@
 
             <div class="q-mx-md">
                 <div v-html="messageHtml"></div>
-            </div>
-
-            <div class="buttons row justify-end q-pa-md">
-                <q-btn class="q-px-md" dense no-caps @click="okClick">
-                    OK
-                </q-btn>
-            </div>
-        </div>
-
-        <!--------------------------------------------------->
-        <div v-show="type == 'confirm'" :class="dialogContentClass" :style="dialogContentStyle">
-            <div class="header row">
-                <div class="caption col row items-center q-ml-md">
-                    <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="captionHtml"></div>
-                </div>
-                <div class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
-                        <q-icon name="la la-times" size="18px"></q-icon>
-                    </q-btn>
-                </div>
-            </div>
-
-            <div class="q-mx-md">
-                <div v-html="messageHtml"></div>
-            </div>
-
-            <div class="buttons row justify-end q-pa-md">
-                <q-btn v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('common.cancel') }}
-                </q-btn>
-                <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
-                    {{ okButtonLabel }}
-                </q-btn>
-            </div>
-        </div>
-
-        <!--------------------------------------------------->
-        <div v-show="type == 'prompt'" :class="dialogContentClass" :style="dialogContentStyle">
-            <div class="header row">
-                <div class="caption col row items-center q-ml-md">
-                    <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="captionHtml"></div>
-                </div>
-                <div v-if="!noCancel" class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
-                        <q-icon name="la la-times" size="18px"></q-icon>
-                    </q-btn>
-                </div>
-            </div>
-
-            <div class="q-mx-md">
-                <div v-html="messageHtml"></div>
-                <q-input ref="input" v-model="inputValue" class="q-mt-xs" outlined dense />
-                <div class="error">
-                    <span v-show="error != ''">{{ error }}</span>
-                </div>
-            </div>
-
-            <div class="buttons row justify-end q-pa-md">
-                <q-btn v-if="!noCancel" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('common.cancel') }}
-                </q-btn>
-                <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
-                    OK
-                </q-btn>
-            </div>
-        </div>
-
-        <!--------------------------------------------------->
-        <div v-show="type == 'password'" :class="dialogContentClass" :style="dialogContentStyle">
-            <div class="header row">
-                <div class="caption col row items-center q-ml-md">
-                    <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="captionHtml"></div>
-                </div>
-                <div v-if="!noCancel" class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
-                        <q-icon name="la la-times" size="18px"></q-icon>
-                    </q-btn>
-                </div>
-            </div>
-
-            <div class="q-mx-md">
-                <div v-html="messageHtml"></div>
-                <input type="text" name="username" autocomplete="username" :value="userName" hidden />
-                <q-input
-                    ref="input"
-                    v-model="inputValue"
-                    :type="passwordVisible ? 'text' : 'password'"
-                    autocomplete="current-password"
-                    class="q-mt-xs"
-                    outlined
-                    dense
-                >
-                    <template #append>
-                        <q-btn
-                            flat
-                            round
-                            dense
-                            :icon="passwordVisible ? 'la la-eye-slash' : 'la la-eye'"
-                            :aria-label="passwordVisible ? $t('dialog.hidePassword') : $t('dialog.showPassword')"
-                            class="password-visibility-toggle"
-                            @click="passwordVisible = !passwordVisible"
-                        />
-                    </template>
-                </q-input>
-                <div class="error" role="status" aria-live="polite">
-                    <span v-show="error != ''">{{ error }}</span>
-                </div>
-            </div>
-
-            <div class="buttons row justify-end q-pa-md">
-                <q-btn v-if="!noCancel" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('common.cancel') }}
-                </q-btn>
-                <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
-                    OK
-                </q-btn>
-            </div>
-        </div>
-
-        <!--------------------------------------------------->
-        <div v-show="type == 'profileLogin'" :class="dialogContentClass" :style="dialogContentStyle">
-            <div class="header row">
-                <div class="caption col row items-center q-ml-md">
-                    <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="captionHtml"></div>
-                </div>
-                <div v-if="!noCancel" class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
-                        <q-icon name="la la-times" size="18px"></q-icon>
-                    </q-btn>
-                </div>
-            </div>
-
-            <div class="q-mx-md">
-                <div v-html="messageHtml"></div>
-                <q-input
-                    ref="profileLoginInput"
-                    v-model="inputValue"
-                    :label="$t('common.login')"
-                    autocomplete="username"
-                    class="q-mt-sm"
-                    outlined
-                    dense
-                />
-                <q-input
-                    ref="profilePasswordInput"
-                    v-model="profilePasswordValue"
-                    :type="passwordVisible ? 'text' : 'password'"
-                    :label="$t('common.password')"
-                    autocomplete="current-password"
-                    class="q-mt-sm"
-                    outlined
-                    dense
-                >
-                    <template #append>
-                        <q-btn
-                            flat
-                            round
-                            dense
-                            :icon="passwordVisible ? 'la la-eye-slash' : 'la la-eye'"
-                            :aria-label="passwordVisible ? $t('dialog.hidePassword') : $t('dialog.showPassword')"
-                            class="password-visibility-toggle"
-                            @click="passwordVisible = !passwordVisible"
-                        />
-                    </template>
-                </q-input>
-                <div class="error" role="status" aria-live="polite">
-                    <span v-show="error != ''">{{ error }}</span>
-                </div>
-            </div>
-
-            <div class="buttons row justify-end q-pa-md">
-                <q-btn v-if="!noCancel" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
-                    {{ $t('common.cancel') }}
-                </q-btn>
-                <q-btn :disable="!profileLoginReady" class="q-px-md q-ml-sm" color="primary" dense no-caps @click="okClick">
-                    OK
-                </q-btn>
-            </div>
-        </div>
-
-        <!--------------------------------------------------->
-        <div v-show="type == 'hotKey'" :class="dialogContentClass" :style="dialogContentStyle">
-            <div class="header row">
-                <div class="caption col row items-center q-ml-md">
-                    <q-icon v-show="caption" class="q-mr-sm" :class="iconColor" :name="iconName" size="28px"></q-icon>
-                    <div v-html="captionHtml"></div>
-                </div>
-                <div class="close-icon column justify-center items-center">
-                    <q-btn v-close-popup flat round dense :aria-label="$t('common.close')">
-                        <q-icon name="la la-times" size="18px"></q-icon>
-                    </q-btn>
-                </div>
-            </div>
-
-            <div class="q-mx-md">
-                <div v-html="messageHtml"></div>
-                <div class="q-my-md text-center">
+                <q-input v-if="type == 'prompt'" ref="input" v-model="inputValue" class="q-mt-xs" outlined dense />
+                <template v-else-if="type == 'password'">
+                    <input type="text" name="username" autocomplete="username" :value="userName" hidden />
+                    <q-input
+                        ref="input"
+                        v-model="inputValue"
+                        :type="passwordVisible ? 'text' : 'password'"
+                        autocomplete="current-password"
+                        class="q-mt-xs"
+                        outlined
+                        dense
+                    >
+                        <template #append>
+                            <q-btn
+                                flat
+                                round
+                                dense
+                                :icon="passwordVisible ? 'la la-eye-slash' : 'la la-eye'"
+                                :aria-label="passwordVisible ? $t('dialog.hidePassword') : $t('dialog.showPassword')"
+                                class="password-visibility-toggle"
+                                @click="passwordVisible = !passwordVisible"
+                            />
+                        </template>
+                    </q-input>
+                </template>
+                <template v-else-if="type == 'profileLogin'">
+                    <q-input
+                        ref="profileLoginInput"
+                        v-model="inputValue"
+                        :label="$t('common.login')"
+                        autocomplete="username"
+                        class="q-mt-sm"
+                        outlined
+                        dense
+                    />
+                    <q-input
+                        ref="profilePasswordInput"
+                        v-model="profilePasswordValue"
+                        :type="passwordVisible ? 'text' : 'password'"
+                        :label="$t('common.password')"
+                        autocomplete="current-password"
+                        class="q-mt-sm"
+                        outlined
+                        dense
+                    >
+                        <template #append>
+                            <q-btn
+                                flat
+                                round
+                                dense
+                                :icon="passwordVisible ? 'la la-eye-slash' : 'la la-eye'"
+                                :aria-label="passwordVisible ? $t('dialog.hidePassword') : $t('dialog.showPassword')"
+                                class="password-visibility-toggle"
+                                @click="passwordVisible = !passwordVisible"
+                            />
+                        </template>
+                    </q-input>
+                </template>
+                <div v-else-if="type == 'hotKey'" class="q-my-md text-center">
                     <div v-show="hotKeyCode == ''" class="text-grey-5">
                         {{ $t('common.no') }}
                     </div>
                     <div>{{ hotKeyCode }}</div>
                 </div>
+                <div v-if="hasInput" class="error" role="status" aria-live="polite">
+                    <span v-show="error != ''">{{ error }}</span>
+                </div>
             </div>
 
             <div class="buttons row justify-end q-pa-md">
-                <q-btn v-close-popup class="q-px-md q-ml-sm" dense no-caps>
+                <q-btn v-if="type != 'alert' && closable" v-close-popup class="q-px-md q-ml-sm" dense no-caps>
                     {{ $t('common.cancel') }}
                 </q-btn>
-                <q-btn class="q-px-md q-ml-sm" color="primary" dense no-caps :disabled="hotKeyCode == ''" @click="okClick">
-                    OK
+                <q-btn class="q-px-md q-ml-sm" :color="type == 'alert' ? undefined : 'primary'" dense no-caps :disable="okDisabled" @click="okClick">
+                    {{ okButtonLabel }}
                 </q-btn>
             </div>
         </div>
@@ -305,6 +165,19 @@ class StdDialog {
 
     get dialogContentStyle() {
         return this.dialogStyle || null;
+    }
+
+    //alert, confirm и hotKey закрываются всегда; окна ввода - если не запрещена отмена
+    get closable() {
+        return !this.noCancel || ['alert', 'confirm', 'hotKey'].includes(this.type);
+    }
+
+    get hasInput() {
+        return ['prompt', 'password', 'profileLogin'].includes(this.type);
+    }
+
+    get okDisabled() {
+        return (this.type == 'profileLogin' && !this.profileLoginReady) || (this.type == 'hotKey' && this.hotKeyCode == '');
     }
 
     get profileLoginReady() {
