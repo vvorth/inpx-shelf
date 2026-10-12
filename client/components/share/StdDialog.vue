@@ -84,12 +84,6 @@
                         </template>
                     </q-input>
                 </template>
-                <div v-else-if="type == 'hotKey'" class="q-my-md text-center">
-                    <div v-show="hotKeyCode == ''" class="text-grey-5">
-                        {{ $t('common.no') }}
-                    </div>
-                    <div>{{ hotKeyCode }}</div>
-                </div>
                 <div v-if="hasInput" class="error" role="status" aria-live="polite">
                     <span v-show="error != ''">{{ error }}</span>
                 </div>
@@ -110,7 +104,6 @@
 <script>
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
-import * as utils from '../../share/utils';
 import {t, tm} from '../../share/i18n';
 const {escapeHtml} = require('../../../shared/safeHtml');
 
@@ -141,7 +134,6 @@ class StdDialog {
     error = '';
     iconColor = '';
     iconName = '';
-    hotKeyCode = '';
     userName = '';
     passwordVisible = false;
     noEscDismiss = false;
@@ -167,9 +159,9 @@ class StdDialog {
         return this.dialogStyle || null;
     }
 
-    //alert, confirm и hotKey закрываются всегда; окна ввода - если не запрещена отмена
+    //alert и confirm закрываются всегда; окна ввода - если не запрещена отмена
     get closable() {
-        return !this.noCancel || ['alert', 'confirm', 'hotKey'].includes(this.type);
+        return !this.noCancel || ['alert', 'confirm'].includes(this.type);
     }
 
     get hasInput() {
@@ -177,7 +169,7 @@ class StdDialog {
     }
 
     get okDisabled() {
-        return (this.type == 'profileLogin' && !this.profileLoginReady) || (this.type == 'hotKey' && this.hotKeyCode == '');
+        return this.type == 'profileLogin' && !this.profileLoginReady;
     }
 
     get profileLoginReady() {
@@ -229,10 +221,6 @@ class StdDialog {
             this.iconName = opts.iconName;
         }
 
-        this.hotKeyCode = '';
-        if (opts && opts.hotKeyCode) {
-            this.hotKeyCode = opts.hotKeyCode;
-        }
 
         this.passwordVisible = false;
     }
@@ -303,11 +291,6 @@ class StdDialog {
         }
 
         if (this.type == 'profileLogin' && !this.validateProfileLogin()) {
-            this.$refs.dialog.shake();
-            return;
-        }
-
-        if (this.type == 'hotKey' && this.hotKeyCode == '') {
             this.$refs.dialog.shake();
             return;
         }
@@ -430,43 +413,19 @@ class StdDialog {
         });
     }
 
-    getHotKey(message, caption, opts) {
-        return this.enqueue((resolve) => {
-            this.init(message, caption, opts);
-
-            this.hideTrigger = () => {
-                if (this.ok) {
-                    resolve(this.hotKeyCode);
-                } else {
-                    resolve(false);
-                }
-            };
-
-            this.type = 'hotKey';
-            this.active = true;
-        });
-    }
-
     keyHook(event) {
         if (this.active && this.showed) {
             let handled = false;
-            if (this.type == 'hotKey') {
-                if (event.type == 'keydown') {
-                    this.hotKeyCode = utils.keyEventToCode(event);
-                    handled = true;
-                }
-            } else {
-                if (event.key == 'Enter') {
-                    this.okClick();
-                    handled = true;
-                }
+            if (event.key == 'Enter') {
+                this.okClick();
+                handled = true;
+            }
 
-                if (event.key == 'Escape' && !this.noEscDismiss) {
-                    this.$nextTick(() => {
-                        this.$refs.dialog.hide();
-                    });
-                    handled = true;
-                }
+            if (event.key == 'Escape' && !this.noEscDismiss) {
+                this.$nextTick(() => {
+                    this.$refs.dialog.hide();
+                });
+                handled = true;
             }
 
             if (handled) {

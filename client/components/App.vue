@@ -61,18 +61,6 @@ class App {
     created() {
         this.commit = this.$store.commit;
 
-        //root route
-        let cachedRoute = '';
-        let cachedPath = '';
-        this.$root.getRootRoute = () => {
-            if (this.$route.path != cachedPath) {
-                cachedPath = this.$route.path;
-                const m = cachedPath.match(/^(\/[^/]*).*$/i);
-                cachedRoute = (m ? m[1] : this.$route.path);
-            }
-            return cachedRoute;
-        }
-
         this.$root.isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry/i.test(navigator.userAgent);
         this.$root.setAppTitle = this.setAppTitle;
 
@@ -113,10 +101,6 @@ class App {
 
     get config() {
         return this.$store.state.config;
-    }
-
-    get rootRoute() {
-        return this.$root.getRootRoute();
     }
 
     get isBareRoute() {

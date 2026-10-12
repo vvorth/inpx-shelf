@@ -533,10 +533,6 @@ class Api {
         return await this.request({action: 'update-reader-progress', bookUid, progress}, 120, options);
     }
 
-    async deleteReaderProgress(bookUid) {
-        return await this.request({action: 'delete-reader-progress', bookUid}, 120);
-    }
-
     async clearReaderProgress() {
         return await this.request({action: 'clear-reader-progress'}, 120);
     }
@@ -555,10 +551,6 @@ class Api {
 
     async getReadingLists(bookUid = '') {
         return await this.request({action: 'get-reading-lists', bookUid}, 120);
-    }
-
-    async getUserProfiles() {
-        return await this.request({action: 'get-user-profiles'}, 120);
     }
 
     async loginUserProfile(login, password) {
@@ -583,10 +575,6 @@ class Api {
 
     async getReadingList(listId) {
         return await this.request({action: 'get-reading-list', listId}, 120);
-    }
-
-    async createReadingList(name) {
-        return await this.request({action: 'create-reading-list', name}, 120);
     }
 
     async createReadingListWithVisibility(name, visibility = 'private') {
