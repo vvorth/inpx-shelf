@@ -36,7 +36,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 
 - `npm run test:release` passes (`fail 0` in the summary).
 - UI text changed: `npm run test:i18n`. Client changed: `npm run build:client`.
-- `npx eslint` on touched files adds no new errors (some files have old ones).
+- `npx eslint --quiet server shared scripts build client --ext .js,.vue` reports no errors (CI runs it).
 
 ## Invariants
 

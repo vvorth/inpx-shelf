@@ -10,6 +10,7 @@ const mimetype = 'application/epub+zip';
 
 function safeEntryName(value) {
     const name = String(value || '').replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+    // eslint-disable-next-line no-control-regex -- управляющие символы в имени записи запрещены намеренно
     if (!name || name.startsWith('/') || /[:\x00-\x1f]/.test(name)
         || name.split('/').some(part => part === '..'))
         throw new Error(t('errors.epubInvalidPath', {name}));

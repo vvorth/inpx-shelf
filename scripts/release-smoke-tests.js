@@ -633,8 +633,8 @@ async function testReaderImageDataUrlsAreValidated() {
     );
     assert.strictEqual(readerContent.createReaderImageDataUrl('image/png', 'AQI'), 'data:image/png;base64,AQI');
     assert.strictEqual(readerContent.createReaderImageDataUrl('image/svg+xml', 'AAAA'), '');
-    assert.strictEqual(readerContent.createReaderImageDataUrl('image/png\" onerror=\"alert(1)', 'AAAA'), '');
-    assert.strictEqual(readerContent.createReaderImageDataUrl('image/png', 'AAAA\" onerror=\"alert(1)'), '');
+    assert.strictEqual(readerContent.createReaderImageDataUrl('image/png" onerror="alert(1)', 'AAAA'), '');
+    assert.strictEqual(readerContent.createReaderImageDataUrl('image/png', 'AAAA" onerror="alert(1)'), '');
     assert.strictEqual(readerContent.createReaderImageDataUrl('image/png', 'A'), '');
     assert.strictEqual(readerContent.createReaderImageDataUrl('image/png', 'AAAA==='), '');
 }

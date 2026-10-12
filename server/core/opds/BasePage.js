@@ -274,7 +274,7 @@ class BasePage {
     //фильтр книг по автору, серии, названию и жанру из запроса OPDS
     filterBooks(books, query = {}) {
         const s = query;
-        const titleSearchLeadingPattern = /^[\s«"'„“”‘’`()\[\]{}]+/;
+        const titleSearchLeadingPattern = /^[\s«"'„“”‘’`()[\]{}]+/;
 
         const splitAuthor = (author) => {
             if (!author) {

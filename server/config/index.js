@@ -92,7 +92,7 @@ function normalizeVersion(value = '') {
 }
 
 function isRcVersion(value = '') {
-    return /-(?:alpha|beta|rc)(?:[.\-]?\d+)?$/i.test(normalizeVersion(value));
+    return /-(?:alpha|beta|rc)(?:[.-]?\d+)?$/i.test(normalizeVersion(value));
 }
 
 function resolveUpdateChannel(config = {}) {

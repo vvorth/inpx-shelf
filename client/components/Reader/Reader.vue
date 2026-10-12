@@ -6461,7 +6461,6 @@ class Reader {
             }
         }
 
-        const tagName = String(root.tagName || '').toLowerCase();
         const marginLines = this.getFastPagedRootMarginLines(root);
         return Math.max(1, lines + marginLines);
     }

@@ -46,7 +46,7 @@ function assetVersionFor(ext) {
 }
 
 function isRcReleaseTag(value = '') {
-    return /-(?:alpha|beta|rc)(?:[.\-]?\d+)?$/i.test(normalizeVersionTag(value));
+    return /-(?:alpha|beta|rc)(?:[.-]?\d+)?$/i.test(normalizeVersionTag(value));
 }
 
 function resolveReleaseChannel(config = {}) {
@@ -1077,7 +1077,7 @@ class WebWorker {
         const result = [];
         const walk = (sections, level = 0) => {
             for (const section of sections) {
-                const titleNode = section.$$('\/title/');
+                const titleNode = section.$$('/title/');
                 let title = '';
                 if (titleNode && titleNode.count)
                     title = this.extractFb2NodeText(titleNode, parser);
@@ -1141,7 +1141,7 @@ class WebWorker {
                 }
 
                 if (!author) {
-                    const textAuthor = epigraph.$$('\/text-author/');
+                    const textAuthor = epigraph.$$('/text-author/');
                     const value = this.extractFb2NodeText(textAuthor, parser);
                     if (value)
                         author = value;
