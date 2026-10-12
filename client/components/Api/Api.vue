@@ -34,17 +34,13 @@ import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tm, getLang} from '../../share/i18n';
 
-// localStorage keys, cache names and build-reload keys keep the pre-rename inpx-web- prefix:
-// renaming them would sign users out and drop their saved preferences.
-const profileSessionStorageKey = 'inpx-web-profile-session';
-const profileLoginHistoryStorageKey = 'inpx-web-profile-login-history';
+//сессия профиля раньше дублировалась в этих ключах; теперь только в настройках (vuex), ключи читаем один раз для переноса
+const legacyProfileSessionKey = 'inpx-web-profile-session';
+const legacyProfileLoginHistoryKey = 'inpx-web-profile-login-history';
 const componentOptions = {
     components: {
     },
     watch: {
-        settings() {
-            this.loadSettings();
-        },
         modelValue(newValue) {
             this.accessGranted = newValue;
         },
@@ -65,9 +61,6 @@ class Api {
     jobMessage = '';
     //jsonMessage = '';
     progress = 0;
-    accessToken = '';
-    currentUserId = '';
-    profileAccessToken = '';
     profileLoginPromise = null;
     loginPageRequest = null;
 
@@ -75,7 +68,7 @@ class Api {
         this.commit = this.$store.commit;
         this.lock = new LockQueue();
 
-        this.loadSettings();
+        this.migrateLegacyProfileSession();
     }
 
     mounted() {
@@ -90,90 +83,28 @@ class Api {
         return String((route && route.path) || '').startsWith('/reader-lab');
     }
 
-    readStoredProfileSession() {
+    migrateLegacyProfileSession() {
         try {
-            const raw = localStorage.getItem(profileSessionStorageKey);
-            if (!raw)
-                return {};
-
-            const parsed = JSON.parse(raw);
-            return {
-                currentUserId: String(parsed.currentUserId || '').trim(),
-                profileAccessToken: String(parsed.profileAccessToken || '').trim(),
-            };
-        } catch (e) {
-            return {};
-        }
-    }
-
-    writeStoredProfileSession(currentUserId = '', profileAccessToken = '') {
-        try {
-            if (!currentUserId) {
-                localStorage.removeItem(profileSessionStorageKey);
-                return;
+            const raw = localStorage.getItem(legacyProfileSessionKey);
+            if (raw) {
+                const parsed = JSON.parse(raw) || {};
+                const currentUserId = String(parsed.currentUserId || '').trim();
+                if (!this.settings.currentUserId && currentUserId)
+                    this.commit('setSettings', {currentUserId, profileAccessToken: String(parsed.profileAccessToken || '').trim()});
             }
-
-            this.rememberStoredProfileLogin(currentUserId);
-            localStorage.setItem(profileSessionStorageKey, JSON.stringify({
-                currentUserId: String(currentUserId || '').trim(),
-                profileAccessToken: String(profileAccessToken || '').trim(),
-            }));
         } catch (e) {
-            // ignore storage failures
+            //испорченную запись просто удаляем
         }
-    }
-
-    readStoredProfileLoginHistory() {
         try {
-            const raw = localStorage.getItem(profileLoginHistoryStorageKey);
-            const parsed = JSON.parse(raw || '[]');
-            return Array.isArray(parsed)
-                ? parsed.map(item => String(item || '').trim()).filter(Boolean)
-                : [];
+            localStorage.removeItem(legacyProfileSessionKey);
+            localStorage.removeItem(legacyProfileLoginHistoryKey);
         } catch (e) {
-            return [];
+            //без localStorage переносить нечего
         }
-    }
-
-    rememberStoredProfileLogin(currentUserId = '') {
-        try {
-            const normalized = String(currentUserId || '').trim();
-            if (!normalized)
-                return;
-
-            const history = this.readStoredProfileLoginHistory();
-            if (!history.includes(normalized))
-                history.push(normalized);
-            localStorage.setItem(profileLoginHistoryStorageKey, JSON.stringify(history.slice(-20)));
-        } catch (e) {
-            // ignore storage failures
-        }
-    }
-
-    hasStoredProfileLogin(currentUserId = '') {
-        const normalized = String(currentUserId || '').trim();
-        return !!(normalized && this.readStoredProfileLoginHistory().includes(normalized));
-    }
-
-    loadSettings() {
-        const settings = this.settings;
-        const storedProfile = this.readStoredProfileSession();
-
-        if (storedProfile.currentUserId)
-            this.rememberStoredProfileLogin(storedProfile.currentUserId);
-
-        if (!settings.currentUserId && storedProfile.currentUserId)
-            this.commit('setSettings', storedProfile);
-
-        const resolvedSettings = this.$store.state.settings;
-        this.accessToken = resolvedSettings.accessToken;
-        this.currentUserId = resolvedSettings.currentUserId;
-        this.profileAccessToken = resolvedSettings.profileAccessToken;
     }
 
     async updateConfig(options = {}) {
         try {
-            this.loadSettings();
             const config = await this.getConfig();
             config.webAppVersion = packageJson.version;
             this.commit('setConfig', config);
@@ -192,7 +123,7 @@ class Api {
                 }
                 return;
             }
-            const selectedUserId = String(this.settings.currentUserId || this.currentUserId || '').trim();
+            const selectedUserId = String(this.settings.currentUserId || '').trim();
             //Без выбранного профиля - гость (анонимный профиль), если он есть
             const preferredProfile = Array.isArray(config.userProfiles)
                 ? (
@@ -206,16 +137,12 @@ class Api {
                 this.commit('setSettings', {currentUserId: config.currentUserId});
             else if (!selectedUserId)
                 this.commit('setSettings', {currentUserId: (preferredProfile && preferredProfile.id) || config.currentUserId || ''});
-            if (config.profileAuthorized && this.$store.state.settings.currentUserId)
-                this.writeStoredProfileSession(this.$store.state.settings.currentUserId, this.$store.state.settings.profileAccessToken || this.profileAccessToken);
-            else if (!config.profileAuthorized) {
+            if (!config.profileAuthorized) {
                 const rememberedUserId = String(this.$store.state.settings.currentUserId || selectedUserId || '').trim();
                 this.commit('setSettings', {
                     currentUserId: rememberedUserId,
                     profileAccessToken: '',
                 });
-                this.profileAccessToken = '';
-                this.writeStoredProfileSession(rememberedUserId, '');
             }
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
@@ -271,12 +198,13 @@ class Api {
         try {
             while (1) {// eslint-disable-line
                 const params = {action: 'get-worker-state', workerId: 'server_state', uiLang: getLang()};
-                if (this.accessToken)
-                    params.accessToken = this.accessToken;
-                if (this.currentUserId)
-                    params.userId = this.currentUserId;
-                if (this.profileAccessToken)
-                    params.profileAccessToken = this.profileAccessToken;
+                const {accessToken, currentUserId, profileAccessToken} = this.settings;
+                if (accessToken)
+                    params.accessToken = accessToken;
+                if (currentUserId)
+                    params.userId = currentUserId;
+                if (profileAccessToken)
+                    params.profileAccessToken = profileAccessToken;
 
                 const server = await wsc.message(await wsc.send(params));
 
@@ -309,16 +237,13 @@ class Api {
         let errCount = 0;
         while (1) {// eslint-disable-line
             try {
-                const settings = this.settings;
-                const accessToken = settings.accessToken || this.accessToken;
-                const currentUserId = settings.currentUserId || this.currentUserId;
+                const {accessToken, currentUserId, profileAccessToken} = this.settings;
                 const csrfToken = this.$store.state.config.csrfToken;
 
                 if (accessToken)
                     params.accessToken = accessToken;
                 if (currentUserId)
                     params.userId = currentUserId;
-                const profileAccessToken = settings.profileAccessToken || this.profileAccessToken;
                 if (profileAccessToken)
                     params.profileAccessToken = profileAccessToken;
                 if (csrfToken)
@@ -674,7 +599,6 @@ class Api {
             currentUserId: '',
             profileAccessToken: '',
         });
-        this.writeStoredProfileSession('', '');
         this.accessGranted = false;
         await this.request({action: 'test'});
     }
@@ -727,10 +651,6 @@ class Api {
             currentUserId: result.userId,
             profileAccessToken: result.profileAccessToken || '',
         });
-        this.currentUserId = result.userId;
-        this.profileAccessToken = result.profileAccessToken || '';
-        this.rememberStoredProfileLogin(result.userId);
-        this.writeStoredProfileSession(result.userId, result.profileAccessToken || '');
         await this.updateConfig();
 
         const request = this.loginPageRequest;
@@ -752,15 +672,12 @@ class Api {
         }
 
         this.commit('setSettings', {currentUserId: String(userId || ''), profileAccessToken: ''});
-        this.currentUserId = String(userId || '');
-        this.profileAccessToken = '';
-        this.writeStoredProfileSession(this.currentUserId, '');
         await this.updateConfig();
 
         const request = this.loginPageRequest;
         this.loginPageRequest = null;
         if (request)
-            request.resolve({userId: this.currentUserId});
+            request.resolve({userId: String(userId || '')});
     }
 
     async signOutProfile() {
@@ -772,15 +689,12 @@ class Api {
 
         const guest = (this.$store.state.config.userProfiles || []).find(profile => profile && profile.anonymousProfile);
         this.commit('setSettings', {currentUserId: (guest ? guest.id : ''), profileAccessToken: ''});
-        this.currentUserId = (guest ? guest.id : '');
-        this.profileAccessToken = '';
-        this.writeStoredProfileSession('', '');
         await this.updateConfig();
     }
 
     async showProfileLoginPrompt(prefillLogin = '', opts = {}) {
         const config = this.$store.state.config || {};
-        const selectedUserId = String(this.settings.currentUserId || this.currentUserId || '').trim();
+        const selectedUserId = String(this.settings.currentUserId || '').trim();
         const selectedProfile = Array.isArray(config.userProfiles)
             ? config.userProfiles.find((profile) => profile && profile.id === selectedUserId)
             : null;
