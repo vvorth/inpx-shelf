@@ -1560,8 +1560,8 @@ async function testExternalDiscoveryMultiSourceSearch() {
         librarySources: [{id: 'only', name: 'Only', enabled: true}],
     });
     assert.deepStrictEqual(singleSourceWorker.externalDiscoverySearchQueries({title: 'Night Watch'}, 5), [
-        {title: '=Night Watch', limit: 5},
-        {title: '*Night Watch', limit: 5},
+        {title: '=Night Watch', del: '0', limit: 5},
+        {title: '*Night Watch', del: '0', limit: 5},
     ]);
 
     const multiSourceWorker = makeWorker({
@@ -1708,6 +1708,17 @@ async function testAwardsShelfEditionsAndOrder() {
         externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032', externalLanguages: ['EN', 'bad language']}));
     assert.deepStrictEqual(english.items.map(book => book._uid), ['en']);
     assert.strictEqual(english.discoveryHasMore, true, 'the missing winner is on the next page');
+
+    // Removed books never match; English editions filed under the Russian author name still do,
+    // and a trailing note in brackets does not make another book.
+    const algernon = worker.pickDiscoveryBookMatchV2({title: 'Flowers for Algernon', author: 'Daniel Keyes',
+        authors: 'Дэниел Киз, Daniel Keyes'}, [//i18n-ignore: тестовые данные
+        {_uid: 'removed', title: 'Flowers for Algernon', author: 'Киз Дэниел', del: 1, lang: 'en'},//i18n-ignore: тестовые данные
+        {_uid: 'novel', title: 'Flowers for Algernon (novel)', author: 'Киз Дэниел', lang: 'en'},//i18n-ignore: тестовые данные
+    ]);
+    assert.strictEqual(algernon.book._uid, 'novel');
+    assert.deepStrictEqual(algernon.copies.map(copy => copy.book._uid), ['novel']);
+    assert.ok(worker.externalDiscoverySearchQueries({title: 'Flowers for Algernon'}).every(query => query.del === '0'));
 }
 
 async function testConfiguredConverterPathsHavePriority() {

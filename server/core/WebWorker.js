@@ -50,7 +50,7 @@ const stateToText = {
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const discoveryCacheTtl = 15*60*1000;//15 minutes
 const personalDiscoveryCacheTtl = 10*60*1000;
-const externalDiscoveryCacheVersion = 'v8';
+const externalDiscoveryCacheVersion = 'v9';
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
 const bookInfoVersion = 'fb2-encoding-v8';
@@ -352,8 +352,11 @@ function parseWikidataAwardWinners(data = {}) {
         result.push({
             title,
             author: (titleRu ? authorRu || authorEn : authorEn || authorRu),
+            //в библиотеке и английские издания часто записаны под русским именем автора («Киз Дэниел»)
+            authors: [authorRu, authorEn].filter(Boolean).join(', '),
             url: value(binding, 'work').replace(/^https?:\/\/www\.wikidata\.org\/entity\//, wikidataEntityUrl),
-            alternates: (titleRu && titleEn && titleEn !== titleRu ? [{title: titleEn, author: authorEn || authorRu}] : []),
+            alternates: (titleRu && titleEn && titleEn !== titleRu
+                ? [{title: titleEn, author: authorEn || authorRu, authors: [authorRu, authorEn].filter(Boolean).join(', ')}] : []),
             awards: value(binding, 'awards').split(' ').filter(Boolean),
         });
     }
@@ -872,9 +875,10 @@ class WebWorker {
         if (!title)
             return [];
 
+        //книги, удалённые из библиотеки, не ищутся
         const baseQueries = [
-            {title: `=${title}`, limit},
-            {title: `*${title.substring(0, 80)}`, limit},
+            {title: `=${title}`, del: '0', limit},
+            {title: `*${title.substring(0, 80)}`, del: '0', limit},
         ];
         const sources = getEnabledLibrarySources(this.config);
         if (sources.length <= 1)
@@ -910,7 +914,7 @@ class WebWorker {
         if (!title)
             return null;
 
-        const authorTokens = extractDiscoveryAuthorTokens(item.author || '');
+        const authorTokens = extractDiscoveryAuthorTokens(item.authors || item.author || '');
         let best = null;
         let bestKind = '';
         let bestScore = -Infinity;
@@ -918,8 +922,11 @@ class WebWorker {
 
         for (const book of books) {
             const bookTitle = normalizeDiscoveryText(book.title || '');
-            if (!bookTitle)
+            if (!bookTitle || book.del)
                 continue;
+            //пометка в скобках в конце («(роман)», «(novel)», «(сборник)») не делает книгу другой
+            const sameTitle = (bookTitle === title
+                || normalizeDiscoveryText(String(book.title || '').replace(/\s*\([^()]*\)\s*$/, '')) === title);
 
             let score = -Infinity;
             if (bookTitle === title) {
@@ -946,8 +953,6 @@ class WebWorker {
                 score -= 180;
 
             score += authorScore;
-            if (!book.del)
-                score += 15;
             if (String(book.ext || '').toLowerCase() === 'fb2')
                 score += 12;
             score += parseInt(book.librate || '0', 10) || 0;
@@ -964,7 +969,7 @@ class WebWorker {
                 bestKind = kind;
             }
             //переиздания: то же название и тот же автор; книги с названием, лишь содержащим это, - другие («Падение Гипериона»)
-            if (bookTitle === title && (authorScore > 0 || !authorTokens.length) && !book.del)
+            if (sameTitle && (authorScore > 0 || !authorTokens.length))
                 copies.push({book, score});
         }
 
