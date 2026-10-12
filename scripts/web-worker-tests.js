@@ -185,6 +185,36 @@ async function testLibrarySourcesRollBackWhenConfigSaveFails() {
     });
 }
 
+//отметка «прочитано» в списке пишет reading-lists.json один раз
+async function testReadingListBookReadSavesOnce() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+        await store.load();
+        const list = await store.createList('', 'Queue');
+        await store.setBookMembership('', list.id, 'book-1', true);
+        const worker = bareWorker({checkMyState: () => {}, readingListStore: store});
+        worker.getBookRecordByUid = async(uid) => ({_uid: uid});
+
+        let saves = 0;
+        const save = store.save.bind(store);
+        store.save = async(...args) => {
+            saves++;
+            return save(...args);
+        };
+        const result = await worker.setReadingListBookRead('', list.id, 'book-1', true);
+        assert.strictEqual(saves, 1);
+        assert.strictEqual(result.read, true);
+        assert.strictEqual(result.list.readCount, 1);
+        const {user} = await store.resolveUser('');
+        assert.strictEqual(user.readerProgress['book-1'].percent, 1);
+        assert.strictEqual(store.normalizeEntries((await store.getList('', list.id)).books)[0].read, true);
+
+        await assert.rejects(worker.setReadingListBookRead('', list.id, 'book-2', true), error => error.message === require('../server/core/i18n').t('errors.bookNotInList'));
+        assert.strictEqual(saves, 1);
+    });
+}
+
 module.exports = [
     testDiscoveryCacheIsPruned,
     testExternalForceRefreshIsAdminOnly,
@@ -193,4 +223,5 @@ module.exports = [
     testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing,
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
+    testReadingListBookReadSavesOnce,
 ];

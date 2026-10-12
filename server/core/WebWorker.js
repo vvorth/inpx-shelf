@@ -3405,13 +3405,22 @@ class WebWorker {
         if (!book)
             throw new Error(t('errors.fileNotFound'));
 
-        const item = await this.readingListStore.setBookRead(userId, listId, bookUid, read);
-        await this.readingListStore.setBooksRead(userId, [bookUid], read, {listIds: [listId]});
-        return {
-            list: this.readingListStore.listStats(item),
-            bookUid,
-            read: !!read,
-        };
+        //одна запись файла: setBooksRead с listIds сам ставит отметку в списке
+        return withFileTransaction(this.readingListStore.file, async() => {
+            const item = await this.readingListStore.getList(userId, listId);
+            if (!item)
+                throw new Error(t('errors.listNotFound'));
+            const normalizedBookUid = String(bookUid || '').trim();
+            if (!this.readingListStore.normalizeEntries(item.books).some(entry => entry.bookUid === normalizedBookUid))
+                throw new Error(t('errors.bookNotInList'));
+
+            const result = await this.readingListStore.setBooksRead(userId, [normalizedBookUid], read, {listIds: [item.id]});
+            return {
+                list: result.updatedLists.find(list => list.id === item.id) || this.readingListStore.listStats(item),
+                bookUid,
+                read: !!read,
+            };
+        });
     }
 
     async markReaderBooksRead(userId = '', bookUids = [], read = true, options = {}) {
