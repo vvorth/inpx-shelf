@@ -1452,8 +1452,6 @@
             "cancel": "Cancel",
             "checkSource": "Check source",
             "cleanBrokenCovers": "Clean broken",
-            "cleanCache": "Clear cache",
-            "cleanStarted": "Cache cleaned",
             "coverBookUid": "Book UID to rebuild the cover",
             "coverCache": "Cover cache",
             "coverDiagnostics": "Covers",
@@ -1493,7 +1491,6 @@
             "sourceName": "Title",
             "sources": "Library sources",
             "sourcesNeedReindex": "Source changes take effect after reindexing.",
-            "subtitle": "Library status, sources and event log.",
             "tasks": "Tasks and background processes",
             "testEvent": "Test",
             "title": "Administration"
@@ -1513,7 +1510,6 @@
             "settingsBackupInfo": "The settings JSON is only for moving the configuration. Users, lists, progress and bookmarks are not included.",
             "settingsImport": "Restore settings JSON",
             "settingsImportConfirm": "Restore settings from the file? Current settings, including sign-in and proxy settings, will be replaced right away; a wrong file can lock everyone out.",
-            "subtitle": "Full backup and separate configuration export.",
             "title": "Backup"
         },
         "bookCacheMb": "Book cache, MB",
@@ -1554,9 +1550,7 @@
             "save": "Save",
             "saved": "Delivery settings saved",
             "smtpEnabled": "Enable email",
-            "subtitle": "SMTP and Telegram settings are available to the administrator only.",
             "telegramCaption": "Telegram caption",
-            "telegramChatId": "The Telegram chat id is set in the user profile",
             "telegramEnabled": "Enable Telegram",
             "test": "Test",
             "title": "Book delivery"

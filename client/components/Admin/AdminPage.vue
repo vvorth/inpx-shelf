@@ -8,13 +8,13 @@
                 </div>
                 <div v-if="canEditExternalDiscovery && section === 'overview'" class="admin-toolbar">
                     <q-btn outline color="primary" dense no-caps icon="la la-sync" :loading="adminLoading" @click="loadAdminPanel">
-                        {{ adminUi.refresh }}
+                        {{ $t('settings.admin.refresh') }}
                     </q-btn>
                     <q-btn outline color="primary" dense no-caps icon="la la-broom" :loading="adminCleanLoading" @click="cleanAdminCache('all')">
                         {{ $t('settings.clearBothCaches') }}
                     </q-btn>
                     <q-btn outline color="negative" dense no-caps icon="la la-database" :loading="adminReindexLoading" :disable="adminIndexBusy" @click="reindexAdmin">
-                        {{ adminUi.reindex }}
+                        {{ $t('settings.admin.reindex') }}
                     </q-btn>
                 </div>
             </header>
@@ -57,15 +57,15 @@
                         <div class="admin-dashboard-section-title">{{ $t('settings.library') }}</div>
                         <div class="admin-dashboard-grid">
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.books }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.books') }}</div>
                                 <div class="admin-stat-value">{{ adminStat('bookCountAll') }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.authors }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.authors') }}</div>
                                 <div class="admin-stat-value">{{ adminStat('authorCountAll') }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.series }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.series') }}</div>
                                 <div class="admin-stat-value">{{ adminStat('seriesCount') }}</div>
                             </div>
                         </div>
@@ -75,15 +75,15 @@
                         <div class="admin-dashboard-section-title">{{ $t('settings.process') }}</div>
                         <div class="admin-dashboard-grid">
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.uptime }}</div>
+                                <div class="admin-stat-label">Uptime</div>
                                 <div class="admin-stat-value">{{ adminUptime }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.memory }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.memory') }}</div>
                                 <div class="admin-stat-value">{{ formatBytes(adminDashboard.memory && adminDashboard.memory.rss) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.cpu }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.cpu') }}</div>
                                 <div class="admin-stat-value">{{ adminCpuText }}</div>
                                 <div class="admin-stat-hint">{{ adminCpuHint }}</div>
                             </div>
@@ -91,20 +91,20 @@
                     </section>
 
                     <section class="admin-dashboard-section admin-dashboard-section--wide">
-                        <div class="admin-dashboard-section-title">{{ adminUi.requests }}</div>
+                        <div class="admin-dashboard-section-title">{{ $t('settings.admin.requests') }}</div>
                         <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.actionsTotal }}</div>
+                                <div class="admin-stat-label">WebSocket action</div>
                                 <div class="admin-stat-value">{{ adminRuntime.totalActions || 0 }}</div>
                                 <div class="admin-stat-hint">{{ adminRuntimeHint }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.eventLoopLag }}</div>
+                                <div class="admin-stat-label">Event loop</div>
                                 <div class="admin-stat-value">{{ runtimeLagText }}</div>
                                 <div class="admin-stat-hint">{{ runtimeLagHint }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.lastSlowAction }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.lastSlowAction') }}</div>
                                 <div class="admin-stat-value admin-stat-value--small">{{ runtimeLastSlowActionText }}</div>
                                 <div class="admin-stat-hint">{{ runtimeLastSlowActionHint }}</div>
                             </div>
@@ -152,16 +152,16 @@
                         <div class="admin-dashboard-section-title">{{ $t('settings.storage') }}</div>
                         <div class="admin-dashboard-grid admin-dashboard-grid--storage">
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.dbSize }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.dbSize') }}</div>
                                 <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.db && adminDashboard.sizes.db.size) }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.bookCache }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.bookCache') }}</div>
                                 <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.bookCache && adminDashboard.sizes.bookCache.size) }}</div>
                                 <div class="admin-stat-hint">{{ adminCacheLimitText('book') }}</div>
                             </div>
                             <div class="admin-stat">
-                                <div class="admin-stat-label">{{ adminUi.coverCache }}</div>
+                                <div class="admin-stat-label">{{ $t('settings.admin.coverCache') }}</div>
                                 <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.coverCache && adminDashboard.sizes.coverCache.size) }}</div>
                                 <div class="admin-stat-hint">{{ adminCacheLimitText('cover') }}</div>
                             </div>
@@ -176,18 +176,18 @@
 
                 <div class="admin-subsection">
                     <div class="admin-subsection-head">
-                        <div class="admin-mail-title">{{ adminUi.tasks }}</div>
+                        <div class="admin-mail-title">{{ $t('settings.admin.tasks') }}</div>
                     </div>
                     <div class="admin-task-list">
                         <div v-for="task in adminTasks" :key="task.id" class="admin-task-row" :class="{'admin-task-row--active': task.active}">
                             <div class="admin-task-main">
                                 <div class="admin-task-title">{{ $tm(task.title) }}</div>
-                                <div class="admin-task-message">{{ task.message ? $tm(task.message) : (task.state || adminUi.noTaskMessage) }}</div>
+                                <div class="admin-task-message">{{ task.message ? $tm(task.message) : (task.state || $t('settings.admin.noTaskMessage')) }}</div>
                                 <q-linear-progress v-if="task.active" rounded size="6px" :value="taskProgress(task)" color="primary" />
                                 <div v-if="task.lastError" class="admin-task-error">{{ task.lastError }}</div>
                             </div>
                             <q-btn flat dense no-caps :disable="true" icon="la la-ban">
-                                {{ task.cancellable ? adminUi.cancel : adminUi.noCancel }}
+                                {{ task.cancellable ? $t('settings.admin.cancel') : $t('settings.admin.noCancel') }}
                             </q-btn>
                         </div>
                     </div>
@@ -199,40 +199,40 @@
                     <template v-else-if="section === 'library'">
                 <div class="admin-subsection">
                     <div class="admin-subsection-head">
-                        <div class="admin-mail-title">{{ adminUi.sources }}</div>
+                        <div class="admin-mail-title">{{ $t('settings.admin.sources') }}</div>
                         <q-btn flat dense no-caps color="primary" icon="la la-plus" @click="addAdminSource">
-                            {{ adminUi.addSource }}
+                            {{ $t('settings.admin.addSource') }}
                         </q-btn>
                     </div>
                     <div class="admin-source-list">
                         <div v-for="(source, index) in adminSources" :key="index" class="admin-source-row">
                             <q-checkbox v-model="source.enabled" size="32px" />
-                            <q-input v-model="source.name" outlined dense :label="adminUi.sourceName" />
-                            <q-input v-model="source.inpx" outlined dense :label="adminUi.sourceInpx" />
-                            <q-input v-model="source.libDir" outlined dense :label="adminUi.sourceLibDir" />
+                            <q-input v-model="source.name" outlined dense :label="$t('settings.admin.sourceName')" />
+                            <q-input v-model="source.inpx" outlined dense :label="$t('settings.admin.sourceInpx')" />
+                            <q-input v-model="source.libDir" outlined dense :label="$t('settings.admin.sourceLibDir')" />
                             <q-btn flat dense round color="primary" icon="la la-search" :loading="source.diagnosticsLoading" @click="diagnoseAdminSource(index)">
-                                <q-tooltip>{{ adminUi.checkSource }}</q-tooltip>
+                                <q-tooltip>{{ $t('settings.admin.checkSource') }}</q-tooltip>
                             </q-btn>
                             <q-btn flat dense round color="negative" icon="la la-trash" @click="removeAdminSource(index)" />
                             <div class="admin-source-diagnostics">
                                 <span :class="source.inpxExists ? 'text-positive' : 'text-negative'">INPX</span>
-                                <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ adminUi.folder }}</span>
-                                <span>{{ adminUi.archives }}: {{ source.archiveCount || 0 }}{{ source.archiveCountTruncated ? '+' : '' }}</span>
+                                <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ $t('settings.admin.folder') }}</span>
+                                <span>{{ $t('settings.admin.archives') }}: {{ source.archiveCount || 0 }}{{ source.archiveCountTruncated ? '+' : '' }}</span>
                                 <span>covers: {{ source.hasCovers ? 'ok' : '-' }}</span>
                                 <span>etc: {{ source.hasEtc ? 'ok' : '-' }}</span>
                                 <span>images: {{ source.hasImages ? 'ok' : '-' }}</span>
                                 <span>bin: {{ source.hasBin ? 'ok' : '-' }}</span>
-                                <span v-if="source.foundInpx && source.foundInpx.length">{{ adminUi.foundInpx }}: {{ source.foundInpx.length }}</span>
+                                <span v-if="source.foundInpx && source.foundInpx.length">{{ $t('settings.admin.foundInpx') }}: {{ source.foundInpx.length }}</span>
                             </div>
                         </div>
                     </div>
                     <div v-if="adminSourcesChanged || adminSourcesReindexNeeded" class="admin-source-warning">
                         <q-icon name="la la-exclamation-triangle" size="18px" />
-                        <span>{{ adminUi.sourcesNeedReindex }}</span>
+                        <span>{{ $t('settings.admin.sourcesNeedReindex') }}</span>
                     </div>
                     <div class="admin-mail-actions">
                         <q-btn color="primary" dense no-caps icon="la la-save" :loading="adminSourcesLoading" @click="saveAdminSources">
-                            {{ adminUi.saveSources }}
+                            {{ $t('settings.admin.saveSources') }}
                         </q-btn>
                     </div>
                 </div>
@@ -252,63 +252,63 @@
 
                     <template v-else-if="section === 'integrations'">
                         <section class="card">
-                            <h2 class="card-title">{{ mailUi.title }}</h2>
+                            <h2 class="card-title">{{ $t('settings.mail.title') }}</h2>
                             <div class="card-hint">{{ $t('admin.theTelegramBotAnd') }}</div>
                 <div class="admin-mail-section">
                     <div class="admin-mail-section-head">
-                        <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="mailUi.telegramEnabled" />
+                        <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="$t('settings.mail.telegramEnabled')" />
                         <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="telegramTestLoading" @click="testTelegram">
-                            {{ mailUi.test }}
+                            {{ $t('settings.mail.test') }}
                         </q-btn>
                     </div>
                     <div class="admin-mail-grid">
-                        <q-input v-model="integrations.telegramBotToken" outlined dense clearable :type="telegramTokenVisible ? 'text' : 'password'" :label="mailUi.telegramToken">
+                        <q-input v-model="integrations.telegramBotToken" outlined dense clearable :type="telegramTokenVisible ? 'text' : 'password'" label="Telegram bot token">
                             <template #append>
                                 <q-icon :name="telegramTokenVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="telegramTokenVisible = !telegramTokenVisible" />
                             </template>
                         </q-input>
-                        <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :label="mailUi.telegramCaption" />
+                        <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :label="$t('settings.mail.telegramCaption')" />
                     </div>
                 </div>
 
                 <div class="admin-mail-section">
                     <div class="admin-mail-section-head">
-                        <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :label="mailUi.smtpEnabled" />
+                        <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :label="$t('settings.mail.smtpEnabled')" />
                         <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="smtpTestLoading" @click="testSmtp">
-                            {{ mailUi.test }}
+                            {{ $t('settings.mail.test') }}
                         </q-btn>
                     </div>
                     <div class="admin-mail-grid">
-                        <q-input v-model="integrations.smtpHost" outlined dense clearable :label="mailUi.smtpHost" />
-                        <q-input v-model.number="integrations.smtpPort" outlined dense type="number" :label="mailUi.smtpPort" />
-                        <q-input v-model="integrations.smtpUser" outlined dense clearable :label="mailUi.smtpUser" />
-                        <q-input v-model="integrations.smtpPass" outlined dense clearable :type="smtpPassVisible ? 'text' : 'password'" :label="mailUi.smtpPass">
+                        <q-input v-model="integrations.smtpHost" outlined dense clearable label="SMTP host" />
+                        <q-input v-model.number="integrations.smtpPort" outlined dense type="number" label="SMTP port" />
+                        <q-input v-model="integrations.smtpUser" outlined dense clearable label="SMTP user" />
+                        <q-input v-model="integrations.smtpPass" outlined dense clearable :type="smtpPassVisible ? 'text' : 'password'" label="SMTP password">
                             <template #append>
                                 <q-icon :name="smtpPassVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="smtpPassVisible = !smtpPassVisible" />
                             </template>
                         </q-input>
-                        <q-input v-model="integrations.emailFrom" outlined dense clearable :label="mailUi.emailFrom" />
-                        <q-input v-model="integrations.emailTo" outlined dense clearable :label="mailUi.emailTo" />
-                        <q-checkbox v-model="integrations.smtpSecure" size="34px" :label="mailUi.smtpSecure" />
+                        <q-input v-model="integrations.emailFrom" outlined dense clearable label="Email from" />
+                        <q-input v-model="integrations.emailTo" outlined dense clearable :label="$t('settings.mail.emailTo')" />
+                        <q-checkbox v-model="integrations.smtpSecure" size="34px" label="SMTP secure / SSL" />
                     </div>
                 </div>
 
                 <div class="admin-mail-actions">
                     <q-btn color="primary" dense no-caps icon="la la-save" :loading="integrationSaveLoading" @click="saveIntegrations">
-                        {{ mailUi.save }}
+                        {{ $t('settings.mail.save') }}
                     </q-btn>
                 </div>
                         </section>
 
                         <section class="card">
-                            <h2 class="card-title">{{ opdsUi.title }}</h2>
-                            <div class="card-hint">{{ opdsUi.subtitle }}</div>
+                            <h2 class="card-title">{{ $t('settings.opds.title') }}</h2>
+                            <div class="card-hint">{{ $t('settings.opds.subtitle') }}</div>
                 <div class="admin-mail-grid">
-                    <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="opdsUi.enabled" />
-                    <q-input v-model="opdsSettings.root" outlined dense clearable :label="opdsUi.root" />
-                    <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="opdsUi.lang" />
-                    <q-input v-model="opdsSettings.user" outlined dense clearable :label="opdsUi.user" />
-                    <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="opdsUi.password">
+                    <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="$t('settings.opds.enabled')" />
+                    <q-input v-model="opdsSettings.root" outlined dense clearable :label="$t('settings.opds.root')" />
+                    <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="$t('settings.opds.lang')" />
+                    <q-input v-model="opdsSettings.user" outlined dense clearable :label="$t('settings.opds.user')" />
+                    <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="$t('settings.opds.password')">
                         <template #append>
                             <q-icon :name="opdsPasswordVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="opdsPasswordVisible = !opdsPasswordVisible" />
                         </template>
@@ -316,7 +316,7 @@
                 </div>
                 <div class="admin-mail-actions">
                     <q-btn color="primary" dense no-caps icon="la la-save" :loading="opdsSaveLoading" @click="saveOpdsSettings">
-                        {{ opdsUi.save }}
+                        {{ $t('settings.opds.save') }}
                     </q-btn>
                 </div>
                         </section>
@@ -356,36 +356,36 @@
                 <div class="admin-subsection">
                     <div class="admin-subsection-head">
                         <div>
-                            <div class="admin-mail-title">{{ adminUi.coverDiagnostics }}</div>
-                            <div class="admin-mail-subtitle">{{ adminUi.coverDiagnosticsHint }}</div>
+                            <div class="admin-mail-title">{{ $t('settings.admin.coverDiagnostics') }}</div>
+                            <div class="admin-mail-subtitle">{{ $t('settings.admin.coverDiagnosticsHint') }}</div>
                         </div>
                         <q-btn flat dense no-caps color="negative" icon="la la-broom" :loading="adminBrokenCoversLoading" @click="cleanBrokenCovers">
-                            {{ adminUi.cleanBrokenCovers }}
+                            {{ $t('settings.admin.cleanBrokenCovers') }}
                         </q-btn>
                     </div>
                     <div class="admin-dashboard-grid admin-dashboard-grid--compact">
                         <div class="admin-stat">
-                            <div class="admin-stat-label">{{ adminUi.coverCache }}</div>
+                            <div class="admin-stat-label">{{ $t('settings.admin.coverCache') }}</div>
                             <div class="admin-stat-value">{{ formatBytes(adminCoverStats.size) }}</div>
                         </div>
                         <div class="admin-stat">
-                            <div class="admin-stat-label">{{ adminUi.files }}</div>
+                            <div class="admin-stat-label">{{ $t('settings.admin.files') }}</div>
                             <div class="admin-stat-value">{{ adminCoverStats.files || 0 }}</div>
                         </div>
                         <div class="admin-stat">
-                            <div class="admin-stat-label">{{ adminUi.limit }}</div>
+                            <div class="admin-stat-label">{{ $t('settings.admin.limit') }}</div>
                             <div class="admin-stat-value">{{ formatBytes(adminCoverStats.limit) }}</div>
                             <div class="admin-stat-hint">{{ adminCacheTargetText(adminCoverStats.targetSize) }}</div>
                         </div>
                         <div class="admin-stat">
-                            <div class="admin-stat-label">{{ adminUi.coverErrors }}</div>
+                            <div class="admin-stat-label">{{ $t('settings.admin.coverErrors') }}</div>
                             <div class="admin-stat-value">{{ adminCoverErrors.length }}</div>
                         </div>
                     </div>
                     <div class="admin-cover-actions">
-                        <q-input v-model="adminCoverBookUid" outlined dense clearable :label="adminUi.coverBookUid" />
+                        <q-input v-model="adminCoverBookUid" outlined dense clearable :label="$t('settings.admin.coverBookUid')" />
                         <q-btn color="primary" dense no-caps icon="la la-sync" :loading="adminCoverRebuildLoading" @click="rebuildAdminCover">
-                            {{ adminUi.rebuildCover }}
+                            {{ $t('settings.admin.rebuildCover') }}
                         </q-btn>
                     </div>
                     <div v-if="adminCoverErrors.length" class="admin-event-list admin-event-list--compact">
@@ -400,24 +400,24 @@
                     </template>
 
                     <section v-else-if="section === 'backups'" class="card">
-                        <h2 class="card-title">{{ backupUi.title }}</h2>
+                        <h2 class="card-title">{{ $t('settings.backup.title') }}</h2>
                 <div class="admin-backup-note">
-                    <div>{{ backupUi.fullBackupInfo }}</div>
-                    <div>{{ backupUi.settingsBackupInfo }}</div>
-                    <div>{{ backupUi.restoreNote }}</div>
+                    <div>{{ $t('settings.backup.fullBackupInfo') }}</div>
+                    <div>{{ $t('settings.backup.settingsBackupInfo') }}</div>
+                    <div>{{ $t('settings.backup.restoreNote') }}</div>
                 </div>
                 <div class="admin-backup-actions">
                     <q-btn color="primary" dense no-caps icon="la la-download" :loading="backupLoading" @click="createBackup">
-                        {{ backupUi.backup }}
+                        {{ $t('settings.backup.backup') }}
                     </q-btn>
                     <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="backupImportLoading" @click="openBackupImport">
-                        {{ backupUi.backupImport }}
+                        {{ $t('settings.backup.backupImport') }}
                     </q-btn>
                     <q-btn outline color="primary" dense no-caps icon="la la-file-export" :loading="settingsExportLoading" @click="exportSettings">
-                        {{ backupUi.settings }}
+                        {{ $t('settings.backup.settings') }}
                     </q-btn>
                     <q-btn outline color="primary" dense no-caps icon="la la-file-import" :loading="settingsImportLoading" @click="openSettingsImport">
-                        {{ backupUi.settingsImport }}
+                        {{ $t('settings.backup.settingsImport') }}
                     </q-btn>
                     <input
                         ref="settingsImportInput"
@@ -439,20 +439,20 @@
                     <template v-else-if="section === 'log'">
                 <div class="admin-subsection">
                     <div class="admin-subsection-head">
-                        <div class="admin-mail-title">{{ adminUi.events }}</div>
+                        <div class="admin-mail-title">{{ $t('settings.admin.events') }}</div>
                         <div class="admin-event-filters">
-                            <q-checkbox v-model="adminEventLogEnabled" size="32px" :label="adminUi.eventLogEnabled" @update:model-value="saveAdminEventLog" />
+                            <q-checkbox v-model="adminEventLogEnabled" size="32px" :label="$t('settings.admin.eventLogEnabled')" @update:model-value="saveAdminEventLog" />
                             <q-select v-model="adminEventLogSize" :options="adminEventLogSizeOptions" outlined dense emit-value map-options @update:model-value="saveAdminEventLog" />
                             <q-select v-model="adminEventLevel" :options="adminEventLevelOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
                             <q-select v-model="adminEventCategory" :options="adminEventCategoryOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
                             <q-btn flat dense no-caps color="primary" icon="la la-bug" :loading="adminTestEventLoading" @click="addAdminTestEvent">
-                                {{ adminUi.testEvent }}
+                                {{ $t('settings.admin.testEvent') }}
                             </q-btn>
                         </div>
                     </div>
-                    <div v-if="adminEventsLoading" class="admin-empty">{{ adminUi.eventsLoading }}</div>
-                    <div v-else-if="!adminEventLogEnabled" class="admin-empty">{{ adminUi.eventsDisabled }}</div>
-                    <div v-else-if="!adminEvents.length" class="admin-empty">{{ adminUi.noEvents }}</div>
+                    <div v-if="adminEventsLoading" class="admin-empty">{{ $t('settings.admin.eventsLoading') }}</div>
+                    <div v-else-if="!adminEventLogEnabled" class="admin-empty">{{ $t('settings.admin.eventsDisabled') }}</div>
+                    <div v-else-if="!adminEvents.length" class="admin-empty">{{ $t('settings.admin.noEvents') }}</div>
                     <div v-else class="admin-event-list">
                         <div v-for="event in adminEvents" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
                             <div class="admin-event-meta">
@@ -543,67 +543,6 @@ class AdminPage {
     adminEventLogSize = 300;
     integrations = this.makeDefaultIntegrations();
     opdsSettings = this.makeDefaultOpdsSettings();
-    get adminUi() {
-        return {
-            title: t('settings.admin.title'),
-            subtitle: t('settings.admin.subtitle'),
-            refresh: t('settings.admin.refresh'),
-            cleanCache: t('settings.admin.cleanCache'),
-            reindex: t('settings.admin.reindex'),
-            books: t('settings.admin.books'),
-            authors: t('settings.admin.authors'),
-            series: t('settings.admin.series'),
-            uptime: 'Uptime',
-            memory: t('settings.admin.memory'),
-            cpu: t('settings.admin.cpu'),
-            requests: t('settings.admin.requests'),
-            actionsTotal: 'WebSocket action',
-            eventLoopLag: 'Event loop',
-            lastSlowAction: t('settings.admin.lastSlowAction'),
-            dbSize: t('settings.admin.dbSize'),
-            bookCache: t('settings.admin.bookCache'),
-            coverCache: t('settings.admin.coverCache'),
-            files: t('settings.admin.files'),
-            limit: t('settings.admin.limit'),
-            coverErrors: t('settings.admin.coverErrors'),
-            coverDiagnostics: t('settings.admin.coverDiagnostics'),
-            coverDiagnosticsHint: t('settings.admin.coverDiagnosticsHint'),
-            coverBookUid: t('settings.admin.coverBookUid'),
-            rebuildCover: t('settings.admin.rebuildCover'),
-            cleanBrokenCovers: t('settings.admin.cleanBrokenCovers'),
-            sources: t('settings.admin.sources'),
-            addSource: t('settings.admin.addSource'),
-            saveSources: t('settings.admin.saveSources'),
-            sourceName: t('settings.admin.sourceName'),
-            sourceInpx: t('settings.admin.sourceInpx'),
-            sourceLibDir: t('settings.admin.sourceLibDir'),
-            folder: t('settings.admin.folder'),
-            archives: t('settings.admin.archives'),
-            foundInpx: t('settings.admin.foundInpx'),
-            checkSource: t('settings.admin.checkSource'),
-            sourcesNeedReindex: t('settings.admin.sourcesNeedReindex'),
-            indexNeedsReindex: t('settings.admin.indexNeedsReindex'),
-            indexReady: t('settings.admin.indexReady'),
-            indexBusy: t('settings.admin.indexBusy'),
-            indexNotReady: t('settings.admin.indexNotReady'),
-            indexWaiting: t('settings.admin.indexWaiting'),
-            events: t('settings.admin.events'),
-            eventLogEnabled: t('settings.admin.eventLogEnabled'),
-            testEvent: t('settings.admin.testEvent'),
-            eventsLoading: t('settings.admin.eventsLoading'),
-            noEvents: t('settings.admin.noEvents'),
-            eventsDisabled: t('settings.admin.eventsDisabled'),
-            savedSources: t('settings.admin.savedSources'),
-            cleanStarted: t('settings.admin.cleanStarted'),
-            reindexStarted: t('settings.admin.reindexStarted'),
-            coverRebuildStarted: t('settings.admin.coverRebuildStarted'),
-            brokenCoversCleaned: t('settings.admin.brokenCoversCleaned'),
-            tasks: t('settings.admin.tasks'),
-            noTaskMessage: t('settings.admin.noTaskMessage'),
-            cancel: t('settings.admin.cancel'),
-            noCancel: t('settings.admin.noCancel'),
-        };
-    }
     get adminEventLevelOptions() {
         return [
             {label: t('settings.allLevels'), value: 'all'},
@@ -630,59 +569,6 @@ class AdminPage {
         {label: '500', value: 500},
         {label: '1000', value: 1000},
     ];
-    get backupUi() {
-        return {
-            title: t('settings.backup.title'),
-            subtitle: t('settings.backup.subtitle'),
-            fullBackupInfo: t('settings.backup.fullBackupInfo'),
-            settingsBackupInfo: t('settings.backup.settingsBackupInfo'),
-            backup: t('settings.backup.backup'),
-            backupImport: t('settings.backup.backupImport'),
-            settings: t('settings.backup.settings'),
-            settingsImport: t('settings.backup.settingsImport'),
-            settingsImportConfirm: t('settings.backup.settingsImportConfirm'),
-            restoreNote: t('settings.backup.restoreNote'),
-            restoreConfirm: t('settings.backup.restoreConfirm'),
-            restored: t('settings.backup.restored'),
-            ready: t('settings.backup.ready'),
-        };
-    }
-    get mailUi() {
-        return {
-            title: t('settings.mail.title'),
-            subtitle: t('settings.mail.subtitle'),
-            telegramEnabled: t('settings.mail.telegramEnabled'),
-            telegramToken: 'Telegram bot token',
-            telegramChatId: t('settings.mail.telegramChatId'),
-            telegramCaption: t('settings.mail.telegramCaption'),
-            smtpEnabled: t('settings.mail.smtpEnabled'),
-            smtpHost: 'SMTP host',
-            smtpPort: 'SMTP port',
-            smtpUser: 'SMTP user',
-            smtpPass: 'SMTP password',
-            smtpSecure: 'SMTP secure / SSL',
-            emailFrom: 'Email from',
-            emailTo: t('settings.mail.emailTo'),
-            save: t('settings.mail.save'),
-            test: t('settings.mail.test'),
-            saved: t('settings.mail.saved'),
-            errorTitle: t('settings.mail.errorTitle'),
-        };
-    }
-
-    get opdsUi() {
-        return {
-            title: t('settings.opds.title'),
-            subtitle: t('settings.opds.subtitle'),
-            enabled: t('settings.opds.enabled'),
-            root: t('settings.opds.root'),
-            lang: t('settings.opds.lang'),
-            user: t('settings.opds.user'),
-            password: t('settings.opds.password'),
-            save: t('settings.opds.save'),
-            saved: t('settings.opds.saved'),
-        };
-    }
 
     get opdsLangOptions() {
         return [
@@ -1262,19 +1148,19 @@ class AdminPage {
 
     get adminIndexStatusTitle() {
         if (this.adminIndexBusy)
-            return this.adminUi.indexBusy;
+            return t('settings.admin.indexBusy');
         if (this.adminSourcesReindexNeeded)
-            return this.adminUi.indexNeedsReindex;
+            return t('settings.admin.indexNeedsReindex');
         if (this.adminIndex.ready === false)
-            return this.adminUi.indexNotReady;
+            return t('settings.admin.indexNotReady');
 
-        return this.adminUi.indexReady;
+        return t('settings.admin.indexReady');
     }
 
     get adminIndexStatusText() {
         return this.adminIndex.jobMessage
             || this.adminIndex.serverMessage
-            || (this.adminSourcesReindexNeeded ? this.adminUi.sourcesNeedReindex : this.adminUi.indexWaiting);
+            || (this.adminSourcesReindexNeeded ? t('settings.admin.sourcesNeedReindex') : t('settings.admin.indexWaiting'));
     }
 
     get adminIndexProgress() {
@@ -1351,7 +1237,7 @@ class AdminPage {
             this.refreshAdminEvents();
             this.startAdminMetricsPolling();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminLoading = false;
         }
@@ -1424,7 +1310,7 @@ class AdminPage {
                 }
             } catch (e) {
                 this.adminReindexInProgress = false;
-                this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+                this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
             }
         }, delay);
     }
@@ -1456,7 +1342,7 @@ class AdminPage {
             this.adminEvents = result.events || [];
         } catch (e) {
             if (!quiet && requestId === this.adminEventsRequestId)
-                this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+                this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             if (!quiet)
                 this.adminEventsLoading = false;
@@ -1473,7 +1359,7 @@ class AdminPage {
             this.adminEventLogSize = parseInt(result.maxSize, 10) || this.adminEventLogSize;
             await this.refreshAdminEvents();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         }
     }
 
@@ -1483,7 +1369,7 @@ class AdminPage {
             await this.api.addAdminTestEvent('warn');
             await this.refreshAdminEvents();
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminTestEventLoading = false;
         }
@@ -1532,7 +1418,7 @@ class AdminPage {
             this.setAdminSource(index, Object.assign({}, diagnostics, {diagnosticsLoading: false}));
         } catch (e) {
             this.setAdminSource(index, {diagnosticsLoading: false});
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         }
     }
 
@@ -1544,9 +1430,9 @@ class AdminPage {
             await this.api.updateConfig();
             await this.loadAdminPanel();
             this.adminSourcesReindexNeeded = this.adminSourcesReindexNeeded || needsReindex;
-            this.$root.notify.success(this.adminUi.savedSources);
+            this.$root.notify.success(t('settings.admin.savedSources'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminSourcesLoading = false;
         }
@@ -1577,7 +1463,7 @@ class AdminPage {
             await this.refreshAdminDashboard(false);
             this.$root.notify.success(t('settings.cacheRotationSettingsSaved'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminCacheSaveLoading = false;
         }
@@ -1597,7 +1483,7 @@ class AdminPage {
             await this.loadAdminPanel();
             this.$root.notify.success(this.cacheCleanSummary(result));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             if (normalizedKind === 'book')
                 this.adminCleanBookCacheLoading = false;
@@ -1613,9 +1499,9 @@ class AdminPage {
         try {
             const result = await this.api.adminCleanBrokenCovers();
             await this.loadAdminPanel();
-            this.$root.notify.success(`${this.adminUi.brokenCoversCleaned}: ${result.removed || 0}`);
+            this.$root.notify.success(`${t('settings.admin.brokenCoversCleaned')}: ${result.removed || 0}`);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminBrokenCoversLoading = false;
         }
@@ -1624,7 +1510,7 @@ class AdminPage {
     async rebuildAdminCover() {
         const bookUid = String(this.adminCoverBookUid || '').trim();
         if (!bookUid) {
-            this.$root.stdDialog.alert(this.adminUi.coverBookUid, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(t('settings.admin.coverBookUid'), t('settings.mail.errorTitle'));
             return;
         }
 
@@ -1632,11 +1518,11 @@ class AdminPage {
         try {
             const result = await this.api.adminRebuildCover(bookUid);
             await this.refreshAdminDashboard(false);
-            this.$root.notify.success(this.adminUi.coverRebuildStarted);
+            this.$root.notify.success(t('settings.admin.coverRebuildStarted'));
             if (result.coverUrl)
                 window.setTimeout(() => { (new Image()).src = `${result.coverUrl}?t=${Date.now()}`; }, 50);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminCoverRebuildLoading = false;
         }
@@ -1650,9 +1536,9 @@ class AdminPage {
             this.adminReindexInProgress = true;
             await this.refreshAdminDashboard(false);
             this.scheduleAdminIndexPolling(1500);
-            this.$root.notify.success(this.adminUi.reindexStarted);
+            this.$root.notify.success(t('settings.admin.reindexStarted'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminReindexLoading = false;
         }
@@ -1669,10 +1555,10 @@ class AdminPage {
                 this.integrations = Object.assign(this.makeDefaultIntegrations(), result.integrations);
             await this.api.updateConfig();
             if (!options.quiet)
-                this.$root.notify.success(this.mailUi.saved);
+                this.$root.notify.success(t('settings.mail.saved'));
             return true;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
             return false;
         } finally {
             this.integrationSaveLoading = false;
@@ -1689,7 +1575,7 @@ class AdminPage {
             const result = await this.api.testAdminIntegration('smtp');
             this.$root.notify.success((result && result.message) || 'SMTP ok');
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.smtpTestLoading = false;
         }
@@ -1705,7 +1591,7 @@ class AdminPage {
             const result = await this.api.testAdminIntegration('telegram');
             this.$root.notify.success((result && result.message) || 'Telegram ok');
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.telegramTestLoading = false;
         }
@@ -1721,10 +1607,10 @@ class AdminPage {
             if (result && result.opds)
                 this.opdsSettings = Object.assign(this.makeDefaultOpdsSettings(), result.opds);
             await this.api.updateConfig();
-            this.$root.notify.success(this.opdsUi.saved);
+            this.$root.notify.success(t('settings.opds.saved'));
             return true;
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
             return false;
         } finally {
             this.opdsSaveLoading = false;
@@ -1738,7 +1624,7 @@ class AdminPage {
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
             downloadJson(result, `inpx-shelf-settings-${stamp}.json`);
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.settingsExportLoading = false;
         }
@@ -1776,7 +1662,7 @@ class AdminPage {
         const file = input && input.files && input.files[0];
         if (!file)
             return;
-        if (!await this.$root.stdDialog.confirm(this.backupUi.settingsImportConfirm, this.backupUi.settingsImport)) {
+        if (!await this.$root.stdDialog.confirm(t('settings.backup.settingsImportConfirm'), t('settings.backup.settingsImport'))) {
             input.value = '';
             return;
         }
@@ -1789,7 +1675,7 @@ class AdminPage {
             this.loadSettings();
             this.$root.notify.success(t('settings.settingsRestored'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.settingsImportLoading = false;
             if (input)
@@ -1804,8 +1690,8 @@ class AdminPage {
             return;
 
         const confirmed = await this.$root.stdDialog.confirm(
-            this.backupUi.restoreConfirm,
-            this.backupUi.backupImport,
+            t('settings.backup.restoreConfirm'),
+            t('settings.backup.backupImport'),
         );
         if (!confirmed) {
             input.value = '';
@@ -1818,9 +1704,9 @@ class AdminPage {
             await this.api.importAdminBackup({fileName: file.name, contentBase64});
             await this.api.updateConfig();
             this.loadSettings();
-            this.$root.notify.success(this.backupUi.restored);
+            this.$root.notify.success(t('settings.backup.restored'));
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.backupImportLoading = false;
             if (input)
@@ -1834,10 +1720,10 @@ class AdminPage {
             const result = await this.api.createAdminBackup();
             if (result && result.link) {
                 window.location.href = result.link;
-                this.$root.notify.success(this.backupUi.ready);
+                this.$root.notify.success(t('settings.backup.ready'));
             }
         } catch (e) {
-            this.$root.stdDialog.alert(e.message, this.mailUi.errorTitle);
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.backupLoading = false;
         }
@@ -1849,18 +1735,6 @@ export default vueComponent(AdminPage);
 </script>
 
 <style scoped>
-
-
-
-
-
-
-
-
-
-
-
-
 
 .admin-mail-title {
     font-size: 15px;
@@ -2259,8 +2133,6 @@ export default vueComponent(AdminPage);
 .password-visibility-toggle {
     cursor: pointer;
 }
-
-
 
 @media (max-width: 720px) {
     .admin-dashboard-grid {
