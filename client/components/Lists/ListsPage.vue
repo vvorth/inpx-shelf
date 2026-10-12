@@ -134,7 +134,7 @@
                             />
                         </div>
 
-                        <div v-if="booksLoading" class="page-empty page-empty--inline">
+                        <div v-if="booksLoading && !books.length" class="page-empty page-empty--inline">
                             {{ $t('readingLists.loadingBooks') }}
                         </div>
                         <div v-else-if="!books.length" class="page-empty page-empty--inline">
