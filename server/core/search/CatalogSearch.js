@@ -24,6 +24,7 @@ class CatalogSearch {
         this.buildPromise = null;
         this.generation = 0;
         this.inpxHash = '';
+        this.editedDuringBuild = null;
         this.authorNames = new AuthorNames(config);
     }
 
@@ -32,9 +33,16 @@ class CatalogSearch {
     }
 
     getThread() {
-        if (!this.thread) {
+        if (!this.thread || !this.thread.worker) {
+            //поток мог упасть (ошибка, нехватка памяти): новый открывает ту же БД раньше любого запроса
+            const restart = !!this.thread && this.ready;
             const CatalogIndexThread = require('./CatalogIndexThread');
             this.thread = new CatalogIndexThread();
+            if (restart) {
+                log(LM_WARN, 'Library DB thread stopped, restarting');
+                this.thread.call('open', this.file).catch(e => log(LM_ERR, `Library DB reopen: ${e.message}`));
+                this.thread.call('warmUp').catch(() => {});
+            }
         }
         return this.thread;
     }
@@ -87,6 +95,9 @@ class CatalogSearch {
 
         this.building = true;
         this.progress = 0;
+        //правки метаданных во время сборки могут не попасть в новую БД: их _uid повторяются после замены
+        const edited = new Set();
+        this.editedDuringBuild = edited;
         const started = Date.now();
         log('Library DB build start');
         try {
@@ -145,6 +156,15 @@ class CatalogSearch {
             this.meta = await reader.call('open', this.file);
             this.progress = 1;
             this.ready = (generation === this.generation);
+            if (edited.size) {
+                try {
+                    const current = await this.worker.readingListStore.getMetadataOverrides();
+                    for (const book of await reader.call('getBooksByUids', [...edited]))
+                        await this.updateBook(this.worker.applyMetadataOverrideToBook(book, current));
+                } catch (e) {
+                    log(LM_WARN, `Library DB update: ${e.message}`);
+                }
+            }
             log(`Library DB built in ${((Date.now() - started) / 1000).toFixed(1)}s: ${counts.books} books, ${counts.authors} authors, ${counts.series} series, ${counts.aliases} English author names`);
             reader.call('warmUp').catch(() => {});
             return true;
@@ -155,6 +175,8 @@ class CatalogSearch {
         } finally {
             await thread.terminate().catch(() => {});
             this.building = false;
+            if (this.editedDuringBuild === edited)
+                this.editedDuringBuild = null;
             //разбор INPX оставляет много мусора: освобождаем память сразу, как прежнее создание БД
             utils.freeMemory();
         }
@@ -271,6 +293,8 @@ class CatalogSearch {
     }
 
     async updateBook(row) {
+        if (row && row._uid && this.editedDuringBuild)
+            this.editedDuringBuild.add(row._uid);
         if (!this.ready || !row || !row.id)
             return;
         try {

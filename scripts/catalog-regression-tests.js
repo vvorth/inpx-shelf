@@ -168,5 +168,49 @@ async function testMetadataEditKeepsAliasesSeriesAndOpdsGroups() {
     });
 }
 
-module.exports = [testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
+// The build thread skips repeated _uids and numbers books in order; an edit made during a rebuild
+// survives the file swap; a crashed library thread is restarted on the next request.
+async function testCatalogSearchRebuildEditsAndThreadRestart() {
+    await withTempDir(async(dir) => {
+        const InpxParser = require('../server/core/InpxParser');
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const book = (n, uid) => ({_uid: uid, title: `Book ${n}`, author: 'Author A', series: '', serno: 0, genre: 'sf', lang: 'en', ext: 'fb2',
+            size: 1, date: '2026-01-01', librate: 0, del: 0, folder: 'a.zip', file: String(n), libid: String(n), insno: 0, keywords: ''});
+        let duringBuild = async() => {};
+        const parse = InpxParser.prototype.parse;
+        InpxParser.prototype.parse = async function(_file, _onFile, onChunk) {
+            this.info = {};
+            await onChunk([book(1, 'a'), book(2, 'b'), book(2, 'b')]);
+            await duringBuild();
+            await onChunk([book(2, 'b'), book(3, 'c')]);
+        };
+        const overrides = {};
+        const worker = {readingListStore: {getMetadataOverrides: async() => overrides},
+            applyMetadataOverrideToBook: (row, all) => Object.assign(row, all[row._uid] || {})};
+        const search = new CatalogSearch({dataDir: dir, inpxFile: path.join(dir, 'x.inpx')}, worker);
+        search.authorNames = {readEntries: async() => ({entries: [], updatedAt: ''})};
+        const ids = async uids => (await search.getBooksByUids(uids)).map(row => [row._uid, row.id]);
+        try {
+            assert.strictEqual(await search.ensure('h1'), true);
+            assert.deepStrictEqual(await ids(['a', 'b', 'c']), [['a', 1], ['b', 2], ['c', 3]]);
+
+            duringBuild = async() => {
+                const [row] = await search.getBooksByUids(['a']);
+                overrides.a = {title: 'Edited Title'};
+                await search.updateBook(worker.applyMetadataOverrideToBook(row, overrides));
+            };
+            assert.strictEqual(await search.ensure('h2', {keepReady: true}), true);
+            assert.deepStrictEqual((await search.call('search', {q: 'edited'})).ids, [1]);
+
+            await search.thread.worker.terminate();
+            await new Promise(resolve => setImmediate(resolve));
+            assert.deepStrictEqual((await search.call('search', {q: 'edited'})).ids, [1]);
+        } finally {
+            InpxParser.prototype.parse = parse;
+            await search.close();
+        }
+    });
+}
+
+module.exports = [testCatalogSearchRebuildEditsAndThreadRestart, testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
     testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];
