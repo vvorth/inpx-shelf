@@ -340,29 +340,23 @@ async function testFb2ContentsExcludeNotesBodies() {
     ];
     assert.deepStrictEqual(makeWorker().extractFb2Contents(parser), expectedContents);
 
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
-    const readerContentsStart = readerSource.indexOf('    extractReaderContents(parser) {');
-    const readerContentsEnd = readerSource.indexOf('    escapeCssId(id = \'\') {', readerContentsStart);
-    assert.ok(readerContentsStart >= 0 && readerContentsEnd > readerContentsStart);
-    const readerContentsMethod = readerSource.slice(readerContentsStart, readerContentsEnd).trim();
-    const ReaderContents = new Function(`return class ReaderContents {${readerContentsMethod}}`)();
-    assert.deepStrictEqual(new ReaderContents().extractReaderContents(parser), expectedContents);
+    assert.deepStrictEqual(require('../client/components/Reader/fb2ToReaderHtml').extractReaderContents(parser), expectedContents);
 }
 
 async function testReaderAnnotationStaysOutsideReadingFlow() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
-    const annotationBuilderStart = readerSource.indexOf('    buildReaderAnnotationHtml(parser, annotationNodes = []) {');
-    const readerBuilderStart = readerSource.indexOf('    buildReaderHtml(parser) {', annotationBuilderStart);
-    const readerBuilderEnd = readerSource.indexOf('    createFb2Parser(source = \'\') {', readerBuilderStart);
-
-    assert.ok(annotationBuilderStart >= 0 && readerBuilderStart > annotationBuilderStart);
-    assert.ok(readerBuilderEnd > readerBuilderStart);
-    const annotationBuilder = readerSource.slice(annotationBuilderStart, readerBuilderStart);
-    const readerBuilder = readerSource.slice(readerBuilderStart, readerBuilderEnd);
-    assert.match(annotationBuilder, /this\.renderBlockNodes\(annotationNodes/);
-    assert.doesNotMatch(annotationBuilder, /annotationHtml|v-html|innerHTML/);
-    assert.doesNotMatch(readerBuilder, /annotation/i);
-    assert.match(readerSource, /this\.readerAnnotationHtml = this\.buildReaderAnnotationHtml\(/);
+    const fb2ToReaderHtml = require('../client/components/Reader/fb2ToReaderHtml');
+    const annotationParser = new (require('../server/core/fb2/Fb2Parser'))();
+    annotationParser.fromString(`<?xml version="1.0" encoding="utf-8"?>
+        <FictionBook><description><title-info><annotation><p>Аннотация</p></annotation></title-info></description>
+        <body><section><title><p>Глава</p></title><p>Текст</p></section></body></FictionBook>`, {lowerCase: true});
+    const annotationHtml = fb2ToReaderHtml.buildReaderAnnotationHtml(annotationParser, annotationParser.bookInfo().titleInfo.annotation);
+    assert.match(annotationHtml, /Аннотация/);
+    assert.doesNotMatch(annotationHtml, /id="section-/);
+    const {html: bodyHtml} = fb2ToReaderHtml.buildReaderHtml(annotationParser, {contents: [{id: 'section-1', title: 'Глава'}]});
+    assert.doesNotMatch(bodyHtml, /Аннотация/);
+    assert.match(bodyHtml, /<h2 id="section-1" class="reader-anchored-heading reader-section-heading">Глава<\/h2>/);
+    assert.match(readerSource, /this\.readerAnnotationHtml = fb2ToReaderHtml\.buildReaderAnnotationHtml\(/);
     assert.match(readerSource, /this\.readerSearchText = this\.normalizeReaderSearchText\(this\.stripHtml\(this\.readerHtml \|\| ''\)\)\.toLowerCase\(\);/);
     assert.match(readerSource, /get hasContentsMenu\(\)[\s\S]{0,160}this\.hasContents \|\| this\.hasAnnotation/);
     assert.match(readerSource, /v-if="hasContentsMenu"/);
@@ -371,7 +365,6 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
     assert.match(readerSource, /this\.readerHtmlHasAnchor\(targetId\)/);
     assert.match(readerSource, /img\.closest\('\.reader-annotation-html, \.reader-page-sheet--measure'\)/);
     assert.match(readerSource, /link\.closest\('\.reader-annotation-html'\)/);
-    assert.strictEqual((readerSource.match(/src="\$\{this\.escapeHtml\(src\)\}"/g) || []).length, 2);
 
     const handlerStart = readerSource.indexOf('    handleReaderAnnotationClick(event) {');
     const handlerEnd = readerSource.indexOf('    captureReaderNoteReturnPoint() {', handlerStart);
@@ -436,13 +429,8 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.ok(firstAnnotationLink >= 0 && firstNotesLink > firstAnnotationLink);
     assert.ok(firstFeatureSeparator > firstNotesLink);
 
-    const anchorMethodStart = readerSource.indexOf('    createReaderNotesAnchorId(parser) {');
-    const anchorMethodEnd = readerSource.indexOf('    buildReaderHtml(parser) {', anchorMethodStart);
-    assert.ok(anchorMethodStart >= 0 && anchorMethodEnd > anchorMethodStart);
-    const anchorMethod = readerSource.slice(anchorMethodStart, anchorMethodEnd).trim();
-    const NotesAnchor = new Function(`return class NotesAnchor {${anchorMethod}}`)();
-    const anchorHelper = new NotesAnchor();
-    const anchorId = anchorHelper.createReaderNotesAnchorId({
+    const fb2ToReaderHtml = require('../client/components/Reader/fb2ToReaderHtml');
+    const anchorId = fb2ToReaderHtml.createReaderNotesAnchorId({
         eachDeepSelf(callback) {
             callback({type: 1, attrs: () => new Map([['id', 'reader-book-notes']])});
             callback({type: 1, attrs: () => new Map([['xml:id', 'reader-book-notes-2']])});
@@ -450,48 +438,32 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     });
     assert.strictEqual(anchorId, 'reader-book-notes-3');
 
-    const builderMethodStart = readerSource.indexOf('    buildReaderHtml(parser) {');
-    const builderMethodEnd = readerSource.indexOf('    createFb2Parser(source = \'\') {', builderMethodStart);
-    assert.ok(builderMethodStart >= 0 && builderMethodEnd > builderMethodStart);
-    const builderMethod = readerSource.slice(builderMethodStart, builderMethodEnd).trim();
-    //t() из client/share/i18n недоступен вне модуля: подставляем перевод на русский
-    const NotesBuilder = new Function('t', `return class NotesBuilder {${builderMethod}}`)(key => require('../shared/i18n').translate('ru', key));
-    const makeBody = (name, marker) => ({
+    const makeParser = (bodies) => ({
+        $$array: selector => (selector === '/body' ? bodies : []),
+        eachDeepSelf: () => {},
+    });
+    const makeBody = (name, ...nodes) => ({
         attrs: () => ({name}),
-        rawNodes: [[1, 'body', [], [marker]]],
+        rawNodes: [[1, 'body', [], nodes]],
     });
-    const notesBuilder = new NotesBuilder();
-    notesBuilder.extractImageMap = () => new Map();
-    notesBuilder.createReaderNotesAnchorId = () => 'reader-book-notes';
-    notesBuilder.escapeHtml = value => value;
-    notesBuilder.renderBlockNodes = (nodes) => {
-        if (nodes[0] === 'main')
-            return '<p>Основной текст</p>';
-        if (nodes[0] === 'note-1')
-            return '<section id="note-1"><p>Первая сноска</p></section>';
-        if (nodes[0] === 'note-2')
-            return '<section id="note-2"><p>Вторая сноска</p></section>';
-        return '';
-    };
-    const notesHtml = notesBuilder.buildReaderHtml({
-        $$array: () => [makeBody('', 'main'), makeBody('notes', 'note-1'), makeBody(' NoTeS ', 'note-2')],
-    });
-    assert.strictEqual(notesBuilder.readerNotesAnchorId, 'reader-book-notes');
+    const paragraph = text => [1, 'p', [], [[3, text]]];
+    const note = (id, text) => [1, 'section', [['id', id]], [paragraph(text)]];
+    const notes = fb2ToReaderHtml.buildReaderHtml(makeParser([
+        makeBody('', paragraph('Основной текст')),
+        makeBody('notes', note('note-1', 'Первая сноска')),
+        makeBody(' NoTeS ', note('note-2', 'Вторая сноска')),
+    ]), {notesTitle: 'Примечания'});
+    const notesHtml = notes.html;
+    assert.strictEqual(notes.notesAnchorId, 'reader-book-notes');
     assert.strictEqual((notesHtml.match(/id="reader-book-notes"/g) || []).length, 1);
     assert.match(notesHtml, /<section class="reader-notes"><h2 id="reader-book-notes">Примечания<\/h2>/);
     assert.doesNotMatch(notesHtml, /<section id="reader-book-notes" class="reader-notes">/);
     assert.strictEqual((notesHtml.match(/class="reader-notes"/g) || []).length, 2);
 
-    const emptyNotesBuilder = new NotesBuilder();
-    emptyNotesBuilder.extractImageMap = () => new Map();
-    emptyNotesBuilder.createReaderNotesAnchorId = () => 'reader-book-notes';
-    emptyNotesBuilder.escapeHtml = value => value;
-    emptyNotesBuilder.renderBlockNodes = () => '   ';
-    const emptyNotesHtml = emptyNotesBuilder.buildReaderHtml({
-        $$array: () => [makeBody('notes', 'empty-note')],
-    });
-    assert.strictEqual(emptyNotesBuilder.readerNotesAnchorId, '');
-    assert.strictEqual(emptyNotesHtml, '');
+    const emptyNotes = fb2ToReaderHtml.buildReaderHtml(makeParser([makeBody('notes', [3, '   '])]), {notesTitle: 'Примечания'});
+    assert.strictEqual(emptyNotes.notesAnchorId, '');
+    assert.strictEqual(emptyNotes.html, '');
+    assert.match(readerSource, /notesTitle: t\('reader\.bookNotes'\)/);
 
     const showNotesStart = readerSource.indexOf('    showReaderNotes() {');
     const showNotesEnd = readerSource.indexOf('    showContentsList() {', showNotesStart);
