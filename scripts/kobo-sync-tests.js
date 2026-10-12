@@ -500,6 +500,24 @@ async function testKoboSyncKeepsChangesMadeDuringConversion() {
     });
 }
 
+// A reset from the UI while a sync waits for a conversion: the sync must not write the old books back.
+async function testKoboResetDuringSyncIsKept() {
+    await fixture({slowUid: 'late-uid'}, async({service, store, device, listA, sync}) => {
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        await store.addBooks('default', listA.id, ['late-uid']);
+        service.prepareBudgetMs = 2000;
+        const pendingSync = sync();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await service.store.resetDevice('default', device.id);
+        await pendingSync;
+        assert.deepStrictEqual(service.store.data.devices[0].books, {});
+        assert.deepStrictEqual(service.store.data.devices[0].tags, {});
+        const next = entitlementIds((await sync()).items, 'NewEntitlement').sort();
+        assert.deepStrictEqual(next, [kobo.uuidv5('late-uid'), kobo.uuidv5('main:102')].sort(), 'the reset device gets everything again');
+    });
+}
+
 // The lists were re-keyed but the device rows were not (two files, saved one after the other).
 async function testKoboRowFollowsTheListedRecord() {
     await fixture({}, async({service, store, books, listA, sync, call}) => {
@@ -1116,6 +1134,7 @@ module.exports = [
     testKoboRefusesDevicesOfDeletedProfiles,
     testKoboStoreProxyToggle,
     testKoboSyncKeepsChangesMadeDuringConversion,
+    testKoboResetDuringSyncIsKept,
     testKoboRowFollowsTheListedRecord,
     testKoboReannouncesRegeneratedFiles,
     testKoboTokensAreMaskedInLogs,

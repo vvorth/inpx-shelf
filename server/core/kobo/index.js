@@ -725,6 +725,8 @@ class KoboService {
     async sync(req, res, device, token) {
         const incoming = decodeSyncToken(req.headers[syncTokenHeader]);
         const fresh = !incoming || incoming.d !== device.id || incoming.g !== device.generation;
+        // A reset from the UI while conversions are awaited bumps it in place: this sync must not undo it.
+        const generation = device.generation;
         const {lists, wanted, orphanUids} = await this.collectWanted(device);
         const startBooks = JSON.parse(JSON.stringify(device.books));
         const startTags = JSON.parse(JSON.stringify(device.tags || {}));
@@ -925,6 +927,11 @@ class KoboService {
         const tags = this.syncTags(Object.assign({}, device, {books, tags: tagsBefore}), lists, wanted, results, orphanUids);
 
         await this.store.saveSync(device.id, (target, data) => {
+            // Only states changed by this sync: a concurrent state PUT must not be overwritten.
+            data.states[device.userId] = Object.assign(data.states[device.userId] || {}, states);
+            target.lastSyncAt = now;
+            if (target.generation !== generation)
+                return;
             // A state PUT or delete may have landed while conversions were awaited: keep what it changed.
             for (const [uuid, row] of Object.entries(books)) {
                 const live = target.books[uuid];
@@ -943,9 +950,6 @@ class KoboService {
             }
             target.books = books;
             target.tags = tags;
-            target.lastSyncAt = now;
-            // Only states changed by this sync: a concurrent state PUT must not be overwritten.
-            data.states[device.userId] = Object.assign(data.states[device.userId] || {}, states);
         });
 
         if (newItems || results.length)
@@ -966,7 +970,7 @@ class KoboService {
             }
         }
 
-        res.set(syncTokenHeader, encodeSyncToken(device, storeToken));
+        res.set(syncTokenHeader, encodeSyncToken({id: device.id, generation}, storeToken));
         if (more)
             res.set('x-kobo-sync', 'continue');
         sendJson(res, results);
