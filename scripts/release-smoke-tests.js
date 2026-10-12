@@ -1098,6 +1098,19 @@ async function testProfileReadingSummaryLeavesOutReadBooks() {
     assert.strictEqual(summary.count, 1);
 }
 
+// A series feed lists the filtered books in series order and links to all when the filter hid some.
+async function testOpdsSeriesEntriesAndFilter() {
+    const page = Object.assign(Object.create(require('../server/core/opds/SeriesPage').prototype),
+        {config: {}, opdsRoot: '/opds', id: 'series', showDeleted: false});
+    const books = [
+        {_uid: 'b', author: 'A', series: 'S', title: 'Beta', genre: 'sf', serno: 2, ext: 'fb2'},
+        {_uid: 'a', author: 'A', series: 'S', title: 'Alpha', genre: 'det', serno: 1, ext: 'fb2'},
+    ];
+    assert.deepStrictEqual(page.seriesEntries(books, {series: '=s', genre: 'sf'}, '/series?all=1').map(e => e.id), ['all_series_books', 'b']);
+    assert.deepStrictEqual(page.seriesEntries(books, {series: '=s', genre: 'sf', all: '1'}, '').map(e => e.id), ['a', 'b']);
+    assert.deepStrictEqual(page.filterBooks(books, {title: '~^al'}).map(book => book._uid), ['a']);
+}
+
 async function testBookPageRecordAndReaderStates() {
     const worker = makeWorker();
     worker.getBookRecordByUid = async(uid) => (uid === 'book:1' ? {_uid: 'book:1', title: 'Старое название', author: 'Автор', ext: 'fb2', size: 10} : null);
@@ -2081,6 +2094,7 @@ const tests = [
     testProfileReadingSummaryLeavesOutReadBooks,
     testReaderHomeKeepsUnavailableProgressVisible,
     testBookPageRecordAndReaderStates,
+    testOpdsSeriesEntriesAndFilter,
     testCatalogIndexSearch,
     testAuthorEnglishNames,
     testDiscoveryPreferencesAndEventsPersist,

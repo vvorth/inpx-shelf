@@ -33,26 +33,8 @@ class SeriesPage extends BasePage {
             //книги по серии
             const bookList = await this.webWorker.getSeriesBookList(query.series.substring(1));
 
-            if (bookList.books) {
-                let books = bookList.books;
-                const booksAll = this.filterBooks(books);
-                const filtered = (query.all ? booksAll : this.filterBooks(books, query));
-                const sorted = this.sortSeriesBooks(filtered);
-
-                if (booksAll.length > filtered.length) {
-                    entry.push(
-                        this.makeEntry({
-                            id: 'all_series_books',
-                            title: t('opds.allBooksSeries'),
-                            link: this.navLink({
-                                href: `/${this.id}?series=${encodeURIComponent(query.series)}&all=1`}),
-                        })
-                    );
-                }
-
-                for (const book of sorted)
-                    entry.push(this.bookEntry(book));
-            }
+            if (bookList.books)
+                entry.push(...this.seriesEntries(bookList.books, query, `/${this.id}?series=${encodeURIComponent(query.series)}&all=1`));
         } else {
             entry.push(...await this.catalogEntries('series', query, t('opds.otherSeries'), 'series.foundCount', rec => (rec.count ? rec.title : t('common.seriesWithName', {name: rec.title}))));
         }

@@ -6,6 +6,8 @@ const BasePage = require('./BasePage');
 const Fb2Parser = require('../fb2/Fb2Parser');
 const {t, tGenre} = require('../i18n');
 
+const extMime = new Map([['fb2', 'application/fb2+xml'], ['epub', 'application/epub+zip'], ['mobi', 'application/x-mobipocket-ebook']]);
+
 class BookPage extends BasePage {
     constructor(config) {
         super(config);
@@ -166,17 +168,12 @@ class BookPage extends BasePage {
                     links.push({href, type});
                 };
 
-                if (ext === 'fb2') {
-                    addLink(rawHref, 'application/fb2+xml');
+                const format = extMime.get(ext) || `application/${ext}`;
+                addLink(rawHref, format);
+                if (ext === 'fb2')
                     addLink(rawHref, 'application/x-fictionbook+xml');
-                } else if (ext === 'epub') {
-                    addLink(rawHref, 'application/epub+zip');
-                } else if (ext === 'mobi') {
-                    addLink(rawHref, 'application/x-mobipocket-ebook');
-                } else {
-                    addLink(rawHref, `application/${ext}`);
+                else if (ext !== 'epub' && ext !== 'mobi')
                     addLink(directDownload ? `${directHref}&zip=1` : `${bookInfo.link}/zip`, 'application/zip');
-                }
 
                 //entry
                 const e = this.makeEntry({
@@ -190,14 +187,7 @@ class BookPage extends BasePage {
                 }
 
                 e['dc:language'] = bookInfo.book.lang;
-                if (ext === 'fb2')
-                    e['dc:format'] = 'application/fb2+xml';
-                else if (ext === 'epub')
-                    e['dc:format'] = 'application/epub+zip';
-                else if (ext === 'mobi')
-                    e['dc:format'] = 'application/x-mobipocket-ebook';
-                else
-                    e['dc:format'] = `application/${ext}`;
+                e['dc:format'] = format;
 
                 //genre
                 const genre = bookInfo.book.genre.split(',');

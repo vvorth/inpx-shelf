@@ -271,7 +271,7 @@ class BasePage {
         return (!query.others ? result : others);
     }
 
-    //скопировано из BaseList.js, часть функционала не используется
+    //фильтр книг по автору, серии, названию и жанру из запроса OPDS
     filterBooks(books, query = {}) {
         const s = query;
         const titleSearchLeadingPattern = /^[\s«"'„“”‘’`()\[\]{}]+/;
@@ -288,6 +288,8 @@ class BasePage {
             return result;
         };
 
+        //выражение компилируется один раз на запрос, а не на каждую книгу
+        const regExps = new Map();
         const filterBySearch = (bookValue, searchValue, options = {}) => {
             if (!searchValue)
                 return true;
@@ -317,7 +319,9 @@ class BasePage {
             } else if (searchValue[0] == '~') {//RegExp
 
                 searchValue = searchValue.substring(1);
-                const re = utils.checkSearchRegExp(searchValue);
+                let re = regExps.get(searchValue);
+                if (!re)
+                    regExps.set(searchValue, re = utils.checkSearchRegExp(searchValue));
                 return re.test(bookValue);
             } else {
                 if (options.looseTitlePrefix) {
@@ -357,37 +361,11 @@ class BasePage {
                 }
             }
 
-            //lang
-            let langFound = !s.lang;
-            if (!langFound) {
-                const searchLang = new Set(s.lang.split(','));
-                langFound = searchLang.has(book.lang || emptyFieldValue);
-            }
-
-            //date
-            let dateFound = !s.date;
-            if (!dateFound) {
-                const date = this.queryDate(s.date).split(',');
-                let [from = '0000-00-00', to = '9999-99-99'] = date;
-
-                dateFound = (book.date >= from && book.date <= to);
-            }
-
-            //librate
-            let librateFound = !s.librate;
-            if (!librateFound) {
-                const searchLibrate = new Set(s.librate.split(',').map(n => parseInt(n, 10)).filter(n => !isNaN(n)));
-                librateFound = searchLibrate.has(book.librate);
-            }
-
             return (this.showDeleted || !book.del)
                 && authorFound
                 && filterBySearch(book.series, s.series)
                 && filterBySearch(book.title, s.title, {looseTitlePrefix: true})
                 && genreFound
-                && langFound
-                && dateFound
-                && librateFound
             ;
         });
     }
@@ -404,6 +382,24 @@ class BasePage {
                 '*TEXT': text,
             },
         });
+    }
+
+    //книги серии по порядку; если фильтр скрыл часть из них - ссылка на все
+    seriesEntries(books, query, allHref) {
+        const booksAll = this.filterBooks(books);
+        const filtered = (query.all ? booksAll : this.filterBooks(books, query));
+        const entry = [];
+        if (booksAll.length > filtered.length) {
+            entry.push(this.makeEntry({
+                id: 'all_series_books',
+                title: t('opds.allBooksSeries'),
+                link: this.navLink({href: allHref}),
+            }));
+        }
+
+        for (const book of this.sortSeriesBooks(filtered))
+            entry.push(this.bookEntry(book));
+        return entry;
     }
 
     sortSeriesBooks(seriesBooks) {

@@ -58,7 +58,7 @@ class ReadingProgressPage extends BasePage {
 
         const response = await this.webWorker.getOpdsUserReadingLibrary(userId, {
             state,
-            sort: state === 'read' ? 'updatedDesc' : 'updatedDesc',
+            sort: 'updatedDesc',
             limit: 300,
         });
         const result = {};
