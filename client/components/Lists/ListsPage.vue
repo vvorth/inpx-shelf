@@ -673,6 +673,8 @@ class ListsPage {
         const file = event.target.files && event.target.files[0];
         if (!file)
             return;
+        if (!await this.$root.stdDialog.confirm(t('profiles.profileBackupImportConfirm'), t('profiles.profileBackupTitle')))
+            return;
 
         try {
             const result = await this.api.importReadingLists(JSON.parse(await file.text()));

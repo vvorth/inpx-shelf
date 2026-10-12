@@ -1043,6 +1043,14 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(restored.user.readerProgress['source:book:1'].sectionId, 'chapter-3');
         assert.strictEqual(restored.user.readerBookmarks['source:book:1'][0].note, 'Note');
         assert.deepStrictEqual(restored.user.discoveryPreferences.taste.genres, ['sf']);
+
+        // An older backup must not roll back a position saved after it.
+        const backup = JSON.parse(JSON.stringify(exported));
+        backup.user.readerProgress['source:book:1'].updatedAt = '2020-01-01T00:00:00.000Z';
+        await store.updateReaderProgress('reader-b', 'source:book:1', {percent: 0.9, updatedAt: new Date().toISOString(), force: true});
+        const again = await store.importData('reader-b', backup);
+        assert.strictEqual(again.importedProgress, 0);
+        assert.strictEqual((await store.exportData('reader-b')).user.readerProgress['source:book:1'].percent, 0.9);
     });
 }
 

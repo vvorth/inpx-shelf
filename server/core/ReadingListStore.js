@@ -1844,8 +1844,14 @@ class ReadingListStore {
 
             if (utilsHasProp(incomingUser, 'readerProgress')) {
                 const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0);
+                const current = target.readerProgress || {};
+                //старый бэкап не откатывает позицию, сохранённую позже него
                 const progress = Object.fromEntries(
                     Object.entries(this.normalizeReaderProgress(incomingUser.readerProgress))
+                        .filter(([bookUid, row]) => {
+                            const currentTime = Date.parse(current[bookUid] && current[bookUid].updatedAt);
+                            return Number.isNaN(currentTime) || Date.parse(row.updatedAt) > currentTime;
+                        })
                         .map(([bookUid, row]) => [bookUid, Object.assign({}, row, {generation})])
                 );
                 target.readerProgress = Object.assign({}, target.readerProgress || {}, progress);
