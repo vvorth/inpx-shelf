@@ -35,6 +35,7 @@ const {getEnabledLibrarySources} = require('./LibrarySources');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {normalizeVersionTag, compareReleaseVersions} = require('../../shared/release');
+const {stripHtml, normalizeAuthorText} = require('./HtmlText');
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
 
 //server states
@@ -224,30 +225,6 @@ function decodeArchiveText(data) {
         text = iconv.decode(data, 'win1251');
 
     return text;
-}
-
-function stripHtml(html) {
-    return (html || '')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, '\'')
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function normalizeAuthorText(value) {
-    return stripHtml(value)
-        .toLowerCase()
-        .replace(/ё/g, 'е')//i18n-ignore: нормализация
-        .replace(/[()[\]{}.,;:!?'"`«»]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
 }
 
 function normalizeDiscoveryText(value) {
