@@ -7,6 +7,7 @@ const path = require('path');
 const CatalogIndex = require('../server/core/search/CatalogIndex');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opds-index-'));
+const index = new CatalogIndex();
 try {
     const book = (id, title, author, extra = {}) => Object.assign({
         id, _uid: `u${id}`, title, author, series: '', serno: 0, genre: 'prose_classic', lang: 'ru', ext: 'fb2',
@@ -14,7 +15,6 @@ try {
     }, extra);
 
     const file = path.join(dir, 'catalog.sqlite');
-    const index = new CatalogIndex();
     assert.throws(() => index.findBooks({}), /catalog_index_not_ready/);
     index.beginBuild(file);
     index.insertBooks([
@@ -124,5 +124,7 @@ try {
     console.error(e && e.stack || e);
     process.exitCode = 1;
 } finally {
+    //открытый файл БД не даёт удалить каталог в Windows
+    index.close();
     fs.rmSync(dir, {recursive: true, force: true});
 }
