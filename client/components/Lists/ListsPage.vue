@@ -248,7 +248,7 @@ import vueComponent from '../vueComponent.js';
 import BookCollection from '../Library/BookCollection.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
-import {refreshReadingLists} from '../../share/readingLists';
+import {setReadingLists} from '../../share/readingLists';
 import {bookAuthors, bookRoute, authorRoute, seriesRoute} from '../../share/bookActions';
 import {downloadJson} from '../../share/utils';
 import {bookViews, bookViewOptions} from '../../share/bookView';
@@ -342,7 +342,7 @@ class ListsPage {
         try {
             const response = await this.api.getReadingLists('');
             this.lists = response.lists || [];
-            refreshReadingLists(this.api, String(this.config.currentUserId || ''));
+            setReadingLists(String(this.config.currentUserId || ''), response);
             if (this.selectedId !== readingNowId && !this.selectedList)
                 this.selectedId = readingNowId;
             if (this.selectedList)
