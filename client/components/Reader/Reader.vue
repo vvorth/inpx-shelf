@@ -1534,6 +1534,7 @@ class Reader {
     wakeLockActive = false;
     wakeLockRequested = false;
     wakeLockError = '';
+    environmentAttached = false;
     profileWarningNotifiedKey = '';
     fontFamilyOptions = [
         {label: 'Serif', value: 'serif'},
@@ -1648,18 +1649,7 @@ class Reader {
     }
 
     mounted() {
-        window.addEventListener('beforeunload', this.handleBeforeUnload);
-        document.addEventListener('fullscreenchange', this.handleFullscreenChange);
-        window.addEventListener('resize', this.handleWindowResize);
-        window.addEventListener('keydown', this.handleReaderKeydown);
-        document.addEventListener('visibilitychange', this.handleVisibilityChange);
-        window.addEventListener('pagehide', this.handlePageHide);
-        this.startStatusClock();
-        this.wakeLockSupported = !!(navigator && navigator.wakeLock && navigator.wakeLock.request);
-        this.requestWakeLock();// no await
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', this.handleVisualViewportResize);
-        }
+        this.attachEnvironment();
         this.handleFullscreenChange();
         this.$nextTick(() => {
             this.attachScrollerObserver();
@@ -1672,7 +1662,16 @@ class Reader {
         this.bindReaderImageListeners();
     }
 
+    activated() {
+        // При первом монтировании activated тоже вызывается: окружение уже подключено
+        if (this.environmentAttached)
+            return;
+        this.attachEnvironment();
+        this.$nextTick(() => this.attachScrollerObserver());
+    }
+
     deactivated() {
+        this.detachEnvironment();
         this.flushProgress();
         this.clearSnapTimer();
         this.clearSpacingReflowTimer();
@@ -1681,7 +1680,26 @@ class Reader {
             this.savePreferencesDebounced.flush();
     }
 
-    beforeUnmount() {
+    attachEnvironment() {
+        if (this.environmentAttached)
+            return;
+        this.environmentAttached = true;
+        window.addEventListener('beforeunload', this.handleBeforeUnload);
+        document.addEventListener('fullscreenchange', this.handleFullscreenChange);
+        window.addEventListener('resize', this.handleWindowResize);
+        window.addEventListener('keydown', this.handleReaderKeydown);
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
+        window.addEventListener('pagehide', this.handlePageHide);
+        this.startStatusClock();
+        this.wakeLockSupported = !!(navigator && navigator.wakeLock && navigator.wakeLock.request);
+        this.requestWakeLock();// no await
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', this.handleVisualViewportResize);
+        }
+    }
+
+    detachEnvironment() {
+        this.environmentAttached = false;
         window.removeEventListener('beforeunload', this.handleBeforeUnload);
         document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
         window.removeEventListener('resize', this.handleWindowResize);
@@ -1692,6 +1710,12 @@ class Reader {
             window.visualViewport.removeEventListener('resize', this.handleVisualViewportResize);
         }
         this.detachScrollerObserver();
+        this.stopStatusClock();
+        this.releaseWakeLock();// no await
+    }
+
+    beforeUnmount() {
+        this.detachEnvironment();
         this.clearSnapTimer();
         this.clearSpacingReflowTimer();
         this.clearReaderReflowAnchorHighlight();
@@ -1700,7 +1724,6 @@ class Reader {
             this.pagePaddingPreviewTimer = null;
         }
         clearTimeout(this.pageTurnTimer);
-        this.stopStatusClock();
         if (this.imageLayoutFrame) {
             cancelAnimationFrame(this.imageLayoutFrame);
             this.imageLayoutFrame = 0;
@@ -1741,7 +1764,6 @@ class Reader {
         this.flushProgress();
         if (this.savePreferencesDebounced && this.savePreferencesDebounced.flush)
             this.savePreferencesDebounced.flush();
-        this.releaseWakeLock();// no await
     }
 
     get bookUid() {
@@ -3952,8 +3974,10 @@ class Reader {
         if (typeof ResizeObserver === 'undefined' || !this.$refs || !this.$refs.scroller)
             return;
 
+        const scroller = this.$refs.scroller;
         this.resizeObserver = new ResizeObserver(() => {
-            if (this.controlsOpen)
+            // Скрытый (keep-alive) читатель имеет размер 0x0: не перестраиваем страницы под него
+            if (this.controlsOpen || !scroller.clientWidth || !scroller.clientHeight)
                 return;
             if (
                 this.isCompactLayout
@@ -3963,7 +3987,7 @@ class Reader {
                 return;
             this.scheduleViewportRefresh({calibrate: false});
         });
-        this.resizeObserver.observe(this.$refs.scroller);
+        this.resizeObserver.observe(scroller);
     }
 
     detachScrollerObserver() {
@@ -8712,7 +8736,7 @@ class Reader {
         if (isTypingField)
             return;
 
-        if (!this.$route || !String(this.$route.path || '').startsWith('/reader'))
+        if (!this.$route || this.$route.path !== (this.isStandaloneMode ? '/reader-lab' : '/reader'))
             return;
 
         const key = String(event.key || '');
