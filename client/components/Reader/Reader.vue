@@ -925,34 +925,19 @@
                 </div>
             </transition>
 
-            <div v-if="readerDebugEnabled" class="reader-debug-panel">
-                <div class="reader-debug-title">Reader Debug</div>
-                <div>mode: {{ isCompactLayout ? 'mobile' : 'desktop' }} / {{ isPagedMode ? 'paged' : 'scroll' }}</div>
-                <div>page: {{ currentPage }}/{{ totalPages }}</div>
-                <div>measure available: {{ readerDebug.measureAvailableHeight }}px</div>
-                <div>measure content: {{ readerDebug.measureContentHeight }}px</div>
-                <div>measure overflow: {{ readerDebug.measureOverflowPx }}px</div>
-                <div>sheet height: {{ readerDebug.liveSheetHeight }}px</div>
-                <div>sheet bottom safe: {{ readerDebug.liveSafeBottom }}px</div>
-                <div>text last bottom: {{ readerDebug.liveTextBottom }}px</div>
-                <div>live overflow: {{ readerDebug.liveOverflowPx }}px</div>
-                <div>clip base: {{ readerDebug.baseBottomClipCompensation }}px</div>
-                <div>clip dynamic: {{ currentDynamicBottomClipCompensation }}px</div>
-                <div>clip total: {{ readerDebug.totalBottomClipCompensation }}px</div>
-                <div>safety inset: {{ readerDebug.pagedContentSafetyInset }}px</div>
-                <div>font/line: {{ activePreferences.fontSize }} / {{ activePreferences.lineHeight }}</div>
-                <template v-if="readerDebug.paginationStats">
-                    <div>pagination: {{ readerDebug.paginationStats.status }} / {{ readerDebug.paginationStats.durationMs }}ms</div>
-                    <div>units: {{ readerDebug.paginationStats.fastUnits }} fast / {{ readerDebug.paginationStats.domUnits }} dom / {{ readerDebug.paginationStats.totalUnits }} total</div>
-                    <div>splits: {{ readerDebug.paginationStats.fastSplits }} fast / {{ readerDebug.paginationStats.domSplits }} dom</div>
-                    <div v-if="readerDebug.paginationStats.fallbackRoots && readerDebug.paginationStats.fallbackRoots.length">fallback: {{ readerDebug.paginationStats.fallbackRoots.join(', ') }}</div>
-                </template>
-                <div class="reader-debug-actions">
-                    <button class="reader-debug-btn" @click.stop="adjustDebugBottomCompensation(-1)">- line</button>
-                    <button class="reader-debug-btn" @click.stop="adjustDebugBottomCompensation(1)">+ line</button>
-                    <button class="reader-debug-btn" @click.stop="resetDebugBottomCompensation">reset</button>
-                </div>
-            </div>
+            <ReaderDebugPanel
+                v-if="readerDebugEnabled"
+                :debug="readerDebug"
+                :compact="isCompactLayout"
+                :paged="isPagedMode"
+                :current-page="currentPage"
+                :total-pages="totalPages"
+                :dynamic-clip="currentDynamicBottomClipCompensation"
+                :font-size="activePreferences.fontSize"
+                :line-height="activePreferences.lineHeight"
+                @adjust="adjustDebugBottomCompensation"
+                @reset="resetDebugBottomCompensation"
+            />
         </template>
 
         <div
@@ -1341,6 +1326,7 @@
 <script>
 import vueComponent from '../vueComponent.js';
 import ReaderEnvironment from './readerEnvironment.js';
+import ReaderDebugPanel from './ReaderDebugPanel.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 const readerTextAnchors = require('./readerTextAnchors');
 import _ from 'lodash';
@@ -1375,6 +1361,7 @@ const readerDeviceScopedPreferenceKeys = new Set([
 ]);
 
 const componentOptions = {
+    components: {ReaderDebugPanel},
     watch: {
         readerSourceKey: {
             immediate: true,
@@ -9943,45 +9930,6 @@ export default vueComponent(Reader);
     transform: translateY(6px);
 }
 
-.reader-debug-panel {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    z-index: 26;
-    width: min(92vw, 320px);
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 120, 120, 0.45);
-    border-radius: 14px;
-    background: rgba(25, 12, 12, 0.88);
-    color: #ffe9d8;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
-    font: 12px/1.35 Consolas, "Courier New", monospace;
-    pointer-events: none;
-}
-
-.reader-debug-title {
-    margin-bottom: 6px;
-    color: #ffb38a;
-    font-weight: 700;
-}
-
-.reader-debug-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-    pointer-events: auto;
-}
-
-.reader-debug-btn {
-    padding: 4px 8px;
-    border: 1px solid rgba(255, 179, 138, 0.35);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #ffe9d8;
-    font: inherit;
-    cursor: pointer;
-}
-
 .reader-scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -11753,14 +11701,6 @@ export default vueComponent(Reader);
     .reader-body--paged .reader-html :deep(.reader-cover) {
         width: 140px;
         max-width: 46vw;
-    }
-
-    .reader-debug-panel {
-        top: calc(env(safe-area-inset-top, 0px) + 82px);
-        right: 8px;
-        bottom: auto;
-        max-height: min(48dvh, 360px);
-        overflow-y: auto;
     }
 
     .reader-body {
