@@ -1489,6 +1489,7 @@ class Reader {
     pendingReaderProgressUpload = false;
     readerProgressGeneration = 0;
     readerLoadJobId = 0;
+    readerHomeJobId = 0;
     readerBackgroundMaxBytes = 4 * 1024 * 1024;
     statusClockText = '';
     statusClockTimer = null;
@@ -3482,6 +3483,9 @@ class Reader {
         if (this.isStandaloneMode || this.bookUid)
             return;
 
+        // Устаревший ответ (сменился фильтр или открыта книга) не должен перезаписать состояние
+        const jobId = ++this.readerHomeJobId;
+        const isStale = () => (jobId !== this.readerHomeJobId || !!this.bookUid);
         this.readerHomeLoading = true;
         this.error = '';
         this.loading = false;
@@ -3501,6 +3505,8 @@ class Reader {
             const api = this.$root.api;
             if (api && typeof api.updateConfig === 'function')
                 await api.updateConfig();
+            if (isStale())
+                return;
 
             if (api && typeof api.getUserReadingLibrary === 'function' && this.readerHomeAuthorized) {
                 const result = await api.getUserReadingLibrary({
@@ -3509,6 +3515,8 @@ class Reader {
                     query: this.readerHomeSearch,
                     limit: 300,
                 });
+                if (isStale())
+                    return;
                 this.readerProgressGeneration = Math.max(0, parseInt(result && result.progressGeneration, 10) || 0);
                 this.readerHomeCounters = Object.assign({all: 0, reading: 0, read: 0, hidden: 0}, result.counters || {});
                 this.readerHomeBooks = Array.isArray(result.items)
@@ -3524,9 +3532,11 @@ class Reader {
                 this.readerHomeCounters.all = this.readerHomeBooks.length;
             }
         } catch (e) {
-            this.error = tm(e.message || String(e));
+            if (!isStale())
+                this.error = tm(e.message || String(e));
         } finally {
-            this.readerHomeLoading = false;
+            if (jobId === this.readerHomeJobId)
+                this.readerHomeLoading = false;
         }
     }
 
