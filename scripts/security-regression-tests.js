@@ -395,6 +395,27 @@ async function testAtomicWriteSyncsDirectory() {
     });
 }
 
+// The access password guards only the WebSocket API: the guessable reader-lab source must not bypass it.
+async function testReaderLabSourceClosedByAccessPassword() {
+    await temporary(async(dir) => {
+        await fs.outputFile(path.join(dir, 'sample.fb2'), '<FictionBook/>');
+        for (const [accessPassword, status] of [['', 200], ['secret', 404]]) {
+            const config = {dataDir: dir, libDir: dir, rootPathStatic: '', bookPathStatic: '/book', accessPassword,
+                publicDir: path.join(dir, 'public'), bookDir: path.join(dir, 'book')};
+            const app = require('express')();
+            require('../server/static')(app, config);
+            const server = http.createServer(app);
+            await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+            try {
+                const res = await fetch(`http://127.0.0.1:${server.address().port}/reader-lab-source/sample.fb2`);
+                assert.strictEqual(res.status, status, `accessPassword=${accessPassword}`);
+            } finally {
+                await new Promise(resolve => server.close(resolve));
+            }
+        }
+    });
+}
+
 // OPDS sends the password with every request: a repeated success must skip scrypt.
 async function testRepeatedPasswordCheckSkipsScrypt() {
     const profilePassword = require('../server/core/ProfilePassword');
@@ -558,6 +579,6 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
 }
 
-module.exports = [testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings, testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
+module.exports = [testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings, testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics, testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal, testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned, testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation, testConcurrentStoreMutations, testAtomicConfigSave,
     testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates];

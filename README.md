@@ -721,7 +721,7 @@ curl --get 'http://<ваш_хост>:12380/api/audiobookshelf/search' \
 * `debugReader=1` — включить debug-панель читалки
 * `debugReadMode=paged` — сразу открыть режим страниц
 * `debugReadMode=scroll` — сразу открыть режим ленты
-* `sample=night-watch.fb2` — автоматически загрузить sample-файл
+* `sample=night-watch.fb2` — автоматически загрузить sample-файл из каталога библиотеки (недоступно, если задан пароль доступа `accessPassword`)
 
 Пример:
 

@@ -245,8 +245,9 @@ module.exports = (app, config, webWorker = null, security = null) => {
 
     app.get(`${config.rootPathStatic || ''}/reader-lab-source/:fileName`, async(req, res) => {
         try {
+            //пароль доступа проверяется только в WebSocket, а имя файла угадывается: с паролем отладочный маршрут закрыт
             const safeFileName = path.basename(String(req.params.fileName || '').trim());
-            if (!safeFileName || path.extname(safeFileName).toLowerCase() !== '.fb2') {
+            if (config.accessPassword || !safeFileName || path.extname(safeFileName).toLowerCase() !== '.fb2') {
                 res.sendStatus(404);
                 return;
             }
