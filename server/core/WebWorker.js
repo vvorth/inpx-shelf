@@ -2890,7 +2890,6 @@ class WebWorker {
         if (!normalized.some(source => source.enabled !== false))
             throw new Error(t('errors.sourcesEnabledRequired'));
 
-        this.config.librarySources = normalized;
         await this.saveRuntimeConfigPatch({librarySources: normalized});
         this.addAdminEvent('info', 'sources', msg('admin.sourcesUpdated', {n: normalized.length}));
         return {sources: normalized};
