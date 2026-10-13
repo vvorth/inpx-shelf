@@ -2,10 +2,11 @@
 
 ARG NODE_IMAGE=node:24-bookworm-slim
 ARG RUNTIME_IMAGE=debian:bookworm-slim
-ARG FB2CNG_VERSION=v1.2.3
+# fb2cng from the vvorth/fb2cng fork: upstream plus document.images.force_jpeg.
+ARG FB2CNG_VERSION=v1.9.1-forcejpeg-1
 ARG FB2CNG_ARCH=linux-amd64
-# SHA-256 of fbc-${FB2CNG_ARCH}.zip: update with FB2CNG_VERSION/FB2CNG_ARCH and in release-binaries.yml.
-ARG FB2CNG_SHA256=726cdc9b7f3aee32f534c3abc93215e7acb3775fd26a49ce855c489ac738a5ab
+# SHA-256 of fbc-${FB2CNG_ARCH}.zip: update with FB2CNG_VERSION/FB2CNG_ARCH and in release.yml.
+ARG FB2CNG_SHA256=cd9f86ddc294622f69b4526351a67eab37ff7e02e7271c2e7d04388e43d61d17
 
 FROM ${NODE_IMAGE} AS build-deps
 
@@ -32,7 +33,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates unzip wget \
-    && wget -O /tmp/fbc.zip "https://github.com/rupor-github/fb2cng/releases/download/${FB2CNG_VERSION}/fbc-${FB2CNG_ARCH}.zip" \
+    && wget -O /tmp/fbc.zip "https://github.com/vvorth/fb2cng/releases/download/${FB2CNG_VERSION}/fbc-${FB2CNG_ARCH}.zip" \
     && echo "${FB2CNG_SHA256}  /tmp/fbc.zip" | sha256sum -c - \
     && unzip /tmp/fbc.zip -d /fb2cng-runtime \
     && chmod +x /fb2cng-runtime/fbc \
