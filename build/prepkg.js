@@ -2,8 +2,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const yazl = require('yazl');
 
-const MarkdownIt = require('markdown-it');
-
 const platform = process.argv[2];
 
 const distDir = path.resolve(__dirname, '../dist');
@@ -51,12 +49,6 @@ async function build() {
     require('./patch-pkg')();
 
     await fs.emptyDir(outDir);
-
-    // Добавляем README в релиз.
-    let readme = await fs.readFile(path.resolve(__dirname, '../README.md'), 'utf-8');
-    const converter = new MarkdownIt({html: true, linkify: true});
-    readme = converter.render(readme);
-    await fs.writeFile(`${outDir}/readme.html`, readme);
 
     // Упаковываем public в public.json для pkg.
     if (await fs.pathExists(publicDir)) {

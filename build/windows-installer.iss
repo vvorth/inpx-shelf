@@ -54,20 +54,24 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#SourceDir}\inpx-shelf.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\readme.html"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourceDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RepoRoot}\LICENSE.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\NOTICE.md"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; readme.html is no longer shipped: remove the stale copy from older installs
+Type: files; Name: "{app}\readme.html"
 
 [INI]
 Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://127.0.0.1:12380"
 Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "IconFile"; String: "{app}\inpx-shelf.exe"
 Filename: "{app}\inpx-shelf.url"; Section: "InternetShortcut"; Key: "IconIndex"; String: "0"
+Filename: "{app}\readme.url"; Section: "InternetShortcut"; Key: "URL"; String: "https://github.com/vvorth/inpx-shelf#readme"
 
 [Icons]
 Name: "{group}\inpx-shelf"; Filename: "{app}\inpx-shelf.exe"; Parameters: "--data-dir=""{localappdata}\inpx-shelf"""; WorkingDir: "{app}"
 Name: "{group}\Open web interface"; Filename: "{app}\inpx-shelf.url"; WorkingDir: "{app}"
-Name: "{group}\README"; Filename: "{app}\readme.html"; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\readme.html'))
+Name: "{group}\README"; Filename: "{app}\readme.url"; WorkingDir: "{app}"
 Name: "{group}\Uninstall inpx-shelf"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\inpx-shelf"; Filename: "{app}\inpx-shelf.exe"; Parameters: "--data-dir=""{localappdata}\inpx-shelf"""; WorkingDir: "{app}"; Tasks: desktopicon
 
@@ -76,3 +80,4 @@ Filename: "{app}\inpx-shelf.exe"; Parameters: "--data-dir=""{localappdata}\inpx-
 
 [UninstallDelete]
 Type: files; Name: "{app}\inpx-shelf.url"
+Type: files; Name: "{app}\readme.url"
