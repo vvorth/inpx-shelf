@@ -80,15 +80,23 @@ jobs:
           console.log(channel ? `Also publishing ${image}:${channel}` : `${version} is not the newest release; channel tags stay as they are`);
           NODE
 
-  check:
+  check-linux:
     needs: version
     uses: ./.github/workflows/check.yml
     with:
+      target: linux
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  check-windows:
+    needs: version
+    uses: ./.github/workflows/check.yml
+    with:
+      target: win
       ref: ${{ inputs.tag || github.ref_name }}
 
   binaries:
     name: Build ${{ matrix.label }}
-    needs: [version, check]
+    needs: [version, check-linux, check-windows]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -263,7 +271,7 @@ jobs:
 
   docker:
     name: Docker images
-    needs: [version, check]
+    needs: [version, check-linux, check-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:

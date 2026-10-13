@@ -1,7 +1,8 @@
 name: CI
 
 # Pull requests and pushes to dev and main: tests, binaries and Docker images. A push to dev
-# also publishes vvorth/inpx-shelf:dev and dev-<commit> (plus -pdf) once everything passes.
+# also publishes vvorth/inpx-shelf:dev and dev-<commit> (plus -pdf) once the Linux check and
+# the images pass; the Windows check runs alongside and only marks the commit red.
 # Releases are in release.yml.
 on:
   push:
@@ -17,12 +18,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  check-linux:
     uses: ./.github/workflows/check.yml
+    with:
+      target: linux
+
+  check-windows:
+    uses: ./.github/workflows/check.yml
+    with:
+      target: win
 
   docker:
     name: Docker images
-    needs: check
+    needs: check-linux
     # main gets commits already built on dev; its images are built by release.yml.
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest

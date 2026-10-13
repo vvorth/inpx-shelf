@@ -1,10 +1,14 @@
 name: Check
 
 # The one test run every event goes through: ci.yml (pull requests, dev, main) and
-# release.yml (tags) call it, and publish only after it passes.
+# release.yml (tags) call it once per platform and publish only after it passes.
 on:
   workflow_call:
     inputs:
+      target:
+        description: Binary target, linux or win
+        type: string
+        required: true
       ref:
         description: Git ref to check out (empty means the ref of the calling event)
         type: string
@@ -15,19 +19,9 @@ permissions:
 
 jobs:
   check:
-    name: Test and package ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    name: Test and package ${{ inputs.target }}
+    runs-on: ${{ inputs.target == 'win' && 'windows-latest' || 'ubuntu-latest' }}
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux
-            extension: ''
-          - os: windows-latest
-            target: win
-            extension: .exe
     steps:
       - uses: actions/checkout@v5
         with:
@@ -47,5 +41,5 @@ jobs:
       - if: runner.os == 'Linux'
         run: npm run test:i18n
       - run: npm run test:release
-      - run: npm run build:${{ matrix.target }}
-      - run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-shelf${{ matrix.extension }}
+      - run: npm run build:${{ inputs.target }}
+      - run: node scripts/binary-smoke-test.js dist/${{ inputs.target }}/inpx-shelf${{ inputs.target == 'win' && '.exe' || '' }}
