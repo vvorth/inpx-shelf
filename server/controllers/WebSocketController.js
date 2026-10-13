@@ -292,6 +292,8 @@ class WebSocketController {
                     await this.refreshKoboDevice(req, ws); break;
                 case 'delete-kobo-device':
                     await this.deleteKoboDevice(req, ws); break;
+                case 'create-kosync-password':
+                    await this.createKosyncPassword(req, ws); break;
                 case 'send-book-telegram':
                     await this.sendBookTelegram(req, ws); break;
                 case 'send-book-email':
@@ -1069,6 +1071,18 @@ class WebSocketController {
     async deleteKoboDevice(req, ws) {
         const {kobo, user} = await this.koboUser(req);
         this.send(await kobo.store.deleteDevice(user.id, String(req.deviceId || '')), req, ws);
+    }
+
+    // The KOReader password is shown once; a new one replaces the old.
+    async createKosyncPassword(req, ws) {
+        if (!this.config.kosyncEnabled)
+            throw new Error(i18n.t('errors.kosyncDisabled'));
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        // The shared "no profile" mode has no owner for the progress.
+        if (user.id === 'default' && !user.login && !user.passwordHash)
+            throw new Error(i18n.t('errors.kosyncNeedsProfile'));
+        const password = await this.webWorker.readingListStore.createKosyncPassword(user.id);
+        this.send({username: user.login || user.id, password}, req, ws);
     }
 
     async sendBookTelegram(req, ws) {

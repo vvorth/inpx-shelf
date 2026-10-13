@@ -889,20 +889,10 @@ class KoboService {
         return (Number.isFinite(time) && time <= Date.now() + 5*60*1000 ? new Date(time).toISOString() : now);
     }
 
-    // Kobo progress shows up in the web reader's "continue reading". The newer side wins (the store
-    // keeps a newer web position). Kobo locations can't be mapped onto the FB2 reader's pages, so only
-    // the percent carries over and the web reader opens at that percent.
+    // Kobo progress shows up in the web reader's "continue reading" when it is newer.
     async syncWebProgress(userId, bookUid, percent, modified) {
-        const store = this.worker.readingListStore;
         try {
-            const value = Math.max(0, Math.min(1, percent / 100));
-            const {progress: current, progressGeneration} = await store.getReaderState(userId, bookUid);
-            if (Math.abs((current.percent || 0) - value) < 0.0001 || (!current.updatedAt && value <= 0))
-                return;
-            await store.updateReaderProgress(userId, bookUid, {
-                percent: value, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '',
-                updatedAt: modified, generation: progressGeneration,
-            });
+            await this.worker.readingListStore.mergeDeviceProgress(userId, bookUid, percent / 100, modified);
         } catch (e) {
             log(LM_WARN, `Kobo: cannot update reader progress of ${bookUid}: ${e.message}`);
         }
@@ -1000,6 +990,8 @@ class KoboService {
         res.set('Content-Type', 'application/epub+zip');
         res.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
         res.sendFile(filePath);
+        // KOReader on the Kobo may open this file too.
+        require('../Kosync').rememberFile(this.worker, filePath, row.bookUid);
     }
 
     // The cached file was regenerated (cache flushed, converter output differs): announce the new

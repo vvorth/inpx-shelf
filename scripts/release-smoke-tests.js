@@ -2076,6 +2076,7 @@ const tests = [
     ...require('./reader-tests'),
     ...require('./security-regression-tests'),
     ...require('./kobo-sync-tests'),
+    ...require('./kosync-tests'),
     ...require('./inpx-parser-tests'),
     ...require('./xml-parser-tests'),
     ...require('./client-tests'),

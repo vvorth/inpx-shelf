@@ -610,7 +610,8 @@ Object.assign(ReadingListStore.prototype,
     require('./readingLists/Discovery'),
     require('./readingLists/ReaderState'),
     require('./readingLists/Users'),
-    require('./readingLists/Lists'));
+    require('./readingLists/Lists'),
+    require('./readingLists/Kosync'));
 
 // Every asynchronous store operation may read or change the persisted state (even
 // load can bootstrap it). Keep its entire call tree in one reentrant transaction.

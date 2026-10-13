@@ -68,6 +68,7 @@ module.exports = {
     absMaxResults: numberFromEnv('INPX_ABS_MAX_RESULTS', 10),
     koboEnabled: process.env.INPX_KOBO_ENABLED === 'true',
     koboPublicUrl: String(process.env.INPX_KOBO_PUBLIC_URL || '').trim(),
+    kosyncEnabled: process.env.INPX_KOSYNC_ENABLED === 'true',
 
     // Поправить при критических изменениях разбора INPX (InpxParser, LibraryImport):
     // входит в хеш библиотеки, и БД библиотеки будет перестроена.
@@ -88,7 +89,7 @@ module.exports = {
     adminEventLogSize: 300,
     inpxCheckInterval: 60,//minutes
 
-    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled'],
+    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled', 'kosyncEnabled'],
 
     allowRemoteLib: false,
     remoteLib: false,

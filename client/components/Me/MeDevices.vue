@@ -135,6 +135,49 @@
                 </q-btn>
             </form>
         </section>
+
+        <section v-if="config.kosyncEnabled" class="card">
+            <div class="card-head">
+                <h2 class="card-title">
+                    KOReader
+                </h2>
+            </div>
+            <div class="card-hint">
+                {{ $t('meDevices.koreaderSyncsProgress') }}
+            </div>
+            <div class="card-hint">
+                {{ $t('meDevices.koreaderServerHint') }}
+            </div>
+            <div class="copy-row">
+                <code class="copy-value">{{ kosyncUrl }}</code>
+                <q-btn flat dense no-caps color="primary" icon="la la-copy" @click="copy(kosyncUrl)">
+                    {{ $t('meDevices.copy') }}
+                </q-btn>
+            </div>
+
+            <div v-if="kosyncLogin" class="notice">
+                <b>{{ $t('meDevices.koreaderLogin') }}</b>
+                <div class="card-hint">
+                    {{ $t('meDevices.koreaderPasswordShownOnce') }}
+                </div>
+                <div>{{ $t('meDevices.koreaderUsername') }}: <code>{{ kosyncLogin.username }}</code></div>
+                <div class="copy-row">
+                    {{ $t('meDevices.koreaderPassword') }}: <code class="copy-value">{{ kosyncLogin.password }}</code>
+                    <q-btn flat dense no-caps @click="kosyncLogin = null">
+                        {{ $t('common.hide') }}
+                    </q-btn>
+                </div>
+            </div>
+            <div v-else-if="profile.kosyncPasswordSet" class="card-hint">
+                {{ $t('meDevices.koreaderPasswordSet') }}
+            </div>
+
+            <div class="card-actions">
+                <q-btn color="primary" unelevated dense no-caps icon="la la-key" @click="createKosyncPassword">
+                    {{ profile.kosyncPasswordSet ? $t('meDevices.newPassword') : $t('meDevices.createPassword') }}
+                </q-btn>
+            </div>
+        </section>
     </div>
 </template>
 
@@ -152,6 +195,7 @@ class MeDevices {
     koboLoading = false;
     koboEndpoint = '';
     newKoboDeviceName = 'Kobo';
+    kosyncLogin = null;
     readingLists = [];
 
     created() {
@@ -179,6 +223,10 @@ class MeDevices {
         const root = this.config.opdsRoot || '/opds';
         const userId = this.profile.login || this.profile.id || '';
         return `${window.location.origin}${root}?user=${encodeURIComponent(userId)}`;
+    }
+
+    get kosyncUrl() {
+        return `${window.location.origin}${String(this.config.rootPathStatic || '').replace(/\/$/, '')}/kosync`;
     }
 
     async load() {
@@ -298,6 +346,17 @@ class MeDevices {
         try {
             const result = await this.api.regenerateKoboDeviceToken(device.id);
             this.koboEndpoint = result.endpoint;
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('common.error'));
+        }
+    }
+
+    async createKosyncPassword() {
+        if (this.profile.kosyncPasswordSet && !await this.$root.stdDialog.confirm(t('meDevices.createANewKoreaderPassword'), 'KOReader'))
+            return;
+        try {
+            this.kosyncLogin = await this.api.createKosyncPassword();
+            await this.api.updateConfig();
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         }

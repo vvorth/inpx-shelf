@@ -50,6 +50,7 @@ The detailed documentation is in Russian: start from [README.md](./README.md#Ð´Ð
 * [Configuration (`config.json`)](./docs/config.md)
 * [Users, reading lists and OPDS](./docs/users-opds.md)
 * [Kobo sync](./docs/kobo.md)
+* [KOReader progress sync](./docs/koreader.md)
 
 ## Feedback
 

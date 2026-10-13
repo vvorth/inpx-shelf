@@ -430,6 +430,8 @@
         "koboDeviceNotFound": "Device not found",
         "koboDisabled": "Kobo sync is disabled",
         "koboNeedsProfile": "Select a user profile to sync with a Kobo",
+        "kosyncDisabled": "KOReader sync is disabled",
+        "kosyncNeedsProfile": "Select a user profile to sync with KOReader",
         "koboTooManyDevices": {
             "one": "No more than {n} device per profile",
             "other": "No more than {n} devices per profile"
@@ -890,6 +892,10 @@
         "unfinished": "Unfinished",
         "vaudeville": "Mystery Plays, Buffoonery, Vaudeville"
     },
+    "kosync": {
+        "registrationDisabled": "Registration is disabled on this server. Choose \"Login\" and enter the username and password from the \"Profile and devices\" page of inpx-shelf.",
+        "unauthorized": "Wrong password. The KOReader password is issued on the \"Profile and devices\" page of inpx-shelf."
+    },
     "langNames": {
         "en": "English",
         "ru": "Русский"
@@ -969,7 +975,9 @@
         "connectTheKoboTo": "Connect the Kobo to a computer, open .kobo/Kobo/Kobo eReader.conf and replace the api_endpoint line in the [OneStoreServices] section. The address is shown only now; if you lose it, create a new link.",
         "copied": "Copied",
         "copy": "Copy",
+        "createANewKoreaderPassword": "Create a new KOReader password? The old one will stop working, and devices will have to log in again.",
         "createANewLink": "Create a new link for \"{name}\"? The old one will stop working and must be replaced in Kobo eReader.conf.",
+        "createPassword": "Create password",
         "deleteDeviceTheKobo": "Delete device \"{name}\"? The Kobo will stop syncing; the books on it stay.",
         "deviceName": "Device name",
         "deviceSaved": "Device saved",
@@ -977,9 +985,17 @@
         "keepBooksOnThe": "Keep books on the device after they leave the list",
         "koboAddress": "Kobo address",
         "koboSyncsTheBooks": "Kobo syncs the books from the selected reading lists: a book in a list is a book on the device. FB2 is converted to KEPUB. Each list appears on the Kobo as a collection, and a book finished on the Kobo is marked as read.",
+        "koreaderLogin": "KOReader login",
+        "koreaderPassword": "Password",
+        "koreaderPasswordSet": "A KOReader password has been created.",
+        "koreaderPasswordShownOnce": "The password is shown only now; if you lose it, create a new one.",
+        "koreaderServerHint": "In KOReader, set this address as a custom sync server and log in with the username and password.",
+        "koreaderSyncsProgress": "KOReader syncs your reading position between devices through inpx-shelf (the \"Progress sync\" plugin). The percent read in books downloaded from inpx-shelf goes to \"Continue reading\".",
+        "koreaderUsername": "Username",
         "lastSync": "Last sync",
         "never": "never",
         "newLink": "New link",
+        "newPassword": "New password",
         "noDevicesYet": "No devices yet.",
         "noListsSyncedYet": "No lists synced yet.",
         "on": "On",

@@ -150,6 +150,19 @@ module.exports = {
         return target.readerProgress[normalizedBookUid];
     },
 
+    // Percent (0..1) read on an e-reader (Kobo, KOReader) goes to "continue reading" when it is newer than
+    // the web position. Device locations can't be mapped onto the FB2 reader's pages: the reader opens at the percent.
+    async mergeDeviceProgress(userId = '', bookUid = '', percent = 0, modified = '') {
+        const value = Math.max(0, Math.min(1, Number(percent) || 0));
+        const {progress: current, progressGeneration} = await this.getReaderState(userId, bookUid);
+        if (Math.abs((current.percent || 0) - value) < 0.0001 || (!current.updatedAt && value <= 0))
+            return;
+        await this.updateReaderProgress(userId, bookUid, {
+            percent: value, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '',
+            updatedAt: modified, generation: progressGeneration,
+        });
+    },
+
     async deleteReaderProgress(userId = '', bookUid = '') {
         const {data, user: target} = await this.resolveUser(userId);
 

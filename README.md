@@ -76,6 +76,7 @@ docker run -d \
 * [Отправка книг в Telegram и на email](./docs/sending.md)
 * [Пользователи, личные списки и OPDS](./docs/users-opds.md)
 * [Синхронизация с Kobo](./docs/kobo.md)
+* [Синхронизация прогресса KOReader](./docs/koreader.md)
 * [Провайдер метаданных Audiobookshelf](./docs/audiobookshelf.md)
 * [Читалка и отладка FB2](./docs/reader.md)
 * [Витрины и внешние источники](./docs/discovery.md)

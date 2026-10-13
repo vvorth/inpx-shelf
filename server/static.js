@@ -7,6 +7,7 @@ const express = require('express');
 const utils = require('./core/utils');
 const bookConverter = require('./core/BookConverter');
 const externalTools = require('./core/ExternalTools');
+const kosync = require('./core/Kosync');
 
 const log = new (require('./core/AppLogger'))().log;//singleton
 const {t, getLang} = require('./core/i18n');
@@ -438,6 +439,14 @@ module.exports = (app, config, webWorker = null, security = null) => {
                     if (mimeType)
                         res.set('Content-Type', mimeType);
                     res.sendFile(bookFile);
+
+                    //KOReader узнаёт книгу по хешу файла: запомним, какой книге он принадлежит
+                    if (config.kosyncEnabled && webWorker && req.method === 'GET') {
+                        const rawFile = `${config.bookDir}/${fileName}.raw`;
+                        (gzipped ? utils.ensureGunzipFile(bookFile, rawFile, desc.size) : Promise.resolve())
+                            .then(() => kosync.rememberFile(webWorker, (gzipped ? rawFile : bookFile), webWorker.stateStore.getBookFileUid(fileName)))
+                            .catch(e => log(LM_WARN, `KOReader sync: ${e.message}`));
+                    }
                     return;
                 } else {
                     await fs.remove(bookFile);

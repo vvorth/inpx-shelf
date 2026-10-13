@@ -138,6 +138,7 @@ module.exports = {
                 telegramChatId: (profileAuthorized ? user.telegramChatId || '' : ''),
                 opdsEnabled: user.opdsEnabled !== false,
                 opdsAuthEnabled: user.opdsAuthEnabled === true,
+                kosyncPasswordSet: !!user.kosyncKeyHash,
                 readerPreferences: (profileAuthorized ? this.readingListStore.normalizeReaderPreferences(user.readerPreferences) : null),
                 currentReading: readingSummary.items,
                 currentReadingCount: readingSummary.count,

@@ -267,6 +267,7 @@ async function main() {
     const koboService = kobo.init(app, config, webSocketController.webWorker, security);
     if (koboService)
         await koboService.ready;
+    require('./core/Kosync').init(app, config, webSocketController.webWorker, security);
 
     const initHealthRoutes = require('./core/HealthRoutes');
     initHealthRoutes(app, config, webSocketController.webWorker, security, webSocketController);
