@@ -200,7 +200,7 @@
                         </q-btn>
                     </div>
 
-                    <BookCollection v-else :class="{'is-loading': loading}" :books="books" :states="states" :view="view" />
+                    <BookCollection v-else ref="results" :class="{'is-loading': loading}" :books="books" :states="states" :view="view" />
 
                     <nav v-if="pageCount > 1" class="pager" :aria-label="$t('reader.backgroundPagesSolid')">
                         <q-btn flat dense no-caps icon="la la-angle-left" :disable="page <= 1" @click="setQuery({page: page > 2 ? String(page - 1) : undefined})">
@@ -223,6 +223,7 @@
                             <li><code>title:="пикник на обочине"</code> — {{ $t('search.exactTitle') }}</li><!-- i18n-ignore: примеры запросов -->
                             <li><code>series:дозор</code>, <code>lang:ru</code>, <code>ext:epub</code>, <code>genre:sf_social</code></li><!-- i18n-ignore: примеры запросов -->
                             <li><code>-genre:det_classic</code> — {{ $t('search.excludeAGenre') }}</li>
+                            <li><kbd>J</kbd> / <kbd>K</kbd>, <kbd>Enter</kbd>, <kbd>A</kbd> — {{ $t('search.keyboardHint') }}</li>
                         </ul>
                     </details>
                 </section>
@@ -239,6 +240,7 @@ import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
+import {isExternalOnly} from '../../share/discovery';
 import {loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
 import {myLanguages, allLanguages, languageName} from '../../share/languages';
@@ -289,9 +291,11 @@ class SearchPage {
     created() {
         this.api = this.$root.api;
         loadGenres(this.api).then(() => this.genresReady++).catch(() => {});
+        this.keyHook = (event) => this.onResultsKey(event);
     }
 
     activated() {
+        this.$root.addKeyHook(this.keyHook);
         this.$root.setAppTitle(this.q ? t('search.search', {q: this.q}) : t('opds.search'));
         if (this.queryKey !== this.loadedKey || this.notReady)
             this.load();
@@ -299,6 +303,41 @@ class SearchPage {
 
     deactivated() {
         clearTimeout(this.pollTimer);
+        this.$root.removeKeyHook(this.keyHook);
+    }
+
+    //J/K переходят по результатам, Enter открывает (это ссылки), A добавляет в список.
+    //event.code, а не key: клавиши работают и в русской раскладке
+    onResultsKey(event) {
+        if (!['KeyJ', 'KeyK', 'KeyA'].includes(event.code) || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
+            return;
+        const target = event.target;
+        const tag = (target && target.tagName) || '';
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (target && target.isContentEditable))
+            return;
+        //открыто окно книги или списков
+        if (document.querySelector('.q-dialog') || !this.$refs.results)
+            return;
+
+        //у каждой книги во всех трёх видах ровно одна такая ссылка, в порядке books
+        const links = [...this.$refs.results.$el.querySelectorAll('.book-card, .wide-card-title, .row-title')];
+        const index = links.indexOf(document.activeElement);
+        if (event.code === 'KeyA') {
+            const book = this.books[index];
+            if (book && this.signedIn && !isExternalOnly(book)) {
+                event.preventDefault();
+                this.$refs.results.openLists(book);
+            }
+            return;
+        }
+
+        if (!links.length)
+            return;
+        event.preventDefault();
+        const next = (index < 0 ? 0 : Math.min(Math.max(index + (event.code === 'KeyJ' ? 1 : -1), 0), links.length - 1));
+        links[next].focus({preventScroll: true});
+        //center, чтобы ссылку не закрыла липкая верхняя панель
+        links[next].scrollIntoView({block: 'center'});
     }
 
     get config() {

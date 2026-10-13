@@ -1434,6 +1434,7 @@
         "filtersApplyToBooks": "Filters apply to books: choosing one opens the Books tab.",
         "gettingReady": "Getting ready...",
         "hideCopies": "Hide copies",
+        "keyboardHint": "move through results, open, add to a list",
         "language": "Language",
         "looksLikeTheWrong": "Looks like the wrong keyboard layout. Showing results for",
         "more": "{n} more",
