@@ -219,7 +219,14 @@ class Omnibox {
     submit() {
         const q = this.query.trim();
         this.$refs.input.blur();
-        this.$router.push({path: '/search', query: (q ? {q} : {})});
+        //на странице каталога новый запрос сохраняет фильтры, сортировку и вкладку
+        const query = (this.$route.path === '/search' ? Object.assign({}, this.$route.query) : {});
+        delete query.page;
+        delete query.book;
+        delete query.q;
+        if (q)
+            query.q = q;
+        this.$router.push({path: '/search', query});
     }
 }
 
