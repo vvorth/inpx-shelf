@@ -2,10 +2,10 @@
 
 # Разработка
 
-Для разработки получите ветку `develop` и установите зависимости под Node.js 24 или новее:
+Для разработки получите ветку `dev` и установите зависимости под Node.js 24 или новее:
 
 ```sh
-git clone --branch develop --single-branch https://github.com/vvorth/inpx-shelf.git
+git clone --branch dev --single-branch https://github.com/vvorth/inpx-shelf.git
 cd inpx-shelf
 npm ci
 npm run dev
