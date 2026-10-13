@@ -548,40 +548,42 @@ async function testReaderBookNotesMenuAndReturnLayout() {
 async function testReaderTextShadowDefaultsOff() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
     const ReadingListStore = require('../server/core/ReadingListStore');
-    const store = new ReadingListStore({dataDir: path.resolve(__dirname, '../.tmp-reader-preferences-test')});
-    const defaults = store.normalizeReaderPreferences();
-    const legacy = store.normalizeReaderPreferences({
-        textShadow: true,
-        einkProfile: {textShadow: true},
-    });
-    const explicit = store.normalizeReaderPreferences({
-        readerPreferencesVersion: 2,
-        textShadow: true,
-        einkProfile: {textShadow: true},
-    });
+    await withTempDir(async dir => {
+        const store = new ReadingListStore({dataDir: dir});
+        const defaults = store.normalizeReaderPreferences();
+        const legacy = store.normalizeReaderPreferences({
+            textShadow: true,
+            einkProfile: {textShadow: true},
+        });
+        const explicit = store.normalizeReaderPreferences({
+            readerPreferencesVersion: 2,
+            textShadow: true,
+            einkProfile: {textShadow: true},
+        });
 
-    const shared = require('../shared/readerPreferences');
-    assert.strictEqual(defaults.readerPreferencesVersion, shared.readerPreferencesVersion);
-    assert.strictEqual(defaults.textShadow, false);
-    assert.strictEqual(defaults.einkProfile.textShadow, false);
-    assert.strictEqual(legacy.textShadow, false);
-    assert.strictEqual(legacy.einkProfile.textShadow, false);
-    assert.strictEqual(explicit.textShadow, true);
-    assert.strictEqual(explicit.einkProfile.textShadow, true);
-    // The untouched old 1040px default becomes viewport-wide; an explicit choice saved at the current version stays.
-    assert.strictEqual(store.normalizeReaderPreferences({contentWidthMode: 'fixed', contentWidth: 1040}).contentWidthMode, 'viewport');
-    const current = store.normalizeReaderPreferences({readerPreferencesVersion: shared.readerPreferencesVersion, contentWidthMode: 'fixed', contentWidth: 1040});
-    assert.strictEqual(current.contentWidthMode, 'fixed');
-    assert.strictEqual(store.normalizeReaderPreferences(current).contentWidthMode, 'fixed');
-    // A side without its own value comes from the shared one, as in the reader: bottom = vertical + 4.
-    const spacing = store.normalizeReaderPreferences({readerPreferencesVersion: shared.readerPreferencesVersion,
-        pageVerticalPadding: 30, pageHorizontalPadding: 40, regularProfile: {pageVerticalPadding: 12}});
-    assert.deepStrictEqual([spacing.pagePaddingTop, spacing.pagePaddingBottom, spacing.pagePaddingLeft, spacing.pagePaddingRight], [30, 34, 40, 40]);
-    assert.deepStrictEqual([spacing.regularProfile.pagePaddingTop, spacing.regularProfile.pagePaddingBottom], [12, 16]);
-    assert.match(readerSource, /next\.pagePaddingBottom = Math\.max\(0, vertical \+ 4\);/);
-    assert.match(readerSource, /require\('\.\.\/\.\.\/\.\.\/shared\/readerPreferences'\)/);
-    assert.match(readerSource, /normalizeReaderSpacingPreferences\(migrateReaderPreferences\(preferences\)\)/);
-    assert.match(readerSource, /defaultReaderPreferences = _\.cloneDeep\(this\.preferences\);/);
+        const shared = require('../shared/readerPreferences');
+        assert.strictEqual(defaults.readerPreferencesVersion, shared.readerPreferencesVersion);
+        assert.strictEqual(defaults.textShadow, false);
+        assert.strictEqual(defaults.einkProfile.textShadow, false);
+        assert.strictEqual(legacy.textShadow, false);
+        assert.strictEqual(legacy.einkProfile.textShadow, false);
+        assert.strictEqual(explicit.textShadow, true);
+        assert.strictEqual(explicit.einkProfile.textShadow, true);
+        // The untouched old 1040px default becomes viewport-wide; an explicit choice saved at the current version stays.
+        assert.strictEqual(store.normalizeReaderPreferences({contentWidthMode: 'fixed', contentWidth: 1040}).contentWidthMode, 'viewport');
+        const current = store.normalizeReaderPreferences({readerPreferencesVersion: shared.readerPreferencesVersion, contentWidthMode: 'fixed', contentWidth: 1040});
+        assert.strictEqual(current.contentWidthMode, 'fixed');
+        assert.strictEqual(store.normalizeReaderPreferences(current).contentWidthMode, 'fixed');
+        // A side without its own value comes from the shared one, as in the reader: bottom = vertical + 4.
+        const spacing = store.normalizeReaderPreferences({readerPreferencesVersion: shared.readerPreferencesVersion,
+            pageVerticalPadding: 30, pageHorizontalPadding: 40, regularProfile: {pageVerticalPadding: 12}});
+        assert.deepStrictEqual([spacing.pagePaddingTop, spacing.pagePaddingBottom, spacing.pagePaddingLeft, spacing.pagePaddingRight], [30, 34, 40, 40]);
+        assert.deepStrictEqual([spacing.regularProfile.pagePaddingTop, spacing.regularProfile.pagePaddingBottom], [12, 16]);
+        assert.match(readerSource, /next\.pagePaddingBottom = Math\.max\(0, vertical \+ 4\);/);
+        assert.match(readerSource, /require\('\.\.\/\.\.\/\.\.\/shared\/readerPreferences'\)/);
+        assert.match(readerSource, /normalizeReaderSpacingPreferences\(migrateReaderPreferences\(preferences\)\)/);
+        assert.match(readerSource, /defaultReaderPreferences = _\.cloneDeep\(this\.preferences\);/);
+    });
 }
 
 async function testReaderPaginationResumesAcrossViewportGeometry() {
