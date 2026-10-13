@@ -415,6 +415,7 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
 async function testReaderBookNotesMenuAndReturnLayout() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
     const dialogsSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/ReaderDialogs.vue'), 'utf8');
+    const paginatorSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/readerPaginator.js'), 'utf8');
 
     assert.match(readerSource, /readerNotesAnchorId = '';/);
     assert.match(readerSource, /get hasBookNotes\(\)[\s\S]{0,120}readerNotesAnchorId/);
@@ -540,7 +541,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.deepStrictEqual(navigationRestore.readerNoteReturnPoint, {pageIndex: 4});
 
     assert.match(readerSource, /jumpToContent\(id = ''\) \{\s*this\.clearPendingReaderNavigationRestore\(\{clearNoteReturn: true\}\);/);
-    assert.match(readerSource, /setCurrentPagedPage\(index = 0, save = false\) \{[\s\S]{0,140}if \(save\)\s*this\.clearPendingReaderNavigationRestore\(\);/);
+    assert.match(paginatorSource, /setCurrentPagedPage\(index = 0, save = false\) \{[\s\S]{0,140}if \(save\)\s*this\.clearPendingReaderNavigationRestore\(\);/);
     assert.match(readerSource, /returnFromReaderNote\(\) \{\s*const point = this\.readerNoteReturnPoint;\s*this\.clearPendingReaderNavigationRestore\(\{clearNoteReturn: true\}\);/);
 }
 
@@ -585,12 +586,13 @@ async function testReaderTextShadowDefaultsOff() {
 
 async function testReaderPaginationResumesAcrossViewportGeometry() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const paginatorSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/readerPaginator.js'), 'utf8');
 
     assert.match(readerSource, /pagedLayoutCache = new Map\(\);\s*pagedLayoutCacheLimit = 2;/);
-    assert.match(readerSource, /const checkpoint = \(cachedLayout && cachedLayout\.type === 'partial'\)/);
-    assert.match(readerSource, /for \(let index = startIndex; index < queue\.length; index \+= 1\)/);
-    assert.match(readerSource, /storePartialLayout\(index\);\s*return false;/);
-    assert.match(readerSource, /type: 'complete',\s*pages: finalPages/);
+    assert.match(paginatorSource, /const checkpoint = \(cachedLayout && cachedLayout\.type === 'partial'\)/);
+    assert.match(paginatorSource, /for \(let index = startIndex; index < queue\.length; index \+= 1\)/);
+    assert.match(paginatorSource, /storePartialLayout\(index\);\s*return false;/);
+    assert.match(paginatorSource, /type: 'complete',\s*pages: finalPages/);
     assert.match(readerSource, /async loadReader\(\) \{[\s\S]{0,400}this\.pagedLayoutCache\.clear\(\);/);
 }
 
