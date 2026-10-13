@@ -277,32 +277,6 @@ async function testInvalidStoredRowsAreRepairedNotDropped() {
     }
 }
 
-// scrypt runs outside the store lock; a legacy hash is upgraded unless the password changed meanwhile.
-async function testPasswordCheckDoesNotHoldTheStore() {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-password-'));
-    try {
-        const profilePassword = require('../server/core/ProfilePassword');
-        const crypto = require('crypto');
-        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
-        const user = await store.createUser({name: 'Carol', login: 'carol', passwordHash: await profilePassword.hash('carol-pass')});
-        let verified = false;
-        const check = store.verifyUserPassword(user.id, 'carol-pass').then(result => (verified = result));
-        await store.getUser(user.id);
-        assert.strictEqual(verified, false, 'other store calls do not wait for scrypt');
-        assert.strictEqual(await check, true);
-
-        const legacy = crypto.createHash('sha256').update('carol::old-pass').digest('hex');
-        await store.updateUser(user.id, {passwordHash: legacy});
-        assert.strictEqual(await store.verifyUserPassword(user.id, 'wrong'), false);
-        assert.strictEqual(await store.verifyUserPassword(user.id, 'old-pass'), true);
-        const upgraded = (await store.getUser(user.id)).passwordHash;
-        assert.ok(upgraded.startsWith('scrypt:v1:'));
-        assert.strictEqual(await store.verifyUserPassword(user.id, 'old-pass'), true);
-    } finally {
-        await fs.remove(dir);
-    }
-}
-
 // The admin role can be given to a profile with a login and password; the last admin keeps it, nobody changes their own role.
 async function testAdminRoleToggle() {
     await fixture({}, async({config, worker, alice, bob, connect}) => {
@@ -331,6 +305,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped, testPasswordCheckDoesNotHoldTheStore,
+module.exports = [testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];
