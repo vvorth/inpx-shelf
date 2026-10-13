@@ -18,7 +18,7 @@ const readOnlyActions = new Set([
     'get-genre-tree', 'get-discovery-shelves', 'get-admin-dashboard', 'get-admin-dashboard-metrics', 'get-admin-events',
     'export-admin-settings', 'get-book-link', 'get-author-aliases', 'admin-author-names-status', 'catalog-names',
     'catalog-search', 'catalog-suggest', 'get-book', 'get-book-states', 'get-book-info', 'get-reader-state',
-    'get-user-reading-library', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'export-reading-lists',
+    'get-user-reading-library', 'get-reading-stats', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'export-reading-lists',
     'get-kobo-devices', 'get-inpx-file',
 ]);
 
@@ -226,6 +226,8 @@ class WebSocketController {
                     await this.getReaderState(req, ws); break;
                 case 'get-user-reading-library':
                     await this.getUserReadingLibrary(req, ws); break;
+                case 'get-reading-stats':
+                    await this.getReadingStats(req, ws); break;
                 case 'update-reader-progress':
                     await this.updateReaderProgress(req, ws); break;
                 case 'delete-reader-progress':
@@ -741,6 +743,11 @@ class WebSocketController {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getUserReadingLibrary(user, req.options || {});
         this.send(result, req, ws);
+    }
+
+    async getReadingStats(req, ws) {
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        this.send(await this.webWorker.getReadingStats(user), req, ws);
     }
 
     async updateReaderProgress(req, ws) {

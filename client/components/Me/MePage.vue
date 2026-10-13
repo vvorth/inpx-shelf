@@ -40,6 +40,7 @@
                         </div>
                     </div>
                     <MeAccount v-else-if="section === 'account'" />
+                    <MeStats v-else-if="section === 'stats'" />
                     <MeDevices v-else-if="section === 'devices'" />
                     <MeDelivery v-else-if="section === 'delivery'" />
                     <MePreferences v-else-if="section === 'preferences'" />
@@ -58,11 +59,12 @@ import MeDevices from './MeDevices.vue';
 import MeDelivery from './MeDelivery.vue';
 import MePreferences from './MePreferences.vue';
 import MeData from './MeData.vue';
+import MeStats from './MeStats.vue';
 
 import {t} from '../../share/i18n';
 import {isSignedIn, isAdmin} from '../../share/session';
 
-const personalSections = ['account', 'devices', 'delivery', 'data'];
+const personalSections = ['account', 'stats', 'devices', 'delivery', 'data'];
 
 const componentOptions = {
     components: {
@@ -71,6 +73,7 @@ const componentOptions = {
         MeDelivery,
         MePreferences,
         MeData,
+        MeStats,
     },
     watch: {
         section() {
@@ -114,6 +117,7 @@ class MePage {
     get sections() {
         return [
             {id: 'account', label: t('me.account'), icon: 'la la-user'},
+            {id: 'stats', label: t('me.stats'), icon: 'la la-chart-bar'},
             {id: 'devices', label: t('me.devices'), icon: 'la la-tablet'},
             {id: 'delivery', label: t('settings.mail.title'), icon: 'la la-paper-plane'},
             {id: 'preferences', label: t('me.interface'), icon: 'la la-sliders-h'},

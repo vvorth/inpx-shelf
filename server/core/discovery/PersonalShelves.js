@@ -43,7 +43,7 @@ function emptyPersonalShelf(id, title, subtitle, emptyMessage = msg('discovery.s
     return {id, title, subtitle, source: 'personal', sourceName: msg('discovery.sourceForYou'), updatedAt: Date.now(), items: [], emptyMessage};
 }
 
-// Персональные полки витрины: «Читаю сейчас», из списков, следующие книги серий и «Похожие».
+// Персональные полки витрины: «Читаю сейчас», из списков, следующие книги серий и «Похожие»; статистика чтения.
 // Подмешивается в WebWorker.prototype: `this` - воркер.
 module.exports = {
     getPersonalReadBookSet(user = null, lists = []) {
@@ -730,5 +730,74 @@ module.exports = {
             shelves.push(await this.buildSimilarBooksShelfV2(user, similarLimit, context));
 
         return shelves;
+    },
+
+    //Статистика чтения профиля, кеш на пользователя до изменения списков, прогресса или библиотеки
+    async getReadingStats(user) {
+        this.checkMyState();
+        const lists = await this.readingListStore.getLists(user.id, {});
+        const inpxHash = String((await this.dbConfig()).inpxHash || '');
+        const signature = this.personalDiscoverySignature(user, lists, {stats: true, inpxHash});
+
+        if (!this.readingStatsCache)
+            this.readingStatsCache = new Map();
+        const cached = this.readingStatsCache.get(user.id);
+        if (cached && cached.signature === signature)
+            return _.cloneDeep(await cached.value);
+
+        const entry = {signature, value: this.buildReadingStats(user, lists)};
+        this.readingStatsCache.set(user.id, entry);
+        try {
+            return _.cloneDeep(await entry.value);
+        } catch (e) {
+            if (this.readingStatsCache.get(user.id) === entry)
+                this.readingStatsCache.delete(user.id);
+            throw e;
+        }
+    },
+
+    //Прочитанные - как на витрине: прогресс до конца или отметка «прочитано» в списке.
+    //Дата окончания - updatedAt прогресса (отметка «прочитано» тоже ставит прогресс 100% с датой);
+    //у отметок без прогресса (например, из импорта) даты нет: они только в итогах, авторах и жанрах.
+    //Месяцы и годы считает браузер по датам, в своём часовом поясе.
+    async buildReadingStats(user, lists) {
+        const progressMap = readerProgressOf(user);
+        const readBookUids = this.getPersonalReadBookSet(user, lists);
+        readBookUids.delete('');
+
+        const finishedAt = [];
+        for (const bookUid of readBookUids) {
+            const progress = progressMap[bookUid];
+            const time = (progress && Number(progress.percent) >= READ_PERCENT ? Date.parse(String(progress.updatedAt || '')) : NaN);
+            if (Number.isFinite(time))
+                finishedAt.push(new Date(time).toISOString());
+        }
+
+        const inProgress = Object.entries(progressMap)
+            .filter(([bookUid, progress]) => isReadingInProgress(progress) && !readBookUids.has(bookUid.trim()))
+            .length;
+
+        const authors = new Map();
+        const genres = new Map();
+        const add = (map, values) => {
+            for (const value of new Set(String(values || '').split(',').map(item => item.trim()).filter(Boolean)))
+                map.set(value, (map.get(value) || 0) + 1);
+        };
+        for (const book of (await this.getBookRecordsByUids([...readBookUids])).values()) {
+            add(authors, book.author);
+            add(genres, book.genre);
+        }
+        const top = map => [...map]
+            .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0], 'ru'))
+            .slice(0, 10)
+            .map(([name, count]) => ({name, count}));
+
+        return {
+            finished: readBookUids.size,
+            inProgress,
+            finishedAt: finishedAt.sort(),
+            authors: top(authors),
+            genres: top(genres),
+        };
     },
 };

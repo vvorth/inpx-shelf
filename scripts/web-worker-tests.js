@@ -237,6 +237,42 @@ async function testLibraryAssetCaches() {
     });
 }
 
+//статистика чтения: прочитанные из прогресса и списков, даты только у прогресса, авторы и жанры прочитанного, кеш до изменения
+async function testReadingStats() {
+    const store = Object.create(require('../server/core/ReadingListStore').prototype);
+    let lists = [{id: 'l1', books: [{bookUid: 'marked', read: true}, {bookUid: 'reading', read: false}]}];
+    store.getLists = async() => lists;
+    let lookups = 0;
+    const books = {
+        done: {_uid: 'done', author: 'Лем Станислав', genre: 'sf,sf_social'},
+        marked: {_uid: 'marked', author: 'Лем Станислав, Стругацкий Аркадий', genre: 'sf'},
+    };
+    const worker = bareWorker({checkMyState: () => {}, readingListStore: store, dbConfig: async() => ({inpxHash: 'h'})});
+    worker.getBookRecordsByUids = async(uids) => {
+        lookups++;
+        return new Map(uids.filter(uid => books[uid]).map(uid => [uid, books[uid]]));
+    };
+    const user = {id: 'reader', readerProgress: {
+        done: {percent: 1, updatedAt: '2026-03-05T10:00:00.000Z'},
+        reading: {percent: 0.4, updatedAt: '2026-04-01T10:00:00.000Z'},
+        hidden: {percent: 0.2, hidden: true},
+    }};
+
+    const stats = await worker.getReadingStats(user);
+    assert.deepStrictEqual(stats, {
+        finished: 2,
+        inProgress: 1,
+        finishedAt: ['2026-03-05T10:00:00.000Z'],
+        authors: [{name: 'Лем Станислав', count: 2}, {name: 'Стругацкий Аркадий', count: 1}],
+        genres: [{name: 'sf', count: 2}, {name: 'sf_social', count: 1}],
+    });
+    await worker.getReadingStats(user);
+    assert.strictEqual(lookups, 1, 'unchanged data comes from the cache');
+    lists = [{id: 'l1', books: [{bookUid: 'marked', read: true}, {bookUid: 'reading', read: true}]}];
+    assert.strictEqual((await worker.getReadingStats(user)).inProgress, 0, 'a book marked read in a list is not in progress');
+    assert.strictEqual(lookups, 2);
+}
+
 //вход в профиль проверяет пароль вне блокировки хранилища и не создаёт сессию, если пароль сменили во время проверки
 async function testProfileLoginChecksPasswordOutsideTheStoreLock() {
     await temporary(async(dataDir) => {
@@ -286,6 +322,7 @@ module.exports = [
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
+    testReadingStats,
     testLibraryAssetCaches,
     testProfileLoginChecksPasswordOutsideTheStoreLock,
 ];

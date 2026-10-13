@@ -454,6 +454,10 @@ class Api {
         return await this.request({action: 'get-user-reading-library', options}, 120, requestOptions);
     }
 
+    async getReadingStats() {
+        return await this.request({action: 'get-reading-stats'}, 120);
+    }
+
     async updateReaderProgress(bookUid, progress = {}, options = {}) {
         return await this.request({action: 'update-reader-progress', bookUid, progress}, 120, options);
     }

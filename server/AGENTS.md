@@ -11,7 +11,7 @@ Node.js 24 server. Entry: `index.js`.
   - `ProfileSessions.js` — profile login, sessions, `requireAdmin`; `AdminService.js` — admin dashboard, events, sources, runtime config; `AdminBackup.js` — settings export and backups.
   - `LibraryAssets.js` — books from archives, covers and images, author info, reviews; `BookDelivery.js` — sending books.
   - `CacheCleaner.js` — book and cover cache cleaning (schedule maths in `CacheSchedule.js`).
-  - `discovery/ExternalShelf.js` — discovery config, shelf cache, Wikidata awards shelf; `discovery/PersonalShelves.js` — personal shelves.
+  - `discovery/ExternalShelf.js` — discovery config, shelf cache, Wikidata awards shelf; `discovery/PersonalShelves.js` — personal shelves and reading stats.
 - `core/search/` — library database:
   - `CatalogSearch.js` imports INPX (`LibraryImport.js`, `InpxParser.js`) into `library.sqlite` and is the main-thread API (`catalogSearch` on the worker).
   - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).

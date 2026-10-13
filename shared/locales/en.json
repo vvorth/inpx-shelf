@@ -941,7 +941,8 @@
         "myData": "My data",
         "profileAndDevices": "Profile and devices",
         "profileSections": "Profile sections",
-        "signInToOpen": "Sign in to open this section."
+        "signInToOpen": "Sign in to open this section.",
+        "stats": "Reading stats"
     },
     "meAccount": {
         "changeLogin": "Change login",
@@ -1006,6 +1007,19 @@
         "isoDates": "24-hour time and ISO dates (2026-10-08 14:25)",
         "showOnlyUnreadBooks": "Show only unread books on the home page",
         "theseSettingsAreStored": "These settings are stored in this browser."
+    },
+    "meStats": {
+        "byMonth": "By month, {year}",
+        "byYear": "By year",
+        "dateHint": "A book counts as read on the day it was finished or marked as read.",
+        "empty": "Nothing here yet. A book shows up here once you finish it or mark it as read.",
+        "finished": "Read",
+        "inProgress": "Reading now",
+        "loading": "Loading...",
+        "thisYear": "Read this year",
+        "topAuthors": "Authors you read",
+        "topGenres": "Genres you read",
+        "undated": "No date: {count} marked as read in lists without reading progress, not shown in the charts."
     },
     "omnibox": {
         "authorsBooksSeries": "Authors, books, series",
