@@ -22,11 +22,11 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 
 | Tag | Purpose |
 | --- | --- |
-| `latest` | Newest stable release (no `-alpha`, `-beta` or `-rc` suffix). Appears with the first stable release. |
+| `latest` | Newest stable release (no `-alpha`, `-beta` or `-rc` suffix). |
 | `beta` | Newest pre-release (`-alpha.N`, `-beta.N` or `-rc.N`). |
 | `dev`, `dev-<commit>` | Development build, published on every push to the `dev` branch after the tests pass. Unstable: for testing, not for your main library. |
-| `1.0.0-beta.1` | Image with fb2cng, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
-| `…-pdf` | Every tag above also exists with a `-pdf` suffix (`latest-pdf`, `beta-pdf`, `dev-pdf`, `1.0.0-beta.1-pdf`): the same image plus MuPDF for `fb2` / `epub` → `pdf` conversion, about 100 MB larger. |
+| `<version>` | Image with fb2cng, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
+| `…-pdf` | Every tag above also exists with a `-pdf` suffix (`latest-pdf`, `beta-pdf`, `dev-pdf`, `<version>-pdf`): the same image plus MuPDF for `fb2` / `epub` → `pdf` conversion, about 100 MB larger. |
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ docker run -d \
   -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 Open:
@@ -74,7 +74,7 @@ docker run -d \
   ]' \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/Torrents:/library:ro \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 For one source in JSON, do not leave a trailing comma before `]`.
@@ -84,7 +84,7 @@ For one source in JSON, do not leave a trailing comma before `]`.
 ```yaml
 services:
   inpx-shelf:
-    image: vvorth/inpx-shelf:1.0.0-beta.1
+    image: vvorth/inpx-shelf:latest
     container_name: inpx-shelf
     restart: unless-stopped
     ports:
@@ -169,7 +169,7 @@ docker run -d \
   -e INPX_METRICS_PATH=/metrics \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 ## Reverse Proxy Auth

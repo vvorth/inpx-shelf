@@ -1,13 +1,16 @@
 services:
   inpx-shelf:
-    build: .
+    image: vvorth/inpx-shelf:latest
+    # To build from source instead, replace the line above with: build: .
     container_name: inpx-shelf
     restart: unless-stopped
     ports:
       - "12380:12380"
     environment:
+      # These paths point to directories inside the container.
+      # They must match the right side of the volume mounts below.
       DATA_DIR: /usr/local/bin/.inpx-web
-      INPX: /library/fb2.flibusta.lib.rus.ec.7z.inpx
+      INPX: /library/my-library.inpx
       LIBDIR: /library
       CACHE_DIR: /usr/local/bin/.inpx-web/cache
       INPX_COVER_CACHE_SIZE_MB: "512"
@@ -15,7 +18,22 @@ services:
       # INPX_OPDS_LANG: en
       # Optional custom fb2cng YAML. Mount its whole directory read-only below.
       # INPX_FB2CNG_CONFIG: /config/fb2cng/config.yaml
+
+      # Telegram can also be configured later in the admin UI.
+      # TELEGRAM_BOT_TOKEN: "PUT_YOUR_BOT_TOKEN_HERE"
+      # TELEGRAM_CAPTION_TEMPLATE: "$${AUTHOR} - $${TITLE}"
+
+      # Email can also be configured later in the admin UI.
+      # SMTP_HOST: "smtp.example.com"
+      # SMTP_PORT: 587
+      # SMTP_SECURE: "false"
+      # SMTP_USER: "user@example.com"
+      # SMTP_PASS: "PUT_YOUR_SMTP_PASSWORD_HERE"
+      # EMAIL_FROM: "user@example.com"
+      # EMAIL_TO: "reader@example.com"
     volumes:
-      - ./library:/library:ro
-      - ./data:/usr/local/bin/.inpx-web
-      # - ./fb2cng-config:/config/fb2cng:ro
+      - /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web
+      # Left side is a host path, right side is a path inside the container.
+      # INPX=/library/... and LIBDIR=/library must point to this mounted path.
+      - /mnt/user/books/my-library:/library:ro
+      # - /mnt/user/appdata/inpx-shelf-fb2cng:/config/fb2cng:ro

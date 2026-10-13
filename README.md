@@ -3,7 +3,7 @@ inpx-shelf
 
 > Проект основан на [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (форк [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). Подробнее — в [NOTICE.md](./NOTICE.md).
 
-Текущая версия — **1.0.0-beta.1**, [история изменений](./CHANGELOG.md). Версии inpx-shelf нумеруются заново с 1.0.0 по SemVer: мажорная версия меняется, только если обновление требует действий от пользователя (конфиг, данные, OPDS, Kobo, переменные окружения).
+Текущая версия — **1.0.0**, [история изменений](./CHANGELOG.md). Версии inpx-shelf нумеруются заново с 1.0.0 по SemVer: мажорная версия меняется, только если обновление требует действий от пользователя (конфиг, данные, OPDS, Kobo, переменные окружения).
 
 <a id="ключевые-отличия" />
 
@@ -67,22 +67,19 @@ inpx-shelf — веб-каталог для self-hosted INPX-библиотек 
 
 ## Сборка Docker-контейнера
 
-Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий, например `vvorth/inpx-shelf:1.0.0-beta.1`. Тег `latest` указывает на последний стабильный релиз, `beta` — на последний предварительный (`-alpha`, `-beta`, `-rc`), `dev` — на сборку из ветки `dev` (собирается при каждом изменении ветки, только для тестирования). У каждого тега есть вариант с суффиксом `-pdf` (`latest-pdf`, `beta-pdf`, `dev-pdf`, `1.0.0-beta.1-pdf`): тот же образ плюс MuPDF для конвертации в `pdf`, примерно на 100 МБ больше. Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
+Основной способ запуска рассчитан на Docker. Готовый образ публикуется в [Docker Hub](https://hub.docker.com/r/vvorth/inpx-shelf) под тегами версий и тегом `latest`, например `vvorth/inpx-shelf:latest`. Тег `latest` указывает на последний стабильный релиз, `beta` — на последний предварительный (`-alpha`, `-beta`, `-rc`), `dev` — на сборку из ветки `dev` (собирается при каждом изменении ветки, только для тестирования). У каждого тега есть вариант с суффиксом `-pdf` (`latest-pdf`, `beta-pdf`, `dev-pdf`, `<версия>-pdf`): тот же образ плюс MuPDF для конвертации в `pdf`, примерно на 100 МБ больше. Образ рассчитан на `linux/amd64`; для Linux ARM64 есть отдельный standalone-архив в GitHub Releases.
 
 Образ можно запустить на данных inpx-web: путь данных в контейнере остался `/usr/local/bin/.inpx-web`, поэтому существующий volume подключается без изменений.
 
-Готовые YAML-примеры:
-
-* [docker-compose.full.yml](./docker-compose.full.yml) — основной образ с конвертацией через fb2cng (для `pdf` возьмите тег с `-pdf`)
-* [docker-compose.telegram-email.yml](./docker-compose.telegram-email.yml) — пример с отправкой книг в Telegram и на email
+Готовый YAML-пример — [docker-compose.yml](./docker-compose.yml): основной образ с конвертацией через fb2cng (для `pdf` возьмите тег с `-pdf`), закомментированные настройки отправки книг в Telegram и на email.
 
 Важно: путь в `INPX` и каталог в `LIBDIR` должны совпадать с путём внутри контейнера из правой части `volume`.
 Например, если библиотека смонтирована как `...:/library:ro`, то и `INPX` должен быть вида `/library/имя.inpx`, а `LIBDIR` — `/library`.
 
-Для самостоятельной сборки сначала получите исходники релиза:
+Для самостоятельной сборки сначала получите исходники:
 
 ```sh
-git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-shelf.git
+git clone https://github.com/vvorth/inpx-shelf.git
 cd inpx-shelf
 ```
 
@@ -117,10 +114,10 @@ docker build --no-cache -t inpx-shelf:latest .
 * Dockerfile использует multi-stage сборку: приложение упаковывается в `pkg`-бинарник, а runtime-слой не тянет Node.js, `node_modules` и dev/UI-зависимости
 * при включённом BuildKit повторные сборки идут быстрее за счёт кэша `apt` и `npm`
 
-После сборки контейнер можно запустить через `docker compose`:
+Чтобы собрать и запустить образ через `docker compose`, замените в [docker-compose.yml](./docker-compose.yml) строку `image: ...` на `build: .` и выполните:
 
 ```sh
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### Пользовательский конфиг fb2cng
@@ -137,7 +134,7 @@ docker run -d \
   -v /path/on/host/fb2cng:/config/fb2cng:ro \
   -v /path/on/host/library:/library:ro \
   -v /path/on/host/data:/usr/local/bin/.inpx-web \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 При первом обращении к конвертации приложение проверяет, что файл существует, читается и принимается командой `fbc --config PATH dumpconfig`. Ошибочный путь или YAML возвращает явную ошибку вместо незаметного запуска с настройками по умолчанию. Кэш учитывает логический формат (`epub` и `epub3` раздельно), содержимое и расположение YAML, версию встроенного fb2cng и настроенные пути конвертеров.
@@ -160,7 +157,7 @@ docker run -d \
 Для обновления сначала скачайте новый образ, затем пересоздайте контейнер. Повторите свою исходную команду `docker run`, заменив только тег образа: сохраните все переменные окружения, порты и тома, включая `INPX_LIBRARY_SOURCES`, настройки авторизации и отправки книг. Ниже пример для одной библиотеки; замените пути на свои. Команды соединены через `&&`, чтобы не удалять работающий контейнер при ошибке скачивания образа.
 
 ```sh
-docker pull vvorth/inpx-shelf:1.0.0-beta.1 &&
+docker pull vvorth/inpx-shelf:latest &&
 docker rm -f inpx-shelf &&
 docker run -d \
   --name=inpx-shelf \
@@ -173,7 +170,7 @@ docker run -d \
   -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 При локальной сборке используйте имя своего образа. Если сервис запущен через Compose, сохраните настройки в YAML, укажите нужный тег в `image` и выполните `docker compose pull && docker compose up -d`.
@@ -194,7 +191,7 @@ docker run -d \
   -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 Важно:
@@ -464,7 +461,7 @@ docker run -d \
   -e EMAIL_FROM=user@example.com \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
-  vvorth/inpx-shelf:1.0.0-beta.1
+  vvorth/inpx-shelf:latest
 ```
 
 Переменные для Telegram:
@@ -658,7 +655,7 @@ http://<ваш_хост>:12380/opds?user=<profileId>
 
 Сервер поддерживает нативный [Custom metadata provider Audiobookshelf](https://audiobookshelf.org/docs/documentation/community/community-providers/). Он позволяет подбирать метаданные для аудиокниги по электронным книгам в INPX-библиотеке, включая самостоятельно озвученные книги.
 
-Провайдер выключен по умолчанию. Для проверки используйте образ `vvorth/inpx-shelf:1.0.0-beta.1` и добавьте к своей команде запуска:
+Провайдер выключен по умолчанию. Для проверки используйте образ `vvorth/inpx-shelf:latest` и добавьте к своей команде запуска:
 
 ```sh
 -e INPX_ABS_ENABLED=true \
@@ -823,7 +820,7 @@ http://127.0.0.1:12380/#/reader-lab?sample=night-watch.fb2&debugReader=1&debugRe
 Сборка на машине с архитектурой целевой платформы предпочтительна; CI использует отдельный ARM64 runner. Для кросс-сборки linux-arm64 на x64 потребуется [QEMU](https://wiki.debian.org/QemuUserEmulation). Linux-бинарники используют glibc; для Alpine используйте Docker-образ на Debian.
 
 ```sh
-git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-shelf.git
+git clone https://github.com/vvorth/inpx-shelf.git
 cd inpx-shelf
 npm ci
 npm run release:linux
@@ -886,7 +883,7 @@ sudo apt install -y nodejs
 node --version
 
 # подготовка
-git clone --branch v1.0.0-beta.1 --single-branch https://github.com/vvorth/inpx-shelf.git
+git clone https://github.com/vvorth/inpx-shelf.git
 cd inpx-shelf
 npm ci
 npm run build:client
