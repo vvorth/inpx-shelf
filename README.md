@@ -1,44 +1,22 @@
 inpx-shelf
 ==========
 
-[English quick start](./README.en.md)
+[Русская версия](./README.ru.md)
 
-> Проект основан на [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (форк [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). Подробнее — в [NOTICE.md](./NOTICE.md).
+> Based on [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (a fork of [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). See [NOTICE.md](./NOTICE.md).
 
-Текущая версия — **1.0.0**, [история изменений](./CHANGELOG.md). Версии inpx-shelf нумеруются заново с 1.0.0 по SemVer: мажорная версия меняется, только если обновление требует действий от пользователя (конфиг, данные, OPDS, Kobo, переменные окружения).
+inpx-shelf is a self-hosted web catalog for INPX e-book libraries (Flibusta, Lib.rus.ec and others): catalog search, book, author and series pages, personal shelves, reading lists, an online reader, OPDS and Kobo sync. The interface and OPDS are available in Russian and English.
 
-<a id="ключевые-отличия" />
+## Key features
 
-## Что это за проект
+* runs in Docker and Proxmox LXC, handles large `.7z` / `.zip` / `fLibrary` collections
+* personal shelves on the home page: continue reading, from your lists, unfinished series, similar to what you read
+* built-in FB2 reader with a paged mode, mobile layout and font settings
+* conversion to `epub`, `epub3`, `kepub`, `kfx`, `azw8` (fb2cng) and `pdf` (MuPDF), sending books via Telegram and email
+* multi-user profiles, reading lists, OPDS, Kobo sync, Audiobookshelf metadata provider
+* admin dashboard, event log, multiple INPX sources managed from the UI, backups, health checks and Prometheus metrics
 
-inpx-shelf — веб-каталог для self-hosted INPX-библиотек (Флибуста, Либрусек и др.): поиск по каталогу, страницы книг, авторов и серий, персональные полки, списки чтения, онлайн-читалка, OPDS и синхронизация с Kobo.
-
-Каталог рассчитан на self-hosted библиотеки с упором на большие `.7z` / `.zip` / `fLibrary` коллекции, Docker-развёртывание и встроенную FB2-читалку. Документация в первую очередь описывает сценарий `Docker / сервер`, но также покрывает standalone-бинарники и запуск из исходников через Node.js.
-
-Ключевое в inpx-shelf:
-
-* запуск в Docker и Proxmox LXC, работа с большими `.7z` / `.zip` / `fLibrary` коллекциями и конвертацией через fb2cng и MuPDF
-* персональные подборки на главной (`Продолжить чтение`, `Из ваших списков`, `Незаконченные серии`, `Похоже на то, что вы читали`) и вкладка внешнего источника
-* обновлённый интерфейс каталога: карточки книг, серий и авторов, обложки, навигация по связанным сущностям и расширенный раздел `fb2 info`
-* книга из каталога, подборок и списков открывается окном поверх страницы: `Назад` или `Esc` закрывает его и возвращает на то же место; прямая ссылка `/#/book/...` открывает обычную страницу книги
-* поддержка фото автора, краткой биографии из `fLibrary` и улучшенной работы с обложками и изображениями внутри `fb2`
-* восстановление сжатых EPUB из FLibrary/Heimdall с обложками и иллюстрациями, дополнительные отзывы и оценки из материалов библиотеки
-* встроенная FB2-читалка с paged-режимом, мобильной адаптацией, debug-панелью и отдельным маршрутом `/#/reader-lab`
-* настройки шрифта в читалке, Wake Lock API для мобильного чтения и отдельный PWA-манифест для ярлыка читалки
-* отправка и конвертация книг в `epub`, `epub3`, `kepub`, `kfx`, `azw8` и `pdf`, а также отправка через Telegram и email
-* многопользовательские профили, личные списки чтения, `Telegram chat id`, email и публикация через OPDS
-* админский дашборд, журнал событий, управление источниками из UI, health-checks и Prometheus-метрики
-
-## Какой сценарий выбрать
-
-1. `Docker / сервер` — основной и рекомендуемый вариант для домашнего сервера, NAS, unRAID, Proxmox LXC, VPS и постоянного web-доступа к библиотеке.
-2. `Standalone-бинарник` — локальный запуск без Docker, если нужен один готовый `.exe` / исполняемый файл.
-3. `Запуск через Node.js` — режим для разработки, отладки и ручного старта из исходников.
-
-Если нужен серверный каталог, начните с [быстрого старта](#быстрый-старт-через-docker-run) и раздела [Docker](./docs/docker.md). Если нужен готовый исполняемый файл, используйте GitHub Releases. Если работаете с исходниками, смотрите [запуск через Node.js](./docs/standalone.md#native_run).
-## Быстрый старт через docker run
-
-Пример запуска для библиотеки Flibusta / `fLibrary`:
+## Quick start with Docker
 
 ```sh
 docker run -d \
@@ -55,52 +33,29 @@ docker run -d \
   vvorth/inpx-shelf:latest
 ```
 
-Важно:
+* mount the `.inpx` file and the library archives into `/library`; `INPX` and `LIBDIR` are paths inside the container
+* `/usr/local/bin/.inpx-web` holds the search database, caches, config and user data: keep it on a persistent volume
+* the first start builds the search database and may take a while
+* then open `http://<your-host>:12380`
 
-* в каталог `/library` должны быть смонтированы `.inpx` и файлы библиотеки, которые указаны в `INPX` и `LIBDIR`
-* каталог `/usr/local/bin/.inpx-web` хранит базу поиска, кэш, конфигурацию и служебные данные, поэтому его лучше выносить в постоянный volume
-* `INPX_BOOK_CACHE_SIZE_MB` и `INPX_COVER_CACHE_SIZE_MB` ограничивают подготовленные книги и обложки; при превышении лимита старые файлы удаляются до целевого размера
-* библиотека подключена как `:ro`, чтобы контейнер не изменял исходные архивы
-* первый запуск может быть долгим: приложение создаёт поисковую базу, а конвертация в `epub` / `epub3` / `kepub` / `kfx` / `azw8` требует установленного в образе fb2cng, в `pdf` — MuPDF (образ с тегом `-pdf`)
-* порядок обновления описан в разделе [Обновление контейнера](./docs/docker.md#обновление-контейнера)
-* веб-интерфейс после запуска будет доступен по адресу `http://<ваш_хост>:12380`
+For Docker Compose, edit the paths in [docker-compose.yml](./docker-compose.yml) and run `docker compose up -d`.
 
-Готовый YAML-пример для `docker compose` — [docker-compose.yml](./docker-compose.yml): укажите в нём свои пути и выполните `docker compose up -d`.
+Image tags: `latest` (stable), `beta` (pre-releases), `dev` (for testing); each has a `-pdf` variant with MuPDF for `pdf` conversion. Standalone binaries for Linux, Windows and macOS are on [GitHub Releases](https://github.com/vvorth/inpx-shelf/releases).
 
-## Документация
+## Documentation
 
-* [Docker: образы, сборка, обновление](./docs/docker.md)
-* [Авторизация и мониторинг](./docs/auth-monitoring.md)
-* [Несколько INPX-источников](./docs/sources.md)
-* [Админ-панель, бэкапы, кэш книг и обложек](./docs/admin.md)
-* [Отправка книг в Telegram и на email](./docs/sending.md)
-* [Пользователи, личные списки и OPDS](./docs/users-opds.md)
-* [Синхронизация с Kobo](./docs/kobo.md)
-* [Синхронизация прогресса KOReader](./docs/koreader.md)
-* [Провайдер метаданных Audiobookshelf](./docs/audiobookshelf.md)
-* [Читалка и отладка FB2](./docs/reader.md)
-* [Витрины и внешние источники](./docs/discovery.md)
-* [Standalone, сборка, запуск через Node.js, параметры командной строки](./docs/standalone.md)
-* [Конфигурация (`config.json`), удалённая библиотека, фильтр](./docs/config.md)
-* [Настройка https с помощью nginx](./docs/nginx-https.md)
-* [Разработка, переводы, релизные проверки](./docs/development.md)
-* [Proxmox LXC](./docs/proxmox-lxc.md)
+The detailed documentation is in Russian: start from [README.ru.md](./README.ru.md#документация).
 
-## Что не планируется
+* [Docker: images, build, update](./docs/docker.md)
+* [Configuration (`config.json`)](./docs/config.md)
+* [Users, reading lists and OPDS](./docs/users-opds.md)
+* [Kobo sync](./docs/kobo.md)
+* [KOReader progress sync](./docs/koreader.md)
 
-* Озвучка книг (Silero TTS) — удалена.
-* Конвертация через Calibre — удалена; конвертирует fb2cng, в `pdf` — MuPDF.
-* Прежняя БД JembaDb — заменена БД на SQLite, которой нужно в несколько раз меньше памяти.
-* Прежний интерфейс каталога — заменён поиском на SQLite.
-* Страницы «Новинки» и «Популярное» — заменены персональными подборками на главной.
-* Отзывы на рекомендации («Неинтересно», «Больше похожих») и полка скрытых книг.
-* Разбор страниц книжных магазинов во внешней витрине — заменён лауреатами премий из Викиданных.
+## Feedback
 
-## Обратная связь
+Issues: https://github.com/vvorth/inpx-shelf/issues
 
-По вопросам inpx-shelf используйте Issues в репозитории:
-https://github.com/vvorth/inpx-shelf/issues
-
-## Лицензия
+## License
 
 [CC0 1.0](./LICENSE.md)

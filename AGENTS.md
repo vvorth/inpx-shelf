@@ -12,8 +12,8 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 | `scripts/` | Tests and maintenance scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |
 | `docs/` | User docs (Russian), project docs, research, plans | [docs/AGENTS.md](docs/AGENTS.md) |
 | `build/` | Webpack configs, pkg packaging, release, Windows installer | |
-| `README.md` | Entry point (Russian): overview, Docker quick start, links to `docs/` | |
-| `README.en.md` | English quick start, links to the Russian docs | |
+| `README.md` | Entry point (English): overview, Docker quick start, links to `README.ru.md` and `docs/` | |
+| `README.ru.md` | Entry point (Russian): overview, Docker quick start, links to `docs/` | |
 | `CHANGELOG.md` | Release notes (Russian), newest first | |
 | `CHANGELOG-inpx-web.md` | Upstream history before the fork. Frozen, do not edit | |
 | `NOTICE.md`, `DOCKERHUB.md`, `Dockerfile`, `docker-compose*.yml` | Credits, Docker Hub page, images | |
@@ -28,7 +28,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 
 ## Docs
 
-- `README.md`, `docs/` and `AGENTS.md` files describe the current state only: short, on point. No history, no "since version X", no stories of how it came to be.
+- `README.md`, `README.ru.md`, `docs/` and `AGENTS.md` files describe the current state only: short, on point. No history, no "since version X", no stories of how it came to be.
 - Change history goes only to `CHANGELOG.md`: user-facing, in Russian, under the current unreleased version at the top.
 - Research goes to `docs/research/`, multi-step plans to `docs/plans/`. Project docs never link to them. See [docs/AGENTS.md](docs/AGENTS.md).
 - When behavior changes, update the doc that describes it in the same commit.
