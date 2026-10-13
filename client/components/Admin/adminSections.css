@@ -1,0 +1,119 @@
+/* Общие стили разделов администрирования (AdminOverview, AdminLibrary, AdminStorage, AdminLog), подключаются как scoped */
+.admin-mail-title {
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.admin-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.admin-dashboard-grid--compact {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-dashboard-grid--storage {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-dashboard-grid--runtime {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-stat {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-primary) 4%, var(--app-surface));
+}
+
+.admin-stat-label {
+    font-size: 11px;
+    color: var(--app-muted);
+}
+
+.admin-stat-value {
+    margin-top: 4px;
+    font-size: 16px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-stat-value--small {
+    font-size: 14px;
+}
+
+.admin-stat-hint {
+    margin-top: 4px;
+    color: var(--app-muted);
+    font-size: 11px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.admin-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
+}
+
+.admin-subsection-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.admin-event-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+    max-height: 260px;
+    overflow: auto;
+}
+
+.admin-event-list--compact {
+    max-height: 180px;
+}
+
+.admin-event-row {
+    padding: 8px 10px;
+    border-left: 3px solid var(--app-border);
+    border-radius: 8px;
+    background: rgba(23, 32, 38, 0.04);
+}
+
+.admin-event-row--warn {
+    border-left-color: #d97706;
+}
+
+.admin-event-row--error {
+    border-left-color: #dc2626;
+}
+
+.admin-event-meta {
+    font-size: 11px;
+    color: var(--app-muted);
+}
+
+.admin-event-message {
+    margin-top: 3px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+@media (max-width: 720px) {
+    .admin-dashboard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

@@ -51,311 +51,17 @@
                     </div>
                 </div>
 
-                    <template v-if="section === 'overview'">
-                <div class="admin-dashboard-sections">
-                    <section class="admin-dashboard-section">
-                        <div class="admin-dashboard-section-title">{{ $t('settings.library') }}</div>
-                        <div class="admin-dashboard-grid">
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.books') }}</div>
-                                <div class="admin-stat-value">{{ adminStat('bookCountAll') }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.authors') }}</div>
-                                <div class="admin-stat-value">{{ adminStat('authorCountAll') }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.series') }}</div>
-                                <div class="admin-stat-value">{{ adminStat('seriesCount') }}</div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="admin-dashboard-section">
-                        <div class="admin-dashboard-section-title">{{ $t('settings.process') }}</div>
-                        <div class="admin-dashboard-grid">
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">Uptime</div>
-                                <div class="admin-stat-value">{{ adminUptime }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.memory') }}</div>
-                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.memory && adminDashboard.memory.rss) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.cpu') }}</div>
-                                <div class="admin-stat-value">{{ adminCpuText }}</div>
-                                <div class="admin-stat-hint">{{ adminCpuHint }}</div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="admin-dashboard-section admin-dashboard-section--wide">
-                        <div class="admin-dashboard-section-title">{{ $t('settings.admin.requests') }}</div>
-                        <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">WebSocket action</div>
-                                <div class="admin-stat-value">{{ adminRuntime.totalActions || 0 }}</div>
-                                <div class="admin-stat-hint">{{ adminRuntimeHint }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">Event loop</div>
-                                <div class="admin-stat-value">{{ runtimeLagText }}</div>
-                                <div class="admin-stat-hint">{{ runtimeLagHint }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.lastSlowAction') }}</div>
-                                <div class="admin-stat-value admin-stat-value--small">{{ runtimeLastSlowActionText }}</div>
-                                <div class="admin-stat-hint">{{ runtimeLastSlowActionHint }}</div>
-                            </div>
-                        </div>
-                        <div v-if="runtimeSlowestActions.length" class="admin-runtime-list">
-                            <div v-for="item in runtimeSlowestActions" :key="item.action" class="admin-runtime-row">
-                                <span class="admin-runtime-action">{{ item.action }}</span>
-                                <span class="admin-runtime-value">{{ actionDurationText(item) }}</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="admin-dashboard-section admin-dashboard-section--wide">
-                        <div class="admin-dashboard-section-title">{{ $t('settings.recommendationQuality') }}</div>
-                        <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.metricImpressions') }}</div>
-                                <div class="admin-stat-value">{{ discoveryMetric('impression') }}</div>
-                                <div class="admin-stat-hint">{{ $t('settings.metricProfiles', {n: adminDiscovery.profiles || 0}) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.metricOpenCtr') }}</div>
-                                <div class="admin-stat-value">{{ discoveryRateText('ctr') }}</div>
-                                <div class="admin-stat-hint">{{ $t('settings.metricOpens', {n: discoveryMetric('open')}) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.metricStartedReading') }}</div>
-                                <div class="admin-stat-value">{{ discoveryRateText('start') }}</div>
-                                <div class="admin-stat-hint">{{ $t('settings.metricStarts', {n: discoveryMetric('start')}) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.metricSaved') }}</div>
-                                <div class="admin-stat-value">{{ discoveryRateText('save') }}</div>
-                                <div class="admin-stat-hint">{{ $t('settings.metricSaves', {n: discoveryMetric('save')}) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.metricSetUpTastes') }}</div>
-                                <div class="admin-stat-value">{{ adminDiscovery.configuredProfiles || 0 }}</div>
-                                <div class="admin-stat-hint">{{ $t('settings.metricTastesHint') }}</div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="admin-dashboard-section">
-                        <div class="admin-dashboard-section-title">{{ $t('settings.storage') }}</div>
-                        <div class="admin-dashboard-grid admin-dashboard-grid--storage">
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.dbSize') }}</div>
-                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.db && adminDashboard.sizes.db.size) }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.bookCache') }}</div>
-                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.bookCache && adminDashboard.sizes.bookCache.size) }}</div>
-                                <div class="admin-stat-hint">{{ adminCacheLimitText('book') }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.admin.coverCache') }}</div>
-                                <div class="admin-stat-value">{{ formatBytes(adminDashboard.sizes && adminDashboard.sizes.coverCache && adminDashboard.sizes.coverCache.size) }}</div>
-                                <div class="admin-stat-hint">{{ adminCacheLimitText('cover') }}</div>
-                            </div>
-                            <div class="admin-stat">
-                                <div class="admin-stat-label">{{ $t('settings.cacheRotation') }}</div>
-                                <div class="admin-stat-value">{{ adminCacheRotationValue() }}</div>
-                                <div class="admin-stat-hint">{{ adminCacheRotationHint() }}</div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-
-                <div class="admin-subsection">
-                    <div class="admin-subsection-head">
-                        <div class="admin-mail-title">{{ $t('settings.admin.tasks') }}</div>
-                    </div>
-                    <div class="admin-task-list">
-                        <div v-for="task in adminTasks" :key="task.id" class="admin-task-row" :class="{'admin-task-row--active': task.active}">
-                            <div class="admin-task-main">
-                                <div class="admin-task-title">{{ $tm(task.title) }}</div>
-                                <div class="admin-task-message">{{ task.message ? $tm(task.message) : (task.state || $t('settings.admin.noTaskMessage')) }}</div>
-                                <q-linear-progress v-if="task.active" rounded size="6px" :value="taskProgress(task)" color="primary" />
-                                <div v-if="task.lastError" class="admin-task-error">{{ task.lastError }}</div>
-                            </div>
-                            <q-btn flat dense no-caps :disable="true" icon="la la-ban">
-                                {{ task.cancellable ? $t('settings.admin.cancel') : $t('settings.admin.noCancel') }}
-                            </q-btn>
-                        </div>
-                    </div>
-                </div>
-                    </template>
+                    <AdminOverview v-if="section === 'overview'" :admin="adminContext" />
 
                     <AdminUsers v-else-if="section === 'users'" />
 
-                    <template v-else-if="section === 'library'">
-                <div class="admin-subsection">
-                    <div class="admin-subsection-head">
-                        <div class="admin-mail-title">{{ $t('settings.admin.sources') }}</div>
-                        <q-btn flat dense no-caps color="primary" icon="la la-plus" @click="addAdminSource">
-                            {{ $t('settings.admin.addSource') }}
-                        </q-btn>
-                    </div>
-                    <div class="admin-source-list">
-                        <div v-for="(source, index) in adminSources" :key="index" class="admin-source-row">
-                            <q-checkbox v-model="source.enabled" size="32px" />
-                            <q-input v-model="source.name" outlined dense :label="$t('settings.admin.sourceName')" />
-                            <q-input v-model="source.inpx" outlined dense :label="$t('settings.admin.sourceInpx')" />
-                            <q-input v-model="source.libDir" outlined dense :label="$t('settings.admin.sourceLibDir')" />
-                            <q-btn flat dense round color="primary" icon="la la-search" :loading="source.diagnosticsLoading" @click="diagnoseAdminSource(index)">
-                                <q-tooltip>{{ $t('settings.admin.checkSource') }}</q-tooltip>
-                            </q-btn>
-                            <q-btn flat dense round color="negative" icon="la la-trash" @click="removeAdminSource(index)" />
-                            <div class="admin-source-diagnostics">
-                                <span :class="source.inpxExists ? 'text-positive' : 'text-negative'">INPX</span>
-                                <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ $t('settings.admin.folder') }}</span>
-                                <span>{{ $t('settings.admin.archives') }}: {{ source.archiveCount || 0 }}{{ source.archiveCountTruncated ? '+' : '' }}</span>
-                                <span>covers: {{ source.hasCovers ? 'ok' : '-' }}</span>
-                                <span>etc: {{ source.hasEtc ? 'ok' : '-' }}</span>
-                                <span>images: {{ source.hasImages ? 'ok' : '-' }}</span>
-                                <span>bin: {{ source.hasBin ? 'ok' : '-' }}</span>
-                                <span v-if="source.foundInpx && source.foundInpx.length">{{ $t('settings.admin.foundInpx') }}: {{ source.foundInpx.length }}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-if="adminSourcesChanged || adminSourcesReindexNeeded" class="admin-source-warning">
-                        <q-icon name="la la-exclamation-triangle" size="18px" />
-                        <span>{{ $t('settings.admin.sourcesNeedReindex') }}</span>
-                    </div>
-                    <div class="admin-mail-actions">
-                        <q-btn color="primary" dense no-caps icon="la la-save" :loading="adminSourcesLoading" @click="saveAdminSources">
-                            {{ $t('settings.admin.saveSources') }}
-                        </q-btn>
-                    </div>
-                </div>
+                    <AdminLibrary v-else-if="section === 'library'" :admin="adminContext" />
 
-                        <AdminAuthorNames v-if="catalogSearchEnabled" />
-
-                        <section v-if="discoveryEnabled" class="card">
-                            <h2 class="card-title">{{ $t('admin.externalShowcase') }}</h2>
-                            <div class="card-hint">{{ externalDiscoverySummary }}</div>
-                            <div class="card-actions">
-                                <q-btn outline color="primary" dense no-caps icon="la la-sliders-h" @click="discoverySourceDialogVisible = true">
-                                    {{ $t('settings.manage') }}
-                                </q-btn>
-                            </div>
-                        </section>
-                    </template>
-
-                    <template v-else-if="section === 'storage'">
-                <div class="admin-subsection">
-                    <div class="admin-subsection-head">
-                        <div>
-                            <div class="admin-mail-title">{{ $t('settings.cacheRotation') }}</div>
-                            <div class="admin-mail-subtitle">{{ $t('settings.limitsSetMegabytesScheduled') }}</div>
-                        </div>
-                        <q-btn outline color="primary" dense no-caps icon="la la-save" :loading="adminCacheSaveLoading" @click="saveAdminCacheSettings">
-                            {{ $t('common.save') }}
-                        </q-btn>
-                    </div>
-                    <div class="admin-cache-settings-grid">
-                        <q-input v-model.number="adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('settings.bookCacheMb')" />
-                        <q-input v-model.number="adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('settings.coverCacheMb')" />
-                        <q-checkbox class="admin-cache-enabled-toggle" v-model="adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('settings.scheduledRotation')" />
-                        <q-select v-model="adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('settings.frequency')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="adminCacheSettings.cacheCleanWeekDay" :options="adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('settings.dayWeek')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                        <q-select v-if="adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('settings.dayMonth')" :disable="!adminCacheSettings.cacheCleanEnabled" />
-                        <q-input class="admin-cache-time-input" v-model="adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('settings.startTime')" :hint="$t('settings.serverTime')" persistent-hint :disable="!adminCacheSettings.cacheCleanEnabled || adminCacheSettings.cacheCleanFrequency === 'advanced'" />
-                        <q-input v-model.number="adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('settings.cleanupTargetPercent')" />
-                    </div>
-                    <div class="admin-cache-actions">
-                        <q-btn outline color="primary" dense no-caps icon="la la-book" :loading="adminCleanBookCacheLoading" @click="cleanAdminCache('book')">
-                            {{ $t('settings.clearBookCache') }}
-                        </q-btn>
-                        <q-btn outline color="primary" dense no-caps icon="la la-image" :loading="adminCleanCoverCacheLoading" @click="cleanAdminCache('cover')">
-                            {{ $t('settings.clearCoverCache') }}
-                        </q-btn>
-                    </div>
-                </div>
-
-                <div class="admin-subsection">
-                    <div class="admin-subsection-head">
-                        <div>
-                            <div class="admin-mail-title">{{ $t('settings.admin.coverDiagnostics') }}</div>
-                            <div class="admin-mail-subtitle">{{ $t('settings.admin.coverDiagnosticsHint') }}</div>
-                        </div>
-                        <q-btn flat dense no-caps color="negative" icon="la la-broom" :loading="adminBrokenCoversLoading" @click="cleanBrokenCovers">
-                            {{ $t('settings.admin.cleanBrokenCovers') }}
-                        </q-btn>
-                    </div>
-                    <div class="admin-dashboard-grid admin-dashboard-grid--compact">
-                        <div class="admin-stat">
-                            <div class="admin-stat-label">{{ $t('settings.admin.coverCache') }}</div>
-                            <div class="admin-stat-value">{{ formatBytes(adminCoverStats.size) }}</div>
-                        </div>
-                        <div class="admin-stat">
-                            <div class="admin-stat-label">{{ $t('settings.admin.files') }}</div>
-                            <div class="admin-stat-value">{{ adminCoverStats.files || 0 }}</div>
-                        </div>
-                        <div class="admin-stat">
-                            <div class="admin-stat-label">{{ $t('settings.admin.limit') }}</div>
-                            <div class="admin-stat-value">{{ formatBytes(adminCoverStats.limit) }}</div>
-                            <div class="admin-stat-hint">{{ adminCacheTargetText(adminCoverStats.targetSize) }}</div>
-                        </div>
-                        <div class="admin-stat">
-                            <div class="admin-stat-label">{{ $t('settings.admin.coverErrors') }}</div>
-                            <div class="admin-stat-value">{{ adminCoverErrors.length }}</div>
-                        </div>
-                    </div>
-                    <div class="admin-cover-actions">
-                        <q-input v-model="adminCoverBookUid" outlined dense clearable :label="$t('settings.admin.coverBookUid')" />
-                        <q-btn color="primary" dense no-caps icon="la la-sync" :loading="adminCoverRebuildLoading" @click="rebuildAdminCover">
-                            {{ $t('settings.admin.rebuildCover') }}
-                        </q-btn>
-                    </div>
-                    <div v-if="adminCoverErrors.length" class="admin-event-list admin-event-list--compact">
-                        <div v-for="event in adminCoverErrors" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
-                            <div class="admin-event-meta">
-                                {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
-                            </div>
-                            <div class="admin-event-message">{{ $tm(event.message) }}</div>
-                        </div>
-                    </div>
-                </div>
-                    </template>
+                    <AdminStorage v-else-if="section === 'storage'" :admin="adminContext" />
 
                     <AdminBackups v-else-if="section === 'backups'" @restored="loadSettings" />
 
-                    <template v-else-if="section === 'log'">
-                <div class="admin-subsection">
-                    <div class="admin-subsection-head">
-                        <div class="admin-mail-title">{{ $t('settings.admin.events') }}</div>
-                        <div class="admin-event-filters">
-                            <q-checkbox v-model="adminEventLogEnabled" size="32px" :label="$t('settings.admin.eventLogEnabled')" @update:model-value="saveAdminEventLog" />
-                            <q-select v-model="adminEventLogSize" :options="adminEventLogSizeOptions" outlined dense emit-value map-options @update:model-value="saveAdminEventLog" />
-                            <q-select v-model="adminEventLevel" :options="adminEventLevelOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
-                            <q-select v-model="adminEventCategory" :options="adminEventCategoryOptions" outlined dense emit-value map-options @update:model-value="refreshAdminEvents" />
-                            <q-btn flat dense no-caps color="primary" icon="la la-bug" :loading="adminTestEventLoading" @click="addAdminTestEvent">
-                                {{ $t('settings.admin.testEvent') }}
-                            </q-btn>
-                        </div>
-                    </div>
-                    <div v-if="adminEventsLoading" class="admin-empty">{{ $t('settings.admin.eventsLoading') }}</div>
-                    <div v-else-if="!adminEventLogEnabled" class="admin-empty">{{ $t('settings.admin.eventsDisabled') }}</div>
-                    <div v-else-if="!adminEvents.length" class="admin-empty">{{ $t('settings.admin.noEvents') }}</div>
-                    <div v-else class="admin-event-list">
-                        <div v-for="event in adminEvents" :key="event.id" class="admin-event-row" :class="`admin-event-row--${event.level}`">
-                            <div class="admin-event-meta">
-                                {{ formatDateTime(event.time) }} · {{ event.level }} · {{ event.category }}
-                            </div>
-                            <div class="admin-event-message">{{ $tm(event.message) }}</div>
-                        </div>
-                    </div>
-                </div>
-                    </template>
+                    <AdminLog v-else-if="section === 'log'" :admin="adminContext" />
 
                     <!-- v-show на обёртке, не на компоненте: у компонента с комментарием в корне v-show молча не работает; несохранённые правки переживают переключение разделов -->
                     <div v-show="section === 'integrations'">
@@ -375,7 +81,10 @@ import vueComponent from '../vueComponent.js';
 
 import DiscoverySourceDialog from './DiscoverySourceDialog.vue';
 import AdminUsers from './AdminUsers.vue';
-import AdminAuthorNames from './AdminAuthorNames.vue';
+import AdminOverview from './AdminOverview.vue';
+import AdminLibrary from './AdminLibrary.vue';
+import AdminStorage from './AdminStorage.vue';
+import AdminLog from './AdminLog.vue';
 import AdminIntegrations from './AdminIntegrations.vue';
 import AdminBackups from './AdminBackups.vue';
 import {t, formatDateTime} from '../../share/i18n';
@@ -385,7 +94,10 @@ const componentOptions = {
     components: {
         DiscoverySourceDialog,
         AdminUsers,
-        AdminAuthorNames,
+        AdminOverview,
+        AdminLibrary,
+        AdminStorage,
+        AdminLog,
         AdminIntegrations,
         AdminBackups,
     },
@@ -431,40 +143,6 @@ class AdminPage {
     adminEventCategory = 'all';
     adminEventLogEnabled = true;
     adminEventLogSize = 300;
-    get adminEventLevelOptions() {
-        return [
-            {label: t('settings.allLevels'), value: 'all'},
-            {label: 'Info', value: 'info'},
-            {label: 'Warn', value: 'warn'},
-            {label: 'Error', value: 'error'},
-        ];
-    }
-    get adminEventCategoryOptions() {
-        return [
-            {label: t('settings.allEvents'), value: 'all'},
-            {label: t('common.settings'), value: 'settings'},
-            {label: t('settings.sources'), value: 'sources'},
-            {label: t('settings.cache'), value: 'cache'},
-            {label: t('settings.covers'), value: 'cover'},
-            {label: t('settings.index'), value: 'index'},
-            {label: t('settings.delivery'), value: 'delivery'},
-            {label: t('settings.system'), value: 'system'},
-        ];
-    }
-    adminEventLogSizeOptions = [
-        {label: '100', value: 100},
-        {label: '300', value: 300},
-        {label: '500', value: 500},
-        {label: '1000', value: 1000},
-    ];
-
-    get adminCacheFrequencyOptions() {
-        return [
-            {label: t('settings.frequencyDaily'), value: 'daily'},
-            {label: t('settings.frequencyWeekly'), value: 'weekly'},
-            {label: t('settings.frequencyMonthly'), value: 'monthly'},
-        ];
-    }
 
     get adminCacheWeekDayOptions() {
         return [
@@ -476,13 +154,6 @@ class AdminPage {
             {label: t('settings.saturday'), value: 6},
             {label: t('settings.sunday'), value: 0},
         ];
-    }
-
-    get adminCacheMonthDayOptions() {
-        return Array.from({length: 31}, (_, index) => ({
-            label: t('settings.monthDay', {n: index + 1}),
-            value: index + 1,
-        }));
     }
 
     created() {
@@ -533,6 +204,12 @@ class AdminPage {
     get sectionLabel() {
         const item = this.sections.find(row => row.id === this.section);
         return item ? item.label : t('settings.admin.title');
+    }
+
+    //разделы обзор/библиотека/хранилище/журнал вынесены в дочерние компоненты: данные и таймеры опроса
+    //остаются здесь (один владелец на всю страницу), разделам передаётся сама страница
+    get adminContext() {
+        return this;
     }
 
     updateTitle() {
@@ -755,92 +432,6 @@ class AdminPage {
         return formatDateTime(value, {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'});
     }
 
-    formatDuration(seconds = 0) {
-        let total = Math.max(0, Math.round(Number(seconds || 0)));
-        const days = Math.floor(total / 86400);
-        total -= days * 86400;
-        const hours = Math.floor(total / 3600);
-        total -= hours * 3600;
-        const minutes = Math.floor(total / 60);
-
-        return [
-            days ? t('settings.durationDays', {n: days}) : '',
-            hours ? t('settings.durationHours', {n: hours}) : '',
-            t('settings.durationMinutes', {n: minutes}),
-        ].filter(Boolean).join(' ');
-    }
-
-    formatMilliseconds(value = 0) {
-        const ms = Number(value);
-        if (!Number.isFinite(ms) || ms <= 0)
-            return '0 ms';
-        if (ms < 1000)
-            return `${ms.toFixed(ms >= 10 ? 0 : 1)} ms`;
-
-        return `${(ms / 1000).toFixed(1)} s`;
-    }
-
-    adminStat(name) {
-        const stats = (this.adminDashboard && this.adminDashboard.stats) || {};
-        const value = stats[name];
-        return (value === undefined || value === null ? '0' : String(value));
-    }
-
-    adminCacheLimitText(kind = '') {
-        const limits = (this.adminDashboard && this.adminDashboard.limits) || {};
-        const limit = kind === 'book' ? limits.bookCacheSize : limits.coverCacheSize;
-        const target = kind === 'book' ? limits.bookCacheTargetSize : limits.coverCacheTargetSize;
-        const parts = [];
-
-        if (limit !== null && limit !== undefined)
-            parts.push(t('settings.limitValue', {value: this.formatBytes(limit)}));
-        if (target !== null && target !== undefined)
-            parts.push(this.adminCacheTargetText(target));
-
-        return parts.filter(Boolean).join(' · ');
-    }
-
-    adminCacheRotationValue() {
-        const limits = (this.adminDashboard && this.adminDashboard.limits) || {};
-        const schedule = String(limits.cacheCleanSchedule || '').trim();
-        const parsed = this.parseAdminCacheSchedule(schedule);
-        if (!parsed.enabled)
-            return t('settings.rotationDisabled');
-        if (parsed.advancedSchedule)
-            return t('settings.scheduleCron');
-        if (parsed.frequency === 'weekly')
-            return t('settings.frequencyWeekly');
-        if (parsed.frequency === 'monthly')
-            return t('settings.frequencyMonthly');
-
-        return t('settings.frequencyDaily');
-    }
-
-    adminCacheRotationHint() {
-        const limits = (this.adminDashboard && this.adminDashboard.limits) || {};
-        const schedule = String(limits.cacheCleanSchedule || '').trim();
-        const parsed = this.parseAdminCacheSchedule(schedule);
-        const nextRun = this.formatServerDateTime(limits.cacheCleanNextRunAt, limits.cacheCleanServerTimeZone);
-        const parts = [];
-
-        if (parsed.enabled && !parsed.advancedSchedule) {
-            if (parsed.frequency === 'weekly')
-                parts.push(`${this.adminCacheWeekDayLabel(parsed.weekDay)}, ${parsed.time}`);
-            else if (parsed.frequency === 'monthly')
-                parts.push(t('settings.monthDayAt', {day: parsed.monthDay, time: parsed.time}));
-            else
-                parts.push(parsed.time);
-        } else if (parsed.advancedSchedule) {
-            parts.push(schedule);
-        }
-        if (nextRun)
-            parts.push(t('settings.nextRun', {value: nextRun}));
-        if (limits.cacheCleanServerTimeZone)
-            parts.push(limits.cacheCleanServerTimeZone);
-
-        return parts.join(' · ');
-    }
-
     adminCacheTargetText(value) {
         if (value === null || value === undefined)
             return '';
@@ -893,81 +484,6 @@ class AdminPage {
         }
     }
 
-    get adminUptime() {
-        return this.formatDuration(this.adminDashboard && this.adminDashboard.uptime);
-    }
-
-    get adminCpuText() {
-        const cpu = (this.adminDashboard && this.adminDashboard.cpu) || {};
-        const percent = Number.isFinite(Number(cpu.currentPercent)) ? Number(cpu.currentPercent) : Number(cpu.averagePercent);
-        if (!Number.isFinite(percent))
-            return '0%';
-
-        return `${percent.toFixed(percent >= 10 ? 0 : 1)}%`;
-    }
-
-    get adminCpuHint() {
-        const cpu = (this.adminDashboard && this.adminDashboard.cpu) || {};
-        const average = Number(cpu.averagePercent);
-        const averageText = Number.isFinite(average) ? `${t('settings.cpuAverage', {value: average.toFixed(average >= 10 ? 0 : 1)})} · ` : '';
-        const totalSeconds = Number(cpu.totalSeconds);
-        const totalText = Number.isFinite(totalSeconds) ? t('settings.cpuTime', {value: this.formatDuration(totalSeconds)}) : '';
-        return `${averageText}${totalText}`.trim();
-    }
-
-    get adminRuntime() {
-        return (this.adminDashboard && this.adminDashboard.runtime) || {};
-    }
-
-    get adminDiscovery() {
-        return (this.adminDashboard && this.adminDashboard.discovery) || {};
-    }
-
-    discoveryMetric(key = '') {
-        return Number((this.adminDiscovery.totals || {})[key]) || 0;
-    }
-
-    discoveryRateText(key = '') {
-        const rate = Number((this.adminDiscovery.rates || {})[key]) || 0;
-        return `${(rate * 100).toFixed(rate >= 0.1 ? 0 : 1)}%`;
-    }
-
-    get adminRuntimeHint() {
-        const inFlight = Number(this.adminRuntime.inFlightActions || 0);
-        const actionCount = Number(this.adminRuntime.actionCount || 0);
-        return t('settings.requestsRunning', {inFlight, count: actionCount});
-    }
-
-    get runtimeLagText() {
-        return this.formatMilliseconds(this.adminRuntime.lastEventLoopLagMs);
-    }
-
-    get runtimeLagHint() {
-        return `p95: ${this.formatMilliseconds(this.adminRuntime.eventLoopLagP95Ms)}`;
-    }
-
-    get runtimeLastSlowActionText() {
-        const slow = this.adminRuntime.lastSlowAction || {};
-        return slow.action || t('settings.noSlowAction');
-    }
-
-    get runtimeLastSlowActionHint() {
-        const slow = this.adminRuntime.lastSlowAction || {};
-        if (!slow.action)
-            return t('settings.slowActionThreshold');
-
-        const time = slow.at ? this.formatDateTime(slow.at) : '';
-        return `${this.formatMilliseconds(slow.durationMs)}${time ? ` · ${time}` : ''}`;
-    }
-
-    get runtimeSlowestActions() {
-        return Array.isArray(this.adminRuntime.slowestActions) ? this.adminRuntime.slowestActions : [];
-    }
-
-    actionDurationText(item = {}) {
-        return `p95 ${this.formatMilliseconds(item.p95Ms)} · max ${this.formatMilliseconds(item.maxMs)} · ${item.count || 0}`;
-    }
-
     get adminIndex() {
         return (this.adminDashboard && this.adminDashboard.index) || {};
     }
@@ -1000,26 +516,6 @@ class AdminPage {
 
     get adminIndexProgress() {
         const progress = parseFloat(this.adminIndex.progress);
-        if (!Number.isFinite(progress) || progress <= 0)
-            return 0;
-
-        return Math.max(0, Math.min(1, progress > 1 ? progress / 100 : progress));
-    }
-
-    get adminCoverStats() {
-        return (this.adminDashboard && this.adminDashboard.covers) || {};
-    }
-
-    get adminCoverErrors() {
-        return Array.isArray(this.adminCoverStats.latestErrors) ? this.adminCoverStats.latestErrors : [];
-    }
-
-    get adminTasks() {
-        return Array.isArray(this.adminDashboard.tasks) ? this.adminDashboard.tasks : [];
-    }
-
-    taskProgress(task = {}) {
-        const progress = parseFloat(task.progress);
         if (!Number.isFinite(progress) || progress <= 0)
             return 0;
 
@@ -1387,55 +883,10 @@ export default vueComponent(AdminPage);
 
 <style scoped>
 
-.admin-mail-title {
-    font-size: 15px;
-    font-weight: 800;
-}
-
-.admin-mail-subtitle {
-    margin-top: 3px;
-    font-size: 12px;
-    color: var(--app-muted);
-}
-
-.admin-mail-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 12px;
-}
-
 .admin-toolbar {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-}
-
-.admin-cache-settings-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    column-gap: 10px;
-    row-gap: 18px;
-    margin-top: 14px;
-}
-
-.admin-cache-enabled-toggle {
-    grid-column: 1 / -1;
-    align-self: center;
-    min-height: 40px;
-    margin-top: 2px;
-    padding-top: 14px;
-    border-top: 1px solid var(--app-border);
-}
-
-.admin-cache-time-input {
-    min-width: 150px;
-}
-
-.admin-cache-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 14px;
 }
 
 .admin-index-status {
@@ -1471,298 +922,5 @@ export default vueComponent(AdminPage);
 
 .admin-index-status :deep(.q-linear-progress) {
     margin-top: 8px;
-}
-
-.admin-dashboard-sections {
-    display: grid;
-    gap: 14px;
-    margin-top: 12px;
-}
-
-.admin-dashboard-section {
-    display: grid;
-    gap: 8px;
-}
-
-.admin-dashboard-section-title {
-    color: var(--app-muted);
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0;
-}
-
-.admin-dashboard-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.admin-dashboard-grid--compact {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.admin-dashboard-grid--storage {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.admin-dashboard-grid--runtime {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.admin-stat {
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--app-primary) 4%, var(--app-surface));
-}
-
-.admin-stat-label {
-    font-size: 11px;
-    color: var(--app-muted);
-}
-
-.admin-stat-value {
-    margin-top: 4px;
-    font-size: 16px;
-    font-weight: 800;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.admin-stat-value--small {
-    font-size: 14px;
-}
-
-.admin-stat-hint {
-    margin-top: 4px;
-    color: var(--app-muted);
-    font-size: 11px;
-    line-height: 1.25;
-    overflow-wrap: anywhere;
-}
-
-.admin-runtime-list {
-    display: grid;
-    gap: 6px;
-    padding: 8px 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 10px;
-    background: var(--app-surface);
-}
-
-.admin-runtime-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    color: var(--app-muted);
-    font-size: 12px;
-}
-
-.admin-runtime-action {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--app-text);
-    font-weight: 700;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.admin-runtime-value {
-    white-space: nowrap;
-}
-
-.admin-subsection {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 18px 20px;
-    border: 1px solid var(--app-border);
-    border-radius: var(--app-radius);
-    background: var(--app-surface);
-}
-
-.admin-subsection-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.admin-source-list {
-    display: grid;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.admin-source-row {
-    display: grid;
-    grid-template-columns: auto minmax(120px, 0.8fr) minmax(180px, 1.2fr) minmax(180px, 1.2fr) auto auto;
-    gap: 8px;
-    align-items: center;
-}
-
-.admin-source-diagnostics {
-    grid-column: 2 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    color: var(--app-muted);
-    font-size: 12px;
-}
-
-.admin-source-diagnostics span {
-    padding: 2px 6px;
-    border-radius: 999px;
-    background: rgba(23, 32, 38, 0.05);
-}
-
-.admin-cover-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    margin-top: 12px;
-}
-
-.admin-task-list {
-    display: grid;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.admin-task-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    padding: 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    background: rgba(23, 32, 38, 0.04);
-}
-
-.admin-task-row--active {
-    border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-border));
-}
-
-.admin-task-title {
-    font-size: 13px;
-    font-weight: 800;
-}
-
-.admin-task-message,
-.admin-task-error {
-    margin-top: 3px;
-    color: var(--app-muted);
-    font-size: 12px;
-}
-
-.admin-task-error {
-    color: #dc2626;
-    font-weight: 700;
-}
-
-.admin-task-main :deep(.q-linear-progress) {
-    margin-top: 8px;
-}
-
-.admin-source-warning {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-    color: var(--app-accent);
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.admin-event-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-}
-
-.admin-event-filters :deep(.q-field) {
-    min-width: 132px;
-}
-
-.admin-empty {
-    margin-top: 10px;
-    color: var(--app-muted);
-    font-size: 13px;
-}
-
-.admin-event-list {
-    display: grid;
-    gap: 8px;
-    margin-top: 10px;
-    max-height: 260px;
-    overflow: auto;
-}
-
-.admin-event-list--compact {
-    max-height: 180px;
-}
-
-.admin-event-row {
-    padding: 8px 10px;
-    border-left: 3px solid var(--app-border);
-    border-radius: 8px;
-    background: rgba(23, 32, 38, 0.04);
-}
-
-.admin-event-row--warn {
-    border-left-color: #d97706;
-}
-
-.admin-event-row--error {
-    border-left-color: #dc2626;
-}
-
-.admin-event-meta {
-    font-size: 11px;
-    color: var(--app-muted);
-}
-
-.admin-event-message {
-    margin-top: 3px;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-@media (max-width: 720px) {
-    .admin-dashboard-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .admin-cache-settings-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .admin-source-row {
-        grid-template-columns: auto minmax(0, 1fr) auto;
-    }
-
-    .admin-source-row :deep(.q-field) {
-        grid-column: 2 / 3;
-    }
-
-    .admin-source-diagnostics {
-        grid-column: 1 / 4;
-    }
-
-    .admin-cover-actions,
-    .admin-task-row {
-        grid-template-columns: 1fr;
-    }
-
-    .admin-mail-actions {
-        justify-content: flex-start;
-    }
 }
 </style>
