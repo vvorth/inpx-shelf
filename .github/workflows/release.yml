@@ -1,56 +1,98 @@
-name: Release Binaries
+name: Release
 
+# A v* tag (or a manual run for an existing tag): check the version, test once, then build and
+# publish the binaries to GitHub Releases and the images to Docker Hub.
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Git tag to build and publish'
+        description: Git tag to build and publish
         required: true
-        default: 'v1.0.0'
+        default: v1.0.0
 
 permissions:
-  actions: read
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  GITHUB_TOKEN: ${{ github.token }}
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
   # Same version as FB2CNG_VERSION in the Dockerfile; update fbc_sha256 below with it.
   FB2CNG_RELEASE_API: https://api.github.com/repos/rupor-github/fb2cng/releases/tags/v1.2.3
 
 jobs:
-  release-smoke-tests:
-    name: Release smoke tests
+  version:
+    name: Verify release version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.version.outputs.image }}
+      channel_image: ${{ steps.version.outputs.channel_image }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
+          ref: ${{ env.RELEASE_TAG }}
+          # All release tags are needed to tell whether this is the newest release.
           fetch-depth: 0
+      - id: version
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const {execFileSync} = require('child_process');
+          const versionPattern = /^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/;
+          const version = require('./package.json').version;
+          if (process.env.RELEASE_TAG !== `v${version}` || !versionPattern.test(version)) {
+            throw new Error('Tag and package version must match');
+          }
 
-      - name: Checkout requested tag
-        if: github.event_name == 'workflow_dispatch'
-        run: git checkout ${{ github.event.inputs.tag }}
+          // SemVer order: 1.0.0-beta.2 < 1.0.0-rc.1 < 1.0.0 < 1.0.1.
+          const parse = value => {
+            const [main, pre] = value.split('-');
+            return {main: main.split('.').map(Number), pre: pre ? pre.split('.') : null};
+          };
+          const compare = (left, right) => {
+            const a = parse(left), b = parse(right);
+            for (let i = 0; i < 3; i++)
+              if (a.main[i] !== b.main[i]) return a.main[i] - b.main[i];
+            if (!a.pre || !b.pre) return (a.pre ? -1 : 0) + (b.pre ? 1 : 0);
+            if (a.pre[0] !== b.pre[0]) return a.pre[0] < b.pre[0] ? -1 : 1;
+            return Number(a.pre[1]) - Number(b.pre[1]);
+          };
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
+          // latest follows the newest stable release, beta the newest pre-release. Rebuilding
+          // an older tag by hand only refreshes its own version tag.
+          const prerelease = version.includes('-');
+          const newest = execFileSync('git', ['tag', '--list', 'v*'], {encoding: 'utf8'})
+            .split('\n').map(tag => tag.trim().replace(/^v/, ''))
+            .filter(tag => versionPattern.test(tag) && tag.includes('-') === prerelease)
+            .every(tag => compare(tag, version) <= 0);
+          const channel = newest ? (prerelease ? 'beta' : 'latest') : '';
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+          const image = 'vvorth/inpx-shelf';
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=${image}:${version}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `channel_image=${channel ? `${image}:${channel}` : ''}\n`);
+          console.log(channel ? `Also publishing ${image}:${channel}` : `${version} is not the newest release; channel tags stay as they are`);
+          NODE
 
-      - name: Run release smoke tests
-        run: npm run test:release
+  check:
+    needs: version
+    uses: ./.github/workflows/check.yml
+    with:
+      ref: ${{ inputs.tag || github.ref_name }}
 
-  build:
+  binaries:
     name: Build ${{ matrix.label }}
-    needs: release-smoke-tests
+    needs: [version, check]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,50 +100,33 @@ jobs:
           - os: ubuntu-latest
             label: Linux x64
             target: linux
-            build_script: build:linux
             fbc_asset: fbc-linux-amd64.zip
             fbc_sha256: 726cdc9b7f3aee32f534c3abc93215e7acb3775fd26a49ce855c489ac738a5ab
           - os: ubuntu-24.04-arm
             label: Linux arm64
             target: linux-arm64
-            build_script: build:linux-arm64
             fbc_asset: fbc-linux-arm64.zip
             fbc_sha256: cc13ba0a70376cb7cb1b75364a50fcace40014483a4f0b75e1bad710503557e9
           - os: windows-latest
             label: Windows x64
             target: win
-            build_script: build:win
             fbc_asset: fbc-windows-amd64.zip
             fbc_sha256: 45e4ca7e21a597c6377af7ad3a169c3159bc6fab2ba26ec936c0cf74880a8166
           - os: macos-15-intel
             label: macOS x64
             target: macos
-            build_script: build:macos
             fbc_asset: fbc-darwin-amd64.zip
             fbc_sha256: 07813e8221b1264fe28a4c0b204d8ba5e2f1f0d4cd27b7d670314b1debdd64a2
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
-
-      - name: Checkout requested tag
-        if: github.event_name == 'workflow_dispatch'
-        run: git checkout ${{ github.event.inputs.tag }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Build binary
-        run: npm run ${{ matrix.build_script }}
-
+      - run: npm ci --ignore-scripts
+      - run: npm run build:${{ matrix.target }}
       - name: Test packaged application
         shell: bash
         run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-shelf${{ matrix.target == 'win' && '.exe' || '' }}
@@ -161,7 +186,7 @@ jobs:
       - name: Archive release payload
         shell: pwsh
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $version = '${{ needs.version.outputs.version }}'
           $srcDir = Join-Path $PWD ("dist/{0}" -f "${{ matrix.target }}")
           if (-not (Test-Path $srcDir)) {
             throw "Build output directory not found: $srcDir"
@@ -174,43 +199,34 @@ jobs:
             Remove-Item $archivePath -Force
           }
           Compress-Archive -Path (Join-Path $srcDir '*') -DestinationPath $archivePath -Force
-          "ARCHIVE_PATH=$archivePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build Windows installer
         if: matrix.target == 'win'
         shell: pwsh
         run: npm run build:win-installer
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.target }}
           path: dist/release/*
           if-no-files-found: error
 
-  release:
+  github-release:
     name: Upload release assets
+    needs: binaries
     runs-on: ubuntu-latest
-    needs: build
+    permissions:
+      actions: read
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
-
-      - name: Checkout requested tag
-        if: github.event_name == 'workflow_dispatch'
-        run: git checkout ${{ github.event.inputs.tag }}
-
+          ref: ${{ env.RELEASE_TAG }}
       - name: Download artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: gh run download ${{ github.run_id }} --repo ${{ github.repository }} --dir release-assets
-
       - name: Prepare release notes
-        env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -235,15 +251,55 @@ jobs:
 
           fs.writeFileSync('release-notes.md', `${body || `Release ${tag}`}\n`);
           NODE
-
-      - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name, '-') }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           body_path: release-notes.md
           files: |
             release-assets/**/*.zip
             release-assets/**/*.exe
           overwrite_files: true
 
+  docker:
+    name: Docker images
+    needs: [version, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      IMAGE: ${{ needs.version.outputs.image }}
+      CHANNEL_IMAGE: ${{ needs.version.outputs.channel_image }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      # Two images: the default one (fb2cng) and IMAGE-pdf with MuPDF for PDF output.
+      - name: Build images
+        run: |
+          REVISION=$(git rev-parse HEAD)
+          docker build --target runtime --label "org.opencontainers.image.revision=$REVISION" -t "$IMAGE" .
+          docker build --target runtime-pdf --label "org.opencontainers.image.revision=$REVISION" -t "$IMAGE-pdf" .
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Test packaged web application
+        run: |
+          node scripts/binary-smoke-test.js --image "$IMAGE"
+          node scripts/binary-smoke-test.js --image "$IMAGE-pdf"
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish versioned images
+        run: |
+          docker push "$IMAGE"
+          docker push "$IMAGE-pdf"
+      - name: Publish latest or beta tag
+        if: env.CHANNEL_IMAGE != ''
+        run: |
+          for suffix in "" -pdf; do
+            docker tag "$IMAGE$suffix" "$CHANNEL_IMAGE$suffix"
+            docker push "$CHANNEL_IMAGE$suffix"
+          done

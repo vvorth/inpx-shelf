@@ -1,49 +1,119 @@
-name: Validate development changes
+name: CI
 
+# Pull requests and pushes to dev and main: tests, binaries and Docker images. A push to dev
+# also publishes vvorth/inpx-shelf:dev and dev-<commit> (plus -pdf) once everything passes.
+# Releases are in release.yml.
 on:
   push:
-    branches: [dev, develop, master, main]
+    branches: [dev, main]
   pull_request:
 
 permissions:
   contents: read
 
+# Only the newest commit of a branch or pull request matters, dev images included.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Test and package ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux
-            extension: ''
-          - os: windows-latest
-            target: win
-            extension: .exe
+  check:
+    uses: ./.github/workflows/check.yml
+
+  docker:
+    name: Docker images
+    needs: check
+    # main gets commits already built on dev; its images are built by release.yml.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
     steps:
       - uses: actions/checkout@v5
+      # The three targets share the build and base stages, so the second and third builds
+      # reuse their layers.
+      - name: Build images
+        run: |
+          docker build --target runtime --label "org.opencontainers.image.revision=$GITHUB_SHA" -t inpx-shelf:dev .
+          docker build --target runtime-pdf --label "org.opencontainers.image.revision=$GITHUB_SHA" -t inpx-shelf:dev-pdf .
+          docker build --target runtime-lite -t inpx-shelf:lite .
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y p7zip-full
-      - run: npm audit --omit=dev --audit-level=moderate
-      - run: npm run test:release
-      - run: npm run test:i18n
-      - if: runner.os == 'Linux'
-        run: npx eslint --quiet server shared scripts build client --ext .js,.vue
-      - run: npm run build:${{ matrix.target }}
-      - run: node scripts/binary-smoke-test.js dist/${{ matrix.target }}/inpx-shelf${{ matrix.extension }}
-      - if: matrix.target == 'linux'
-        run: docker build --target runtime-lite -t inpx-shelf:ci .
-      - if: matrix.target == 'linux'
-        run: node scripts/binary-smoke-test.js --image inpx-shelf:ci
+      - name: Test packaged web application
+        run: |
+          node scripts/binary-smoke-test.js --image inpx-shelf:dev
+          node scripts/binary-smoke-test.js --image inpx-shelf:dev-pdf
+          node scripts/binary-smoke-test.js --image inpx-shelf:lite
+      - name: Log in to Docker Hub
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish dev images
+        if: env.PUBLISH == 'true'
+        run: |
+          for suffix in "" -pdf; do
+            for tag in dev "dev-${GITHUB_SHA::7}"; do
+              docker tag "inpx-shelf:dev$suffix" "vvorth/inpx-shelf:$tag$suffix"
+              docker push "vvorth/inpx-shelf:$tag$suffix"
+            done
+          done
+      - name: Remove old dev tags
+        if: env.PUBLISH == 'true'
+        # Deleting tags needs a Docker Hub token with the Delete permission. Without it this step
+        # warns and fails on its own, but the dev image above is already published.
+        continue-on-error: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          KEEP_DEV_TAGS: 10
+        run: |
+          node <<'NODE'
+          const api = 'https://hub.docker.com/v2';
+          const repo = 'vvorth/inpx-shelf';
+          const keep = Number(process.env.KEEP_DEV_TAGS);
+
+          async function call(url, options = {}) {
+            const response = await fetch(url, options);
+            if (!response.ok)
+              throw new Error(`${options.method || 'GET'} ${url}: ${response.status} ${await response.text()}`);
+            return (response.status === 204 ? null : response.json());
+          }
+
+          (async() => {
+            const {access_token: token} = await call(`${api}/auth/token`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({identifier: process.env.DOCKERHUB_USERNAME, secret: process.env.DOCKERHUB_TOKEN}),
+            });
+            const headers = {Authorization: `Bearer ${token}`};
+
+            const tags = [];
+            for (let url = `${api}/repositories/${repo}/tags?page_size=100`; url;) {
+              const page = await call(url, {headers});
+              tags.push(...page.results);
+              url = page.next;
+            }
+
+            // Only per-commit dev tags: dev, beta, latest and version tags are never removed.
+            // Each variant (plain and -pdf) keeps its own newest tags.
+            const pushedAt = tag => Date.parse(tag.tag_last_pushed || tag.last_updated);
+            const old = ['', '-pdf'].flatMap(suffix => tags
+              .filter(tag => new RegExp(`^dev-[0-9a-f]{7}${suffix}$`).test(tag.name))
+              .sort((a, b) => pushedAt(b) - pushedAt(a))
+              .slice(keep));
+            for (const tag of old) {
+              await call(`${api}/repositories/${repo}/tags/${tag.name}/`, {method: 'DELETE', headers});
+              console.log(`Removed ${repo}:${tag.name}`);
+            }
+            console.log(`Kept the newest ${keep} dev-<commit> tags, removed ${old.length}`);
+          })().catch(error => {
+            console.log(`::warning::Old dev tags were not removed: ${error.message}`);
+            process.exitCode = 1;
+          });
+          NODE
