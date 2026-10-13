@@ -175,6 +175,7 @@
         "moreInThisSeries": "More in this series",
         "noAnnotation": "No annotation.",
         "openSource": "Open source",
+        "otherEditions": "Other editions",
         "readAgain": "Read again",
         "send": "Send"
     },
@@ -183,6 +184,7 @@
     },
     "bookCollection": {
         "book": "book {n}",
+        "editions": "Editions: {n}",
         "read": "{n}% read"
     },
     "bookDetails": {

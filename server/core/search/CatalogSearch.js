@@ -237,8 +237,19 @@ class CatalogSearch {
         this.checkReady();
         const result = await this.getThread().call('search', request);
         const books = await this.loadBooks(result.ids);
+        for (const book of books) {
+            if (result.editions[book.id])
+                book.editions = result.editions[book.id];
+        }
         delete result.ids;
+        delete result.editions;
         return Object.assign(result, {books});
+    }
+
+    //Другие издания того же произведения, с правками метаданных
+    async editions(uid = '') {
+        this.checkReady();
+        return await this.loadBooks(await this.getThread().call('editionIds', uid));
     }
 
     //Кандидаты для полки «Похоже на то, что вы читали»: id и оценки из индекса

@@ -143,6 +143,15 @@
                     </div>
                 </section>
 
+                <section v-if="editions.length" class="book-section">
+                    <div class="card-head">
+                        <h2 class="card-title">
+                            {{ $t('book.otherEditions') }}
+                        </h2>
+                    </div>
+                    <BookCollection :books="editions" :states="states" view="rows" />
+                </section>
+
                 <section class="book-section">
                     <div class="card-head">
                         <h2 class="card-title">
@@ -196,6 +205,7 @@
 import vueComponent from '../vueComponent.js';
 import BookCover from './BookCover.vue';
 import BookCard from './BookCard.vue';
+import BookCollection from './BookCollection.vue';
 import AddToListDialog from './AddToListDialog.vue';
 import BookDetails from './BookDetails.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
@@ -210,6 +220,7 @@ const componentOptions = {
     components: {
         BookCover,
         BookCard,
+        BookCollection,
         AddToListDialog,
         BookDetails,
     },
@@ -238,6 +249,7 @@ class BookPage {
     states = {};
     inLists = [];
     related = [];
+    editions = [];
     bookInfo = null;
     infoLoading = false;
     infoError = '';
@@ -344,6 +356,7 @@ class BookPage {
         this.annotation = [];
         this.infoError = '';
         this.related = [];
+        this.editions = [];
         this.inLists = [];
         this.states = {};
         try {
@@ -351,6 +364,7 @@ class BookPage {
             if (uid !== this.loadedUid)
                 return;
             this.book = result.book;
+            this.editions = result.editions || [];
             if (!this.dialogUid)
                 this.$root.setAppTitle(this.book.title);
         } catch (e) {
@@ -405,10 +419,10 @@ class BookPage {
             const languages = myLanguages(this.$store.state.config, this.$store.state.settings);
             const allowed = (item) => languages.all || languageMatches(item, languages) || bookLang(item) === bookLang(book);
             this.related = (books || []).filter(item => !item.del && bookUid(item) !== bookUid(book) && allowed(item)).slice(0, 12);
-            await this.loadStates([book, ...this.related]);
+            await this.loadStates([book, ...this.editions, ...this.related]);
         } catch (e) {
             this.related = [];
-            await this.loadStates([book]);
+            await this.loadStates([book, ...this.editions]);
         }
     }
 

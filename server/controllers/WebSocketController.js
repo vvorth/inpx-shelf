@@ -689,7 +689,7 @@ class WebSocketController {
             sort: req.sort,
             offset: req.offset,
             limit: req.limit,
-            hideCopies: req.hideCopies === true,
+            group: req.hideCopies === true,
             showDeleted: req.showDeleted === true,
             facets: req.facets !== false,
         });

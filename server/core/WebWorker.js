@@ -407,7 +407,7 @@ class WebWorker {
 
         const result = {books: [Object.assign({}, book)]};
         await this.applyMetadataOverridesToSearchResult(result);
-        return {book: result.books[0]};
+        return {book: result.books[0], editions: await this.catalogSearch.editions(book._uid)};
     }
 
     //Прогресс текущего читателя по набору книг и есть ли книга в его списках: {uid: {percent, read, hidden, inList}}

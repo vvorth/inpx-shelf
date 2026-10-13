@@ -116,6 +116,76 @@ async function testSpellingVariantsShareAuthorAndSeries() {
     });
 }
 
+// Editions of one work: same title (case, ё, punctuation, a trailing "(роман)" aside), same authors
+// (surname and name, any order), same language, series and number. Anything else stays apart.
+function testWorkKeyMatchesEditionsOnly() {
+    const {workKey} = require('../server/core/search/workKey');
+    const key = (title, author, lang = 'ru', series = '', serno = 0) => workKey({title, author, lang, series, serno});
+    const base = key('Трудно быть богом', 'Стругацкий Аркадий Натанович,Стругацкий Борис Натанович');
+    assert.ok(base);
+    assert.strictEqual(key('ТРУДНО быть богом! (роман)', 'Стругацкий Борис,Стругацкий Аркадий'), base);
+    assert.strictEqual(key('Ёлка', 'Иванов Пётр'), key('елка', 'иванов петр'));
+    assert.notStrictEqual(key('Трудно быть богом', 'Стругацкий Аркадий Натанович,Стругацкий Борис Натанович', 'en'), base);
+    assert.notStrictEqual(key('Трудно быть богом', 'Стругацкий Аркадий Натанович'), base);
+    assert.notStrictEqual(key('Трудно быть богом 2', 'Стругацкий Аркадий,Стругацкий Борис'), base);
+    assert.strictEqual(key('Сборник', ''), null, 'a book without an author is never grouped');
+    assert.strictEqual(key('', 'Автор Первый'), null);
+
+    const author = 'Пушкин Александр Сергеевич';
+    assert.strictEqual(key('Евгений Онегин', author, 'ru', 'Романы', 1), key('Евгений Онегин', author, 'ru', 'романы', 1));
+    assert.notStrictEqual(key('Евгений Онегин', author, 'ru', 'Романы', 1), key('Евгений Онегин', author, 'ru', 'Романы', 2));
+    assert.notStrictEqual(key('Евгений Онегин', author, 'ru', 'Романы', 1), key('Евгений Онегин', author, 'ru', 'Классика', 1));
+    assert.notStrictEqual(key('Евгений Онегин', author), key('Евгений Онегин', author, 'ru', 'Романы', 1), 'empty series matches only empty series');
+    for (const title of ['Стихотворения', 'Избранное (сборник)', 'Собрание сочинений. Том 3', 'Полное собрание сочинений в 10 томах. Т. 2',
+        'Сказки', 'Повести и рассказы', 'Collected Works, Vol. II', 'Short Stories'])
+        assert.strictEqual(key(title, author), null, `${title}: a generic collection title is never grouped`);
+    assert.notStrictEqual(key('Война и мир. Том 1', 'Толстой Лев'), key('Война и мир. Том 2', 'Толстой Лев'), 'volumes differ');
+    assert.ok(key('Сказки о рыбаке и рыбке', author), 'only the bare generic title is excluded');
+}
+
+// Search with grouping on: copies (other format or size) are one result counted by the editions that passed the filters;
+// the result is the first visible edition, so a work stays when its first copy is deleted or filtered out.
+// Generic titles and different series numbers stay apart; with grouping off every edition is listed.
+async function testSearchGroupsEditions() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        const book = (id, title, extra = {}) => Object.assign({id, _uid: `u${id}`, author: 'Стругацкий Аркадий,Стругацкий Борис', title,
+            series: '', serno: 0, size: 100 + id, librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id),
+            libid: String(id), ext: 'fb2', lang: 'ru', date: '2020-01-01'}, extra);
+        index.beginBuild(file);
+        index.insertBooks([
+            book(1, 'Пикник на обочине'), book(2, 'Пикник на обочине', {ext: 'epub'}),
+            book(3, 'Улитка на склоне', {series: 'Миры', serno: 1}), book(4, 'Улитка на склоне', {series: 'Миры', serno: 2}),
+            book(5, 'Повести'), book(6, 'Повести'),
+            book(7, 'Собрание сочинений. Том 3'), book(8, 'Собрание сочинений. Том 3', {ext: 'epub'}),
+            book(9, 'Хромая судьба', {del: 1}), book(10, 'Хромая судьба'),
+        ]);
+        index.finishBuild({});
+        index.open(file);
+        try {
+            const search = (q, extra = {}) => index.search(Object.assign({q, sort: 'title'}, extra));
+            const grouped = search('пикник', {group: true});
+            assert.deepStrictEqual([grouped.ids, grouped.editions, grouped.total], [[1], {1: 2}, 1]);
+            assert.deepStrictEqual(search('пикник', {group: true, filters: {ext: ['epub']}}).ids, [2], 'first edition filtered out');
+            assert.deepStrictEqual(search('хромая', {group: true}).ids, [10], 'first edition deleted');
+            assert.deepStrictEqual(search('улитка', {group: true}).total, 2, 'different series numbers');
+            assert.deepStrictEqual(search('повести', {group: true}).total, 2, 'generic title');
+            assert.deepStrictEqual(search('собрание', {group: true}).total, 2, 'generic title with a volume');
+            const all = search('', {group: true});
+            assert.deepStrictEqual([all.total, Object.values(all.editions)], [8, [2]]);
+            assert.deepStrictEqual(search('', {group: true, limit: 2, offset: 1}).ids.length, 2);
+            const flat = search('пикник');
+            assert.deepStrictEqual([flat.ids.sort(), flat.editions, search('').total], [[1, 2], {}, 9], 'grouping off lists every edition');
+            assert.deepStrictEqual(index.editionIds('u2'), [1]);
+            assert.deepStrictEqual(index.editionIds('u5'), []);
+        } finally {
+            index.close();
+        }
+    });
+}
+
 // A metadata edit moves the book between authors: their book counts follow.
 async function testMetadataEditKeepsAuthorCounts() {
     await withTempDir(async(dir) => {
@@ -222,4 +292,5 @@ function testSearchQueryIsCapped() {
 }
 
 module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
-    testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart];
+    testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart, testWorkKeyMatchesEditionsOnly,
+    testSearchGroupsEditions];

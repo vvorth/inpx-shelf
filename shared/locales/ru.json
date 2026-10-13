@@ -177,6 +177,7 @@
         "moreInThisSeries": "Ещё в серии",
         "noAnnotation": "Аннотации нет.",
         "openSource": "Открыть источник",
+        "otherEditions": "Другие издания",
         "readAgain": "Читать снова",
         "send": "Отправить"
     },
@@ -185,6 +186,7 @@
     },
     "bookCollection": {
         "book": "книга {n}",
+        "editions": "Изданий: {n}",
         "read": "Прочитано {n}%"
     },
     "bookDetails": {

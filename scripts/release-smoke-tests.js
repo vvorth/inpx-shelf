@@ -1093,8 +1093,11 @@ async function testBookPageRecordAndReaderStates() {
     worker.readingListStore = {getMetadataOverrides: async() => ({'book:1': {title: 'Новое название'}})};
     worker.applyMetadataOverridesToRows = (rows, overrides) => rows.forEach(row => Object.assign(row, overrides[row._uid] || {}));
     worker.applyPreparedBookSizesToRows = async() => {};
+    worker.catalogSearch = {editions: async(uid) => (uid === 'book:1' ? [{_uid: 'book:2'}] : [])};
 
-    assert.strictEqual((await worker.getBook('book:1')).book.title, 'Новое название');
+    const page = await worker.getBook('book:1');
+    assert.strictEqual(page.book.title, 'Новое название');
+    assert.deepStrictEqual(page.editions, [{_uid: 'book:2'}], 'the book page gets the other editions');
     await assert.rejects(() => worker.getBook('missing'), /Книга не найдена/);
 
     const user = {readerProgress: {a: {percent: 0.4}, b: {percent: 1}, c: {percent: 0.2, hidden: true}}};
@@ -1180,8 +1183,19 @@ async function testCatalogIndexSearch() {
         assert.deepStrictEqual(search('title:="мастер и маргарита"').ids.sort(), [1, 6]);
         assert.deepStrictEqual(search('lang:en').ids, [5]);
         assert.strictEqual(search('булгаков -genre:prose_classic').total, 0);
-        assert.deepStrictEqual(search('мастер', {hideCopies: true}).ids, [1]);
-        assert.deepStrictEqual(search('мастер', {hideCopies: true, filters: {source: ['second']}}).ids, [6]);
+        //издания одного произведения (1 и 6) - одна позиция выдачи; итог и страницы считают произведения
+        const grouped = search('мастер', {group: true});
+        assert.deepStrictEqual([grouped.ids, grouped.editions, grouped.total], [[1], {1: 2}, 1]);
+        const secondSource = search('мастер', {group: true, filters: {source: ['second']}});
+        assert.deepStrictEqual([secondSource.ids, secondSource.editions], [[6], {}], 'editions are counted after filters');
+        assert.deepStrictEqual(search('мастер').ids.sort(), [1, 6], 'without group every edition is listed');
+        const byDate = search('', {group: true, sort: 'date'});
+        assert.deepStrictEqual([byDate.ids, byDate.total], [[1, 2, 5, 4, 3], 5]);
+        assert.deepStrictEqual(search('', {group: true, sort: 'date', offset: 2, limit: 2}).ids, [5, 4]);
+        assert.deepStrictEqual(search('булгаков', {group: true}).editions, {1: 2}, 'relevance order is grouped too');
+        assert.deepStrictEqual(index.editionIds('u1'), [6]);
+        assert.deepStrictEqual(index.editionIds('u2'), []);
+        assert.strictEqual(index.suggest({q: 'мастер'}).books.length, 1, 'suggestions show one edition');
         assert.strictEqual(search('булгаков', {showDeleted: true}).total, 4);
         assert.deepStrictEqual(search('', {filters: {genre: ['sf']}}).ids, [3]);
         assert.deepStrictEqual(search('', {sort: 'date', limit: 2}).ids, [1, 2]);

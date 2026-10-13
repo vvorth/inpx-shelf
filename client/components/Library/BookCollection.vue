@@ -7,7 +7,7 @@
                 :book="book"
                 :progress="stateOf(book).percent || 0"
                 :prefix="showSerno && book.serno ? `#${book.serno}` : ''"
-                :meta="coverMeta ? coverMeta(book) : ''"
+                :meta="coverMeta ? coverMeta(book) : [editionsText(book), authorsOf(book).join(', ')].filter(Boolean).join(' · ')"
                 @open="$emit('interaction', {book, type: 'open'})"
             />
         </div>
@@ -195,7 +195,12 @@ class BookCollection {
     fileLine(book) {
         const size = Number(book.size || 0);
         const sizeText = (size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : (size > 0 ? `${Math.max(1, Math.round(size / 1024))} KB` : ''));
-        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText].filter(Boolean).join(' · ');
+        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText, this.editionsText(book)].filter(Boolean).join(' · ');
+    }
+
+    //с флажком «Скрыть копии» поиск объединяет издания одного произведения в одну книгу: остальные - на её странице
+    editionsText(book) {
+        return (book.editions > 1 ? this.$t('bookCollection.editions', {n: book.editions}) : '');
     }
 
     stars(book) {

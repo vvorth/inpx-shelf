@@ -4,10 +4,10 @@
 const {DatabaseSync} = require('node:sqlite');
 
 const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = require('./textNorm');
-const {copyKey} = require('./copyKey');
+const {workKey} = require('./workKey');
 const {buildLookup, englishName} = require('./AuthorNames');
 
-const schemaVersion = '8';
+const schemaVersion = '9';
 const maxLimit = 200;
 //длинный запрос из сотен слов превращается в огромное выражение FTS и перебор опечаток: режем
 const maxQueryLength = 200;
@@ -34,7 +34,7 @@ const schema = `
         title TEXT NOT NULL, author TEXT NOT NULL, series TEXT NOT NULL, serno INTEGER, genre TEXT NOT NULL, keywords TEXT NOT NULL,
         lang TEXT NOT NULL, ext TEXT NOT NULL, size INTEGER, date TEXT NOT NULL, librate INTEGER, del INTEGER,
         file TEXT NOT NULL, folder TEXT NOT NULL, libid TEXT NOT NULL, insno INTEGER, source TEXT NOT NULL,
-        title_norm TEXT, author_norm TEXT, series_norm TEXT, copy_key TEXT, is_copy INTEGER DEFAULT 0, is_copy_src INTEGER DEFAULT 0
+        title_norm TEXT, author_norm TEXT, series_norm TEXT, work_key TEXT, work INTEGER
     );
     CREATE TABLE book_genre(book_id INTEGER NOT NULL, genre TEXT NOT NULL);
     CREATE TABLE author(id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
@@ -55,6 +55,7 @@ const postBuildSchema = `
     CREATE INDEX book_source_libid ON book(source, libid);
     CREATE INDEX book_title_norm ON book(title_norm);
     CREATE INDEX book_series_norm ON book(series_norm);
+    CREATE INDEX book_work ON book(work) WHERE work IS NOT NULL;
     CREATE INDEX name_kind_norm ON name(kind, name_norm);
     CREATE INDEX book_author_author ON book_author(author_id, book_id);
     CREATE INDEX author_norm ON author(name_norm);
@@ -65,7 +66,7 @@ const postBuildSchema = `
 
 const columnTypes = {
     lang: Uint16Array, ext: Uint16Array, source: Uint16Array, librate: Uint8Array, flags: Uint8Array, date: Uint32Array,
-    genreStart: Uint32Array, genreList: Uint16Array,
+    work: Uint32Array, genreStart: Uint32Array, genreList: Uint16Array,
 };
 const columnArrays = Object.keys(columnTypes);
 
@@ -158,7 +159,7 @@ class CatalogIndex {
             lastId: 0,
             count: 0,
             insertBook: db.prepare(`INSERT INTO book(id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
-                file, folder, libid, insno, source, title_norm, author_norm, series_norm, copy_key)
+                file, folder, libid, insno, source, title_norm, author_norm, series_norm, work_key)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
             insertGenre: db.prepare('INSERT INTO book_genre(book_id, genre) VALUES (?, ?)'),
             insertBookAuthor: db.prepare('INSERT INTO book_author(book_id, author_id) VALUES (?, ?)'),
@@ -190,7 +191,7 @@ class CatalogIndex {
                 String(row.genre || ''), String(row.keywords || ''), String(row.lang || '').trim().toLowerCase(), String(row.ext || ''),
                 Number(row.size) || 0, String(row.date || ''), Number(row.librate) || 0, row.del ? 1 : 0,
                 String(row.file || ''), String(row.folder || ''), String(row.libid || ''), Number(row.insno) || 0, String(row.sourceId || ''),
-                normalize(title), normalize(author), normalize(series), copyKey(shown),
+                normalize(title), normalize(author), normalize(series), workKey(shown),
             );
 
             for (const genre of String(row.genre || '').split(',').map(value => value.trim()).filter(Boolean))
@@ -261,9 +262,11 @@ class CatalogIndex {
             db.exec(`CREATE VIRTUAL TABLE temp.vocab USING fts5vocab(main, 'book_fts', 'row')`);
             db.exec(`INSERT INTO term(term, docs) SELECT term, doc FROM temp.vocab WHERE length(term) >= 4 AND term GLOB '*[^0-9]*'`);
 
-            //первая копия книги остаётся, остальные помечаются: по всей библиотеке и внутри источника
-            db.exec(`UPDATE book SET is_copy = 1 WHERE id NOT IN (SELECT MIN(id) FROM book GROUP BY copy_key)`);
-            db.exec(`UPDATE book SET is_copy_src = 1 WHERE id NOT IN (SELECT MIN(id) FROM book GROUP BY source, copy_key)`);
+            //издания одного произведения получают общую метку - меньший id; у книги без других изданий метки нет
+            db.exec(`CREATE TEMP TABLE work_group(key TEXT PRIMARY KEY, id INTEGER NOT NULL) WITHOUT ROWID`);
+            db.exec(`INSERT INTO work_group SELECT work_key, MIN(id) FROM book WHERE work_key IS NOT NULL GROUP BY work_key HAVING COUNT(*) > 1`);
+            db.exec(`UPDATE book SET work = (SELECT id FROM work_group WHERE key = book.work_key) WHERE work_key IN (SELECT key FROM work_group)`);
+            db.exec('DROP TABLE work_group');
 
             //порядки сортировки считаются один раз и хранятся готовыми списками id
             const insertOrder = db.prepare('INSERT INTO sort_order(name, ids) VALUES (?, ?)');
@@ -277,8 +280,8 @@ class CatalogIndex {
                 insertOrder.run(name, Buffer.from(ids.buffer, 0, n * 4));
             }
 
-            //ключ копий и имя автора нужны только для расчётов выше
-            db.exec('UPDATE book SET copy_key = NULL, author_norm = NULL');
+            //ключ произведения и имя автора нужны только для расчётов выше
+            db.exec('UPDATE book SET work_key = NULL, author_norm = NULL');
 
             //статистика библиотеки (раньше считалась при создании основной БД)
             const one = sql => db.prepare(sql).get().n;
@@ -457,6 +460,7 @@ class CatalogIndex {
         for (const row of db.prepare('SELECT name, ids FROM sort_order').all())
             c.order[row.name] = typedFromBlob(Uint32Array, row.ids);
         c.pass = new Uint8Array(c.maxId + 1);
+        c.editions = new Uint32Array(c.maxId + 1);
         this.columns = c;
     }
 
@@ -479,15 +483,16 @@ class CatalogIndex {
         const c = {
             maxId, dicts, codes,
             lang: new Uint16Array(size), ext: new Uint16Array(size), source: new Uint16Array(size),
-            librate: new Uint8Array(size), flags: new Uint8Array(size), date: new Uint32Array(size),
+            librate: new Uint8Array(size), flags: new Uint8Array(size), date: new Uint32Array(size), work: new Uint32Array(size),
         };
-        for (const row of db.prepare('SELECT id, lang, ext, source, librate, del, is_copy, is_copy_src, date FROM book').iterate()) {
+        for (const row of db.prepare('SELECT id, lang, ext, source, librate, del, work, date FROM book').iterate()) {
             const id = row.id;
             c.lang[id] = code('lang', row.lang || '');
             c.ext[id] = code('ext', String(row.ext || '').toLowerCase());
             c.source[id] = code('source', row.source || '');
             c.librate[id] = Math.max(0, Math.min(255, row.librate || 0));
-            c.flags[id] = 1 | (row.del ? 2 : 0) | (row.is_copy ? 4 : 0) | (row.is_copy_src ? 8 : 0);
+            c.flags[id] = 1 | (row.del ? 2 : 0);
+            c.work[id] = row.work || 0;
             c.date[id] = parseInt(String(row.date || '').replace(/\D/g, '').substring(0, 8), 10) || 0;
         }
 
@@ -551,9 +556,6 @@ class CatalogIndex {
             genre: toSet('genre', excludes.genre),
         };
 
-        let copyFlag = 0;
-        if (options.hideCopies)
-            copyFlag = (filters.source && filters.source.length === 1 ? 8 : 4);
         const hideDeleted = !options.showDeleted;
         const exactIds = (options.exactIds || null);
 
@@ -576,8 +578,6 @@ class CatalogIndex {
             if (!(flags & 1))
                 return false;
             if (hideDeleted && (flags & 2))
-                return false;
-            if (copyFlag && (flags & copyFlag))
                 return false;
             if (exactIds && !exactIds.has(id))
                 return false;
@@ -783,7 +783,7 @@ class CatalogIndex {
         }
 
         const exactIds = (parsed.exact.length ? this.exactIdSet(parsed.exact) : null);
-        const filter = this.compileFilter(filters, parsed.excludes, {showDeleted: !!request.showDeleted, hideCopies: !!request.hideCopies, exactIds});
+        const filter = this.compileFilter(filters, parsed.excludes, {showDeleted: !!request.showDeleted, exactIds});
 
         //один проход: итог, отметки прошедших книг и счётчики фасетов
         const counts = {};
@@ -796,6 +796,11 @@ class CatalogIndex {
         const {bits, full} = filter;
         const pass = c.pass;
         pass.fill(0);
+        //group: издания одного произведения - одна позиция выдачи; editions[метка] - сколько изданий прошло фильтры
+        const group = !!request.group;
+        const editions = c.editions;
+        if (group)
+            editions.fill(0);
         let total = 0;
 
         const visit = (id) => {
@@ -804,7 +809,9 @@ class CatalogIndex {
             const mask = filter.mask(id);
             if (mask === full) {
                 pass[id] = 1;
-                total++;
+                const work = (group ? c.work[id] : 0);
+                if (!work || !editions[work]++)
+                    total++;
             }
             if (!wantFacets)
                 return;
@@ -837,24 +844,35 @@ class CatalogIndex {
                 visit(id);
         }
 
-        //страница результата
+        //страница результата; произведение представляет первое в порядке выдачи издание
         const ids = [];
+        const pageEditions = {};
+        let skipped = 0;
+        const take = (id) => {
+            const work = (group ? c.work[id] : 0);
+            const count = (work ? editions[work] : 1);
+            if (!count)
+                return;
+            if (work)
+                editions[work] = 0;//остальные издания этого произведения пропускаются
+            if (skipped < offset) {
+                skipped++;
+                return;
+            }
+            ids.push(id);
+            if (count > 1)
+                pageEditions[id] = count;
+        };
         if (scored) {
             const ranked = scored.filter(hit => pass[hit.id]);
             ranked.sort((a, b) => a.score - b.score || c.librate[b.id] - c.librate[a.id] || a.id - b.id);
-            for (const hit of ranked.slice(offset, offset + limit))
-                ids.push(hit.id);
+            for (let i = 0; i < ranked.length && ids.length < limit; i++)
+                take(ranked[i].id);
         } else {
             const order = c.order[sort] || c.order.date;
-            let skipped = 0;
             for (let i = 0; i < order.length && ids.length < limit; i++) {
-                const id = order[i];
-                if (!pass[id])
-                    continue;
-                if (skipped < offset)
-                    skipped++;
-                else
-                    ids.push(id);
+                if (pass[order[i]])
+                    take(order[i]);
             }
         }
 
@@ -876,6 +894,7 @@ class CatalogIndex {
 
         return {
             ids,
+            editions: pageEditions,
             total,
             facets,
             authors: entities.authors,
@@ -996,10 +1015,15 @@ class CatalogIndex {
 
         let books = [];
         if (text.expression) {
-            books = this.db.prepare(`SELECT b.id AS id
+            //одно издание на произведение
+            const seen = new Set();
+            books = this.db.prepare(`SELECT b.id AS id, b.work AS work
                 FROM book_fts f JOIN book b ON b.id = f.rowid
-                WHERE book_fts MATCH ? AND b.del = 0 AND b.is_copy = 0
-                ORDER BY bm25(book_fts, 10.0, 6.0, 4.0, 1.0) LIMIT 6`).all(text.expression);
+                WHERE book_fts MATCH ? AND b.del = 0
+                ORDER BY bm25(book_fts, 10.0, 6.0, 4.0, 1.0) LIMIT 30`).all(text.expression)
+                .filter(row => !row.work || (!seen.has(row.work) && seen.add(row.work)))
+                .slice(0, 6)
+                .map(row => ({id: row.id}));
         }
 
         return {authors: names.authors, series: names.series, books, corrected: text.corrected || '', layout: !!text.layout};
@@ -1085,6 +1109,18 @@ class CatalogIndex {
         //названия и серии изменились: кэш групп и масок OPDS строится заново
         this.queryMasks = null;
         //язык и оценка правкой не меняются: колонки в памяти остаются верными
+        //shortcut: книга остаётся в прежней группе изданий до следующей сборки БД; пересчитывать группу здесь, если правки станут частыми
+    }
+
+    //Другие неудалённые издания того же произведения: id, новые первыми
+    editionIds(uid = '') {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        const book = this.db.prepare('SELECT id, work FROM book WHERE uid = ?').get(String(uid));
+        if (!book || !book.work)
+            return [];
+        return this.db.prepare('SELECT id FROM book WHERE work = ? AND id <> ? AND del = 0 ORDER BY date DESC, id DESC LIMIT 100')
+            .all(book.work, book.id).map(row => row.id);
     }
 
     //---------- записи книг ----------
