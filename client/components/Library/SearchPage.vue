@@ -240,7 +240,7 @@ import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn, initials} from '../../share/session';
-import {isExternalOnly} from '../../share/discovery';
+import {onBookKey} from '../../share/bookKeys';
 import {loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
 import {myLanguages, allLanguages, languageName} from '../../share/languages';
@@ -291,7 +291,7 @@ class SearchPage {
     created() {
         this.api = this.$root.api;
         loadGenres(this.api).then(() => this.genresReady++).catch(() => {});
-        this.keyHook = (event) => this.onResultsKey(event);
+        this.keyHook = (event) => onBookKey(event, [this.$refs.results]);
     }
 
     activated() {
@@ -304,40 +304,6 @@ class SearchPage {
     deactivated() {
         clearTimeout(this.pollTimer);
         this.$root.removeKeyHook(this.keyHook);
-    }
-
-    //J/K переходят по результатам, Enter открывает (это ссылки), A добавляет в список.
-    //event.code, а не key: клавиши работают и в русской раскладке
-    onResultsKey(event) {
-        if (!['KeyJ', 'KeyK', 'KeyA'].includes(event.code) || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
-            return;
-        const target = event.target;
-        const tag = (target && target.tagName) || '';
-        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (target && target.isContentEditable))
-            return;
-        //открыто окно книги или списков
-        if (document.querySelector('.q-dialog') || !this.$refs.results)
-            return;
-
-        //у каждой книги во всех трёх видах ровно одна такая ссылка, в порядке books
-        const links = [...this.$refs.results.$el.querySelectorAll('.book-card, .wide-card-title, .row-title')];
-        const index = links.indexOf(document.activeElement);
-        if (event.code === 'KeyA') {
-            const book = this.books[index];
-            if (book && this.signedIn && !isExternalOnly(book)) {
-                event.preventDefault();
-                this.$refs.results.openLists(book);
-            }
-            return;
-        }
-
-        if (!links.length)
-            return;
-        event.preventDefault();
-        const next = (index < 0 ? 0 : Math.min(Math.max(index + (event.code === 'KeyJ' ? 1 : -1), 0), links.length - 1));
-        links[next].focus({preventScroll: true});
-        //center, чтобы ссылку не закрыла липкая верхняя панель
-        links[next].scrollIntoView({block: 'center'});
     }
 
     get config() {

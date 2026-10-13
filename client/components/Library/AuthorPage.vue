@@ -115,6 +115,7 @@
                     </div>
                     <BookCollection
                         v-if="isOpen(group)"
+                        ref="collections"
                         :books="shownBooks(group)"
                         :states="states"
                         :view="view"
@@ -134,6 +135,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
+import {onBookKey} from '../../share/bookKeys';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
@@ -208,12 +210,18 @@ class AuthorPage {
 
     created() {
         this.api = this.$root.api;
+        this.keyHook = (event) => onBookKey(event, [].concat(this.$refs.collections || []));
     }
 
     activated() {
+        this.$root.addKeyHook(this.keyHook);
         if (this.name !== this.loadedName)
             this.load();
         this.$root.setAppTitle(this.name);
+    }
+
+    deactivated() {
+        this.$root.removeKeyHook(this.keyHook);
     }
 
     get name() {

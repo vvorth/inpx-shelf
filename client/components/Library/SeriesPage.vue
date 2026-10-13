@@ -70,7 +70,7 @@
                         @update:model-value="$store.commit('setSettings', {bookView: $event})"
                     />
                 </div>
-                <BookCollection :books="sortedBooks" :states="states" :view="view" show-serno />
+                <BookCollection ref="results" :books="sortedBooks" :states="states" :view="view" show-serno />
             </template>
         </div>
 
@@ -82,6 +82,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
+import {onBookKey} from '../../share/bookKeys';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {t, tm} from '../../share/i18n';
@@ -121,12 +122,18 @@ class SeriesPage {
 
     created() {
         this.api = this.$root.api;
+        this.keyHook = (event) => onBookKey(event, [this.$refs.results]);
     }
 
     activated() {
+        this.$root.addKeyHook(this.keyHook);
         if (this.name !== this.loadedName)
             this.load();
         this.$root.setAppTitle(this.name);
+    }
+
+    deactivated() {
+        this.$root.removeKeyHook(this.keyHook);
     }
 
     get name() {
