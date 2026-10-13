@@ -1404,7 +1404,8 @@ export default class ReaderPaginator {
                     const firstGeneratedUnitIndex = units.length;
                     flattenNode(child, (sectionBreak && first));
                     if (sectionId && units.length > firstGeneratedUnitIndex) {
-                        units[firstGeneratedUnitIndex].sectionId = sectionId;
+                        //id заголовка из оглавления (section-N), найденный внутри, важнее собственного id секции fb2
+                        units[firstGeneratedUnitIndex].sectionId = units[firstGeneratedUnitIndex].sectionId || sectionId;
                         units[firstGeneratedUnitIndex].breakBefore = units[firstGeneratedUnitIndex].breakBefore || (sectionBreak && first);
                     }
                     first = false;
