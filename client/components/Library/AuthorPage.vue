@@ -85,10 +85,10 @@
                             toggle-color="primary"
                             @update:model-value="$store.commit('setSettings', {bookView: $event})"
                         />
-                        <q-btn flat dense no-caps icon="la la-angle-double-down" @click="setAll(true)">
+                        <q-btn flat dense no-caps icon="la la-angle-double-down" title="E" aria-keyshortcuts="E" @click="setAll(true)">
                             {{ $t('author.expandAll') }}
                         </q-btn>
-                        <q-btn flat dense no-caps icon="la la-angle-double-up" @click="setAll(false)">
+                        <q-btn flat dense no-caps icon="la la-angle-double-up" title="E" aria-keyshortcuts="E" @click="setAll(false)">
                             {{ $t('author.collapseAll') }}
                         </q-btn>
                     </div>
@@ -135,7 +135,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import BookCollection from './BookCollection.vue';
-import {onBookKey} from '../../share/bookKeys';
+import {onBookKey, pageKey} from '../../share/bookKeys';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
@@ -210,7 +210,15 @@ class AuthorPage {
 
     created() {
         this.api = this.$root.api;
-        this.keyHook = (event) => onBookKey(event, [].concat(this.$refs.collections || []));
+        this.keyHook = (event) => {
+            //E раскрывает все группы, а если все раскрыты - сворачивает
+            if (pageKey(event) === 'KeyE' && this.groups.length) {
+                event.preventDefault();
+                this.setAll(!this.groups.every(group => this.isOpen(group)));
+                return;
+            }
+            onBookKey(event, [].concat(this.$refs.collections || []));
+        };
     }
 
     activated() {

@@ -1,20 +1,27 @@
 //Клавиши для списков книг на странице: J/K переходят по книгам, Enter открывает (это ссылки),
-//A добавляет в список. event.code, а не key: клавиши работают и в русской раскладке
+//A добавляет в список, E на странице автора раскрывает или сворачивает группы. event.code, а не key: клавиши работают и в русской раскладке
 import {isExternalOnly} from './discovery';
 
 //у каждой книги во всех трёх видах BookCollection ровно одна такая ссылка, в порядке books
 const linkSelector = '.book-card, .wide-card-title, .row-title';
 
-//collections - компоненты BookCollection страницы (их может быть несколько, например группы на странице автора)
-export function onBookKey(event, collections) {
-    if (!['KeyJ', 'KeyK', 'KeyA'].includes(event.code) || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
-        return;
+//code нажатой клавиши, если это клавиша страницы: без модификаторов, не в поле ввода и не в открытом окне
+export function pageKey(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
+        return '';
     const target = event.target;
     const tag = (target && target.tagName) || '';
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (target && target.isContentEditable))
-        return;
+        return '';
     //открыто окно книги или списков
     if (document.querySelector('.q-dialog'))
+        return '';
+    return event.code;
+}
+
+//collections - компоненты BookCollection страницы (их может быть несколько, например группы на странице автора)
+export function onBookKey(event, collections) {
+    if (!['KeyJ', 'KeyK', 'KeyA'].includes(pageKey(event)))
         return;
 
     //порядок ссылок - как на экране; refs из v-for порядок не гарантируют
