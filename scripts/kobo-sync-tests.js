@@ -1189,7 +1189,47 @@ async function testKoboReplacementCarriesReadingState() {
     });
 }
 
+async function testKoboDevicesTravelWithProfileBackup() {
+    await fixture({}, async({service, store, worker, device, listA, listB, call, sync}) => {
+        const WebWorker = require('../server/core/WebWorker');
+        Object.assign(worker, {checkMyState() {}, koboService: service});
+        await store.addBooks('default', listA.id, ['fb2-uid']);
+        await sync({fresh: true});
+        const uuid = kobo.uuidv5('main:101');
+        await call(`/v1/library/${uuid}/state`, {method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Reading'}, CurrentBookmark: {ProgressPercent: 40}}]})});
+
+        const backup = JSON.parse(JSON.stringify(await WebWorker.prototype.exportReadingLists.call(worker, 'default')));
+        assert.deepStrictEqual(backup.kobo.devices.map(item => item.lists), [['На Kobo', 'Отпуск']]);
+        assert.ok(!backup.kobo.devices[0].userId && !JSON.stringify(backup.kobo).includes('"token"'), 'only the token hash is saved');
+
+        //профиль потерял устройство и списки; из копии список получает новый id
+        await service.store.deleteDevice('default', device.id);
+        await store.deleteList('default', listA.id);
+        const result = await WebWorker.prototype.importReadingLists.call(worker, 'default', backup);
+        assert.strictEqual(result.importedKoboDevices, 1);
+        const [restored] = (await service.getDevices('default')).devices;
+        const newListA = (await store.getLists('default')).find(item => item.name === 'На Kobo');
+        assert.deepStrictEqual(restored.listIds, [newListA.id, listB.id]);
+        assert.strictEqual(service.store.getState('default', uuid).bookmark.ProgressPercent, 40);
+        await sync({fresh: true});//the device syncs again with its old token
+
+        //повторный импорт не дублирует устройство и не откатывает более новое состояние
+        service.store.data.states.default[uuid].lastModified = '2999-01-01T00:00:00.000Z';
+        backup.kobo.states[uuid].bookmark.ProgressPercent = 5;
+        const again = await WebWorker.prototype.importReadingLists.call(worker, 'default', backup);
+        assert.deepStrictEqual([again.importedKoboDevices, again.importedKoboStates], [0, 0]);
+        assert.strictEqual(service.store.getState('default', uuid).bookmark.ProgressPercent, 40);
+
+        //чужая копия не забирает устройство другого профиля
+        const other = await store.createUser({name: 'Other'});
+        const stolen = await WebWorker.prototype.importReadingLists.call(worker, other.id, backup);
+        assert.strictEqual(stolen.importedKoboDevices, 0);
+    });
+}
+
 module.exports = [
+    testKoboDevicesTravelWithProfileBackup,
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,
     testKoboReadStateBothWays,

@@ -920,14 +920,27 @@ class WebWorker {
 
     async exportReadingLists(userId = '') {
         this.checkMyState();
-        return await this.readingListStore.exportData(userId);
+        const result = await this.readingListStore.exportData(userId);
+        if (this.koboService) {
+            const lists = await this.readingListStore.getLists(userId);
+            result.kobo = await this.koboService.store.exportUser(userId, new Map(lists.map(item => [item.id, item.name])));
+        }
+        return result;
     }
 
     async importReadingLists(userId = '', data) {
         this.checkMyState();
         const result = await this.readingListStore.importData(userId, data);
-        if (this.koboService)
+        if (this.koboService) {
+            if (data.kobo) {
+                const lists = await this.readingListStore.getLists(userId);
+                const listIds = new Map(lists.map(item => [item.name.toLowerCase(), item.id]));
+                const kobo = await this.koboService.store.importUser(userId, data.kobo, listIds);
+                result.importedKoboDevices = kobo.devices;
+                result.importedKoboStates = kobo.states;
+            }
             this.koboService.prewarmLists(userId);
+        }
         return result;
     }
 

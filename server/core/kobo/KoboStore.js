@@ -299,6 +299,56 @@ class KoboStore {
         });
     }
 
+    // For the profile backup: devices (with token hashes, so the device keeps syncing after a restore) and reading states.
+    // List ids are local to this server, so devices carry list names; `listNames` maps id -> name.
+    async exportUser(userId = '', listNames = new Map()) {
+        await this.load();
+        const devices = this.data.devices.filter(item => item.userId === userId).map((device) => {
+            const item = Object.assign(structuredClone(device), {lists: device.listIds.map(id => listNames.get(id)).filter(Boolean)});
+            delete item.userId;
+            delete item.listIds;
+            return item;
+        });
+        return {devices, states: structuredClone(this.data.states[userId] || {})};
+    }
+
+    // A device whose id or token is already on this server is kept as it is: a backup never takes over another device.
+    // States merge per book; the newer one wins, so an old backup does not roll reading back.
+    async importUser(userId = '', payload = {}, listIds = new Map()) {
+        if (!payload || typeof(payload) !== 'object')
+            return {devices: 0, states: 0};
+        return await this.mutate(async(data) => {
+            let devices = 0;
+            let states = 0;
+            for (const raw of (Array.isArray(payload.devices) ? payload.devices : [])) {
+                if (!raw || typeof(raw) !== 'object' || !/^[0-9a-f]{64}$/.test(String(raw.tokenHash || '')))
+                    continue;
+                if (data.devices.some(item => item.id === raw.id || item.tokenHash === raw.tokenHash))
+                    continue;
+                if (data.devices.filter(item => item.userId === userId).length >= maxDevicesPerUser)
+                    break;
+                const names = (Array.isArray(raw.lists) ? raw.lists : []).map(name => String(name || '').toLowerCase());
+                data.devices.push(this.normalizeDevice(Object.assign({}, raw, {
+                    userId, listIds: names.map(name => listIds.get(name)).filter(Boolean),
+                })));
+                devices++;
+            }
+            const rows = data.states[userId] || {};
+            const incoming = (payload.states && typeof(payload.states) === 'object' ? payload.states : {});
+            for (const [uuid, state] of Object.entries(incoming)) {
+                if (!state || typeof(state) !== 'object')
+                    continue;
+                if (rows[uuid] && String(rows[uuid].lastModified || '') >= String(state.lastModified || ''))
+                    continue;
+                rows[uuid] = state;
+                states++;
+            }
+            if (Object.keys(rows).length)
+                data.states[userId] = rows;
+            return {devices, states};
+        });
+    }
+
     getState(userId = '', uuid = '') {
         const rows = (this.data && this.data.states[userId]) || {};
         return rows[uuid] || null;
