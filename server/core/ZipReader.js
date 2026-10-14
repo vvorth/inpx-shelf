@@ -1,101 +1,23 @@
 const path = require('path');
 const fs = require('fs-extra');
-const StreamUnzip = require('node-stream-zip');
-const externalTools = require('./ExternalTools');
-const {runProcess} = require('./ConversionRuntime');
+const iconv = require('iconv-lite');
+const archivePool = require('./archive/ArchivePool');
 
-// Книга или список архива целиком в памяти: больше этого не читаем.
-const maxStdoutBytes = 512*1024*1024;
-
+//Архивы библиотеки читает 7-Zip (WebAssembly) в отдельных потоках: zip любого метода сжатия, 7z и др.
 class ZipReader {
-    constructor(config = {}) {
-        this.zip = null;
+    constructor() {
         this.archiveFile = '';
         this.archiveType = '';
-        this.converterPaths = config.converterPaths || null;
-    }
-
-    get sevenZipCommands() {
-        return externalTools.sevenZipCommandCandidates(this.converterPaths);
+        this.zipEntries = undefined;
     }
 
     checkState() {
-        if (!this.zip && !this.archiveFile)
+        if (!this.archiveFile)
             throw new Error('Archive closed');
     }
 
-    // Без options.stdoutFile возвращает stdout буфером.
-    async run7z(args, options = {maxStdout: maxStdoutBytes}) {
-        const commands = this.sevenZipCommands;
-        for (let index = 0; ; index++) {
-            try {
-                // большой solid-архив на медленном диске распаковывается долго: 120 с конвертации тут мало
-                return await runProcess(commands[index], args, {timeoutMs: 30*60*1000, ...options});
-            } catch (err) {
-                if (err.code !== 'ENOENT')
-                    throw err;
-                if (index + 1 >= commands.length)
-                    throw externalTools.createMissingToolError('INPX_MISSING_7Z', externalTools.missingSevenZipMessage());
-            }
-        }
-    }
-
-    parse7zEntries(listing) {
-        const result = {};
-        let entry = null;
-        let index = 0;
-        let inEntries = false;
-
-        const commit = () => {
-            if (!entry || !entry.name)
-                return;
-
-            result[index++] = {
-                name: entry.name.replace(/\\/g, '/'),
-                isDirectory: !!entry.isDirectory,
-                isLink: !!entry.isLink,
-            };
-        };
-
-        for (const line of listing.split(/\r?\n/)) {
-            if (/^-{5,}$/.test(line.trim())) {
-                inEntries = true;
-                continue;
-            }
-
-            if (!inEntries)
-                continue;
-
-            if (!line.trim()) {
-                commit();
-                entry = null;
-                continue;
-            }
-
-            const match = line.match(/^([^=]+) = (.*)$/);
-            if (!match)
-                continue;
-
-            const key = match[1].trim();
-            const value = match[2];
-            entry = entry || {};
-
-            if (key === 'Path')
-                entry.name = value;
-            else if (key === 'Folder')
-                entry.isDirectory = value === '+';
-            else if (key === 'Attributes' && /^D/.test(value))
-                entry.isDirectory = true;
-            if (['Symbolic Link', 'Hard Link'].includes(key) || (key === 'Attributes' && /l[rwx-]{9}/.test(value)))
-                entry.isLink = true;
-        }
-
-        commit();
-        return result;
-    }
-
     async open(zipFile, zipEntries = true) {
-        if (this.zip || this.archiveFile)
+        if (this.archiveFile)
             throw new Error('Archive file is already open');
 
         // FLibrary stores recompressed EPUB containers with an .epub name;
@@ -107,22 +29,14 @@ class ZipReader {
         } finally {
             await handle.close();
         }
-        if (signature.equals(Buffer.from('377abcaf271c', 'hex')) || path.extname(zipFile).toLowerCase() === '.7z') {
-            this.archiveFile = zipFile;
-            this.archiveType = '7z';
-            if (zipEntries) {
-                const listing = await this.run7z(['l', '-slt', '-sccUTF-8', zipFile]);
-                this.zipEntries = this.parse7zEntries(listing.toString());
-            }
-            return;
+        const is7z = signature.equals(Buffer.from('377abcaf271c', 'hex')) || path.extname(zipFile).toLowerCase() === '.7z';
+
+        if (zipEntries) {
+            const entries = await archivePool.call('list', zipFile);
+            this.zipEntries = Object.fromEntries(entries.map((entry, index) => [index, entry]));
         }
-
-        const zip = new StreamUnzip.async({file: zipFile, skipEntryNameValidation: true});
-
-        this.zip = zip;
-        this.archiveType = 'zip';
-        if (zipEntries)
-            this.zipEntries = await zip.entries();
+        this.archiveFile = zipFile;
+        this.archiveType = (is7z ? '7z' : 'zip');
     }
 
     get entries() {
@@ -131,43 +45,47 @@ class ZipReader {
         return this.zipEntries;
     }
 
+    //Имя записи в cp866 без флага UTF-8 7-Zip в WebAssembly читает как UTF-8: каждый неверный байт - символ U+FFFD,
+    //и такое имя в аргументе не совпадает. Ищем запись шаблоном с ? на месте этих символов; из подошедших записей
+    //берём ту, чьё имя совпало целиком, или единственную.
+    async extractCp866(entryFilePath) {
+        if (this.archiveType !== 'zip' || /^[\x20-\x7e]*$/.test(entryFilePath))
+            return null;
+
+        const name = new TextDecoder().decode(iconv.encode(entryFilePath, 'cp866'));
+        const found = await archivePool.call('extract', this.archiveFile, [], name.replace(/[\uFFFD*]/g, '?'));
+        const names = Object.keys(found);
+        return found[name] || (names.length === 1 ? found[names[0]] : null);
+    }
+
     async extractToBuf(entryFilePath) {
         this.checkState();
 
-        if (this.archiveType === '7z')
-            return await this.run7z(['x', '-y', '-bd', '-spd', '-so', this.archiveFile, entryFilePath]);
-
-        return await this.zip.entryData(entryFilePath);
+        const data = (await archivePool.call('extract', this.archiveFile, [entryFilePath]))[entryFilePath]
+            || await this.extractCp866(entryFilePath);
+        if (!data)
+            throw new Error(`Entry not found: ${entryFilePath}`);
+        return Buffer.from(data);
     }
 
     async extractToFile(entryFilePath, outputFile) {
         this.checkState();
 
-        if (this.archiveType === '7z') {
-            await this.run7z(['x', '-y', '-bd', '-spd', '-so', this.archiveFile, entryFilePath], {stdoutFile: outputFile});
+        if (await archivePool.call('extractToFile', this.archiveFile, entryFilePath, outputFile))
             return;
-        }
-
-        await this.zip.extract(entryFilePath, outputFile);
+        const data = await this.extractCp866(entryFilePath);
+        if (!data)
+            throw new Error(`Entry not found: ${entryFilePath}`);
+        await fs.writeFile(outputFile, data);
     }
 
     async extractAllToDir(outputDir) {
         this.checkState();
 
-        if (this.archiveType === '7z') {
-            await this.run7z(['x', '-y', '-bd', `-o${outputDir}`, this.archiveFile], {});
-            return;
-        }
-
-        await this.zip.extract(null, outputDir);
+        await archivePool.call('extractAll', this.archiveFile, outputDir);
     }
 
     async close() {
-        if (this.zip) {
-            await this.zip.close();
-            this.zip = null;
-        }
-
         this.archiveFile = '';
         this.archiveType = '';
         this.zipEntries = undefined;

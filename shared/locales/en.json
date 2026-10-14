@@ -453,8 +453,6 @@
         "missingDjxlWindows": "djxl was not found; it is needed to decode JXL covers. Install libjxl or put djxl.exe and its DLLs into the bin folder next to inpx-shelf.exe. Link: {url}",
         "missingDwebp": "dwebp was not found; it is needed to decode WebP covers. Install webp/libwebp-tools or a similar package for your system. Link: {url}",
         "missingDwebpWindows": "dwebp was not found; it is needed to decode WebP covers. Install libwebp or put dwebp.exe and its DLLs into the bin folder next to inpx-shelf.exe. Link: {url}",
-        "missingSevenZip": "7-Zip CLI was not found; it is needed to read 7z archives with covers. Install 7z/7za with your system package manager. Link: {url}",
-        "missingSevenZipWindows": "7-Zip CLI was not found; it is needed to read 7z archives with covers. Install 7-Zip or put 7za.exe/7z.exe into the bin folder next to inpx-shelf.exe. Link: {url}",
         "noDataToSave": "No data to save",
         "opdsCredentialsRequired": "The profile needs a login and password for OPDS authorization",
         "opdsLoginRequired": "A login is required for the shared OPDS password",

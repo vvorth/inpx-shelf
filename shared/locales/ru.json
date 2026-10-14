@@ -461,8 +461,6 @@
         "missingDjxlWindows": "Не найден djxl для декодирования JXL-обложек. Установите libjxl или положите djxl.exe и его DLL в каталог bin рядом с inpx-shelf.exe. Ссылка: {url}",
         "missingDwebp": "Не найден dwebp для декодирования WebP-обложек. Установите webp/libwebp-tools или аналогичный пакет вашей системы. Ссылка: {url}",
         "missingDwebpWindows": "Не найден dwebp для декодирования WebP-обложек. Установите libwebp или положите dwebp.exe и его DLL в каталог bin рядом с inpx-shelf.exe. Ссылка: {url}",
-        "missingSevenZip": "Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7z/7za через пакетный менеджер вашей системы. Ссылка: {url}",
-        "missingSevenZipWindows": "Не найден 7-Zip CLI для чтения 7z-архивов с обложками. Установите 7-Zip или положите 7za.exe/7z.exe в каталог bin рядом с inpx-shelf.exe. Ссылка: {url}",
         "noDataToSave": "Не указаны данные для сохранения",
         "opdsCredentialsRequired": "Для OPDS-авторизации у профиля должен быть логин и пароль",
         "opdsLoginRequired": "Для общего OPDS-пароля нужно указать логин",

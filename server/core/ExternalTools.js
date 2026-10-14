@@ -2,7 +2,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const {t} = require('./i18n');
 
-const SEVEN_ZIP_DOWNLOAD_URL = 'https://www.7-zip.org/download.html';
 const DJXL_DOWNLOAD_URL = 'https://github.com/libjxl/libjxl/releases/latest';
 const DWEBP_DOWNLOAD_URL = 'https://developers.google.com/speed/webp/docs/precompiled';
 
@@ -56,26 +55,6 @@ function resolveConverterPaths(converterPaths = null) {
     return converterPaths || currentConverterPaths();
 }
 
-function sevenZipCommandCandidates(converterPaths = null) {
-    const configured = configuredToolCandidates(resolveConverterPaths(converterPaths), ['sevenZip', 'sevenzip', '7z', '7za']);
-    const local = [
-        resolveBundledPath('7z.exe'),
-        resolveBundledPath('7za.exe'),
-    ].filter(Boolean);
-
-    const system = (process.platform === 'win32' ? [
-        '7z',
-        '7za',
-        'C:\\Program Files\\7-Zip\\7z.exe',
-        'C:\\Program Files (x86)\\7-Zip\\7z.exe',
-    ] : [
-        '7z',
-        '7za',
-    ]);
-
-    return [...configured, ...local, ...system];
-}
-
 function toolCandidatesFromDirs(extraDirs = [], fileNames = []) {
     const result = [];
     for (const dir of (Array.isArray(extraDirs) ? extraDirs : [])) {
@@ -126,14 +105,6 @@ function dwebpCommandCandidates(extraDirs = [], converterPaths = null) {
     return [...configured, ...extra, ...local, ...system];
 }
 
-function missingSevenZipMessage() {
-    if (process.platform === 'win32') {
-        return t('errors.missingSevenZipWindows', {url: SEVEN_ZIP_DOWNLOAD_URL});
-    }
-
-    return t('errors.missingSevenZip', {url: SEVEN_ZIP_DOWNLOAD_URL});
-}
-
 function missingDjxlMessage() {
     if (process.platform === 'win32') {
         return t('errors.missingDjxlWindows', {url: DJXL_DOWNLOAD_URL});
@@ -172,17 +143,14 @@ async function pathExistsSafe(filePath) {
 }
 
 module.exports = {
-    SEVEN_ZIP_DOWNLOAD_URL,
     DJXL_DOWNLOAD_URL,
     DWEBP_DOWNLOAD_URL,
     bundledBinDir,
     configuredToolCandidates,
     currentConverterPaths,
     resolveConverterPaths,
-    sevenZipCommandCandidates,
     djxlCommandCandidates,
     dwebpCommandCandidates,
-    missingSevenZipMessage,
     missingDjxlMessage,
     missingDwebpMessage,
     createMissingToolError,

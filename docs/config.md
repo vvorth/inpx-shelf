@@ -186,7 +186,6 @@
     "converterPaths": {
         "fb2cng": "",
         "mutool": "",
-        "sevenZip": "",
         "djxl": "",
         "dwebp": ""
     },

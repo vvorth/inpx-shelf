@@ -60,7 +60,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates p7zip-full libjxl-tools tini \
+    && apt-get install -y --no-install-recommends ca-certificates libjxl-tools tini \
         libwebp7 libwebpdemux2 libpng16-16 \
     && rm -rf /var/lib/apt/lists/*
 

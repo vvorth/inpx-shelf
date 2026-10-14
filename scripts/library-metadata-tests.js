@@ -4,10 +4,9 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const {pipeline} = require('stream/promises');
-const {promisify} = require('util');
-const execFile = promisify(require('child_process').execFile);
 const yazl = require('yazl');
-const ZipReader = require('../server/core/ZipReader');
+const iconv = require('iconv-lite');
+const {sevenZipArchive} = require('./seven-zip-fixture');
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZcQAAAAASUVORK5CYII=', 'base64');
 const review = {name: 'Reader', time: '2026-09-15 12:00:00', text: 'First review'};
@@ -19,20 +18,8 @@ async function temporary(task) {
 
 async function archive(file, entries, sevenZip = false) {
     await fs.ensureDir(path.dirname(file));
-    if (sevenZip) {
-        const input = await fs.mkdtemp(path.join(path.dirname(file), 'input-'));
-        try {
-            for (const [name, value] of Object.entries(entries))
-                await fs.outputFile(path.join(input, name), value);
-            for (const command of new ZipReader().sevenZipCommands) {
-                try {
-                    await execFile(command, ['a', '-t7z', '-y', '-bd', file, '.'], {cwd: input, windowsHide: true});
-                    return;
-                } catch (error) { if (error.code !== 'ENOENT') throw error; }
-            }
-            throw new Error('7-Zip is required for library metadata tests');
-        } finally { await fs.remove(input); }
-    }
+    if (sevenZip)
+        return await sevenZipArchive(file, entries);
     const zip = new yazl.ZipFile();
     const done = pipeline(zip.outputStream, fs.createWriteStream(file));
     for (const [name, value] of Object.entries(entries))
@@ -175,5 +162,29 @@ async function testReindexReloadsAuthorAndArchiveCaches() {
     });
 }
 
+// Books come out of zips packed with any 7-Zip method (LibFlib uses PPMd) and under cp866 names without the UTF-8 flag;
+// a book that cannot be extracted reports the cause, not a generic "not found".
+async function testBooksExtractFromPpmdZipsAndCp866Names() {
+    await temporary(async dir => {
+        const libDir = path.join(dir, 'lib');
+        await sevenZipArchive(path.join(libDir, 'lib.flib', 'fb2-104215-113436.zip'), {'111761.fb2': 'ppmd book'}, ['-tzip', '-mm=PPMd']);
+        const value = worker({libDir, tempDir: dir});
+        const file = await value.extractBook('fb2-104215-113436.zip', '111761.fb2', libDir);
+        assert.strictEqual(await fs.readFile(file, 'utf8'), 'ppmd book');
+        await assert.rejects(value.extractBook('fb2-104215-113436.zip', '1.fb2', libDir), /fb2-104215-113436\.zip: 1\.fb2: Entry not found/);
+
+        // yazl writes a non-ASCII name as UTF-8: write an ASCII placeholder and put the cp866 bytes in its place
+        const name = iconv.encode('книга.fb2', 'cp866');
+        const placeholder = 'x'.repeat(name.length - 4) + '.fb2';
+        await archive(path.join(libDir, 'cp866.zip'), {[placeholder]: 'cp866 book'});
+        const bytes = await fs.readFile(path.join(libDir, 'cp866.zip'));
+        for (let at = bytes.indexOf(placeholder); at >= 0; at = bytes.indexOf(placeholder, at + 1))
+            name.copy(bytes, at);
+        await fs.writeFile(path.join(libDir, 'cp866.zip'), bytes);
+        assert.strictEqual(await fs.readFile(await value.extractBook('cp866.zip', 'книга.fb2', libDir), 'utf8'), 'cp866 book');
+    });
+}
+
 module.exports = [testLibraryReviewsAndRatingsAreOptionalAndSourceScoped,
-    testBookInfoRefreshesChangedReviewsWithoutReparsingBook, testReindexReloadsAuthorAndArchiveCaches];
+    testBookInfoRefreshesChangedReviewsWithoutReparsingBook, testReindexReloadsAuthorAndArchiveCaches,
+    testBooksExtractFromPpmdZipsAndCp866Names];

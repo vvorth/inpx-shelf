@@ -736,7 +736,7 @@ async function testAdminSettingsRestoreKeepsSecrets() {
                 passwordSet: true,
             },
             coverCacheSize: 128,
-            converterPaths: {sevenZip: '/tmp/not-7z'},
+            converterPaths: {djxl: '/tmp/not-djxl'},
         },
     });
 
@@ -1771,14 +1771,12 @@ async function testConfiguredConverterPathsHavePriority() {
     const externalTools = require('../server/core/ExternalTools');
     const bookConverter = require('../server/core/BookConverter');
     const configured = {
-        sevenZip: '/opt/tools/7za-custom',
         djxl: '/opt/tools/djxl-custom',
         dwebp: '/opt/tools/dwebp-custom',
         fb2cng: '/opt/tools/fbc-custom',
         mutool: '/opt/tools/mutool-custom',
     };
 
-    assert.strictEqual(externalTools.sevenZipCommandCandidates(configured)[0], configured.sevenZip);
     assert.strictEqual(externalTools.djxlCommandCandidates([], configured)[0], configured.djxl);
     assert.strictEqual(externalTools.dwebpCommandCandidates([], configured)[0], configured.dwebp);
     assert.strictEqual(bookConverter.fb2cngCommandCandidates(configured)[0], configured.fb2cng);

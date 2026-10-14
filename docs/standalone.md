@@ -12,7 +12,7 @@
 * рабочие данные приложения хранятся в каталоге `.inpx-shelf`; если рядом с программой уже есть каталог `.inpx-shelf` от inpx-shelf, а `.inpx-shelf` нет, используется он
 * по умолчанию standalone пытается создать этот каталог рядом с исполняемым файлом
 * для Windows, если рядом с `.exe` запись недоступна, приложение автоматически переключается на `%LOCALAPPDATA%\\inpx-shelf`
-* standalone-архивы включают `fbc` из fb2cng для конвертации `fb2` в `epub`, `epub3`, `kepub`, `kfx` и `azw8`; Windows-архив также включает утилиты для обложек (`7za`, `djxl`, `dwebp`)
+* standalone-архивы включают `fbc` из fb2cng для конвертации `fb2` в `epub`, `epub3`, `kepub`, `kfx` и `azw8`; Windows-архив также включает утилиты для обложек (`djxl`, `dwebp`)
 * если библиотека лежит на сетевом или внешнем диске, а запись туда ограничена, лучше сразу указать `--data-dir`
 
 Быстрые переходы:
@@ -85,9 +85,9 @@ inpx-shelf.exe --data-dir="%LOCALAPPDATA%\inpx-shelf" --lib-dir="Z:\Books" --inp
 Ниже пример для Ubuntu с Node.js 24 из [репозитория NodeSource](https://github.com/nodesource/distributions/blob/master/DEV_README.md). Для других Linux-систем установите Node.js 24 или новее подходящим для системы способом.
 
 ```sh
-# установка Node.js 24 и утилит для исходников и 7z-библиотек
+# установка Node.js 24 и утилит для исходников
 sudo apt update
-sudo apt install -y curl git p7zip-full
+sudo apt install -y curl git
 curl -fsSL https://deb.nodesource.com/setup_24.x -o /tmp/inpx-nodesource-setup.sh
 sudo -E bash /tmp/inpx-nodesource-setup.sh
 sudo apt install -y nodejs

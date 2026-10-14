@@ -55,8 +55,8 @@ async function testConverterProcessTimeoutAndBoundedErrors() {
     }
 }
 
-// 7z and image tools go through runProcess: captured stdout is capped, a missing command falls back to the next one.
-async function testProcessStdoutCaptureAndFallback() {
+// Image tools go through runProcess: captured stdout is capped or written to a file.
+async function testProcessStdoutCapture() {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-process-stdout-'));
     try {
         const print = size => ['-e', `process.stdout.write('x'.repeat(${size}))`];
@@ -65,16 +65,6 @@ async function testProcessStdoutCaptureAndFallback() {
         const file = path.join(dir, 'out');
         assert.strictEqual(await runProcess(process.execPath, print(5000), {stdoutFile: file}), undefined);
         assert.strictEqual((await fs.readFile(file)).length, 5000);
-
-        const ZipReader = require('../server/core/ZipReader');
-        const reader = new ZipReader();
-        Object.defineProperty(reader, 'sevenZipCommands', {value: [path.join(dir, 'missing-7z'), process.execPath], configurable: true});
-        assert.strictEqual((await reader.run7z(print(10))).toString(), 'x'.repeat(10));
-        Object.defineProperty(reader, 'sevenZipCommands', {value: [path.join(dir, 'missing-7z')]});
-        await assert.rejects(reader.run7z(print(10)), {code: 'INPX_MISSING_7Z'});
-        assert.strictEqual(await fs.pathExists(path.join(dir, 'never')), false);
-        await assert.rejects(reader.run7z(print(10), {stdoutFile: path.join(dir, 'never')}), {code: 'INPX_MISSING_7Z'});
-        assert.strictEqual(await fs.pathExists(path.join(dir, 'never')), false, 'No output file without a started process');
     } finally {
         await fs.remove(dir);
     }
@@ -211,5 +201,5 @@ async function testClientIpIgnoresSpoofedForwardedFor() {
 }
 
 module.exports = [testClientIpIgnoresSpoofedForwardedFor, testConversionQueueLimitsAndRecovery, testConverterProcessTimeoutAndBoundedErrors,
-    testProcessStdoutCaptureAndFallback, testOpdsAuthenticationRateLimit, testProfileLoginRateLimitSurvivesOtherSuccesses,
+    testProcessStdoutCapture, testOpdsAuthenticationRateLimit, testProfileLoginRateLimitSurvivesOtherSuccesses,
     testAccessTokenFirstUseIsTheLogin, testConversionPublishesOnlyCompletedFiles];

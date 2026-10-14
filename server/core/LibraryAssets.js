@@ -84,25 +84,13 @@ module.exports = {
             await zipReader.open(folder, false);
 
             try {
-                const extract = async(entryFilePath) => {
-                    try {
-                        await fs.remove(outFile);
-                        await zipReader.extractToFile(entryFilePath, outFile);
-                    } catch(e) {
-                        await fs.remove(outFile);
-                    }
-                };
-
-                await extract(file);
-
-                if (!await fs.pathExists(outFile)) {//не удалось найти в архиве, попробуем имя файла в кодировке cp866
-                    await extract(iconv.encode(file, 'cp866').toString());
-                }
-
-                if (!await fs.pathExists(outFile))
-                    throw new Error(`file not found in archive: ${file}`);
-
+                await fs.remove(outFile);
+                await zipReader.extractToFile(file, outFile);
                 return outFile;
+            } catch(e) {
+                //причина в ошибке: записи нет в архиве, архив повреждён, метод сжатия не поддерживается
+                await fs.remove(outFile);
+                throw new Error(`${folder}: ${file}: ${e.message}`);
             } finally {
                 await zipReader.close();
             }

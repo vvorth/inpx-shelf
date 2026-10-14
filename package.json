@@ -31,7 +31,10 @@
   "bin": "server/index.js",
   "pkg": {
     "scripts": "server/config/*.js",
-    "assets": "dist/public.json"
+    "assets": [
+      "dist/public.json",
+      "node_modules/7z-wasm/7zz.wasm"
+    ]
   },
   "devDependencies": {
     "@babel/core": "^7.24.3",
@@ -59,6 +62,7 @@
   },
   "dependencies": {
     "@quasar/extras": "^1.16.9",
+    "7z-wasm": "^1.2.0",
     "axios": "^1.20.0",
     "chardet": "^1.6.0",
     "dayjs": "^1.11.10",

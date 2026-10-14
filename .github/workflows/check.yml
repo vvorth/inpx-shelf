@@ -33,8 +33,6 @@ jobs:
       - run: npm ci --ignore-scripts
       # Platform-independent checks run once, on Linux.
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y p7zip-full
-      - if: runner.os == 'Linux'
         run: npm audit --omit=dev --audit-level=moderate
       - if: runner.os == 'Linux'
         run: npx eslint --quiet server shared scripts build client --ext .js,.vue

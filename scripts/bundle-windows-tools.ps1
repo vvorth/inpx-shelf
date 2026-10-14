@@ -61,48 +61,17 @@ $binDir = Join-Path $targetDir 'bin'
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
 $headers = Get-GitHubHeaders
-$sevenZipReleaseApi = Get-EnvOrDefault 'WINDOWS_7ZIP_RELEASE_API' 'https://api.github.com/repos/ip7z/7zip/releases/latest'
 $windowsJxlUrl = Get-EnvOrDefault 'WINDOWS_JXL_URL' 'https://github.com/libjxl/libjxl/releases/latest/download/jxl-x64-windows-static.zip'
 $windowsWebpUrl = Get-EnvOrDefault 'WINDOWS_WEBP_URL' 'https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0-windows-x64.zip'
 $fb2cngReleaseApi = Get-EnvOrDefault 'FB2CNG_RELEASE_API' 'https://api.github.com/repos/vvorth/fb2cng/releases/tags/v1.9.1-forcejpeg-1'
 
 Write-Host "Bundling Windows tools into $binDir"
 
-$sevenZipRelease = Invoke-RestMethod -Uri $sevenZipReleaseApi -Headers $headers
-$sevenZipAsset = $sevenZipRelease.assets |
-  Where-Object { $_.name -like '7z*-extra.7z' } |
-  Select-Object -First 1
-$sevenZipBootstrapAsset = $sevenZipRelease.assets |
-  Where-Object { $_.name -eq '7zr.exe' } |
-  Select-Object -First 1
-
-if (-not $sevenZipAsset) {
-  throw 'Unable to find 7-Zip extra package in the latest release'
-}
-if (-not $sevenZipBootstrapAsset) {
-  throw 'Unable to find 7-Zip bootstrap extractor in the latest release'
-}
-
-$sevenZipArchive = Join-Path $env:TEMP $sevenZipAsset.name
-$sevenZipBootstrap = Join-Path $env:TEMP '7zr-bootstrap.exe'
-$sevenZipExtract = Join-Path $env:TEMP 'inpx-shelf-7zip-extra'
-Reset-Directory $sevenZipExtract
-
-Download-File $sevenZipAsset.browser_download_url $sevenZipArchive
-Download-File $sevenZipBootstrapAsset.browser_download_url $sevenZipBootstrap
-& $sevenZipBootstrap x $sevenZipArchive "-o$sevenZipExtract" -y
-$sevenZipSource = Get-ChildItem -Path $sevenZipExtract -Recurse -File -Filter '7za.exe' | Select-Object -First 1
-if (-not $sevenZipSource) {
-  throw 'Unable to find 7za.exe in the 7-Zip extra package'
-}
-$sevenZipTool = Join-Path $binDir '7za.exe'
-Copy-Item $sevenZipSource.FullName -Destination $sevenZipTool -Force
-
 $jxlArchive = Join-Path $env:TEMP 'jxl-x64-windows-static.zip'
 $jxlExtract = Join-Path $env:TEMP 'inpx-shelf-jxl-x64-windows-static'
 Reset-Directory $jxlExtract
 Download-File $windowsJxlUrl $jxlArchive
-& $sevenZipTool x $jxlArchive "-o$jxlExtract" -y
+Expand-Archive -Path $jxlArchive -DestinationPath $jxlExtract -Force
 Get-ChildItem -Path $jxlExtract -Recurse -File |
   Where-Object { $_.Extension -in @('.exe', '.dll') } |
   ForEach-Object {
@@ -113,7 +82,7 @@ $webpArchive = Join-Path $env:TEMP 'libwebp-windows-x64.zip'
 $webpExtract = Join-Path $env:TEMP 'inpx-shelf-libwebp-windows-x64'
 Reset-Directory $webpExtract
 Download-File $windowsWebpUrl $webpArchive
-& $sevenZipTool x $webpArchive "-o$webpExtract" -y
+Expand-Archive -Path $webpArchive -DestinationPath $webpExtract -Force
 Get-ChildItem -Path $webpExtract -Recurse -File |
   Where-Object { $_.Extension -in @('.exe', '.dll') } |
   ForEach-Object {
@@ -132,7 +101,7 @@ $fbcArchive = Join-Path $env:TEMP $fb2cngAsset.name
 $fbcExtract = Join-Path $env:TEMP 'inpx-shelf-fb2cng-win'
 Reset-Directory $fbcExtract
 Download-File $fb2cngAsset.browser_download_url $fbcArchive
-& $sevenZipTool x $fbcArchive "-o$fbcExtract" -y
+Expand-Archive -Path $fbcArchive -DestinationPath $fbcExtract -Force
 $fbcSource = Get-ChildItem -Path $fbcExtract -Recurse -File |
   Where-Object { $_.Name -eq 'fbc.exe' } |
   Select-Object -First 1

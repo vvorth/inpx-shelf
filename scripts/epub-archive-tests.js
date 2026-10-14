@@ -2,11 +2,10 @@ const assert = require('assert');
 const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');
-const {promisify} = require('util');
 const {pipeline} = require('stream/promises');
-const execFile = promisify(require('child_process').execFile);
 const yazl = require('yazl');
 const ZipReader = require('../server/core/ZipReader');
+const {sevenZipArchive} = require('./seven-zip-fixture');
 const epubRestorer = require('../server/core/EpubRestorer');
 const utils = require('../server/core/utils');
 
@@ -74,22 +73,8 @@ async function testAtomicBookCacheFilesAndRecovery() {
 
 async function archive(file, entries, sevenZip = false) {
     await fs.ensureDir(path.dirname(file));
-    if (sevenZip) {
-        const input = await fs.mkdtemp(path.join(path.dirname(file), 'archive-input-'));
-        try {
-            for (const [name, value] of Object.entries(entries))
-                await fs.outputFile(path.join(input, name), value);
-            for (const command of new ZipReader().sevenZipCommands) {
-                try {
-                    const compression = sevenZip === 'PPMd' ? ['-m0=PPMd', '-ms=on'] : [];
-                    await execFile(command, ['a', '-t7z', '-y', '-bd', ...compression, `${file}.7z`, '.'], {cwd: input, windowsHide: true});
-                    await fs.move(`${file}.7z`, file, {overwrite: true});
-                    return;
-                } catch (error) { if (error.code !== 'ENOENT') throw error; }
-            }
-            throw new Error('7-Zip is required for EPUB archive regression tests');
-        } finally { await fs.remove(input); }
-    }
+    if (sevenZip)
+        return await sevenZipArchive(file, entries, ['-t7z', ...(sevenZip === 'PPMd' ? ['-m0=PPMd', '-ms=on'] : [])]);
     const zip = new yazl.ZipFile();
     const done = pipeline(zip.outputStream, fs.createWriteStream(file));
     for (const [name, value] of Object.entries(entries))
@@ -433,18 +418,16 @@ async function testSolidEpubExtractsAllChaptersOnce() {
         const file = path.join(dir, 'solid.epub');
         await archive(file, resources, 'PPMd');
         let extractions = 0;
-        const originals = {};
-        for (const method of ['run7z']) {
-            originals[method] = ZipReader.prototype[method];
-            ZipReader.prototype[method] = function(args, ...rest) {
-                if (args[0] === 'x') extractions++;
-                return originals[method].call(this, args, ...rest);
-            };
-        }
+        const archivePool = require('../server/core/archive/ArchivePool');
+        const call = archivePool.call;
+        archivePool.call = (action, ...args) => {
+            if (action !== 'list') extractions++;
+            return call(action, ...args);
+        };
         try {
             await epubRestorer.restore(file);
         } finally {
-            Object.assign(ZipReader.prototype, originals);
+            archivePool.call = call;
         }
         assert.strictEqual(extractions, 1, 'Solid EPUB must be decompressed once regardless of chapter count');
         const reader = new ZipReader();

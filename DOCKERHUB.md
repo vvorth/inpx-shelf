@@ -25,7 +25,7 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 | `latest` | Newest stable release (no `-alpha`, `-beta` or `-rc` suffix). |
 | `beta` | Newest pre-release (`-alpha.N`, `-beta.N` or `-rc.N`). |
 | `dev`, `dev-<commit>` | Development build, published on every push to the `dev` branch after the tests pass. Unstable: for testing, not for your main library. |
-| `<version>` | Image with fb2cng, 7z, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
+| `<version>` | Image with fb2cng, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
 | `…-pdf` | Every tag above also exists with a `-pdf` suffix (`latest-pdf`, `beta-pdf`, `dev-pdf`, `<version>-pdf`): the same image plus MuPDF for `fb2` / `epub` → `pdf` conversion, about 100 MB larger. |
 
 ## Quick Start
