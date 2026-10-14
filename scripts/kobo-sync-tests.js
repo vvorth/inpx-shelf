@@ -613,6 +613,7 @@ async function testKoboPrewarmsBooksAddedToBoundLists() {
     await fixture({slowUid: 'late-uid'}, async({service, store, worker, listA, sync, prepareCalls, output}) => {
         const WebWorker = require('../server/core/WebWorker');
         Object.assign(worker, {checkMyState() {}, koboService: service,
+            getListedBookRecords: WebWorker.prototype.getListedBookRecords,
             getSeriesBookList: async() => ({books: [{_uid: 'epub-uid'}]})});
         const call = (name, ...args) => WebWorker.prototype[name].call(worker, ...args);
         const idle = async() => {

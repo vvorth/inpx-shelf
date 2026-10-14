@@ -270,6 +270,8 @@ class WebSocketController {
                     await this.importReadingLists(req, ws); break;
                 case 'update-reading-list-book':
                     await this.updateReadingListBook(req, ws); break;
+                case 'replace-listed-book':
+                    await this.replaceListedBook(req, ws); break;
                 case 'set-reading-list-book-read':
                     await this.setReadingListBookRead(req, ws); break;
                 case 'mark-reader-books-read':
@@ -979,6 +981,14 @@ class WebSocketController {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.updateReadingListBook(user.id, req.listId, req.bookUid, req.enabled);
         this.send(result, req, ws);
+    }
+
+    async replaceListedBook(req, ws) {
+        if (!req.fromUid || !req.toUid)
+            throw new Error('bookUid is empty');
+
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        this.send(await this.webWorker.replaceListedBook(user.id, req.fromUid, req.toUid), req, ws);
     }
 
     async setReadingListBookRead(req, ws) {

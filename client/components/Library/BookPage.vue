@@ -35,6 +35,11 @@
                             <span v-if="book.serno"> · {{ $t('bookCollection.book', {n: book.serno}) }}</span>
                         </div>
 
+                        <div v-if="unavailable" class="book-unavailable">
+                            <q-icon name="la la-exclamation-circle" size="18px" />
+                            <span>{{ unavailable === 'disabled' ? $t('book.unavailableDisabled') : $t('book.unavailableMissing') }}</span>
+                        </div>
+
                         <div v-if="progress > 0 && progress < 1" class="book-progress">
                             <div class="progress">
                                 <i :style="{width: `${percent}%`}" />
@@ -42,7 +47,12 @@
                             <span class="card-hint num">{{ $t('bookCollection.read', {n: percent}) }}</span>
                         </div>
 
-                        <div class="book-actions">
+                        <div v-if="unavailable" class="book-actions">
+                            <q-btn v-if="signedIn" outline color="primary" no-caps icon="la la-bookmark" @click="readingListsDialogVisible = true">
+                                {{ $t('book.list') }}
+                            </q-btn>
+                        </div>
+                        <div v-else class="book-actions">
                             <q-btn color="primary" unelevated no-caps icon="la la-book-open" :loading="busy === 'readBook'" @click="act('readBook')">
                                 {{ readLabel }}
                             </q-btn>
@@ -117,10 +127,12 @@
                                 <dt>{{ $t('search.language') }}</dt>
                                 <dd>{{ book.lang }}</dd>
                             </template>
-                            <dt>{{ $t('opds.file') }}</dt>
-                            <dd class="num">
-                                {{ [String(book.ext || '').toUpperCase(), fileSize].filter(Boolean).join(' · ') }}
-                            </dd>
+                            <template v-if="book.ext || fileSize">
+                                <dt>{{ $t('opds.file') }}</dt>
+                                <dd class="num">
+                                    {{ [String(book.ext || '').toUpperCase(), fileSize].filter(Boolean).join(' · ') }}
+                                </dd>
+                            </template>
                             <template v-if="book.date">
                                 <dt>{{ $t('book.added') }}</dt>
                                 <dd class="num">
@@ -143,6 +155,43 @@
                     </div>
                 </section>
 
+                <section v-if="unavailable" class="book-section">
+                    <div class="card-head">
+                        <h2 class="card-title">
+                            {{ $t('book.potentialReplacements') }}
+                        </h2>
+                    </div>
+                    <div class="card-hint">
+                        {{ replacements.length ? $t('book.replacementsHint') : $t('book.noReplacements') }}
+                    </div>
+                    <ol v-if="replacements.length" class="replacements">
+                        <li v-for="item in replacements" :key="item._uid" class="replacement">
+                            <button type="button" class="replacement-cover" :aria-label="$t('book.view')" @click="peekUid = item._uid">
+                                <BookCover :book="item" :progress="stateOf(item).percent || 0" small />
+                            </button>
+                            <div class="replacement-main">
+                                <button type="button" class="replacement-title" @click="peekUid = item._uid">
+                                    {{ item.title || $t('common.untitled') }}
+                                </button>
+                                <div class="replacement-line">
+                                    {{ [bookAuthorsOf(item).join(', '), item.series ? `${item.series}${item.serno ? ` #${item.serno}` : ''}` : ''].filter(Boolean).join(' · ') }}
+                                </div>
+                                <div class="replacement-line replacement-line--muted num">
+                                    {{ replacementMeta(item) }}
+                                </div>
+                            </div>
+                            <div class="replacement-actions">
+                                <q-btn flat dense no-caps color="primary" icon="la la-eye" @click="peekUid = item._uid">
+                                    {{ $t('book.view') }}
+                                </q-btn>
+                                <q-btn v-if="signedIn" outline dense no-caps color="primary" icon="la la-exchange-alt" :loading="busy === `replace-${item._uid}`" @click="replaceWith(item)">
+                                    {{ $t('book.useInstead') }}
+                                </q-btn>
+                            </div>
+                        </li>
+                    </ol>
+                </section>
+
                 <section v-if="editions.length" class="book-section">
                     <div class="card-head">
                         <h2 class="card-title">
@@ -152,7 +201,7 @@
                     <BookCollection :books="editions" :states="states" view="rows" />
                 </section>
 
-                <section class="book-section">
+                <section v-if="!unavailable" class="book-section">
                     <div class="card-head">
                         <h2 class="card-title">
                             {{ $t('reader.annotation') }}
@@ -171,7 +220,7 @@
                     </div>
                 </section>
 
-                <BookDetails :book="book" :book-info="bookInfo" :loading="infoLoading" @updated="onMetadataUpdated" />
+                <BookDetails v-if="!unavailable" :book="book" :book-info="bookInfo" :loading="infoLoading" @updated="onMetadataUpdated" />
 
                 <section v-if="related.length" class="book-section">
                     <div class="card-head">
@@ -197,6 +246,7 @@
         </div>
 
         <AddToListDialog v-if="book" v-model="readingListsDialogVisible" :book="book" @changed="loadLists" />
+        <BookPeekDialog v-model:uid="peekUid" />
     </div>
 </template>
 
@@ -208,6 +258,7 @@ import BookCard from './BookCard.vue';
 import BookCollection from './BookCollection.vue';
 import AddToListDialog from './AddToListDialog.vue';
 import BookDetails from './BookDetails.vue';
+import BookPeekDialog from './BookPeekDialog.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tm} from '../../share/i18n';
@@ -223,8 +274,13 @@ const componentOptions = {
         BookCollection,
         AddToListDialog,
         BookDetails,
+        BookPeekDialog,
     },
     watch: {
+        //переход по ссылке из окна поверх книги закрывает его
+        '$route.fullPath'() {
+            this.peekUid = '';
+        },
         '$route.params.uid'() {
             if (!this.dialogUid && this.$route.path.startsWith('/book/'))
                 this.load();
@@ -250,6 +306,9 @@ class BookPage {
     inLists = [];
     related = [];
     editions = [];
+    //недоступная книга: возможные замены из включённых библиотек и книга, открытая поверх для просмотра
+    replacements = [];
+    peekUid = '';
     bookInfo = null;
     infoLoading = false;
     infoError = '';
@@ -326,6 +385,44 @@ class BookPage {
         return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
     }
 
+    //'disabled' - библиотека книги выключена, 'missing' - книги нет в подключённых библиотеках
+    get unavailable() {
+        return (this.book && this.book.unavailable) || '';
+    }
+
+    bookAuthorsOf(book) {
+        return bookAuthors(book);
+    }
+
+    replacementMeta(book) {
+        const size = Number(book.size || 0);
+        const sizeText = (size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : (size > 0 ? `${Math.max(1, Math.round(size / 1024))} KB` : ''));
+        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText, book.date || '',
+            book.sourceName || librarySourceName(this.config, book)].filter(Boolean).join(' · ');
+    }
+
+    //Читатель сам выбирает замену: его списки, прогресс и закладки переходят к выбранной книге
+    async replaceWith(item) {
+        const confirmed = await this.$root.stdDialog.confirm(t('book.replaceConfirm', {from: this.book.title || ''}), t('book.replaceTitle'));
+        if (!confirmed)
+            return;
+
+        this.busy = `replace-${item._uid}`;
+        try {
+            const result = await this.api.replaceListedBook(bookUid(this.book), item._uid);
+            this.$root.notify.success(t('book.replaced'));
+            const uid = (result && result.bookUid) || item._uid;
+            if (this.dialogUid)
+                this.$router.replace({path: this.$route.path, query: Object.assign({}, this.$route.query, {book: uid}), hash: this.$route.hash});
+            else
+                this.$router.replace(`/book/${encodeURIComponent(uid)}`);
+        } catch (e) {
+            this.$root.stdDialog.alert(tm(e.message), t('common.error'));
+        } finally {
+            this.busy = '';
+        }
+    }
+
     get sourceName() {
         return (this.book ? librarySourceName(this.config, this.book) : '');
     }
@@ -353,6 +450,8 @@ class BookPage {
         this.infoError = '';
         this.related = [];
         this.editions = [];
+        this.replacements = [];
+        this.peekUid = '';
         this.inLists = [];
         this.states = {};
         try {
@@ -361,6 +460,7 @@ class BookPage {
                 return;
             this.book = result.book;
             this.editions = result.editions || [];
+            this.replacements = result.replacements || [];
             if (!this.dialogUid)
                 this.$root.setAppTitle(this.book.title);
         } catch (e) {
@@ -374,9 +474,14 @@ class BookPage {
         }
 
         loadGenres(this.api).then(() => this.genresReady++).catch(() => {});
+        this.loadLists();
+        //недоступную книгу не открыть: ни аннотации, ни похожих, только состояния замен
+        if (this.unavailable) {
+            this.loadStates([this.book, ...this.replacements]).catch(() => {});
+            return;
+        }
         this.loadInfo();
         this.loadRelated();
-        this.loadLists();
     }
 
     async loadStates(books) {
@@ -512,6 +617,71 @@ export default vueComponent(BookPage);
     color: var(--app-muted);
 }
 
+.book-unavailable {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: 68ch;
+    color: var(--app-muted);
+}
+
+.replacements {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.replacement {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.replacement-cover,
+.replacement-title {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.replacement-title {
+    font-weight: 600;
+}
+
+.replacement-title:hover {
+    text-decoration: underline;
+}
+
+.replacement-main {
+    min-width: 0;
+}
+
+.replacement-line {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.replacement-line--muted {
+    color: var(--app-muted);
+    font-size: 12px;
+}
+
+.replacement-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
 .book-progress {
     display: flex;
     align-items: center;
@@ -605,6 +775,15 @@ export default vueComponent(BookPage);
 }
 
 @media (max-width: 899px) {
+    .replacement {
+        grid-template-columns: 40px minmax(0, 1fr);
+    }
+
+    .replacement-actions {
+        grid-column: 2;
+        justify-content: flex-start;
+    }
+
     .book-hero {
         grid-template-columns: 120px minmax(0, 1fr);
         gap: 16px;

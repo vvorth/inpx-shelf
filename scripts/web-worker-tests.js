@@ -312,21 +312,21 @@ async function testDiscoveryRequestKeepsSectionAndPersonalLimits() {
     assert.strictEqual(options.personalSimilarLimit, 24);
 }
 
-//списки, прогресс и закладки переходят на ту же книгу другой библиотеки: _uid другой, совпадают название и автор
-async function testListedBooksMoveToAnotherLibrary() {
+//книга, пропавшая из библиотеки, остаётся в списке бледной; замены не подставляются сами, читатель выбирает из возможных
+async function testListedBooksKeepUntilReaderReplacesThem() {
     await temporary(async(dataDir) => {
         const CatalogIndex = require('../server/core/search/CatalogIndex');
         const ReadingListStore = require('../server/core/ReadingListStore');
         const book = (id, uid, author, title, extra = {}) => Object.assign({id, _uid: uid, author, title, series: '', serno: 0, size: 1,
             librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang: 'ru',
             date: '2010-01-01'}, extra);
-        const library = (name, books) => {
+        const library = (name, books, sources = [], hidden = []) => {
             const index = new CatalogIndex();
             const file = path.join(dataDir, name);
-            index.beginBuild(file);
+            index.beginBuild(file, [], sources);
             index.insertBooks(books);
             index.finishBuild({});
-            index.open(file);
+            index.open(file, hidden);
             return index;
         };
         const first = library('first.sqlite', [
@@ -340,31 +340,62 @@ async function testListedBooksMoveToAnotherLibrary() {
             book(3, 'new-copy-a', 'Иванов Иван', 'Рассказы', {libid: '31', date: '2001-01-01'}),
             book(4, 'new-copy-b', 'Иванов Иван', 'Рассказы', {libid: '30', date: '2001-01-01'}),
             book(5, 'new-copy-c', 'Иванов Иван', 'Рассказы', {libid: '29', date: '2005-01-01'}),
-        ]);
+            book(6, 'off-copy', 'Иванов Иван', 'Рассказы', {sourceId: 'off'}),
+        ], [{id: 'main', name: 'Main', libDir: dataDir}, {id: 'off', name: 'Off', libDir: dataDir}], ['off']);
         const catalog = (index) => ({ready: true,
-            getBooksByUids: async(uids) => index.getBooksByUids(uids),
-            getBooksByTitles: async(titles) => index.getBooksByTitles(titles)});
+            getBooksByUids: async(uids, includeHidden) => index.getBooksByUids(uids, includeHidden),
+            getBooksByTitles: async(titles) => index.getBooksByTitles(titles),
+            authorAliasesOf: async() => ({}), editions: async() => []});
         try {
             const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
             const list = await store.createList('', 'Queue');
-            await store.addBooks('', list.id, ['old-apples', 'old-copy', 'old-gone']);
+            await store.addBooks('', list.id, ['old-apples', 'old-copy', 'old-gone', 'off-copy']);
             await store.updateReaderProgress('', 'old-apples', {percent: 0.5, sectionId: 's'});
-            const worker = bareWorker({readingListStore: store, catalogSearch: catalog(first)});
+            const worker = bareWorker({readingListStore: store, catalogSearch: catalog(first), checkMyState: () => true,
+                config: {}});
 
             await worker.syncListedBooks();
             assert.deepStrictEqual(Object.keys((await store.getBookNoteState()).notes).sort(), ['old-apples', 'old-copy', 'old-gone']);
 
+            //другая библиотека: списки и прогресс не меняются сами
             worker.catalogSearch = catalog(second);
             await worker.syncListedBooks();
-            const books = store.normalizeEntries((await store.getList('', list.id)).books).map(entry => entry.bookUid);
-            // автор совпал без отчества; из копий с той же датой - меньший libid; книги без пары остаются как были
-            assert.deepStrictEqual(books, ['new-apples', 'new-copy-b', 'old-gone']);
+            const listed = async() => store.normalizeEntries((await store.getList('', list.id)).books).map(entry => entry.bookUid);
+            assert.deepStrictEqual(await listed(), ['old-apples', 'old-copy', 'old-gone', 'off-copy']);
+            assert.deepStrictEqual(Object.keys((await store.getBookNoteState()).notes).sort(), ['off-copy', 'old-apples', 'old-copy', 'old-gone'],
+                'a book of a disabled library keeps its note');
+
+            //недоступные книги видны в списке: пропавшие - по заметке, из выключенной библиотеки - своей записью
+            const {books} = await worker.getReadingList('', list.id);
+            assert.deepStrictEqual(books.map(item => [item._uid, item.title, item.unavailable]), [
+                ['old-apples', 'Горькие яблоки', 'missing'], ['old-copy', 'Рассказы', 'missing'],
+                ['old-gone', 'Только здесь', 'missing'], ['off-copy', 'Рассказы', 'disabled'],
+            ]);
+
+            //возможные замены: все совпадения по названию и первому автору, лучшие первыми, без отбора
+            const replacements = async uid => (await worker.getBook(uid)).replacements.map(item => item._uid);
+            assert.deepStrictEqual(await replacements('old-apples'), ['new-apples']);
+            assert.deepStrictEqual(await replacements('old-copy'), ['new-copy-b', 'new-copy-a', 'new-copy-c']);
+            assert.deepStrictEqual(await replacements('off-copy'), ['new-copy-c', 'new-copy-b', 'new-copy-a']);
+            assert.deepStrictEqual(await replacements('old-gone'), []);
+            assert.deepStrictEqual((await worker.getBook('new-apples')).replacements, undefined, 'available book has editions, not replacements');
+
+            //убрать и вернуть недоступную книгу можно
+            await worker.updateReadingListBook('', list.id, 'old-gone', false);
+            await worker.updateReadingListBook('', list.id, 'old-gone', true);
+            await worker.setReadingListBookRead('', list.id, 'old-gone', true);
+
+            //замена, выбранная читателем: место в списке, прогресс; заметка старой книги остаётся у других профилей
+            const result = await worker.replaceListedBook('', 'old-apples', 'new-apples');
+            assert.strictEqual(result.bookUid, 'new-apples');
+            assert.deepStrictEqual(await listed(), ['new-apples', 'old-copy', 'off-copy', 'old-gone']);
             const {user} = await store.resolveUser('');
             assert.strictEqual(user.readerProgress['new-apples'].percent, 0.5);
             assert.ok(!user.readerProgress['old-apples']);
-            assert.deepStrictEqual(Object.keys((await store.getBookNoteState()).notes).sort(), ['new-apples', 'new-copy-b', 'old-gone']);
+            await assert.rejects(worker.replaceListedBook('', 'old-copy', 'off-copy'), /not found|не найдена/i, 'replacement must be available');
 
             //повторная сверка ничего не меняет и не пишет файл
+            await worker.syncListedBooks();
             let saves = 0;
             const save = store.save.bind(store);
             store.save = async(...args) => {
@@ -390,7 +421,7 @@ module.exports = [
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
-    testListedBooksMoveToAnotherLibrary,
+    testListedBooksKeepUntilReaderReplacesThem,
     testReadingStats,
     testLibraryAssetCaches,
     testProfileLoginChecksPasswordOutsideTheStoreLock,

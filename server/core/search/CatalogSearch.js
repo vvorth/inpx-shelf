@@ -320,9 +320,10 @@ class CatalogSearch {
     }
 
     //Записи по _uid (без правок метаданных: их накладывает вызывающий)
-    async getBooksByUids(uids = []) {
+    //includeHidden - и книги выключенных библиотек (с пометкой hiddenSource)
+    async getBooksByUids(uids = [], includeHidden = false) {
         this.checkReady();
-        return (uids.length ? await this.getThread().call('getBooksByUids', uids) : []);
+        return (uids.length ? await this.getThread().call('getBooksByUids', uids, includeHidden) : []);
     }
 
     //Книги автора и серии с правками метаданных

@@ -24,7 +24,7 @@ const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {normalizeVersionTag, compareReleaseVersions} = require('../../shared/release');
 const {READ_PERCENT, isReadingInProgress, readerProgressOf} = require('./ReaderProgress');
-const {bookNote, matchBook, normalizeTitle} = require('./search/bookMatch');
+const {bookNote, rankReplacements, normalizeTitle} = require('./search/bookMatch');
 
 //server states
 const ssNormal = 'normal';
@@ -406,9 +406,15 @@ class WebWorker {
     async getBook(bookUid = '') {
         this.checkMyState();
 
-        const book = await this.getBookRecordByUid(String(bookUid || '').trim());
-        if (!book)
-            throw new Error(t('errors.bookNotFound'));
+        const uid = String(bookUid || '').trim();
+        const book = await this.getBookRecordByUid(uid);
+        if (!book) {
+            //недоступная книга (выключенная библиотека или нет в библиотеке): заметка и возможные замены вместо изданий
+            const listed = (await this.getListedBookRecords([uid])).get(uid);
+            if (!listed || (listed.unavailable === 'missing' && !listed.author))
+                throw new Error(t('errors.bookNotFound'));
+            return {book: listed, editions: [], replacements: await this.findReplacements(listed)};
+        }
 
         const result = {books: [Object.assign({}, book)]};
         await this.applyMetadataOverridesToSearchResult(result);
@@ -439,9 +445,10 @@ class WebWorker {
     }
 
     //Записи по набору _uid одним запросом к потоку БД: Map _uid -> запись
-    async getBookRecordsByUids(bookUids = []) {
+    //includeHidden - и книги выключенных библиотек (пометка hiddenSource)
+    async getBookRecordsByUids(bookUids = [], includeHidden = false) {
         const uids = Array.from(new Set(bookUids.map(uid => String(uid || '').trim()).filter(Boolean)));
-        const rows = (uids.length ? await this.catalogSearch.getBooksByUids(uids) : []);
+        const rows = (uids.length ? await this.catalogSearch.getBooksByUids(uids, includeHidden) : []);
         return new Map(rows.map(row => [row._uid, row]));
     }
 
@@ -452,42 +459,70 @@ class WebWorker {
     }
 
     //Списки, прогресс и закладки ссылаются на _uid, а он у той же книги в другой библиотеке другой.
-    //Для найденных книг запоминаем заметку (название, автор...), потерянные _uid переносим на совпавшую по заметке книгу.
+    //Для найденных книг (и книг выключенных библиотек) запоминаем заметку: название, автор... По ней пропавшая книга
+    //показывается в списках, а читатель сам выбирает ей замену (findReplacements, replaceListedBook). Сами списки здесь не меняются.
     async syncListedBooks() {
         if (!this.catalogSearch.ready)
             return;
-        const {uids, notes} = await this.readingListStore.getBookNoteState();
+        const {uids} = await this.readingListStore.getBookNoteState();
         if (!uids.length)
             return;
 
-        const found = await this.getBookRecordsByUids(uids);
+        const found = await this.getBookRecordsByUids(uids, true);
         const fresh = {};
-        const orphans = [];
+        for (const [uid, book] of found)
+            fresh[uid] = bookNote(book);
+        await this.readingListStore.saveBookNotes(fresh);
+        const missing = uids.length - found.size;
+        if (missing)
+            log(`Reading lists: ${missing} book(s) not found in the current library`);
+    }
+
+    //Записи книг для списков: доступные; книги выключенных библиотек (unavailable: 'disabled');
+    //пропавшие из библиотеки - по заметке (unavailable: 'missing'). Map _uid -> запись
+    async getListedBookRecords(bookUids = []) {
+        const uids = Array.from(new Set(bookUids.map(uid => String(uid || '').trim()).filter(Boolean)));
+        const found = await this.getBookRecordsByUids(uids, true);
+        const notes = (uids.some(uid => !found.has(uid)) ? (await this.readingListStore.getBookNoteState()).notes : {});
+        const result = new Map();
         for (const uid of uids) {
             const book = found.get(uid);
-            if (book)
-                fresh[uid] = bookNote(book);
-            else if (notes[uid])
-                orphans.push(uid);
-        }
-
-        const mapping = {};
-        if (orphans.length) {
-            const byTitle = await this.catalogSearch.getBooksByTitles([...new Set(orphans.map(uid => normalizeTitle(notes[uid].title)))]);
-            for (const uid of orphans) {
-                const book = matchBook(notes[uid], byTitle[normalizeTitle(notes[uid].title)] || []);
-                if (book) {
-                    mapping[uid] = book._uid;
-                    fresh[book._uid] = bookNote(book);
-                }
+            if (book) {
+                if (book.hiddenSource)
+                    book.unavailable = 'disabled';
+                result.set(uid, book);
+            } else {
+                const note = notes[uid] || {};
+                result.set(uid, Object.assign({}, note, {_uid: uid, title: note.title || t('reader.bookUnavailable'), unavailable: 'missing'}));
             }
         }
+        return result;
+    }
 
-        const result = await this.readingListStore.saveBookNotes(fresh, mapping);
-        if (result.moved)
-            log(`Reading lists: ${result.moved} book(s) moved to matching records of the current library, ${orphans.length - result.moved} not found`);
-        else if (orphans.length)
-            log(`Reading lists: ${orphans.length} book(s) not found in the current library`);
+    //Возможные замены недоступной книги среди книг включённых библиотек: все совпадения по названию и первому автору
+    async findReplacements(book = {}) {
+        const note = bookNote(book);
+        const title = normalizeTitle(note.title);
+        if (!title)
+            return [];
+        const byTitle = await this.catalogSearch.getBooksByTitles([title]);
+        const books = rankReplacements(note, byTitle[title] || []).filter(item => item._uid !== book._uid).map(item => Object.assign({}, item));
+        await this.applyMetadataOverridesToSearchResult({books});
+        return books;
+    }
+
+    //Замена книги, выбранная читателем: его списки (с отметкой «прочитано»), прогресс и закладки переходят на другую книгу
+    async replaceListedBook(userId = '', fromUid = '', toUid = '') {
+        this.checkMyState();
+        const target = await this.getBookRecordByUid(String(toUid || '').trim());
+        if (!target)
+            throw new Error(t('errors.bookNotFound'));
+
+        const result = await this.readingListStore.replaceBook(userId, fromUid, target._uid);
+        if (this.koboService && result.userId)
+            this.koboService.prewarmLists(result.userId);
+        await this.trySyncListedBooks();
+        return {bookUid: target._uid, lists: result.lists};
     }
 
     async trySyncListedBooks() {
@@ -750,7 +785,8 @@ class WebWorker {
 
         const listEntries = this.readingListStore.normalizeEntries(item.books);
         const books = [];
-        const booksByUid = await this.getBookRecordsByUids(listEntries.map(entry => entry.bookUid));
+        //недоступные книги остаются в списке бледными (unavailable): их не подменяют, замену выбирает читатель
+        const booksByUid = await this.getListedBookRecords(listEntries.map(entry => entry.bookUid));
         for (const entry of listEntries) {
             const book = booksByUid.get(entry.bookUid);
             if (book) {
@@ -829,9 +865,12 @@ class WebWorker {
     async updateReadingListBook(userId = '', listId, bookUid, enabled) {
         this.checkMyState();
 
-        const book = await this.getBookRecordByUid(bookUid);
-        if (!book)
-            throw new Error(t('errors.fileNotFound'));
+        //убрать из списка можно любую книгу; добавить - и недоступную, если о ней что-то известно
+        if (enabled) {
+            const book = (await this.getListedBookRecords([bookUid])).get(String(bookUid || '').trim());
+            if (!book || (book.unavailable === 'missing' && !book.author))
+                throw new Error(t('errors.fileNotFound'));
+        }
 
         const item = await this.readingListStore.setBookMembership(userId, listId, bookUid, enabled);
         if (enabled && this.koboService)
@@ -846,10 +885,7 @@ class WebWorker {
     async setReadingListBookRead(userId = '', listId, bookUid, read) {
         this.checkMyState();
 
-        const book = await this.getBookRecordByUid(bookUid);
-        if (!book)
-            throw new Error(t('errors.fileNotFound'));
-
+        //отметку можно ставить и недоступной книге: она есть в списке
         //одна запись файла: setBooksRead с listIds сам ставит отметку в списке
         return withFileTransaction(this.readingListStore.file, async() => {
             const item = await this.readingListStore.getList(userId, listId);

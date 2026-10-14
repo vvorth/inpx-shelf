@@ -4,6 +4,11 @@
             {{ $t('book.openSource') }}
         </q-btn>
     </div>
+    <div v-else-if="book.unavailable" class="quick-actions">
+        <q-btn v-if="signedIn" flat dense round :icon="inList ? listedIcon : 'la la-bookmark'" :aria-label="$t('book.list')" @click="$emit('lists')">
+            <q-tooltip>{{ $t('book.list') }}</q-tooltip>
+        </q-btn>
+    </div>
     <div v-else class="quick-actions">
         <q-btn flat dense round icon="la la-book-open" :aria-label="$t('common.readBook')" @click="act('readBook')">
             <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>

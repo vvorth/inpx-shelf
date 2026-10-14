@@ -1215,10 +1215,10 @@ async function testOpdsSeriesEntriesAndFilter() {
 async function testBookPageRecordAndReaderStates() {
     const worker = makeWorker();
     worker.getBookRecordByUid = async(uid) => (uid === 'book:1' ? {_uid: 'book:1', title: 'Старое название', author: 'Автор', ext: 'fb2', size: 10} : null);
-    worker.readingListStore = {getMetadataOverrides: async() => ({'book:1': {title: 'Новое название'}})};
+    worker.readingListStore = {getMetadataOverrides: async() => ({'book:1': {title: 'Новое название'}}), getBookNoteState: async() => ({uids: [], notes: {}})};
     worker.applyMetadataOverridesToRows = (rows, overrides) => rows.forEach(row => Object.assign(row, overrides[row._uid] || {}));
     worker.applyPreparedBookSizesToRows = async() => {};
-    worker.catalogSearch = {editions: async(uid) => (uid === 'book:1' ? [{_uid: 'book:2'}] : [])};
+    worker.catalogSearch = {editions: async(uid) => (uid === 'book:1' ? [{_uid: 'book:2'}] : []), getBooksByUids: async() => []};
 
     const page = await worker.getBook('book:1');
     assert.strictEqual(page.book.title, 'Новое название');

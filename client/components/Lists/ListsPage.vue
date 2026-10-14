@@ -191,7 +191,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="book in visibleBooks" :key="book.bookUid">
+                                        <tr v-for="book in visibleBooks" :key="book.bookUid" :class="{'is-unavailable': book.unavailable}">
                                             <td class="col-check">
                                                 <q-checkbox :model-value="book.read" dense :aria-label="$t('common.read')" @update:model-value="toggleRead(book, $event)" />
                                             </td>
@@ -219,7 +219,7 @@
                                                 {{ fileMeta(book) }}
                                             </td>
                                             <td class="col-actions">
-                                                <q-btn flat dense round color="primary" icon="la la-book-open" :aria-label="$t('common.readBook')" @click="openReader(book.bookUid)">
+                                                <q-btn v-if="!book.unavailable" flat dense round color="primary" icon="la la-book-open" :aria-label="$t('common.readBook')" @click="openReader(book.bookUid)">
                                                     <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
                                                 </q-btn>
                                                 <q-btn flat dense round icon="la la-times" :aria-label="$t('lists.removeFromList')" @click="removeBook(book)">
@@ -386,6 +386,8 @@ class ListsPage {
                 ext: book.ext || '',
                 size: Number(book.size || 0),
                 read: !!(book._readingListRead || book.read),
+                //выключенная библиотека или книги больше нет: строка бледная, открывается только окно книги
+                unavailable: book.unavailable || '',
                 order,
                 record: book,
             }));
@@ -631,6 +633,10 @@ export default vueComponent(ListsPage);
 </script>
 
 <style scoped>
+.data-table tr.is-unavailable td:not(.col-actions):not(.col-check) {
+    opacity: 0.5;
+}
+
 .lists-layout {
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);

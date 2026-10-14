@@ -13,7 +13,7 @@
         </div>
 
         <div v-else-if="view === 'cards'" class="cards-grid">
-            <article v-for="book in books" :key="keyOf(book)" class="wide-card">
+            <article v-for="book in books" :key="keyOf(book)" class="wide-card" :class="{'is-unavailable': book.unavailable}">
                 <component :is="linkTag(book)" class="wide-card-cover" v-bind="linkAttrs(book)" @click="opened(book)">
                     <BookCover :book="book" :progress="coverProgress(book)" />
                 </component>
@@ -42,6 +42,7 @@
                     </div>
                     <div class="wide-card-foot">
                         <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
+                        <span v-else-if="book.unavailable" class="pill pill--warn">{{ $t('bookCard.unavailable') }}</span>
                         <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('bookCollection.read', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
                         <span v-if="!isExternal(book) && Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
@@ -54,7 +55,7 @@
         </div>
 
         <ol v-else class="rows">
-            <li v-for="book in books" :key="keyOf(book)" class="row-item">
+            <li v-for="book in books" :key="keyOf(book)" class="row-item" :class="{'is-unavailable': book.unavailable}">
                 <component :is="linkTag(book)" class="row-cover" v-bind="linkAttrs(book)" @click="opened(book)">
                     <BookCover :book="book" :progress="coverProgress(book)" small />
                 </component>
@@ -81,6 +82,7 @@
                 </div>
                 <div class="row-side">
                     <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
+                    <span v-else-if="book.unavailable" class="pill pill--warn">{{ $t('bookCard.unavailable') }}</span>
                     <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                     <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
                     <span v-if="!isExternal(book) && Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
@@ -233,6 +235,15 @@ export default vueComponent(BookCollection);
 </script>
 
 <style scoped>
+/* недоступная книга: бледная, открывается только её окно (замены, списки) */
+.is-unavailable .row-cover,
+.is-unavailable .wide-card-cover,
+.is-unavailable .row-main,
+.is-unavailable .wide-card-title {
+    opacity: 0.5;
+    filter: grayscale(1);
+}
+
 .covers-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));

@@ -248,8 +248,23 @@ module.exports = {
         return {lists};
     },
 
+    // A replacement the reader chose for an unavailable book: the profile's list entries (with the read flag),
+    // reader progress and bookmarks move to the other book. Shared data (metadata edits, book notes) stays:
+    // other profiles may still refer to the old book.
+    async replaceBook(userId = '', fromUid = '', toUid = '') {
+        const {data, user: target} = await this.resolveUser(userId);
+        const pairs = this.normalizeRekeyPairs({[fromUid]: toUid});
+        if (!target || !pairs.size)
+            return {lists: 0, userId: (target ? target.id : '')};
+
+        const lists = this.rekeyData(data, [target], pairs, {shared: false});
+        await this.save(data);
+        return {lists, userId: target.id};
+    },
+
     // Moves the uids of the given profiles in loaded data; returns the number of changed lists.
-    rekeyData(data, users, pairs) {
+    // shared: false keeps metadata edits and book notes (they belong to all profiles).
+    rekeyData(data, users, pairs, options = {}) {
         const userIds = new Set(users.map((user) => user.id));
         let lists = 0;
         for (const list of data.lists.filter((item) => userIds.has(item.userId))) {
@@ -275,8 +290,9 @@ module.exports = {
         // Admin metadata edits and book notes are keyed by uid too; the old uid no longer exists.
         data.metadataOverrides = this.normalizeMetadataOverrides(data.metadataOverrides);
         data.bookNotes = this.normalizeBookNotes(data.bookNotes);
+        const shared = (options.shared === false ? [] : [data.metadataOverrides, data.bookNotes]);
         for (const [from, to] of pairs) {
-            for (const rows of [data.metadataOverrides, data.bookNotes, ...users.flatMap((user) => [user.readerProgress, user.readerBookmarks])]) {
+            for (const rows of [...shared, ...users.flatMap((user) => [user.readerProgress, user.readerBookmarks])]) {
                 if (!rows || typeof(rows) !== 'object' || !utilsHasProp(rows, from))
                     continue;
                 if (!utilsHasProp(rows, to))
@@ -316,25 +332,16 @@ module.exports = {
         return {uids: [...this.referencedBookUids(data)], notes: this.normalizeBookNotes(data.bookNotes)};
     },
 
-    // A uid that no longer resolves moves to its match (`mapping`) in every profile; `notes` are the current
-    // records of resolved uids. Notes of uids nothing refers to any more are dropped. Saves only on change.
-    async saveBookNotes(notes = {}, mapping = {}) {
+    // `notes` are the current records of resolved uids. Notes of uids nothing refers to any more are dropped. Saves only on change.
+    async saveBookNotes(notes = {}) {
         const data = await this.load();
-        const pairs = this.normalizeRekeyPairs(mapping);
-        // an entry removed since the lookup stays removed
-        const referenced = this.referencedBookUids(data);
-        for (const from of [...pairs.keys()]) {
-            if (!referenced.has(from))
-                pairs.delete(from);
-        }
         const before = JSON.stringify(data.bookNotes || {});
-        const lists = (pairs.size ? this.rekeyData(data, data.users, pairs) : 0);
         const current = this.normalizeBookNotes(Object.assign({}, data.bookNotes, notes));
         const uids = this.referencedBookUids(data);
         data.bookNotes = Object.fromEntries(Object.entries(current).filter(([uid]) => uids.has(uid)));
-        if (pairs.size || JSON.stringify(data.bookNotes) !== before)
+        if (JSON.stringify(data.bookNotes) !== before)
             await this.save(data);
-        return {moved: pairs.size, lists};
+        return {notes: Object.keys(data.bookNotes).length};
     },
 
     async addBooks(userId = '', listId, bookUids = []) {

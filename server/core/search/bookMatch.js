@@ -1,6 +1,6 @@
 //Одна и та же книга в другой библиотеке (или после правки INPX) получает другой _uid: он считается по всей строке INPX.
-//Списки, прогресс и закладки хранят заметку о книге (название, автор, язык, серия, дата, libid) и по ней находят
-//ту же книгу среди записей текущей библиотеки.
+//Списки, прогресс и закладки хранят заметку о книге (название, автор, язык, серия, дата, libid): по ней пропавшая книга
+//показывается в списках и по ней ищутся возможные замены среди книг включённых библиотек.
 const {normalize} = require('./textNorm');
 
 function bookNote(book = {}) {
@@ -15,8 +15,7 @@ function firstAuthor(author = '') {
     return normalize(String(author).split(',')[0]).split(' ').slice(0, 2).join(' ');
 }
 
-//Шаги сужают выбор, только если кто-то из кандидатов совпал; оставшиеся после всех шагов - копии одного текста,
-//из них берётся запись с наименьшим libid, чтобы выбор не менялся от раза к разу.
+//Признаки по важности: у кандидата, совпавшего по более важному, место выше; дальше - по наименьшему libid
 const steps = [
     (note, book) => book.libid === note.libid,
     (note, book) => String(book.lang || '').trim().toLowerCase() === note.lang,
@@ -24,25 +23,21 @@ const steps = [
     (note, book) => book.date === note.date,
 ];
 
-//candidates - записи с тем же нормализованным названием; null - книги в библиотеке нет
-function matchBook(note = {}, candidates = []) {
+//Возможные замены пропавшей книги: все записи с тем же названием и первым автором, лучшие совпадения первыми.
+//Ничего не отбрасывается и не выбирается само: замену выбирает читатель.
+//candidates - записи с тем же нормализованным названием
+function rankReplacements(note = {}, candidates = []) {
     const author = firstAuthor(note.author);
     const title = normalize(note.title);
     if (!author || !title)
-        return null;
+        return [];
 
-    let found = candidates.filter(book => book && normalize(book.title) === title && firstAuthor(book.author) === author);
-    for (const step of steps) {
-        if (found.length < 2)
-            break;
-        const narrowed = found.filter(book => step(note, book));
-        if (narrowed.length)
-            found = narrowed;
-    }
-    if (found.length < 2)
-        return found[0] || null;
-
-    return found.slice().sort((a, b) => (Number(a.libid) || 0) - (Number(b.libid) || 0) || String(a._uid).localeCompare(String(b._uid)))[0];
+    const score = book => steps.reduce((total, step, index) => total + (step(note, book) ? 1 << (steps.length - 1 - index) : 0), 0);
+    return candidates
+        .filter(book => book && normalize(book.title) === title && firstAuthor(book.author) === author)
+        .map(book => ({book, score: score(book)}))
+        .sort((a, b) => (b.score - a.score) || (Number(a.book.libid) || 0) - (Number(b.book.libid) || 0) || String(a.book._uid).localeCompare(String(b.book._uid)))
+        .map(item => item.book);
 }
 
-module.exports = {bookNote, matchBook, normalizeTitle: normalize};
+module.exports = {bookNote, rankReplacements, normalizeTitle: normalize};

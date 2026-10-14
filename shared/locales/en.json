@@ -174,13 +174,24 @@
         "moreByThisAuthor": "More by this author",
         "moreInThisSeries": "More in this series",
         "noAnnotation": "No annotation.",
+        "noReplacements": "No books with the same title and author in the enabled libraries.",
         "openSource": "Open source",
         "otherEditions": "Other editions",
+        "potentialReplacements": "Potential replacements",
         "readAgain": "Read again",
-        "send": "Send"
+        "replaceConfirm": "Replace «{from}» with this book in all your lists? Its place in the lists, reading progress, bookmarks and the read mark move to the new book.",
+        "replaceTitle": "Replace book",
+        "replaced": "Book replaced",
+        "replacementsHint": "Books with the same title and first author in the enabled libraries, best matches first.",
+        "send": "Send",
+        "unavailableDisabled": "This book's library is turned off. The book can't be opened, but it stays in your lists.",
+        "unavailableMissing": "This book is no longer in any connected library. It can't be opened, but it stays in your lists.",
+        "useInstead": "Use instead",
+        "view": "View"
     },
     "bookCard": {
-        "notInTheLibrary": "Not in the library"
+        "notInTheLibrary": "Not in the library",
+        "unavailable": "Unavailable"
     },
     "bookCollection": {
         "book": "book {n}",

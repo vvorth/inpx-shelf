@@ -562,6 +562,11 @@ class Api {
         return await this.request({action: 'import-reading-lists', data}, 120);
     }
 
+    //замена недоступной книги в списках, прогрессе и закладках читателя
+    async replaceListedBook(fromUid, toUid) {
+        return await this.request({action: 'replace-listed-book', fromUid, toUid}, 120);
+    }
+
     async updateReadingListBook(listId, bookUid, enabled) {
         return await this.request({action: 'update-reading-list-book', listId, bookUid, enabled}, 120);
     }

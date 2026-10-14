@@ -1285,9 +1285,10 @@ class CatalogIndex {
 
     //---------- записи книг ----------
     //Поля записи как у разбора INPX, плюс сведения об источнике
-    bookRows(sql, ...params) {
+    //книги выключенных библиотек пропускаются; includeHidden - вернуть и их с пометкой hiddenSource (списки показывают их бледными)
+    bookRows(sql, params = [], includeHidden = false) {
         return this.db.prepare(`SELECT id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
-            file, folder, libid, insno, source FROM book WHERE ${sql}`).all(...params).filter(row => !this.hidden.has(row.source)).map((row) => {
+            file, folder, libid, insno, source FROM book WHERE ${sql}`).all(...params).filter(row => includeHidden || !this.hidden.has(row.source)).map((row) => {
             const source = this.sources.get(row.source) || {};
             const live = (this.liveSources && this.liveSources.get(row.source)) || {};
             return {
@@ -1295,6 +1296,7 @@ class CatalogIndex {
                 file: row.file, size: row.size, libid: row.libid, del: row.del, ext: row.ext, date: row.date, lang: row.lang,
                 librate: row.librate, keywords: row.keywords, folder: row.folder, insno: row.insno,
                 sourceId: row.source, sourceName: live.name || source.name || '', sourceLibDir: live.libDir || source.lib_dir || '',
+                ...(this.hidden.has(row.source) ? {hiddenSource: true} : {}),
             };
         });
     }
@@ -1303,14 +1305,14 @@ class CatalogIndex {
     getBooks(ids = []) {
         if (!this.db)
             throw new Error('catalog_index_not_ready');
-        const byId = new Map(this.bookRows('id IN (SELECT value FROM json_each(?))', JSON.stringify(ids.map(Number))).map(row => [row.id, row]));
+        const byId = new Map(this.bookRows('id IN (SELECT value FROM json_each(?))', [JSON.stringify(ids.map(Number))]).map(row => [row.id, row]));
         return ids.map(id => byId.get(Number(id))).filter(Boolean);
     }
 
-    getBooksByUids(uids = []) {
+    getBooksByUids(uids = [], includeHidden = false) {
         if (!this.db)
             throw new Error('catalog_index_not_ready');
-        return this.bookRows('uid IN (SELECT value FROM json_each(?))', JSON.stringify(uids.map(String)));
+        return this.bookRows('uid IN (SELECT value FROM json_each(?))', [JSON.stringify(uids.map(String))], includeHidden);
     }
 
     //Не удалённые записи по нормализованному названию: {title_norm: [записи]}
@@ -1384,7 +1386,7 @@ class CatalogIndex {
             const at = String(key).indexOf(':');
             if (at < 0)
                 continue;
-            const rows = this.bookRows(select, key.substring(0, at), key.substring(at + 1));
+            const rows = this.bookRows(select, [key.substring(0, at), key.substring(at + 1)]);
             if (rows.length)
                 result[key] = rows;
         }

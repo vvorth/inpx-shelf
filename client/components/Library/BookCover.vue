@@ -51,8 +51,9 @@ class BookCover {
         return coverUrl(this.$store.state.config, this.book);
     }
 
+    //у недоступной книги (выключенная библиотека, нет в библиотеке) обложку не запрашиваем
     get placeholder() {
-        return this.failed || !this.src;
+        return this.failed || !this.src || !!this.book.unavailable;
     }
 
     get shortAuthor() {
