@@ -920,15 +920,14 @@ class WebWorker {
 
     async exportReadingLists(userId = '') {
         this.checkMyState();
+        //названия и авторы книг: на сервере с другой версией INPX у той же книги другой _uid, по ним ищется замена.
+        //Как в полном бэкапе: сначала заметки обновляются по текущей БД
+        await this.trySyncListedBooks();
         const result = await this.readingListStore.exportData(userId);
-        //названия и авторы книг: на сервере с другой версией INPX у той же книги другой _uid, по ним ищется замена
+        const {notes} = await this.readingListStore.getBookNoteState();
         const uids = new Set([...result.lists.flatMap(list => list.books.map(entry => entry.bookUid)),
             ...Object.keys(result.user.readerProgress), ...Object.keys(result.user.readerBookmarks)]);
-        result.books = {};
-        for (const [uid, book] of await this.getListedBookRecords([...uids])) {
-            if (book.unavailable !== 'missing' || book.author)
-                result.books[uid] = bookNote(book);
-        }
+        result.books = Object.fromEntries([...uids].filter(uid => notes[uid]).map(uid => [uid, notes[uid]]));
         if (this.koboService) {
             const lists = await this.readingListStore.getLists(userId);
             result.kobo = await this.koboService.store.exportUser(userId, new Map(lists.map(item => [item.id, item.name])));
