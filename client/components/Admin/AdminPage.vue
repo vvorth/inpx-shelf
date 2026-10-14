@@ -530,9 +530,12 @@ class AdminPage {
         return JSON.stringify(original) !== JSON.stringify(current);
     }
 
-    //включение и выключение библиотеки применяется без переиндексации
+    //включение, название и папка библиотеки применяются без переиндексации; нужна она при смене набора библиотек или INPX
     get adminSourcesNeedReindex() {
-        const shape = list => JSON.stringify(list.map(source => Object.assign(this.normalizeAdminSourceForCompare(source), {enabled: true})));
+        const shape = list => JSON.stringify(list.map(source => {
+            const {id, inpx} = this.normalizeAdminSourceForCompare(source);
+            return [id, inpx];
+        }));
         return shape((this.adminDashboard && this.adminDashboard.sources) || []) !== shape(this.adminSources || []);
     }
 

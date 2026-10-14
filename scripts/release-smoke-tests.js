@@ -786,6 +786,9 @@ async function testDisabledLibrarySourceIsKept() {
             return {stats: null, books: 1, indexed: ['a', 'b']};
         }});
         worker.catalogSearch = catalogSearch;
+        catalogSearch.meta = {inpxHash: 'built'};
+        let currentHash = 'built';
+        worker.inpxHashCreator = {getHash: async() => currentHash};
         worker.saveRuntimeConfigPatch = async(patch) => Object.assign(worker.config, patch);
         const save = sources => worker.updateAdminLibrarySources('', '', sources);
         const both = enabledB => [{id: 'a', name: 'A', inpx: path.join(libA, 'a.inpx'), libDir: libA}, {id: 'b', name: 'B', inpx: config.librarySources[1].inpx, libDir: path.join(dir, 'missing'), enabled: enabledB}];
@@ -795,7 +798,11 @@ async function testDisabledLibrarySourceIsKept() {
         assert.deepStrictEqual(hidden, ['b']);
         const moved = both(false);
         moved[0].libDir = path.join(dir, 'moved');
-        assert.strictEqual((await save(moved)).reindexNeeded, true, 'path change needs reindex');
+        moved[0].name = 'Renamed';
+        assert.strictEqual((await save(moved)).reindexNeeded, false, 'rename and folder move apply without reindex');
+        currentHash = 'other';
+        assert.strictEqual((await save(moved)).reindexNeeded, true, 'changed INPX content needs reindex');
+        currentHash = 'built';
         catalogSearch.getThread = () => ({call: async() => ({stats: null, books: 1, indexed: ['a']})});
         assert.strictEqual((await save(both(true))).reindexNeeded, true, 'enabling a library missing from the index needs reindex');
         catalogSearch.meta = {inpxHash: 'h'};
@@ -845,8 +852,11 @@ async function testDisabledLibraryHiddenWithoutRebuild() {
         assert.strictEqual(visibility.stats.seriesCount, 0);
         assert.deepStrictEqual(visibility.indexed, ['main', 'second']);
 
-        index.setHiddenSources([]);
+        index.setHiddenSources([], [{id: 'second', name: 'Renamed', libDir: '/moved'}]);
         assert.deepStrictEqual(index.search({q: ''}).ids.sort(), [1, 2, 3]);
+        const [renamed] = index.getBooks([2]);
+        assert.deepStrictEqual([renamed.sourceName, renamed.sourceLibDir], ['Renamed', '/moved'], 'name and folder come from current settings');
+        assert.strictEqual(index.getBooks([1])[0].sourceName, 'Main', 'falls back to the name stored in the index');
         assert.deepStrictEqual(index.search({q: 'булгаков'}).authors, [{name: 'Булгаков Михаил', books: 2}]);
         assert.deepStrictEqual(index.opdsNames('series', {}).found.map(row => [row.series, row.bookCount]), [['Повести', 2]]);
         assert.deepStrictEqual(index.findBooks({author: 'булгаков'}).ids.sort(), [1, 2]);

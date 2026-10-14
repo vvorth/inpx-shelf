@@ -38,9 +38,14 @@ class CatalogSearch {
         return getAllLibrarySources(this.config).filter(source => source.enabled === false).map(source => source.id);
     }
 
+    //Название и папка библиотеки берутся из текущих настроек: их правка не требует пересборки
+    sourceInfo() {
+        return getAllLibrarySources(this.config).map(source => ({id: source.id, name: source.name, libDir: source.libDir}));
+    }
+
     //Открыть БД в потоке запросов со скрытыми выключенными библиотеками
     async openIndex(thread) {
-        const meta = await thread.call('open', this.file, this.hiddenSourceIds());
+        const meta = await thread.call('open', this.file, this.hiddenSourceIds(), this.sourceInfo());
         this.visibility = await thread.call('sourceVisibility');
         return meta;
     }
@@ -49,7 +54,7 @@ class CatalogSearch {
     async applySourceVisibility() {
         if (!this.ready)
             return false;
-        this.visibility = await this.getThread().call('setHiddenSources', this.hiddenSourceIds());
+        this.visibility = await this.getThread().call('setHiddenSources', this.hiddenSourceIds(), this.sourceInfo());
         return this.hasEnabledSourcesIndexed();
     }
 

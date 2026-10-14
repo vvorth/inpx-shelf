@@ -8,7 +8,7 @@ const log = new (require('./AppLogger'))().log;//singleton
 const utils = require('./utils');
 const ConfigManager = require('../config');
 const {withFileTransaction} = require('./FilePersistence');
-const {getEnabledLibrarySources, getAllLibrarySources} = require('./LibrarySources');
+const {getEnabledLibrarySources} = require('./LibrarySources');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
@@ -444,17 +444,14 @@ module.exports = {
         if (!normalized.some(source => source.enabled !== false))
             throw new Error(t('errors.sourcesEnabledRequired'));
 
-        //включение и выключение библиотеки пересборки не требует; добавление, удаление и правка путей - требуют
-        const shape = list => JSON.stringify(list.map(source => [
-            source.id, String(source.name || ''),
-            path.resolve(String(source.inpx || source.inpxFile || '.')), path.resolve(String(source.libDir || '.')),
-        ]));
-        const changed = shape(getAllLibrarySources(this.config)) !== shape(normalized);
-
         await this.saveRuntimeConfigPatch({librarySources: normalized});
-        let reindexNeeded = changed;
+        //пересборка нужна, только если изменился набор библиотек или содержимое INPX (тот же хеш, что у индекса),
+        //или включена библиотека, которой нет в индексе; включение, название и папка применяются сразу
+        let reindexNeeded = true;
         try {
-            reindexNeeded = !await this.catalogSearch.applySourceVisibility() || changed;
+            const indexed = await this.catalogSearch.applySourceVisibility();
+            const hash = await this.inpxHashCreator.getHash();
+            reindexNeeded = !indexed || hash !== String(this.catalogSearch.libraryConfig().buildHash || '');
         } catch (e) {
             log(LM_WARN, `Library sources visibility: ${e.message}`);
         }

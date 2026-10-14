@@ -107,7 +107,8 @@ class CatalogIndex {
 
     //---------- открытие ----------
     //hidden - ключи выключенных библиотек: их книги остаются в БД, но не видны (см. setHiddenSources)
-    open(file, hidden = []) {
+    //info - [{id, name, libDir}] из текущих настроек: название и папка библиотеки в записях книг
+    open(file, hidden = [], info = []) {
         this.close();
         const db = new DatabaseSync(file, {readOnly: true});
         try {
@@ -122,14 +123,15 @@ class CatalogIndex {
         this.sources = new Map(db.prepare('SELECT key, name, lib_dir FROM source').all().map(row => [row.key, row]));
         db.function('catalog_visible', id => (this.columns.flags[id] & 1));
         db.function('catalog_books', (kind, ref, books) => Math.max(0, books - ((kind === 'series' ? this.hiddenBooks.series : this.hiddenBooks.author).get(ref) || 0)));
-        this.setHiddenSources(hidden);
+        this.setHiddenSources(hidden, info);
         return this.meta();
     }
 
     //---------- выключенные библиотеки ----------
     //Книги выключенных библиотек скрываются без пересборки: в колонках в памяти снимается признак «книга есть»
     //(flags & 1, его проверяют поиск, OPDS и витрины), счётчики книг авторов и серий уменьшаются при чтении.
-    setHiddenSources(keys = []) {
+    setHiddenSources(keys = [], info = []) {
+        this.liveSources = new Map((info || []).map(source => [String(source.id || ''), source]));
         this.hidden = new Set((keys || []).map(String).filter(key => this.sources && this.sources.has(key)));
         this.hiddenBooks = {author: new Map(), series: new Map()};
         this.queryMasks = null;
@@ -1287,11 +1289,12 @@ class CatalogIndex {
         return this.db.prepare(`SELECT id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
             file, folder, libid, insno, source FROM book WHERE ${sql}`).all(...params).filter(row => !this.hidden.has(row.source)).map((row) => {
             const source = this.sources.get(row.source) || {};
+            const live = (this.liveSources && this.liveSources.get(row.source)) || {};
             return {
                 id: row.id, _uid: row.uid, author: row.author, genre: row.genre, title: row.title, series: row.series, serno: row.serno,
                 file: row.file, size: row.size, libid: row.libid, del: row.del, ext: row.ext, date: row.date, lang: row.lang,
                 librate: row.librate, keywords: row.keywords, folder: row.folder, insno: row.insno,
-                sourceId: row.source, sourceName: source.name || '', sourceLibDir: source.lib_dir || '',
+                sourceId: row.source, sourceName: live.name || source.name || '', sourceLibDir: live.libDir || source.lib_dir || '',
             };
         });
     }

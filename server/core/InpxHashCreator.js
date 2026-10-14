@@ -15,14 +15,12 @@ class InpxHashCreator {
         if (await fs.pathExists(config.inpxFilterFile))
             inpxFilterHash = await utils.getFileHash(config.inpxFilterFile, 'sha256', 'hex');
 
-        //включение и выключение библиотеки в хеш не входит: оно не требует пересборки
+        //в хеш входят только ключ библиотеки и содержимое INPX: включение, название и папка пересборки не требуют
         const sourceHashes = [];
         for (const source of await getIndexedLibrarySources(config)) {
             const inpxFile = source.inpxFile || source.inpx;
             sourceHashes.push([
                 source.id,
-                source.name,
-                source.libDir,
                 await utils.getFileHash(inpxFile, 'sha256', 'hex'),
             ].join(':'));
         }
