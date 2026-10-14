@@ -290,12 +290,6 @@ class CatalogSearch {
         return Object.assign(result, {books});
     }
 
-    //Другие издания того же произведения, с правками метаданных
-    async editions(uid = '') {
-        this.checkReady();
-        return await this.loadBooks(await this.getThread().call('editionIds', uid));
-    }
-
     //Кандидаты для полки «Похоже на то, что вы читали»: id и оценки из индекса
     async similarCandidates(request = {}) {
         this.checkReady();

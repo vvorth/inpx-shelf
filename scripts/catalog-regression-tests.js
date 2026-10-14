@@ -178,8 +178,6 @@ async function testSearchGroupsEditions() {
             assert.deepStrictEqual(search('', {group: true, limit: 2, offset: 1}).ids.length, 2);
             const flat = search('пикник');
             assert.deepStrictEqual([flat.ids.sort(), flat.editions, search('').total], [[1, 2], {}, 9], 'grouping off lists every edition');
-            assert.deepStrictEqual(index.editionIds('u2'), [1]);
-            assert.deepStrictEqual(index.editionIds('u5'), []);
         } finally {
             index.close();
         }

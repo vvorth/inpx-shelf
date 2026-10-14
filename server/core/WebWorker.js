@@ -413,12 +413,14 @@ class WebWorker {
             const listed = (await this.getListedBookRecords([uid])).get(uid);
             if (!listed || (listed.unavailable === 'missing' && !listed.author))
                 throw new Error(t('errors.bookNotFound'));
-            return {book: listed, editions: [], replacements: await this.findReplacements(listed)};
+            return {book: listed, editions: [], replacements: await this.findMatchingBooks(listed)};
         }
 
+        //другие издания ищутся так же, как замены недоступной книги: серия у изданий бывает записана по-разному
+        const editions = await this.findMatchingBooks(book);
         const result = {books: [Object.assign({}, book)]};
         await this.applyMetadataOverridesToSearchResult(result);
-        return {book: result.books[0], editions: await this.catalogSearch.editions(book._uid)};
+        return {book: result.books[0], editions};
     }
 
     //Прогресс текущего читателя по набору книг и есть ли книга в его списках: {uid: {percent, read, hidden, inList}}
@@ -461,7 +463,7 @@ class WebWorker {
     //Списки, прогресс и закладки ссылаются на _uid - хеш строки INPX. Для найденных книг (и книг выключенных библиотек)
     //запоминаем заметку: название, автор, библиотека, libid... Обновление INPX меняет строку, а с ней _uid: книга с той же
     //библиотекой и libid, единственная, - та же книга, на неё ссылки переходят сами (relinkBooks). Книга из другой
-    //библиотеки или по названию сама не подставляется: замену выбирает читатель (findReplacements, replaceListedBook).
+    //библиотеки или по названию сама не подставляется: замену выбирает читатель (findMatchingBooks, replaceListedBook).
     async syncListedBooks() {
         if (!this.catalogSearch.ready)
             return;
@@ -525,8 +527,9 @@ class WebWorker {
         return result;
     }
 
-    //Возможные замены недоступной книги среди книг включённых библиотек: все совпадения по названию и первому автору
-    async findReplacements(book = {}) {
+    //Та же книга в включённых библиотеках: все записи с тем же названием и первым автором, лучшие совпадения первыми.
+    //Это «Другие издания» на странице книги и «Возможные замены» недоступной книги; сама книга не входит
+    async findMatchingBooks(book = {}) {
         const note = bookNote(book);
         const title = normalizeTitle(note.title);
         if (!title)

@@ -1272,17 +1272,6 @@ class CatalogIndex {
         //shortcut: книга остаётся в прежней группе изданий до следующей сборки БД; пересчитывать группу здесь, если правки станут частыми
     }
 
-    //Другие неудалённые издания того же произведения: id, новые первыми
-    editionIds(uid = '') {
-        if (!this.db)
-            throw new Error('catalog_index_not_ready');
-        const book = this.db.prepare('SELECT id, work FROM book WHERE uid = ?').get(String(uid));
-        if (!book || !book.work)
-            return [];
-        return this.db.prepare('SELECT id FROM book WHERE work = ? AND id <> ? AND del = 0 ORDER BY date DESC, id DESC LIMIT 100')
-            .all(book.work, book.id).map(row => row.id);
-    }
-
     //---------- записи книг ----------
     //Поля записи как у разбора INPX, плюс сведения об источнике
     //книги выключенных библиотек пропускаются; includeHidden - вернуть и их с пометкой hiddenSource (списки показывают их бледными)

@@ -347,7 +347,7 @@ async function testListedBooksKeepUntilReaderReplacesThem() {
             getBooksByUids: async(uids, includeHidden) => index.getBooksByUids(uids, includeHidden),
             getBooksByTitles: async(titles) => index.getBooksByTitles(titles),
             getBooksByStableKeys: async(keys) => index.getBooksByStableKeys(keys),
-            authorAliasesOf: async() => ({}), editions: async() => []});
+            authorAliasesOf: async() => ({})});
         try {
             const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
             const list = await store.createList('', 'Queue');
