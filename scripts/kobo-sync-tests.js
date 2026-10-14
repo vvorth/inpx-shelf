@@ -1138,6 +1138,8 @@ async function testKoboBackupEntryIsValidated() {
         assert.deepStrictEqual(good['kobo-sync.json'].devices, []);
         await assert.rejects(BackupArchive.read(await zipOf(Object.assign({'kobo-sync.json': {devices: {}}}, base)), {}, dir),
             /kobo-sync\.json/);
+        await assert.rejects(BackupArchive.read(await zipOf(Object.assign({'author-names.json': {entries: {}}}, base)), {}, dir),
+            /author-names\.json/);
     } finally {
         await fs.remove(dir);
     }

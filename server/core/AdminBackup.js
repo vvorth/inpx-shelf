@@ -174,7 +174,7 @@ module.exports = {
             app: this.config.name,
             version: this.config.version,
             createdAt: createdAt.toISOString(),
-            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, and Kobo devices. '
+            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, Kobo devices and English author names. '
                 + 'It does not include source book archives, generated search DB or caches.',
         }, null, 4)), 'backup-info.json');
 
@@ -183,6 +183,8 @@ module.exports = {
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'reading-lists.json'), 'reading-lists.json');
         // Token hashes included: restored devices keep syncing without being set up again.
         await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'kobo-sync.json'), 'kobo-sync.json');
+        // Wikidata often refuses the download for hours (504): a new server takes the names from the backup.
+        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'author-names.json'), 'author-names.json');
 
         zipFile.end();
         try {
@@ -252,7 +254,16 @@ module.exports = {
                     koboData = new KoboStore(this.config).normalizeData(archive['kobo-sync.json']);
                     content['kobo-sync.json'] = JSON.stringify(koboData, null, 2);
                 }
+                const names = archive['author-names.json'];
+                if (names) {
+                    const entries = names.entries.filter(row => Array.isArray(row) && typeof row[0] === 'string' && typeof row[1] === 'string')
+                        .map(row => [row[0], row[1]]);
+                    content['author-names.json'] = JSON.stringify({source: String(names.source || 'wikidata'),
+                        updatedAt: String(names.updatedAt || ''), entries});
+                }
                 await transaction.commit(this.config, content);
+                if (names && this.catalogSearch)
+                    this.catalogSearch.authorNames.infoCache = null;
                 if (koboData && this.koboService) {
                     // Restored devices and tokens take effect without a restart.
                     this.koboService.store.data = koboData;
@@ -263,9 +274,9 @@ module.exports = {
                 this.profileSessions.clear();
                 const restored = Object.keys(content);
                 this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
-                //правки метаданных из бэкапа попадают в поиск и связи авторов при пересборке БД библиотеки;
+                //правки метаданных и английские имена авторов из бэкапа попадают в поиск при пересборке БД библиотеки;
                 //прежняя БД отвечает, пока строится новая
-                if (archive['reading-lists.json'] && this.catalogSearch && this.catalogSearch.ready)
+                if ((archive['reading-lists.json'] || names) && this.catalogSearch && this.catalogSearch.ready)
                     this.recreateDb().catch(e => log(LM_ERR, `Library DB rebuild after restore: ${e.message}`));//no await
                 return {
                     success: true, restored, restartRecommended: true,

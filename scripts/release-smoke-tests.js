@@ -901,6 +901,8 @@ async function testAdminBackupArchiveAndDownload() {
             lists: [{id: 'list-1', userId: 'reader', name: 'Reading', books: [{bookUid: 'book:1', read: false}]}],
         });
         await fs.writeJson(path.join(dataDir, 'discovery-cache.json'), {items: []});
+        await fs.writeJson(path.join(dataDir, 'author-names.json'), {source: 'wikidata', updatedAt: '2026-10-01T00:00:00.000Z',
+            entries: [['Азимов Айзек', 'Isaac Asimov'], ['bad']]});
         const KoboStore = require('../server/core/kobo/KoboStore');
         const koboToken = 'abcdef0123456789abcdef0123456789';
         await fs.writeJson(path.join(dataDir, 'kobo-sync.json'), {
@@ -942,6 +944,7 @@ async function testAdminBackupArchiveAndDownload() {
             assert.ok(entries['secret.key']);
             assert.strictEqual(entries['discovery-cache.json'], undefined);
             assert.ok(entries['kobo-sync.json']);
+            assert.ok(entries['author-names.json']);
             assert.strictEqual(entries['db/index.json'], undefined);
 
             const readingLists = JSON.parse((await zip.entryData('reading-lists.json')).toString('utf8'));
@@ -1061,6 +1064,9 @@ async function testAdminBackupArchiveAndDownload() {
         assert.ok(restored.restored.includes('secret.key'));
         assert.ok(restored.restored.includes('reading-lists.json'));
         assert.ok(restored.restored.includes('kobo-sync.json'));
+        assert.deepStrictEqual(await fs.readJson(path.join(restoreDataDir, 'author-names.json')),
+            {source: 'wikidata', updatedAt: '2026-10-01T00:00:00.000Z', entries: [['Азимов Айзек', 'Isaac Asimov']]},
+            'English author names come back without a Wikidata download; malformed rows are dropped');
         const restoredKobo = await fs.readJson(path.join(restoreDataDir, 'kobo-sync.json'));
         assert.strictEqual(restoredKobo.devices[0].tokenHash, KoboStore.hashToken(koboToken), 'devices keep their token');
         assert.strictEqual(restoredKobo.states.reader['kobo-book'].status, 'Reading');

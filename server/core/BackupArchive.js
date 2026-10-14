@@ -4,7 +4,7 @@ const StreamZip = require('node-stream-zip');
 const {limits} = require('./RequestLimits');
 const {t} = require('./i18n');
 
-const names = new Set(['backup-info.json', 'config.json', 'secret.key', 'reading-lists.json', 'discovery-cache.json', 'kobo-sync.json']);
+const names = new Set(['backup-info.json', 'config.json', 'secret.key', 'reading-lists.json', 'discovery-cache.json', 'kobo-sync.json', 'author-names.json']);
 
 async function read(payload, config, folder) {
     const maximum = limits(config);
@@ -66,6 +66,9 @@ async function read(payload, config, folder) {
         const kobo = result['kobo-sync.json'];
         if (kobo && (!Array.isArray(kobo.devices) || (kobo.states && (typeof kobo.states !== 'object' || Array.isArray(kobo.states)))))
             throw new Error(t('errors.backupKoboInvalid'));
+        const authorNames = result['author-names.json'];
+        if (authorNames && !Array.isArray(authorNames.entries))
+            throw new Error(t('errors.backupFileInvalid', {name: 'author-names.json'}));
         const key = result['secret.key'];
         if (key && (!result['config.json'] || !/^[A-Za-z0-9+/]{43}=\s*$/.test(key.toString('utf8'))))
             throw new Error(t('errors.backupKeyDamaged'));
