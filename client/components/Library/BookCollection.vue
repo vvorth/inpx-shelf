@@ -105,7 +105,7 @@ import {isExternalOnly} from '../../share/discovery';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {isSignedIn} from '../../share/session';
-import {bookAuthors, bookUid, bookRoute} from '../../share/bookActions';
+import {bookAuthors, bookUid, bookRoute, librarySourceName} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 
 const componentOptions = {
@@ -195,7 +195,9 @@ class BookCollection {
     fileLine(book) {
         const size = Number(book.size || 0);
         const sizeText = (size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : (size > 0 ? `${Math.max(1, Math.round(size / 1024))} KB` : ''));
-        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText, this.editionsText(book)].filter(Boolean).join(' · ');
+        //библиотека - последней: самое неважное в строке
+        return [String(book.lang || '').toUpperCase(), String(book.ext || '').toUpperCase(), sizeText, this.editionsText(book),
+            librarySourceName(this.$store.state.config, book)].filter(Boolean).join(' · ');
     }
 
     //с флажком «Скрыть копии» поиск объединяет издания одного произведения в одну книгу: остальные - на её странице

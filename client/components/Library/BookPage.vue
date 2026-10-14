@@ -212,7 +212,7 @@ import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
-import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline, loadBookStates} from '../../share/bookActions';
+import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline, loadBookStates, librarySourceName} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 import {myLanguages, languageMatches, bookLang} from '../../share/languages';
 
@@ -327,11 +327,7 @@ class BookPage {
     }
 
     get sourceName() {
-        const sources = Array.isArray(this.config.librarySources) ? this.config.librarySources : [];
-        if (sources.length < 2 || !this.book || !this.book.sourceId)
-            return '';
-        const source = sources.find(item => item.id === this.book.sourceId);
-        return source ? source.name : this.book.sourceId;
+        return (this.book ? librarySourceName(this.config, this.book) : '');
     }
 
     stateOf(book) {
