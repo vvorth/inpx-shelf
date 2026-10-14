@@ -374,6 +374,14 @@ async function testListedBooksKeepUntilReaderReplacesThem() {
                 ['old-gone', 'Только здесь', 'missing'], ['off-copy', 'Рассказы', 'disabled'],
             ]);
 
+            //«Читаю сейчас» - в том же виде, что и список: недоступная книга с прогрессом остаётся, бледной
+            await store.updateReaderProgress('', 'old-copy', {percent: 1, sectionId: 's'});
+            const reading = await worker.getReadingNow((await store.resolveUser('')).user);
+            assert.deepStrictEqual(reading.books.map(item => [item._uid, item.unavailable, item._readerPercent]), [['old-apples', 'missing', 0.5]],
+                'finished books are not in progress');
+            await worker.markReaderBooksRead('', ['old-gone'], true);
+            await worker.markReaderBooksRead('', ['old-gone'], false);
+
             //возможные замены: все совпадения по названию и первому автору, лучшие первыми, без отбора
             const replacements = async uid => (await worker.getBook(uid)).replacements.map(item => item._uid);
             assert.deepStrictEqual(await replacements('old-apples'), ['new-apples']);

@@ -855,6 +855,39 @@ class WebWorker {
         };
     }
 
+    //«Читаю сейчас» в том же виде, что и список (getReadingList): полные записи книг с начатым чтением,
+    //недоступные - бледными; свежие первыми. _readerPercent и _readerUpdatedAt - прогресс читателя
+    async getReadingNow(user = null) {
+        this.checkMyState();
+
+        const rows = Object.entries(readerProgressOf(user))
+            .map(([bookUid, progress]) => ({bookUid: String(bookUid || '').trim(), progress: progress || {}}))
+            .filter(item => item.bookUid && isReadingInProgress(item.progress))
+            .sort((a, b) => String(b.progress.updatedAt || '').localeCompare(String(a.progress.updatedAt || '')));
+        const booksByUid = await this.getListedBookRecords(rows.map(item => item.bookUid));
+        const books = [];
+        for (const item of rows) {
+            const book = booksByUid.get(item.bookUid);
+            if (!book)
+                continue;
+            book._readerPercent = Math.max(0, Math.min(1, Number(item.progress.percent || 0) || 0));
+            book._readerUpdatedAt = String(item.progress.updatedAt || '');
+            books.push(book);
+        }
+        await this.applyMetadataOverridesToSearchResult({books: books.filter(book => !book.unavailable)});
+
+        let aliases = {};
+        try {
+            aliases = await this.catalogSearch.authorAliasesOf(Array.from(new Set(books.map(book => String(book.author || '')))));
+        } catch (e) {
+            //поиск по английским именам не обязателен
+        }
+        for (const book of books)
+            book._authorAliases = aliases[String(book.author || '')] || [];
+
+        return {count: books.length, books};
+    }
+
     async createReadingList(userId = '', name, visibility = 'private') {
         this.checkMyState();
 
@@ -946,8 +979,12 @@ class WebWorker {
         if (!normalized.length)
             throw new Error('bookUids is empty');
 
-        const booksByUid = await this.getBookRecordsByUids(normalized);
-        if (normalized.some(bookUid => !booksByUid.has(bookUid)))
+        //недоступную книгу (выключенная библиотека, нет в библиотеке) тоже можно отметить, если о ней что-то известно
+        const booksByUid = await this.getListedBookRecords(normalized);
+        if (normalized.some(bookUid => {
+            const book = booksByUid.get(bookUid);
+            return !book || (book.unavailable === 'missing' && !book.author);
+        }))
             throw new Error(t('errors.fileNotFound'));
 
         return await this.readingListStore.setBooksRead(userId, normalized, read, options);

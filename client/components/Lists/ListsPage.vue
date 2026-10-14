@@ -30,7 +30,7 @@
                     >
                         <q-icon name="la la-book-reader" size="18px" />
                         <span class="lists-side-name">{{ $t('lists.readingNow') }}</span>
-                        <span class="lists-side-count">{{ readingNow.length }}</span>
+                        <span class="lists-side-count">{{ readingNowCount }}</span>
                     </button>
                     <button
                         v-for="item in lists"
@@ -52,74 +52,18 @@
                 </aside>
 
                 <section class="lists-main">
-                    <template v-if="selectedId === readingNowId">
+                    <!-- «Читаю сейчас» и списки - один вид: у «Читаю сейчас» нет переименования, удаления, OPDS и Kobo -->
+                    <template v-if="current">
                         <div class="lists-main-head">
                             <div>
                                 <h2 class="lists-main-title">
-                                    {{ $t('lists.readingNow') }}
+                                    {{ current.name }}
                                 </h2>
                                 <div class="lists-main-sub">
-                                    {{ $t('lists.booksWithSavedProgress') }}
+                                    {{ isReadingNow ? $t('lists.booksWithSavedProgress') : $t('lists.booksRead', {read: selectedList.readCount || 0, total: selectedList.bookCount || 0}) }}
                                 </div>
                             </div>
-                        </div>
-                        <div v-if="!readingNow.length" class="page-empty page-empty--inline">
-                            {{ $t('lists.noBooksInProgress') }}
-                        </div>
-                        <div v-if="readingNow.length" class="lists-tools">
-                            <q-space />
-                            <q-btn-toggle
-                                :model-value="view"
-                                :options="viewOptions"
-                                dense
-                                no-caps
-                                unelevated
-                                toggle-color="primary"
-                                @update:model-value="setSetting('listsView', $event)"
-                            />
-                        </div>
-                        <BookCollection v-if="readingNow.length && view !== 'table'" :books="readingNow" :states="readingStates" :view="view" />
-                        <div v-else-if="readingNow.length" class="table-wrap">
-                            <table class="data-table">
-                                <tbody>
-                                    <tr v-for="book in readingNow" :key="book.bookUid">
-                                        <td>
-                                            <router-link class="book-title" :to="bookLink(book)">
-                                                {{ book.title }}
-                                            </router-link>
-                                            <div class="book-meta">
-                                                {{ bookMeta(book) }}
-                                            </div>
-                                        </td>
-                                        <td class="col-progress">
-                                            <div class="progress">
-                                                <i :style="{width: `${percent(book.percent)}%`}" />
-                                            </div>
-                                            <span class="num">{{ percent(book.percent) }}%</span>
-                                        </td>
-                                        <td class="col-actions">
-                                            <q-btn flat dense no-caps color="primary" icon="la la-book-open" @click="openReader(book.bookUid)">
-                                                {{ $t('common.readBook') }}
-                                            </q-btn>
-                                            <q-btn flat dense round icon="la la-times" :aria-label="$t('profiles.remove')" @click="hideReading(book)" />
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </template>
-
-                    <template v-else-if="selectedList">
-                        <div class="lists-main-head">
-                            <div>
-                                <h2 class="lists-main-title">
-                                    {{ selectedList.name }}
-                                </h2>
-                                <div class="lists-main-sub">
-                                    {{ $t('lists.booksRead', {read: selectedList.readCount || 0, total: selectedList.bookCount || 0}) }}
-                                </div>
-                            </div>
-                            <div class="page-actions">
+                            <div v-if="selectedList" class="page-actions">
                                 <q-btn flat dense no-caps icon="la la-pen" @click="renameList(selectedList)">
                                     {{ $t('profiles.rename') }}
                                 </q-btn>
@@ -129,7 +73,7 @@
                             </div>
                         </div>
 
-                        <div class="lists-toggles">
+                        <div v-if="selectedList" class="lists-toggles">
                             <q-toggle
                                 :model-value="selectedList.visibility === 'opds'"
                                 :label="$t('lists.showInOpds')"
@@ -148,7 +92,7 @@
                             {{ $t('readingLists.loadingBooks') }}
                         </div>
                         <div v-else-if="!books.length" class="page-empty page-empty--inline">
-                            {{ $t('lists.thisListIsEmpty') }}
+                            {{ isReadingNow ? $t('lists.noBooksInProgress') : $t('lists.thisListIsEmpty') }}
                         </div>
                         <template v-else>
                             <div class="lists-tools">
@@ -157,7 +101,7 @@
                                         <q-icon name="la la-search" size="18px" />
                                     </template>
                                 </q-input>
-                                <q-toggle v-model="unreadOnly" :label="$t('discovery.unreadOnly')" />
+                                <q-toggle v-if="!isReadingNow" v-model="unreadOnly" :label="$t('discovery.unreadOnly')" />
                                 <q-space />
                                 <q-btn-toggle
                                     :model-value="view"
@@ -218,12 +162,20 @@
                                             <td class="hide-narrow book-meta num col-file">
                                                 {{ fileMeta(book) }}
                                             </td>
+                                            <td class="col-progress hide-narrow">
+                                                <template v-if="book.percent > 0">
+                                                    <div class="progress">
+                                                        <i :style="{width: `${percent(book.percent)}%`}" />
+                                                    </div>
+                                                    <span class="num">{{ percent(book.percent) }}%</span>
+                                                </template>
+                                            </td>
                                             <td class="col-actions">
                                                 <q-btn v-if="!book.unavailable" flat dense round color="primary" icon="la la-book-open" :aria-label="$t('common.readBook')" @click="openReader(book.bookUid)">
                                                     <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
                                                 </q-btn>
-                                                <q-btn flat dense round icon="la la-times" :aria-label="$t('lists.removeFromList')" @click="removeBook(book)">
-                                                    <q-tooltip>{{ $t('lists.removeFromList') }}</q-tooltip>
+                                                <q-btn flat dense round icon="la la-times" :aria-label="removeLabel" @click="removeBook(book)">
+                                                    <q-tooltip>{{ removeLabel }}</q-tooltip>
                                                 </q-btn>
                                             </td>
                                         </tr>
@@ -246,7 +198,7 @@ import BookCollection from '../Library/BookCollection.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
-import {bookAuthors} from '../../share/bookActions';
+import {bookAuthors, bookUid, loadBookStates, markBooksRead} from '../../share/bookActions';
 import {bookViews, bookViewOptions} from '../../share/bookView';
 
 const readingNowId = '__reading__';
@@ -260,6 +212,7 @@ const sortKeys = {
     //книги без серии - в конце
     series: book => [book.series ? 0 : 1, book.series, Number(book.serno) || 0, book.title],
     file: book => [book.ext, book.size],
+    progress: book => [book.percent],
 };
 
 const componentOptions = {
@@ -287,6 +240,8 @@ class ListsPage {
     lists = [];
     selectedId = readingNowId;
     books = [];
+    //состояния книг открытого раздела: прогресс, «прочитано», есть ли в списках
+    states = {};
     booksLoading = false;
     newListName = '';
     koboDevices = [];
@@ -315,13 +270,29 @@ class ListsPage {
         return isSignedIn(this.config);
     }
 
-    get readingNow() {
-        const rows = currentProfile(this.config).currentReading;
-        return Array.isArray(rows) ? rows : [];
+    get readingNowCount() {
+        if (this.isReadingNow && !this.booksLoading)
+            return this.books.length;
+        return Number(currentProfile(this.config).currentReadingCount || 0) || 0;
+    }
+
+    get isReadingNow() {
+        return this.selectedId === readingNowId;
     }
 
     get selectedList() {
         return this.lists.find(item => item.id === this.selectedId) || null;
+    }
+
+    //открытый раздел: «Читаю сейчас» показывается так же, как список
+    get current() {
+        if (this.isReadingNow)
+            return {id: readingNowId, name: t('lists.readingNow')};
+        return this.selectedList;
+    }
+
+    get removeLabel() {
+        return (this.isReadingNow ? t('profiles.remove') : t('lists.removeFromList'));
     }
 
     signIn() {
@@ -341,8 +312,7 @@ class ListsPage {
             setReadingLists(String(this.config.currentUserId || ''), response);
             if (this.selectedId !== readingNowId && !this.selectedList)
                 this.selectedId = readingNowId;
-            if (this.selectedList)
-                await this.loadBooks();
+            await this.loadBooks();
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         }
@@ -360,22 +330,28 @@ class ListsPage {
     async select(id) {
         this.selectedId = id;
         this.books = [];
+        this.states = {};
         this.filterText = '';
-        if (this.selectedList)
-            await this.loadBooks();
+        await this.loadBooks();
     }
 
     async loadBooks() {
-        const list = this.selectedList;
-        if (!list)
+        const current = this.current;
+        if (!current)
             return;
 
         this.booksLoading = true;
         try {
-            const response = await this.api.getReadingList(list.id);
-            if (list.id !== this.selectedId)
+            const response = (this.isReadingNow ? await this.api.getReadingNow() : await this.api.getReadingList(current.id));
+            if (current.id !== this.selectedId)
                 return;
-            this.books = (response && Array.isArray(response.books) ? response.books : []).map((book, order) => ({
+            const records = (response && Array.isArray(response.books) ? response.books : []);
+            //прогресс, «прочитано» и есть ли книга в списках - как в каталоге: значок закладки у книг в списках закрашен
+            const states = await loadBookStates(this.api, records);
+            if (current.id !== this.selectedId)
+                return;
+            this.states = states || {};
+            this.books = records.map((book, order) => ({
                 bookUid: String(book.bookUid || book._uid || '').trim(),
                 title: String(book.title || '').trim(),
                 author: String(book.author || '').trim(),
@@ -385,7 +361,9 @@ class ListsPage {
                 serno: book.serno || '',
                 ext: book.ext || '',
                 size: Number(book.size || 0),
+                //в списке - его отметка «прочитано», в «Читаю сейчас» книги не дочитаны
                 read: !!(book._readingListRead || book.read),
+                percent: Number(book._readerPercent !== undefined ? book._readerPercent : (this.states[bookUid(book)] || {}).percent) || 0,
                 //выключенная библиотека или книги больше нет: строка бледная, открывается только окно книги
                 unavailable: book.unavailable || '',
                 order,
@@ -413,13 +391,15 @@ class ListsPage {
         ];
     }
 
-    get readingStates() {
-        return Object.fromEntries(this.readingNow.map(book => [book.bookUid, {percent: Number(book.percent) || 0}]));
-    }
 
-    //все книги открытого списка в нём есть; прочитанное - по отметке списка
+    //состояния книг для карточек: прогресс и списки читателя; в открытом списке прочитанное - по его отметке
     get bookStates() {
-        return Object.fromEntries(this.books.map(book => [book.bookUid, {read: book.read, percent: (book.read ? 1 : 0), inList: true}]));
+        return Object.fromEntries(this.books.map((book) => {
+            const state = Object.assign({}, this.states[book.bookUid] || {}, {percent: book.percent});
+            if (!this.isReadingNow)
+                Object.assign(state, {read: book.read, percent: (book.read ? 1 : book.percent), inList: true});
+            return [book.bookUid, state];
+        }));
     }
 
     get columns() {
@@ -428,6 +408,7 @@ class ListsPage {
             {key: 'author', label: t('search.author'), class: 'hide-narrow'},
             {key: 'series', label: t('common.series'), class: 'hide-narrow'},
             {key: 'file', label: t('opds.file'), class: 'hide-narrow'},
+            {key: 'progress', label: t('lists.progress'), class: 'hide-narrow col-progress'},
         ];
     }
 
@@ -508,6 +489,7 @@ class ListsPage {
                 sectionId: String(book.sectionId || '').trim(),
             });
             await this.api.updateConfig();
+            this.books = this.books.filter(item => item.bookUid !== book.bookUid);
             this.$root.notify.success(t('profiles.removeReadingSuccess'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
@@ -596,6 +578,14 @@ class ListsPage {
     }
 
     async toggleRead(book, read) {
+        //в «Читаю сейчас» отметка - общая «прочитано»: дочитанная книга оттуда уходит
+        if (this.isReadingNow) {
+            if (await markBooksRead(this, [book.bookUid], read)) {
+                await this.api.updateConfig();
+                await this.loadBooks();
+            }
+            return;
+        }
         const list = this.selectedList;
         try {
             await this.api.setReadingListBookRead(list.id, book.bookUid, read);
@@ -608,6 +598,8 @@ class ListsPage {
     }
 
     async removeBook(book) {
+        if (this.isReadingNow)
+            return await this.hideReading(book);
         const list = this.selectedList;
         const confirmed = await this.$root.stdDialog.confirm(
             t('common.removeBookList', {title: book.title || t('common.untitled'), list: list.name || ''}),

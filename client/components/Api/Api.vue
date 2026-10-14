@@ -502,6 +502,11 @@ class Api {
         return await this.request({action: 'delete-user-profile', targetUserId}, 120);
     }
 
+    //«Читаю сейчас» в виде списка: {count, books}
+    async getReadingNow() {
+        return await this.request({action: 'get-reading-now'}, 120);
+    }
+
     async getReadingList(listId) {
         return await this.request({action: 'get-reading-list', listId}, 120);
     }

@@ -18,7 +18,7 @@ const readOnlyActions = new Set([
     'get-genre-tree', 'get-discovery-shelves', 'get-admin-dashboard', 'get-admin-dashboard-metrics', 'get-admin-events',
     'export-admin-settings', 'get-book-link', 'get-author-aliases', 'admin-author-names-status', 'catalog-names',
     'catalog-search', 'catalog-suggest', 'get-book', 'get-book-states', 'get-book-info', 'get-reader-state',
-    'get-user-reading-library', 'get-reading-stats', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'export-reading-lists',
+    'get-user-reading-library', 'get-reading-stats', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'get-reading-now', 'export-reading-lists',
     'get-kobo-devices', 'get-inpx-file',
 ]);
 
@@ -254,6 +254,8 @@ class WebSocketController {
                     await this.updateUserProfile(req, ws); break;
                 case 'delete-user-profile':
                     await this.deleteUserProfile(req, ws); break;
+                case 'get-reading-now':
+                    await this.getReadingNow(req, ws); break;
                 case 'get-reading-list':
                     await this.getReadingList(req, ws); break;
                 case 'create-reading-list':
@@ -891,6 +893,11 @@ class WebSocketController {
 
         const result = await this.webWorker.deleteUserProfile(req.targetUserId);
         this.send(result, req, ws);
+    }
+
+    async getReadingNow(req, ws) {
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        this.send(await this.webWorker.getReadingNow(user), req, ws);
     }
 
     async getReadingList(req, ws) {

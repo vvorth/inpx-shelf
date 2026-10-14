@@ -937,6 +937,7 @@
         "filter": "Filter by title, author or series",
         "noBooksInProgress": "No books in progress yet.",
         "nothingMatches": "No books match the filter.",
+        "progress": "Progress",
         "readingNow": "Reading now",
         "removeFromList": "Remove from list",
         "showInOpds": "Show in OPDS",

@@ -945,6 +945,7 @@
         "filter": "Фильтр по названию, автору или серии",
         "noBooksInProgress": "Пока нет книг в процессе чтения.",
         "nothingMatches": "Нет книг, подходящих под фильтр.",
+        "progress": "Прогресс",
         "readingNow": "Читаю сейчас",
         "removeFromList": "Убрать из списка",
         "showInOpds": "Показывать в OPDS",
