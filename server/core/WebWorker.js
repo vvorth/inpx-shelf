@@ -544,9 +544,16 @@ class WebWorker {
         if (!target)
             throw new Error(t('errors.bookNotFound'));
 
+        const from = (await this.getListedBookRecords([fromUid])).get(String(fromUid || '').trim()) || {};
         const result = await this.readingListStore.replaceBook(userId, fromUid, target._uid);
-        if (this.koboService && result.userId)
+        if (this.koboService && result.userId) {
+            try {
+                await this.koboService.copyReadingState(result.userId, {bookUid: from._uid, sourceId: from.sourceId, libid: from.libid}, target);
+            } catch (e) {
+                log(LM_WARN, `Kobo: cannot copy reading state of ${fromUid}: ${e.message}`);
+            }
             this.koboService.prewarmLists(result.userId);
+        }
         await this.trySyncListedBooks();
         return {bookUid: target._uid, lists: result.lists};
     }

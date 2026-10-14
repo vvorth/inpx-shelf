@@ -339,6 +339,46 @@ class KoboService {
         });
     }
 
+    // A replacement the reader chose for an unavailable book: the Kobo reading state of the old book goes to the
+    // new one - status, times started, time spent and the percent. The place in the text (Location) and the time
+    // left belong to the old file and are not copied. A new book that already has a state keeps it.
+    // `from` - {bookUid, sourceId, libid} of the old book; `toBook` - the new record. True when copied.
+    async copyReadingState(userId, from = {}, toBook = {}) {
+        const target = uuidv5(stableKey(toBook));
+        return await this.store.mutate((data) => {
+            const rows = data.states[userId] || {};
+            if (rows[target])
+                return false;
+            const sources = new Set();
+            for (const device of data.devices.filter(item => item.userId === userId)) {
+                for (const [uuid, row] of Object.entries(device.books)) {
+                    if (row.bookUid === from.bookUid)
+                        sources.add(uuid);
+                }
+            }
+            if (from.libid)
+                sources.add(uuidv5(stableKey({libid: from.libid, sourceId: from.sourceId, _uid: from.bookUid})));
+            const source = [...sources].map(uuid => rows[uuid]).filter(Boolean)
+                .sort((a, b) => String(b.lastModified || '').localeCompare(String(a.lastModified || '')))[0];
+            if (!source)
+                return false;
+
+            const now = new Date().toISOString();
+            const state = this.emptyState(now);
+            state.status = source.status || 'ReadyToRead';
+            state.timesStartedReading = source.timesStartedReading || 0;
+            state.lastTimeStartedReading = source.lastTimeStartedReading || '';
+            const spent = source.statistics && source.statistics.SpentReadingMinutes;
+            if (spent)
+                state.statistics.SpentReadingMinutes = spent;
+            const percent = source.bookmark && source.bookmark.ProgressPercent;
+            if (percent !== undefined && percent !== null)
+                state.bookmark.ProgressPercent = percent;
+            data.states[userId] = Object.assign(rows, {[target]: state});
+            return true;
+        });
+    }
+
     // ------------------------------------------------------------------ book metadata
     async readExtraMetadata(book) {
         try {

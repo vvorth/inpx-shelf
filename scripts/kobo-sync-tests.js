@@ -1154,6 +1154,41 @@ async function withFb2cngConfig(fn) {
     }
 }
 
+// A replacement the reader picks for an unavailable book takes the Kobo status and percent, not the place in the old file.
+async function testKoboReplacementCarriesReadingState() {
+    await fixture({}, async({service, store, worker, books, listA, call, sync}) => {
+        const WebWorker = require('../server/core/WebWorker');
+        await store.addBooks('default', listA.id, ['fb2-uid']);
+        await sync({fresh: true});
+        const oldUuid = kobo.uuidv5('main:101');
+        const put = await call(`/v1/library/${oldUuid}/state`, {method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Reading'},
+                CurrentBookmark: {ProgressPercent: 40, Location: {Value: 'span-9', Type: 'KoboSpan', Source: 'part1.xhtml'}}}]})});
+        assert.strictEqual(put.status, 200);
+
+        //книга первой библиотеки пропала, читатель выбирает книгу второй
+        books.delete('fb2-uid');
+        books.set('lib2-uid', {_uid: 'lib2-uid', libid: '201', sourceId: 'second', title: 'Первая книга', author: 'Тестов Автор', lang: 'ru', ext: 'fb2'});
+        Object.assign(worker, {checkMyState() {}, koboService: service, trySyncListedBooks: async() => {},
+            getListedBookRecords: WebWorker.prototype.getListedBookRecords});
+        await WebWorker.prototype.replaceListedBook.call(worker, 'default', 'fb2-uid', 'lib2-uid');
+
+        const newUuid = kobo.uuidv5('second:201');
+        const {items} = await sync();
+        const added = items.find(item => item.NewEntitlement && item.NewEntitlement.BookEntitlement.Id === newUuid);
+        assert.ok(added, 'the replacement is sent to the device');
+        const state = added.NewEntitlement.ReadingState;
+        assert.strictEqual(state.StatusInfo.Status, 'Reading');
+        assert.strictEqual(state.CurrentBookmark.ProgressPercent, 40);
+        assert.ok(!state.CurrentBookmark.Location, 'a place in the old file means nothing in the new one');
+        assert.ok(items.some(item => item.ChangedEntitlement && item.ChangedEntitlement.BookEntitlement.Id === oldUuid
+            && item.ChangedEntitlement.BookEntitlement.IsRemoved), 'the old book leaves the device');
+
+        //у новой книги уже есть своё состояние - оно не затирается
+        assert.strictEqual(await service.copyReadingState('default', {bookUid: 'fb2-uid', sourceId: 'main', libid: '101'}, books.get('lib2-uid')), false);
+    });
+}
+
 module.exports = [
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,
@@ -1178,6 +1213,7 @@ module.exports = [
     testKoboFindsRecordsByStableKeyInDb,
     testKoboReannouncesMetadataEdits,
     testKoboProgressReachesWebReader,
+    testKoboReplacementCarriesReadingState,
     testKoboCollectionsAreReadOnlyFromDevice,
     testKoboBackupEntryIsValidated,
     testKoboResizesCovers,
