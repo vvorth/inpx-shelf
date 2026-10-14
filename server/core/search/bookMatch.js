@@ -7,6 +7,7 @@ function bookNote(book = {}) {
     return {
         title: String(book.title || ''), author: String(book.author || ''), lang: String(book.lang || '').trim().toLowerCase(),
         series: String(book.series || ''), serno: Number(book.serno) || 0, date: String(book.date || ''), libid: String(book.libid || ''),
+        sourceId: String(book.sourceId || ''),
     };
 }
 

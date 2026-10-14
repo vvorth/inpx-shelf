@@ -458,13 +458,14 @@ class WebWorker {
         return await this.catalogSearch.getBooksByStableKeys(keys);
     }
 
-    //Списки, прогресс и закладки ссылаются на _uid, а он у той же книги в другой библиотеке другой.
-    //Для найденных книг (и книг выключенных библиотек) запоминаем заметку: название, автор... По ней пропавшая книга
-    //показывается в списках, а читатель сам выбирает ей замену (findReplacements, replaceListedBook). Сами списки здесь не меняются.
+    //Списки, прогресс и закладки ссылаются на _uid - хеш строки INPX. Для найденных книг (и книг выключенных библиотек)
+    //запоминаем заметку: название, автор, библиотека, libid... Обновление INPX меняет строку, а с ней _uid: книга с той же
+    //библиотекой и libid, единственная, - та же книга, на неё ссылки переходят сами (relinkBooks). Книга из другой
+    //библиотеки или по названию сама не подставляется: замену выбирает читатель (findReplacements, replaceListedBook).
     async syncListedBooks() {
         if (!this.catalogSearch.ready)
             return;
-        const {uids} = await this.readingListStore.getBookNoteState();
+        const {uids, notes} = await this.readingListStore.getBookNoteState();
         if (!uids.length)
             return;
 
@@ -472,9 +473,34 @@ class WebWorker {
         const fresh = {};
         for (const [uid, book] of found)
             fresh[uid] = bookNote(book);
+
+        const keys = new Map();
+        for (const uid of uids) {
+            const note = notes[uid];
+            if (!found.has(uid) && note && note.sourceId && note.libid)
+                keys.set(`${note.sourceId}:${note.libid}`, uid);
+        }
+        const mapping = {};
+        if (keys.size) {
+            const byKey = await this.catalogSearch.getBooksByStableKeys([...keys.keys()]);
+            for (const [key, uid] of keys) {
+                //несколько записей с одним libid (копии в других форматах) - неоднозначно, книга остаётся недоступной
+                const rows = byKey[key] || [];
+                if (rows.length === 1 && rows[0]._uid && rows[0]._uid !== uid) {
+                    mapping[uid] = rows[0]._uid;
+                    fresh[rows[0]._uid] = bookNote(rows[0]);
+                }
+            }
+        }
+        const relinked = await this.readingListStore.relinkBooks(mapping);
+        if (relinked.moved && this.koboService)
+            await this.koboService.rekeyDeviceRows(mapping);
         await this.readingListStore.saveBookNotes(fresh);
-        const missing = uids.length - found.size;
-        if (missing)
+
+        if (relinked.moved)
+            log(`Reading lists: ${relinked.moved} book(s) moved to their updated INPX records`);
+        const missing = uids.length - found.size - relinked.moved;
+        if (missing > 0)
             log(`Reading lists: ${missing} book(s) not found in the current library`);
     }
 

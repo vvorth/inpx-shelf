@@ -334,17 +334,19 @@ async function testListedBooksKeepUntilReaderReplacesThem() {
             book(2, 'old-copy', 'Иванов Иван', 'Рассказы', {libid: '20', date: '2001-01-01'}),
             book(3, 'old-gone', 'Петров Пётр', 'Только здесь'),
         ]);
+        const other = {sourceId: 'second'};
         const second = library('second.sqlite', [
-            book(1, 'new-other', 'Уэй Маргарет', 'Горькие яблоки'),
-            book(2, 'new-apples', 'Корепанов Алексей', 'Горькие яблоки!', {libid: '777', size: 2}),
-            book(3, 'new-copy-a', 'Иванов Иван', 'Рассказы', {libid: '31', date: '2001-01-01'}),
-            book(4, 'new-copy-b', 'Иванов Иван', 'Рассказы', {libid: '30', date: '2001-01-01'}),
-            book(5, 'new-copy-c', 'Иванов Иван', 'Рассказы', {libid: '29', date: '2005-01-01'}),
+            book(1, 'new-other', 'Уэй Маргарет', 'Горькие яблоки', other),
+            book(2, 'new-apples', 'Корепанов Алексей', 'Горькие яблоки!', {...other, libid: '777', size: 2}),
+            book(3, 'new-copy-a', 'Иванов Иван', 'Рассказы', {...other, libid: '31', date: '2001-01-01'}),
+            book(4, 'new-copy-b', 'Иванов Иван', 'Рассказы', {...other, libid: '30', date: '2001-01-01'}),
+            book(5, 'new-copy-c', 'Иванов Иван', 'Рассказы', {...other, libid: '29', date: '2005-01-01'}),
             book(6, 'off-copy', 'Иванов Иван', 'Рассказы', {sourceId: 'off'}),
-        ], [{id: 'main', name: 'Main', libDir: dataDir}, {id: 'off', name: 'Off', libDir: dataDir}], ['off']);
+        ], [{id: 'second', name: 'Second', libDir: dataDir}, {id: 'off', name: 'Off', libDir: dataDir}], ['off']);
         const catalog = (index) => ({ready: true,
             getBooksByUids: async(uids, includeHidden) => index.getBooksByUids(uids, includeHidden),
             getBooksByTitles: async(titles) => index.getBooksByTitles(titles),
+            getBooksByStableKeys: async(keys) => index.getBooksByStableKeys(keys),
             authorAliasesOf: async() => ({}), editions: async() => []});
         try {
             const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
@@ -411,6 +413,62 @@ async function testListedBooksKeepUntilReaderReplacesThem() {
     });
 }
 
+//обновление INPX переписало строку книги: та же библиотека и libid, одна запись - ссылки всех профилей переходят сами
+async function testListedBooksFollowUpdatedInpxLine() {
+    await temporary(async(dataDir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const book = (id, uid, libid, extra = {}) => Object.assign({id, _uid: uid, author: 'Стругацкий Аркадий', title: `Книга ${libid}`, series: '',
+            serno: 0, size: 1, librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid, ext: 'fb2', lang: 'ru',
+            date: '2010-01-01'}, extra);
+        const library = (name, books) => {
+            const index = new CatalogIndex();
+            const file = path.join(dataDir, name);
+            index.beginBuild(file);
+            index.insertBooks(books);
+            index.finishBuild({});
+            index.open(file);
+            return index;
+        };
+        const before = library('before.sqlite', [book(1, 'v1', '10'), book(2, 'dup-v1', '12'), book(3, 'legacy-v1', '13')]);
+        const after = library('after.sqlite', [
+            book(1, 'v2', '10', {librate: 5}),
+            book(2, 'dup-fb2', '12'), book(3, 'dup-epub', '12', {ext: 'epub'}),
+            book(4, 'legacy-v2', '13'),
+        ]);
+        const catalog = index => ({ready: true,
+            getBooksByUids: async(uids, includeHidden) => index.getBooksByUids(uids, includeHidden),
+            getBooksByStableKeys: async(keys) => index.getBooksByStableKeys(keys)});
+        try {
+            const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+            const list = await store.createList('', 'Queue');
+            await store.addBooks('', list.id, ['v1', 'dup-v1', 'legacy-v1']);
+            await store.updateReaderProgress('', 'v1', {percent: 0.4, sectionId: 's'});
+            const deviceMoves = [];
+            const worker = bareWorker({readingListStore: store, catalogSearch: catalog(before),
+                koboService: {rekeyDeviceRows: async(mapping) => deviceMoves.push(mapping)}});
+            await worker.syncListedBooks();
+            //заметка прежних версий - без библиотеки: по ней книга сама не переходит
+            await store.saveBookNotes({});
+            const data = await store.load();
+            delete data.bookNotes['legacy-v1'].sourceId;
+            await store.save(data);
+
+            worker.catalogSearch = catalog(after);
+            await worker.syncListedBooks();
+            const books = store.normalizeEntries((await store.getList('', list.id)).books).map(entry => entry.bookUid);
+            assert.deepStrictEqual(books, ['v2', 'dup-v1', 'legacy-v1'], 'ambiguous copies and notes without a library stay as they are');
+            const {user} = await store.resolveUser('');
+            assert.strictEqual(user.readerProgress.v2.percent, 0.4);
+            assert.deepStrictEqual(deviceMoves, [{v1: 'v2'}], 'Kobo device rows follow the book');
+            assert.strictEqual((await store.getBookNoteState()).notes.v2.sourceId, 'main');
+        } finally {
+            before.close();
+            after.close();
+        }
+    });
+}
+
 module.exports = [
     testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
@@ -422,6 +480,7 @@ module.exports = [
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
     testListedBooksKeepUntilReaderReplacesThem,
+    testListedBooksFollowUpdatedInpxLine,
     testReadingStats,
     testLibraryAssetCaches,
     testProfileLoginChecksPasswordOutsideTheStoreLock,

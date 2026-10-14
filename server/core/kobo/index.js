@@ -319,16 +319,24 @@ class KoboService {
             return false;
 
         await this.worker.readingListStore.rekeyBooks(device.userId, mapping);
+        await this.rekeyDeviceRows(mapping, device.userId);
+        log(`Kobo: ${Object.keys(mapping).length} listed book(s) of profile ${device.userId} moved to their re-indexed records`);
+        return true;
+    }
+
+    // Device rows follow a book whose _uid changed (mapping old -> new); userId limits it to one profile's devices.
+    // The Kobo id comes from the stable key, so the device itself notices nothing.
+    async rekeyDeviceRows(mapping = {}, userId = null) {
+        if (!Object.keys(mapping).length)
+            return;
         await this.store.mutate((data) => {
-            for (const other of data.devices.filter(item => item.userId === device.userId)) {
+            for (const other of data.devices.filter(item => userId === null || item.userId === userId)) {
                 for (const row of Object.values(other.books)) {
                     if (mapping[row.bookUid])
                         row.bookUid = mapping[row.bookUid];
                 }
             }
         });
-        log(`Kobo: ${Object.keys(mapping).length} listed book(s) of profile ${device.userId} moved to their re-indexed records`);
-        return true;
     }
 
     // ------------------------------------------------------------------ book metadata

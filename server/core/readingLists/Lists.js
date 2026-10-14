@@ -332,6 +332,23 @@ module.exports = {
         return {uids: [...this.referencedBookUids(data)], notes: this.normalizeBookNotes(data.bookNotes)};
     },
 
+    // The same book after an INPX update (same library and libid, one record, new _uid): every profile's lists,
+    // progress and bookmarks, and the shared metadata edits and notes move to the new uid. Saves only on change.
+    async relinkBooks(mapping = {}) {
+        const data = await this.load();
+        const pairs = this.normalizeRekeyPairs(mapping);
+        const referenced = this.referencedBookUids(data);
+        for (const from of [...pairs.keys()]) {
+            if (!referenced.has(from))
+                pairs.delete(from);
+        }
+        if (!pairs.size)
+            return {moved: 0, lists: 0};
+        const lists = this.rekeyData(data, data.users, pairs);
+        await this.save(data);
+        return {moved: pairs.size, lists};
+    },
+
     // `notes` are the current records of resolved uids. Notes of uids nothing refers to any more are dropped. Saves only on change.
     async saveBookNotes(notes = {}) {
         const data = await this.load();
