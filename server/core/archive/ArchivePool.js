@@ -22,7 +22,6 @@ class ArchiveWorker {
 
     start() {
         const worker = new Worker(childCode, {eval: true});
-        worker.unref();
         worker.on('message', (mes) => {
             const listener = this.listeners.get(mes.requestId);
             if (listener) {
@@ -44,10 +43,13 @@ class ArchiveWorker {
         this.worker = worker;
     }
 
+    //Поток держит процесс, только пока ждёт ответа: иначе простаивающий поток не даёт процессу завершиться
     scheduleIdle() {
         clearTimeout(this.idleTimer);
         if (this.listeners.size)
             return;
+        if (this.worker)
+            this.worker.unref();
         this.idleTimer = setTimeout(() => this.stop(), idleMs);
         this.idleTimer.unref();
     }
@@ -66,6 +68,7 @@ class ArchiveWorker {
             this.start();
         clearTimeout(this.idleTimer);
         const worker = this.worker;
+        worker.ref();
 
         return new Promise((resolve, reject) => {
             const requestId = ++this.requestId;
