@@ -26,6 +26,7 @@ class ReadingListStore {
             lists: [],
             sharedDiscoveryConfig: this.normalizeSharedDiscoveryConfig(),
             metadataOverrides: {},
+            bookNotes: {},
         };
     }
 
@@ -258,7 +259,7 @@ class ReadingListStore {
 
     normalizeData(data) {
         const defaultUser = this.makeDefaultUser();
-        const source = Object.assign({version: 5, users: [], lists: [], sharedDiscoveryConfig: {}, metadataOverrides: {}}, data || {});
+        const source = Object.assign({version: 5, users: [], lists: [], sharedDiscoveryConfig: {}, metadataOverrides: {}, bookNotes: {}}, data || {});
         let users = [];
 
         // A row failing validation is repaired, never dropped: the next save would delete the profile's
@@ -309,6 +310,7 @@ class ReadingListStore {
             lists,
             sharedDiscoveryConfig: this.normalizeSharedDiscoveryConfig(source.sharedDiscoveryConfig),
             metadataOverrides: this.normalizeMetadataOverrides(source.metadataOverrides),
+            bookNotes: this.normalizeBookNotes(source.bookNotes),
         };
     }
 
@@ -381,6 +383,7 @@ class ReadingListStore {
                 lists: source.lists,
                 sharedDiscoveryConfig: source.sharedDiscoveryConfig,
                 metadataOverrides: source.metadataOverrides,
+                bookNotes: source.bookNotes,
             },
             changed,
         };

@@ -303,6 +303,11 @@ class CatalogSearch {
         return (keys.length ? await this.getThread().call('getBooksByStableKeys', keys) : {});
     }
 
+    async getBooksByTitles(titles = []) {
+        this.checkReady();
+        return (titles.length ? await this.getThread().call('getBooksByTitles', titles) : {});
+    }
+
     async updateBook(row) {
         if (row && row._uid && this.editedDuringBuild)
             this.editedDuringBuild.add(row._uid);

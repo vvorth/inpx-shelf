@@ -141,6 +141,8 @@ module.exports = {
     async createAdminBackup(userId = '', profileAccessToken = '') {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
+        //заметки о книгах в архиве: по ним списки найдут те же книги в другой библиотеке
+        await this.trySyncListedBooks();
         const {withFileTransactions} = require('./FilePersistence');
         const files = Object.values(require('./BackupTransaction').targets(this.config));
         return withFileTransactions(files, () => this.createAdminBackupSnapshot(userId, profileAccessToken));

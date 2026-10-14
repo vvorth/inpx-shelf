@@ -24,6 +24,7 @@ const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {normalizeVersionTag, compareReleaseVersions} = require('../../shared/release');
 const {READ_PERCENT, isReadingInProgress, readerProgressOf} = require('./ReaderProgress');
+const {bookNote, matchBook, normalizeTitle} = require('./search/bookMatch');
 
 //server states
 const ssNormal = 'normal';
@@ -244,6 +245,9 @@ class WebWorker {
                 }, 500);
             }
 
+            //заметки о книгах снимаются с прежней БД, пока она ещё отвечает
+            if (!firstLoad)
+                await this.trySyncListedBooks();
             const ok = await this.catalogSearch.ensure(inpxHash, {force: !!(config.recreateDb || recreate), keepReady: !firstLoad});
             config.recreateDb = false;
             if (!ok)
@@ -256,6 +260,7 @@ class WebWorker {
                 this.logServerStats();
                 await this.removeLegacyDb();
             }
+            await this.trySyncListedBooks();
         } catch (e) {
             if (!firstLoad) {
                 log(LM_ERR, `Library DB rebuild: ${e.message}`);
@@ -444,6 +449,53 @@ class WebWorker {
     // changed in a re-index. Indexed in the library DB.
     async findBookRecordsByStableKeys(keys = []) {
         return await this.catalogSearch.getBooksByStableKeys(keys);
+    }
+
+    //Списки, прогресс и закладки ссылаются на _uid, а он у той же книги в другой библиотеке другой.
+    //Для найденных книг запоминаем заметку (название, автор...), потерянные _uid переносим на совпавшую по заметке книгу.
+    async syncListedBooks() {
+        if (!this.catalogSearch.ready)
+            return;
+        const {uids, notes} = await this.readingListStore.getBookNoteState();
+        if (!uids.length)
+            return;
+
+        const found = await this.getBookRecordsByUids(uids);
+        const fresh = {};
+        const orphans = [];
+        for (const uid of uids) {
+            const book = found.get(uid);
+            if (book)
+                fresh[uid] = bookNote(book);
+            else if (notes[uid])
+                orphans.push(uid);
+        }
+
+        const mapping = {};
+        if (orphans.length) {
+            const byTitle = await this.catalogSearch.getBooksByTitles([...new Set(orphans.map(uid => normalizeTitle(notes[uid].title)))]);
+            for (const uid of orphans) {
+                const book = matchBook(notes[uid], byTitle[normalizeTitle(notes[uid].title)] || []);
+                if (book) {
+                    mapping[uid] = book._uid;
+                    fresh[book._uid] = bookNote(book);
+                }
+            }
+        }
+
+        const result = await this.readingListStore.saveBookNotes(fresh, mapping);
+        if (result.moved)
+            log(`Reading lists: ${result.moved} book(s) moved to matching records of the current library, ${orphans.length - result.moved} not found`);
+        else if (orphans.length)
+            log(`Reading lists: ${orphans.length} book(s) not found in the current library`);
+    }
+
+    async trySyncListedBooks() {
+        try {
+            await this.syncListedBooks();
+        } catch (e) {
+            log(LM_ERR, `Reading lists: book match failed: ${e.message}`);
+        }
     }
 
     sortReadingListBooks(books = [], order = []) {

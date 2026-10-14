@@ -312,6 +312,74 @@ async function testDiscoveryRequestKeepsSectionAndPersonalLimits() {
     assert.strictEqual(options.personalSimilarLimit, 24);
 }
 
+//списки, прогресс и закладки переходят на ту же книгу другой библиотеки: _uid другой, совпадают название и автор
+async function testListedBooksMoveToAnotherLibrary() {
+    await temporary(async(dataDir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const book = (id, uid, author, title, extra = {}) => Object.assign({id, _uid: uid, author, title, series: '', serno: 0, size: 1,
+            librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang: 'ru',
+            date: '2010-01-01'}, extra);
+        const library = (name, books) => {
+            const index = new CatalogIndex();
+            const file = path.join(dataDir, name);
+            index.beginBuild(file);
+            index.insertBooks(books);
+            index.finishBuild({});
+            index.open(file);
+            return index;
+        };
+        const first = library('first.sqlite', [
+            book(1, 'old-apples', 'Корепанов Алексей Яковлевич', 'Горькие яблоки'),
+            book(2, 'old-copy', 'Иванов Иван', 'Рассказы', {libid: '20', date: '2001-01-01'}),
+            book(3, 'old-gone', 'Петров Пётр', 'Только здесь'),
+        ]);
+        const second = library('second.sqlite', [
+            book(1, 'new-other', 'Уэй Маргарет', 'Горькие яблоки'),
+            book(2, 'new-apples', 'Корепанов Алексей', 'Горькие яблоки!', {libid: '777', size: 2}),
+            book(3, 'new-copy-a', 'Иванов Иван', 'Рассказы', {libid: '31', date: '2001-01-01'}),
+            book(4, 'new-copy-b', 'Иванов Иван', 'Рассказы', {libid: '30', date: '2001-01-01'}),
+            book(5, 'new-copy-c', 'Иванов Иван', 'Рассказы', {libid: '29', date: '2005-01-01'}),
+        ]);
+        const catalog = (index) => ({ready: true,
+            getBooksByUids: async(uids) => index.getBooksByUids(uids),
+            getBooksByTitles: async(titles) => index.getBooksByTitles(titles)});
+        try {
+            const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+            const list = await store.createList('', 'Queue');
+            await store.addBooks('', list.id, ['old-apples', 'old-copy', 'old-gone']);
+            await store.updateReaderProgress('', 'old-apples', {percent: 0.5, sectionId: 's'});
+            const worker = bareWorker({readingListStore: store, catalogSearch: catalog(first)});
+
+            await worker.syncListedBooks();
+            assert.deepStrictEqual(Object.keys((await store.getBookNoteState()).notes).sort(), ['old-apples', 'old-copy', 'old-gone']);
+
+            worker.catalogSearch = catalog(second);
+            await worker.syncListedBooks();
+            const books = store.normalizeEntries((await store.getList('', list.id)).books).map(entry => entry.bookUid);
+            // автор совпал без отчества; из копий с той же датой - меньший libid; книги без пары остаются как были
+            assert.deepStrictEqual(books, ['new-apples', 'new-copy-b', 'old-gone']);
+            const {user} = await store.resolveUser('');
+            assert.strictEqual(user.readerProgress['new-apples'].percent, 0.5);
+            assert.ok(!user.readerProgress['old-apples']);
+            assert.deepStrictEqual(Object.keys((await store.getBookNoteState()).notes).sort(), ['new-apples', 'new-copy-b', 'old-gone']);
+
+            //повторная сверка ничего не меняет и не пишет файл
+            let saves = 0;
+            const save = store.save.bind(store);
+            store.save = async(...args) => {
+                saves++;
+                return save(...args);
+            };
+            await worker.syncListedBooks();
+            assert.strictEqual(saves, 0);
+        } finally {
+            first.close();
+            second.close();
+        }
+    });
+}
+
 module.exports = [
     testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
@@ -322,6 +390,7 @@ module.exports = [
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
+    testListedBooksMoveToAnotherLibrary,
     testReadingStats,
     testLibraryAssetCaches,
     testProfileLoginChecksPasswordOutsideTheStoreLock,

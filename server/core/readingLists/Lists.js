@@ -1,4 +1,5 @@
 const {t} = require('../i18n');
+const {bookNote} = require('../search/bookMatch');
 
 function utilsHasProp(obj, prop) {
     return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
@@ -227,19 +228,31 @@ module.exports = {
         };
     },
 
+    normalizeRekeyPairs(mapping = {}) {
+        return new Map(Object.entries(mapping || {})
+            .map(([from, to]) => [this.normalizeBookUid(from), this.normalizeBookUid(to)])
+            .filter(([from, to]) => from && to && from !== to));
+    },
+
     // A book's _uid changes when an INPX update rewrites its line. Move the profile's list entries
     // (keeping order and the read flag), reader progress, bookmarks and the book's metadata edits
     // from old to new uids.
     async rekeyBooks(userId = '', mapping = {}) {
         const {data, user: target} = await this.resolveUser(userId);
-        const pairs = new Map(Object.entries(mapping || {})
-            .map(([from, to]) => [this.normalizeBookUid(from), this.normalizeBookUid(to)])
-            .filter(([from, to]) => from && to && from !== to));
+        const pairs = this.normalizeRekeyPairs(mapping);
         if (!target || !pairs.size)
             return {lists: 0};
 
+        const lists = this.rekeyData(data, [target], pairs);
+        await this.save(data);
+        return {lists};
+    },
+
+    // Moves the uids of the given profiles in loaded data; returns the number of changed lists.
+    rekeyData(data, users, pairs) {
+        const userIds = new Set(users.map((user) => user.id));
         let lists = 0;
-        for (const list of data.lists.filter((item) => item.userId === target.id)) {
+        for (const list of data.lists.filter((item) => userIds.has(item.userId))) {
             const entries = this.normalizeEntries(list.books);
             if (!entries.some((entry) => pairs.has(entry.bookUid)))
                 continue;
@@ -259,16 +272,11 @@ module.exports = {
             list.updatedAt = this.nowIso();
             lists++;
         }
-        // Admin metadata edits are keyed by uid too; the old uid no longer exists.
+        // Admin metadata edits and book notes are keyed by uid too; the old uid no longer exists.
         data.metadataOverrides = this.normalizeMetadataOverrides(data.metadataOverrides);
+        data.bookNotes = this.normalizeBookNotes(data.bookNotes);
         for (const [from, to] of pairs) {
-            if (utilsHasProp(data.metadataOverrides, from)) {
-                if (!utilsHasProp(data.metadataOverrides, to))
-                    data.metadataOverrides[to] = data.metadataOverrides[from];
-                delete data.metadataOverrides[from];
-            }
-            for (const field of ['readerProgress', 'readerBookmarks']) {
-                const rows = target[field];
+            for (const rows of [data.metadataOverrides, data.bookNotes, ...users.flatMap((user) => [user.readerProgress, user.readerBookmarks])]) {
                 if (!rows || typeof(rows) !== 'object' || !utilsHasProp(rows, from))
                     continue;
                 if (!utilsHasProp(rows, to))
@@ -276,8 +284,57 @@ module.exports = {
                 delete rows[from];
             }
         }
-        await this.save(data);
-        return {lists};
+        return lists;
+    },
+
+    normalizeBookNotes(value = {}) {
+        const result = {};
+        for (const [bookUid, note] of Object.entries(value && typeof(value) === 'object' ? value : {})) {
+            const uid = this.normalizeBookUid(bookUid);
+            if (uid && note && typeof(note) === 'object' && note.title)
+                result[uid] = bookNote(note);
+        }
+        return result;
+    },
+
+    // Every uid the store refers to: list entries, reader progress, bookmarks, metadata edits.
+    referencedBookUids(data) {
+        const uids = new Set(Object.keys(this.normalizeMetadataOverrides(data.metadataOverrides)));
+        for (const list of data.lists) {
+            for (const entry of this.normalizeEntries(list.books))
+                uids.add(entry.bookUid);
+        }
+        for (const user of data.users) {
+            for (const rows of [user.readerProgress, user.readerBookmarks])
+                Object.keys(rows || {}).forEach((uid) => uids.add(uid));
+        }
+        return uids;
+    },
+
+    async getBookNoteState() {
+        const data = await this.load();
+        return {uids: [...this.referencedBookUids(data)], notes: this.normalizeBookNotes(data.bookNotes)};
+    },
+
+    // A uid that no longer resolves moves to its match (`mapping`) in every profile; `notes` are the current
+    // records of resolved uids. Notes of uids nothing refers to any more are dropped. Saves only on change.
+    async saveBookNotes(notes = {}, mapping = {}) {
+        const data = await this.load();
+        const pairs = this.normalizeRekeyPairs(mapping);
+        // an entry removed since the lookup stays removed
+        const referenced = this.referencedBookUids(data);
+        for (const from of [...pairs.keys()]) {
+            if (!referenced.has(from))
+                pairs.delete(from);
+        }
+        const before = JSON.stringify(data.bookNotes || {});
+        const lists = (pairs.size ? this.rekeyData(data, data.users, pairs) : 0);
+        const current = this.normalizeBookNotes(Object.assign({}, data.bookNotes, notes));
+        const uids = this.referencedBookUids(data);
+        data.bookNotes = Object.fromEntries(Object.entries(current).filter(([uid]) => uids.has(uid)));
+        if (pairs.size || JSON.stringify(data.bookNotes) !== before)
+            await this.save(data);
+        return {moved: pairs.size, lists};
     },
 
     async addBooks(userId = '', listId, bookUids = []) {

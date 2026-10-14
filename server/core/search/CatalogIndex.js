@@ -1152,6 +1152,22 @@ class CatalogIndex {
         return this.bookRows('uid IN (SELECT value FROM json_each(?))', JSON.stringify(uids.map(String)));
     }
 
+    //Не удалённые записи по нормализованному названию: {title_norm: [записи]}
+    getBooksByTitles(titles = []) {
+        if (!this.db)
+            throw new Error('catalog_index_not_ready');
+        const result = {};
+        const rows = this.db.prepare('SELECT id, title_norm FROM book WHERE title_norm IN (SELECT value FROM json_each(?)) AND del = 0')
+            .all(JSON.stringify(titles.map(String)));
+        const byId = new Map(this.getBooks(rows.map(row => row.id)).map(row => [row.id, row]));
+        for (const row of rows) {
+            if (!result[row.title_norm])
+                result[row.title_norm] = [];
+            result[row.title_norm].push(byId.get(row.id));
+        }
+        return result;
+    }
+
     //Книги автора по имени (с учётом правок метаданных): {author: имя из библиотеки, ids}
     authorBooks(name = '') {
         if (!this.db)
