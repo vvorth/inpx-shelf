@@ -189,8 +189,9 @@ async function resolveLibrarySources(config, argv = {}) {
     return enabled;
 }
 
-function getEnabledLibrarySources(config = {}) {
-    const sources = Array.isArray(config.librarySources) ? config.librarySources.filter(source => source && source.enabled !== false) : [];
+//Все настроенные библиотеки, и выключенные: индекс строится по всем, выключенные только скрываются
+function getAllLibrarySources(config = {}) {
+    const sources = Array.isArray(config.librarySources) ? config.librarySources.filter(Boolean) : [];
     if (sources.length)
         return sources.map((source, index) => ({
             id: stableId(source.id || source.name || source.inpx || `source-${index + 1}`, `source-${index + 1}`),
@@ -212,8 +213,25 @@ function getEnabledLibrarySources(config = {}) {
     }];
 }
 
+function getEnabledLibrarySources(config = {}) {
+    return getAllLibrarySources(config).filter(source => source.enabled !== false);
+}
+
+//Библиотеки для индекса: включённые и выключенные, чей INPX на месте (выключенная на отключённом диске пропускается)
+async function getIndexedLibrarySources(config = {}) {
+    const result = [];
+    for (const source of getAllLibrarySources(config)) {
+        const inpx = source.inpxFile || source.inpx;
+        if (source.enabled !== false || (inpx && await fs.pathExists(inpx)))
+            result.push(source);
+    }
+    return result;
+}
+
 module.exports = {
     parseSourcesFromString,
     resolveLibrarySources,
     getEnabledLibrarySources,
+    getAllLibrarySources,
+    getIndexedLibrarySources,
 };

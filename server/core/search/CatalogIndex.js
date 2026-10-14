@@ -7,7 +7,7 @@ const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = 
 const {workKey} = require('./workKey');
 const {buildLookup, englishName} = require('./AuthorNames');
 
-const schemaVersion = '9';
+const schemaVersion = '10';
 const maxLimit = 200;
 //длинный запрос из сотен слов превращается в огромное выражение FTS и перебор опечаток: режем
 const maxQueryLength = 200;
@@ -43,6 +43,7 @@ const schema = `
     CREATE TABLE series(id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
     CREATE TABLE term(id INTEGER PRIMARY KEY, term TEXT NOT NULL, docs INTEGER NOT NULL);
     CREATE TABLE name(id INTEGER PRIMARY KEY, kind TEXT NOT NULL, ref INTEGER NOT NULL, name_norm TEXT NOT NULL, books INTEGER NOT NULL);
+    CREATE TABLE source_books(source TEXT NOT NULL, kind TEXT NOT NULL, ref INTEGER NOT NULL, books INTEGER NOT NULL, PRIMARY KEY(source, kind, ref)) WITHOUT ROWID;
     CREATE VIRTUAL TABLE book_fts USING fts5(
         title, author, series, keywords,
         content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2', prefix='2 3'
@@ -99,10 +100,14 @@ class CatalogIndex {
     constructor() {
         this.db = null;
         this.build = null;
+        this.hidden = new Set();
+        this.hiddenBooks = {author: new Map(), series: new Map()};
+        this.visibility = {stats: null, books: 0, indexed: []};
     }
 
     //---------- открытие ----------
-    open(file) {
+    //hidden - ключи выключенных библиотек: их книги остаются в БД, но не видны (см. setHiddenSources)
+    open(file, hidden = []) {
         this.close();
         const db = new DatabaseSync(file, {readOnly: true});
         try {
@@ -115,7 +120,113 @@ class CatalogIndex {
         }
         this.db = db;
         this.sources = new Map(db.prepare('SELECT key, name, lib_dir FROM source').all().map(row => [row.key, row]));
+        db.function('catalog_visible', id => (this.columns.flags[id] & 1));
+        db.function('catalog_books', (kind, ref, books) => Math.max(0, books - ((kind === 'series' ? this.hiddenBooks.series : this.hiddenBooks.author).get(ref) || 0)));
+        this.setHiddenSources(hidden);
         return this.meta();
+    }
+
+    //---------- выключенные библиотеки ----------
+    //Книги выключенных библиотек скрываются без пересборки: в колонках в памяти снимается признак «книга есть»
+    //(flags & 1, его проверяют поиск, OPDS и витрины), счётчики книг авторов и серий уменьшаются при чтении.
+    setHiddenSources(keys = []) {
+        this.hidden = new Set((keys || []).map(String).filter(key => this.sources && this.sources.has(key)));
+        this.hiddenBooks = {author: new Map(), series: new Map()};
+        this.queryMasks = null;
+        if (!this.db)
+            return this.visibility;
+
+        if (this.columns)
+            this.applyHidden(this.columns);
+        const indexed = [...this.sources.keys()];
+        let books = this.db.prepare('SELECT COUNT(*) AS n FROM book').get().n;
+        if (!this.hidden.size) {
+            this.visibility = {stats: null, books, indexed};
+            return this.visibility;
+        }
+
+        const hiddenJson = JSON.stringify([...this.hidden]);
+        for (const row of this.db.prepare('SELECT kind, ref, books FROM source_books WHERE source IN (SELECT value FROM json_each(?))').iterate(hiddenJson)) {
+            const map = this.hiddenBooks[row.kind];
+            map.set(row.ref, (map.get(row.ref) || 0) + row.books);
+        }
+        books -= this.db.prepare('SELECT COUNT(*) AS n FROM book WHERE source IN (SELECT value FROM json_each(?))').get(hiddenJson).n;
+        this.visibility = {stats: this.visibleStats(), books, indexed};
+        return this.visibility;
+    }
+
+    sourceVisibility() {
+        return this.visibility;
+    }
+
+    applyHidden(c) {
+        if (!c.storedFlags)
+            c.storedFlags = c.flags.slice();
+        const codes = new Set([...this.hidden].map(key => c.codes.source.get(key)).filter(code => code !== undefined));
+        for (let id = 0; id <= c.maxId; id++)
+            c.flags[id] = (codes.has(c.source[id]) ? c.storedFlags[id] & ~1 : c.storedFlags[id]);
+    }
+
+    //Счётчик книг имени с учётом выключенных библиотек: kind - author, series или name (таблица name: kind и ref)
+    booksSql(kind, table) {
+        if (!this.hidden.size)
+            return `${table}.books`;
+        return (kind === 'name'
+            ? `catalog_books(${table}.kind, ${table}.ref, ${table}.books)`
+            : `catalog_books('${kind}', ${table}.id, ${table}.books)`);
+    }
+
+    //Статистика библиотеки (как в finishBuild) без книг выключенных библиотек: суммы по библиотекам из sourceStats,
+    //книги, языки и жанры - по колонкам, авторы и серии - по счётчикам с вычетом выключенных
+    visibleStats() {
+        if (!this.columns)
+            this.loadColumns();
+        const c = this.columns;
+        const meta = this.meta();
+        const parse = (value) => {
+            try {
+                return JSON.parse(value || '{}');
+            } catch (e) {
+                return {};
+            }
+        };
+        const sourceStats = parse(meta.sourceStats);
+        const sum = field => [...this.sources.keys()].filter(key => !this.hidden.has(key))
+            .reduce((total, key) => total + Number((sourceStats[key] || {})[field] || 0), 0);
+
+        let bookCount = 0;
+        let bookDelCount = 0;
+        const langs = new Uint8Array(c.dicts.lang.length);
+        const genres = new Uint8Array(c.dicts.genre.length);
+        for (let id = 1; id <= c.maxId; id++) {
+            const flags = c.flags[id];
+            if (!(flags & 1))
+                continue;
+            if (flags & 2)
+                bookDelCount++;
+            else
+                bookCount++;
+            langs[c.lang[id]] = 1;
+            for (let i = c.genreStart[id]; i < c.genreStart[id + 1]; i++)
+                genres[c.genreList[i]] = 1;
+        }
+        const count = list => list.reduce((total, value) => total + value, 0);
+        const named = table => this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${this.booksSql(table, table)} > 0`).get().n;
+        const authorCount = named('author');
+        const filesCount = sum('filesCount');
+        const filesDelCount = sum('filesDelCount');
+        return {
+            filesCount, filesCountAll: filesCount + filesDelCount, filesDelCount,
+            recsLoaded: Number(parse(meta.stats).recsLoaded) || 0,
+            authorCount,
+            authorCountAll: authorCount + sum('authorGroups'),
+            bookCount, bookCountAll: bookCount + bookDelCount, bookDelCount,
+            noAuthorBookCount: sum('noAuthorBookCount'),
+            titleCount: sum('titleCount'),
+            seriesCount: named('series'),
+            genreCount: count(genres),
+            langCount: count(langs),
+        };
     }
 
     meta() {
@@ -137,7 +248,7 @@ class CatalogIndex {
 
     //---------- построение ----------
     //aliasEntries - пары [русское имя, английское имя] из Wikidata (см. AuthorNames)
-    //sources - [{id, name, libDir}] включённых библиотек
+    //sources - [{id, name, libDir}] библиотек, и выключенных
     beginBuild(file, aliasEntries = [], sources = []) {
         if (this.build)
             this.build.db.close();
@@ -207,19 +318,23 @@ class CatalogIndex {
                 const key = normalize(name) || name;
                 let rec = b.authors.get(key);
                 if (!rec) {
-                    rec = {id: b.authors.size + 1, name, books: 0};
+                    rec = {id: b.authors.size + 1, name, books: 0, sources: {}};
                     b.authors.set(key, rec);
                 }
-                if (!row.del)
+                if (!row.del) {
                     rec.books++;
+                    rec.sources[row.sourceId || ''] = (rec.sources[row.sourceId || ''] || 0) + 1;
+                }
                 b.insertBookAuthor.run(id, rec.id);
             }
 
             if (series) {
                 const key = normalize(series) || series;
-                const rec = b.series.get(key) || {id: b.series.size + 1, name: series, books: 0};
-                if (!row.del)
+                const rec = b.series.get(key) || {id: b.series.size + 1, name: series, books: 0, sources: {}};
+                if (!row.del) {
                     rec.books++;
+                    rec.sources[row.sourceId || ''] = (rec.sources[row.sourceId || ''] || 0) + 1;
+                }
                 b.series.set(key, rec);
             }
 
@@ -243,7 +358,18 @@ class CatalogIndex {
             const insertSeries = db.prepare('INSERT INTO series(id, name, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertName = db.prepare('INSERT INTO name(kind, ref, name_norm, books) VALUES (?, ?, ?, ?)');
             const insertAlias = db.prepare('INSERT INTO author_alias(author_id, alias) VALUES (?, ?)');
-            for (const {id, name, books} of b.authors.values()) {
+            //книги имён по библиотекам: выключенная библиотека вычитается из счётчиков без прохода по книгам
+            const perSource = (db.prepare('SELECT COUNT(*) AS n FROM source').get().n > 1);
+            const insertSourceBooks = db.prepare('INSERT INTO source_books(source, kind, ref, books) VALUES (?, ?, ?, ?)');
+            const addSourceBooks = (kind, rec) => {
+                if (perSource) {
+                    for (const [source, books] of Object.entries(rec.sources))
+                        insertSourceBooks.run(source, kind, rec.id, books);
+                }
+            };
+            for (const rec of b.authors.values()) {
+                const {id, name, books} = rec;
+                addSourceBooks('author', rec);
                 insertAuthor.run(id, name, normalize(name), books);
                 insertName.run('author', id, normalize(name), books);
                 const alias = b.aliases.get(name);
@@ -253,7 +379,9 @@ class CatalogIndex {
                     insertName.run('alias', id, normalize(alias), books);
                 }
             }
-            for (const {id, name, books} of b.series.values()) {
+            for (const rec of b.series.values()) {
+                const {id, name, books} = rec;
+                addSourceBooks('series', rec);
                 insertSeries.run(id, name, normalize(name), books);
                 insertName.run('series', id, normalize(name), books);
             }
@@ -306,6 +434,22 @@ class CatalogIndex {
                 langCount: one('SELECT COUNT(DISTINCT lang) AS n FROM book'),
             };
             delete meta.recsLoaded;
+            //слагаемые статистики по библиотекам - для статистики без выключенных (см. visibleStats)
+            const sourceStats = {};
+            if (perSource) {
+                const add = (sql, fields) => {
+                    for (const row of db.prepare(sql).all()) {
+                        const target = sourceStats[row.source] || (sourceStats[row.source] = {});
+                        for (const field of fields)
+                            target[field] = row[field] || 0;
+                    }
+                };
+                add(`SELECT source, SUM(del = 0) AS bookCount, SUM(del <> 0) AS bookDelCount, SUM(del = 0 AND author = '') AS noAuthorBookCount,
+                    COUNT(DISTINCT lower(title)) AS titleCount FROM book GROUP BY source`, ['bookCount', 'bookDelCount', 'noAuthorBookCount', 'titleCount']);
+                add(`SELECT source, SUM(alive > 0) AS filesCount, SUM(alive = 0) AS filesDelCount
+                    FROM (SELECT source, SUM(del = 0) AS alive FROM book GROUP BY source, folder, file, ext) GROUP BY source`, ['filesCount', 'filesDelCount']);
+                add(`SELECT source, COUNT(DISTINCT lower(author)) AS authorGroups FROM book WHERE author LIKE '%,%' GROUP BY source`, ['authorGroups']);
+            }
 
             //колонки фильтров сохраняются готовыми: открытие индекса не перебирает книги
             const columns = this.computeColumns(db);
@@ -321,6 +465,7 @@ class CatalogIndex {
             const insertMeta = db.prepare('INSERT INTO meta(key, value) VALUES (?, ?)');
             const fullMeta = Object.assign({}, meta, {
                 schemaVersion, books: String(b.count), aliases: String(aliasCount), builtAt: new Date().toISOString(), stats: JSON.stringify(stats),
+                sourceStats: JSON.stringify(sourceStats),
             });
             for (const [key, value] of Object.entries(fullMeta))
                 insertMeta.run(key, String(value));
@@ -461,6 +606,7 @@ class CatalogIndex {
             c.order[row.name] = typedFromBlob(Uint32Array, row.ids);
         c.pass = new Uint8Array(c.maxId + 1);
         c.editions = new Uint32Array(c.maxId + 1);
+        this.applyHidden(c);
         this.columns = c;
     }
 
@@ -919,24 +1065,25 @@ class CatalogIndex {
             let rows;
             if (long.length) {
                 const where = short.map(() => ' AND n.name_norm LIKE ?').join('');
-                rows = this.db.prepare(`SELECT n.ref AS id, n.books AS books FROM name_tri JOIN name n ON n.id = name_tri.rowid
-                    WHERE name_tri MATCH ? AND n.kind IN (${kindIn})${where} ORDER BY n.books DESC LIMIT ?`)
+                rows = this.db.prepare(`SELECT n.ref AS id, ${this.booksSql('name', 'n')} AS books FROM name_tri JOIN name n ON n.id = name_tri.rowid
+                    WHERE name_tri MATCH ? AND n.kind IN (${kindIn})${where} ORDER BY books DESC LIMIT ?`)
                     .all(long.map(word => `"${word}"`).join(' AND '), ...kinds, ...short.map(word => `%${word}%`), limit * 2);
             } else {
-                rows = this.db.prepare(`SELECT ref AS id, books FROM name WHERE kind IN (${kindIn}) AND name_norm >= ? AND name_norm < ? ORDER BY books DESC LIMIT ?`)
+                rows = this.db.prepare(`SELECT ref AS id, ${this.booksSql('name', 'name')} AS books FROM name
+                    WHERE kind IN (${kindIn}) AND name_norm >= ? AND name_norm < ? ORDER BY books DESC LIMIT ?`)
                     .all(...kinds, words[0], `${words[0]}￿`, limit * 2);
             }
 
             const ids = [...new Set(rows.map(row => row.id))].slice(0, limit);
             if (field === 'authors') {
-                const select = this.db.prepare('SELECT name, books FROM author WHERE id = ?');
+                const select = this.db.prepare(`SELECT name, ${this.booksSql('author', 'author')} AS books FROM author WHERE id = ?`);
                 const aliasOf = this.db.prepare('SELECT alias FROM author_alias WHERE author_id = ?');
                 result.authors = ids
                     .map(id => Object.assign({}, select.get(id), {alias: (aliasOf.get(id) || {}).alias || ''}))
                     .filter(row => row.name && row.books > 0)
                     .map(row => (row.alias ? {name: row.name, books: row.books, alias: row.alias} : {name: row.name, books: row.books}));
             } else {
-                const select = this.db.prepare('SELECT name, books FROM series WHERE id = ?');
+                const select = this.db.prepare(`SELECT name, ${this.booksSql('series', 'series')} AS books FROM series WHERE id = ?`);
                 result.series = ids
                     .map(id => select.get(id))
                     .filter(row => row && row.books > 0)
@@ -962,9 +1109,10 @@ class CatalogIndex {
             return (alias ? {name: row.name, books: row.books, alias} : {name: row.name, books: row.books});
         };
 
+        const books = this.booksSql(table, table);
         if (!words.length) {
-            const total = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE books > 0`).get().n;
-            const rows = this.db.prepare(`SELECT id, name, books FROM ${table} WHERE books > 0 ORDER BY name_norm LIMIT ? OFFSET ?`).all(limit, offset);
+            const total = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${books} > 0`).get().n;
+            const rows = this.db.prepare(`SELECT id, name, ${books} AS books FROM ${table} WHERE ${books} > 0 ORDER BY name_norm LIMIT ? OFFSET ?`).all(limit, offset);
             return {items: rows.map(describe), total};
         }
 
@@ -976,14 +1124,15 @@ class CatalogIndex {
         let ids;
         if (long.length) {
             const where = short.map(() => ' AND n.name_norm LIKE ?').join('');
-            ids = this.db.prepare(`SELECT n.ref AS id, MAX(n.books) AS books FROM name_tri JOIN name n ON n.id = name_tri.rowid
+            ids = this.db.prepare(`SELECT n.ref AS id, MAX(${this.booksSql('name', 'n')}) AS books FROM name_tri JOIN name n ON n.id = name_tri.rowid
                 WHERE name_tri MATCH ? AND n.kind IN (${kindIn})${where} GROUP BY n.ref ORDER BY books DESC LIMIT 5000`)
                 .all(long.map(word => `"${word}"`).join(' AND '), ...kinds, ...short.map(word => `%${word}%`));
         } else {
-            ids = this.db.prepare(`SELECT ref AS id, MAX(books) AS books FROM name WHERE kind IN (${kindIn}) AND name_norm LIKE ? GROUP BY ref ORDER BY books DESC LIMIT 5000`)
+            ids = this.db.prepare(`SELECT ref AS id, MAX(${this.booksSql('name', 'name')}) AS books FROM name
+                WHERE kind IN (${kindIn}) AND name_norm LIKE ? GROUP BY ref ORDER BY books DESC LIMIT 5000`)
                 .all(...kinds, `%${words[0]}%`);
         }
-        const select = this.db.prepare(`SELECT id, name, books FROM ${table} WHERE id = ?`);
+        const select = this.db.prepare(`SELECT id, name, ${books} AS books FROM ${table} WHERE id = ?`);
         const rows = ids.slice(offset, offset + limit).map(row => select.get(row.id)).filter(row => row && row.books > 0);
         return {items: rows.map(describe), total: ids.length};
     }
@@ -1015,11 +1164,13 @@ class CatalogIndex {
 
         let books = [];
         if (text.expression) {
+            if (!this.columns)
+                this.loadColumns();
             //одно издание на произведение
             const seen = new Set();
             books = this.db.prepare(`SELECT b.id AS id, b.work AS work
                 FROM book_fts f JOIN book b ON b.id = f.rowid
-                WHERE book_fts MATCH ? AND b.del = 0
+                WHERE book_fts MATCH ? AND b.del = 0 AND catalog_visible(b.id)
                 ORDER BY bm25(book_fts, 10.0, 6.0, 4.0, 1.0) LIMIT 30`).all(text.expression)
                 .filter(row => !row.work || (!seen.has(row.work) && seen.add(row.work)))
                 .slice(0, 6)
@@ -1038,7 +1189,10 @@ class CatalogIndex {
             const author = String(row.author || '');
             const series = String(row.series || '');
             db.exec('BEGIN');
-            const old = db.prepare('SELECT del, series_norm FROM book WHERE id = ?').get(id) || {};
+            const old = db.prepare('SELECT del, series_norm, source FROM book WHERE id = ?').get(id) || {};
+            const sourceBooks = db.prepare(`INSERT INTO source_books(source, kind, ref, books) VALUES (?, ?, ?, MAX(0, ?))
+                ON CONFLICT(source, kind, ref) DO UPDATE SET books = MAX(0, books + excluded.books)`);
+            const multiSource = (db.prepare('SELECT COUNT(*) AS n FROM source').get().n > 1);
             //исходные поля записи не меняются: правка накладывается при выдаче, здесь - поиск и связи с авторами
             db.prepare('UPDATE book SET title_norm = ?, series_norm = ? WHERE id = ?').run(normalize(title), normalize(series), id);
             //счётчики книг авторов и серий (списки, поиск имён) считают только неудалённые книги
@@ -1066,6 +1220,8 @@ class CatalogIndex {
             const addBooks = (authorId, delta) => {
                 db.prepare('UPDATE author SET books = MAX(0, books + ?) WHERE id = ?').run(delta, authorId);
                 db.prepare(`UPDATE name SET books = MAX(0, books + ?) WHERE kind IN ('author', 'alias') AND ref = ?`).run(delta, authorId);
+                if (multiSource && delta)
+                    sourceBooks.run(String(old.source || ''), 'author', authorId, delta);
             };
             for (const authorId of before) {
                 if (!after.has(authorId))
@@ -1082,6 +1238,8 @@ class CatalogIndex {
                 const addSeriesBooks = (seriesId, delta) => {
                     db.prepare('UPDATE series SET books = MAX(0, books + ?) WHERE id = ?').run(delta, seriesId);
                     db.prepare(`UPDATE name SET books = MAX(0, books + ?) WHERE kind = 'series' AND ref = ?`).run(delta, seriesId);
+                    if (multiSource && delta)
+                        sourceBooks.run(String(old.source || ''), 'series', seriesId, delta);
                 };
                 const before = (old.series_norm ? findSeries.get(old.series_norm) : null);
                 if (before)
@@ -1127,7 +1285,7 @@ class CatalogIndex {
     //Поля записи как у разбора INPX, плюс сведения об источнике
     bookRows(sql, ...params) {
         return this.db.prepare(`SELECT id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
-            file, folder, libid, insno, source FROM book WHERE ${sql}`).all(...params).map((row) => {
+            file, folder, libid, insno, source FROM book WHERE ${sql}`).all(...params).filter(row => !this.hidden.has(row.source)).map((row) => {
             const source = this.sources.get(row.source) || {};
             return {
                 id: row.id, _uid: row.uid, author: row.author, genre: row.genre, title: row.title, series: row.series, serno: row.serno,
@@ -1161,6 +1319,8 @@ class CatalogIndex {
             .all(JSON.stringify(titles.map(String)));
         const byId = new Map(this.getBooks(rows.map(row => row.id)).map(row => [row.id, row]));
         for (const row of rows) {
+            if (!byId.has(row.id))
+                continue;
             if (!result[row.title_norm])
                 result[row.title_norm] = [];
             result[row.title_norm].push(byId.get(row.id));
@@ -1192,8 +1352,23 @@ class CatalogIndex {
             throw new Error('catalog_index_not_ready');
         if (!this.columns)
             this.loadColumns();
-        const {lang, ext, genre} = this.columns.dicts;
-        return {lang: lang.filter(Boolean), ext: ext.filter(Boolean), genre: genre.filter(Boolean)};
+        const c = this.columns;
+        const {lang, ext, genre} = c.dicts;
+        if (!this.hidden.size)
+            return {lang: lang.filter(Boolean), ext: ext.filter(Boolean), genre: genre.filter(Boolean)};
+
+        //только значения, у которых есть книги включённых библиотек
+        const used = {lang: new Uint8Array(lang.length), ext: new Uint8Array(ext.length), genre: new Uint8Array(genre.length)};
+        for (let id = 1; id <= c.maxId; id++) {
+            if (!(c.flags[id] & 1))
+                continue;
+            used.lang[c.lang[id]] = 1;
+            used.ext[c.ext[id]] = 1;
+            for (let i = c.genreStart[id]; i < c.genreStart[id + 1]; i++)
+                used.genre[c.genreList[i]] = 1;
+        }
+        const pick = (field, values) => values.filter((value, code) => value && used[field][code]);
+        return {lang: pick('lang', lang), ext: pick('ext', ext), genre: pick('genre', genre)};
     }
 
     //Записи по ключам «источник:libid» (так выводятся id книг Kobo): {ключ: [записи]}

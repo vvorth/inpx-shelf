@@ -530,6 +530,12 @@ class AdminPage {
         return JSON.stringify(original) !== JSON.stringify(current);
     }
 
+    //включение и выключение библиотеки применяется без переиндексации
+    get adminSourcesNeedReindex() {
+        const shape = list => JSON.stringify(list.map(source => Object.assign(this.normalizeAdminSourceForCompare(source), {enabled: true})));
+        return shape((this.adminDashboard && this.adminDashboard.sources) || []) !== shape(this.adminSources || []);
+    }
+
     normalizeAdminSourceForCompare(source = {}) {
         return {
             id: String(source.id || '').trim(),
@@ -756,11 +762,10 @@ class AdminPage {
     async saveAdminSources() {
         this.adminSourcesLoading = true;
         try {
-            const needsReindex = this.adminSourcesChanged;
-            await this.api.updateAdminLibrarySources(this.adminSources);
+            const result = await this.api.updateAdminLibrarySources(this.adminSources);
             await this.api.updateConfig();
             await this.loadAdminPanel();
-            this.adminSourcesReindexNeeded = this.adminSourcesReindexNeeded || needsReindex;
+            this.adminSourcesReindexNeeded = this.adminSourcesReindexNeeded || !!(result && result.reindexNeeded);
             this.$root.notify.success(t('settings.admin.savedSources'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));

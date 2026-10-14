@@ -6,7 +6,7 @@ const log = new (require('../AppLogger'))().log;//singleton
 const utils = require('../utils');
 const AuthorNames = require('./AuthorNames');
 const InpxParser = require('../InpxParser');
-const {getEnabledLibrarySources} = require('../LibrarySources');
+const {getIndexedLibrarySources, getAllLibrarySources} = require('../LibrarySources');
 const {loadInpxFilter, makeRecordFilter, makeInpxInfo} = require('./LibraryImport');
 
 
@@ -26,10 +26,43 @@ class CatalogSearch {
         this.inpxHash = '';
         this.editedDuringBuild = null;
         this.authorNames = new AuthorNames(config);
+        //книги выключенных библиотек в индексе скрыты: статистика без них и ключи библиотек, что есть в индексе
+        this.visibility = {stats: null, books: 0, indexed: []};
     }
 
     status() {
-        return {enabled: this.enabled, ready: this.ready, building: this.building, progress: this.progress, books: Number(this.meta.books || 0)};
+        return {enabled: this.enabled, ready: this.ready, building: this.building, progress: this.progress, books: Number(this.visibility.books || this.meta.books || 0)};
+    }
+
+    hiddenSourceIds() {
+        return getAllLibrarySources(this.config).filter(source => source.enabled === false).map(source => source.id);
+    }
+
+    //Открыть БД в потоке запросов со скрытыми выключенными библиотеками
+    async openIndex(thread) {
+        const meta = await thread.call('open', this.file, this.hiddenSourceIds());
+        this.visibility = await thread.call('sourceVisibility');
+        return meta;
+    }
+
+    //Включение или выключение библиотеки без пересборки: true, если все включённые библиотеки уже есть в индексе
+    async applySourceVisibility() {
+        if (!this.ready)
+            return false;
+        this.visibility = await this.getThread().call('setHiddenSources', this.hiddenSourceIds());
+        return this.hasEnabledSourcesIndexed();
+    }
+
+    hasEnabledSourcesIndexed() {
+        const indexed = new Set(this.visibility.indexed || []);
+        return getAllLibrarySources(this.config).every(source => source.enabled === false || indexed.has(source.id));
+    }
+
+    //Хеш содержимого индекса для кэшей выдачи: меняется и при выключении библиотеки
+    libraryKey() {
+        const hidden = this.hiddenSourceIds().filter(id => (this.visibility.indexed || []).includes(id)).sort();
+        const hash = this.meta.inpxHash || '';
+        return (hidden.length && hash ? `${hash}-${utils.getBufHash(hidden.join('|'), 'sha256', 'hex').substring(0, 12)}` : hash);
     }
 
     getThread() {
@@ -40,7 +73,7 @@ class CatalogSearch {
             this.thread = new CatalogIndexThread();
             if (restart) {
                 log(LM_WARN, 'Library DB thread stopped, restarting');
-                this.thread.call('open', this.file).catch(e => log(LM_ERR, `Library DB reopen: ${e.message}`));
+                this.openIndex(this.thread).catch(e => log(LM_ERR, `Library DB reopen: ${e.message}`));
                 this.thread.call('warmUp').catch(() => {});
             }
         }
@@ -66,7 +99,7 @@ class CatalogSearch {
         const thread = this.getThread();
         if (!force && await fs.pathExists(this.file)) {
             try {
-                const meta = await thread.call('open', this.file);
+                const meta = await this.openIndex(thread);
                 const names = await this.authorNames.readEntries();
                 if (meta.inpxHash === inpxHash && String(meta.aliasesStamp || '') === names.updatedAt) {
                     this.meta = meta;
@@ -84,7 +117,7 @@ class CatalogSearch {
         return await this.rebuild(inpxHash, generation);
     }
 
-    //Импорт всех включённых библиотек из INPX во временный файл; готовый файл заменяет прежний.
+    //Импорт всех библиотек из INPX во временный файл; готовый файл заменяет прежний.
     //Отбор здесь, пропуск повторов _uid и порядок id - в потоке сборки (insertBooks), как у прежнего создания основной БД.
     async rebuild(inpxHash, generation) {
         //строит отдельный поток: поток запросов продолжает отвечать по прежней БД до замены файла
@@ -102,7 +135,9 @@ class CatalogSearch {
         log('Library DB build start');
         try {
             const config = this.config;
-            const sources = getEnabledLibrarySources(config);
+            //выключенные библиотеки тоже в индексе, но после включённых: повтор книги (_uid) остаётся за включённой
+            const indexed = await getIndexedLibrarySources(config);
+            const sources = [...indexed.filter(source => source.enabled !== false), ...indexed.filter(source => source.enabled === false)];
             const inpxFilter = await loadInpxFilter(config);
             const filter = makeRecordFilter(config, inpxFilter);
             const overrides = await this.worker.readingListStore.getMetadataOverrides();
@@ -153,7 +188,7 @@ class CatalogSearch {
             if (process.platform === 'win32')
                 await reader.call('close');
             await fs.move(tmpFile, this.file, {overwrite: true});
-            this.meta = await reader.call('open', this.file);
+            this.meta = await this.openIndex(reader);
             this.progress = 1;
             this.ready = (generation === this.generation);
             if (edited.size) {
@@ -191,7 +226,11 @@ class CatalogSearch {
                 return {};
             }
         };
-        return {inpxHash: this.meta.inpxHash || '', inpxInfo: parse(this.meta.inpxInfo), stats: parse(this.meta.stats)};
+        //inpxHash - хеш, с которым строилась БД (по нему видно, что INPX изменился); libraryKey - ещё и с выключенными библиотеками
+        return {
+            inpxHash: this.libraryKey(), buildHash: this.meta.inpxHash || '',
+            inpxInfo: parse(this.meta.inpxInfo), stats: this.visibility.stats || parse(this.meta.stats),
+        };
     }
 
     //Скачивание английских имён авторов (администратор); по окончании индекс перестраивается

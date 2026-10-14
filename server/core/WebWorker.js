@@ -1460,7 +1460,7 @@ class WebWorker {
                     const newInpxHash = await this.inpxHashCreator.getHash();
 
                     const dbConfig = await this.dbConfig();
-                    const currentInpxHash = (dbConfig.inpxHash ? dbConfig.inpxHash : '');
+                    const currentInpxHash = String(dbConfig.buildHash || '');
 
                     if (newInpxHash !== currentInpxHash) {
                         log('inpx file: changes found, recreating DB');

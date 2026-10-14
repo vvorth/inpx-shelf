@@ -28,7 +28,7 @@
                 </div>
             </div>
         </div>
-        <div v-if="admin.adminSourcesChanged || admin.adminSourcesReindexNeeded" class="admin-source-warning">
+        <div v-if="admin.adminSourcesNeedReindex || admin.adminSourcesReindexNeeded" class="admin-source-warning">
             <q-icon name="la la-exclamation-triangle" size="18px" />
             <span>{{ $t('settings.admin.sourcesNeedReindex') }}</span>
         </div>

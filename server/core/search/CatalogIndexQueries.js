@@ -129,12 +129,13 @@ function bookMask(index, query) {
     return mask;
 }
 
-//Условие «у имени есть подходящие книги» для таблиц author/series (alias a / s): без жанра и языка хватает готового счётчика
+//Условие «у имени есть подходящие книги» для таблиц author/series (alias a / s): без жанра и языка хватает готового счётчика.
+//С выключенными библиотеками маска нужна и без фильтров: имя только из их книг не показывается
 function availability(index, from, query) {
-    if (!hasBookFilter(query))
+    if (!hasBookFilter(query) && !index.hidden.size)
         return [];
     if (!query.genre && !query.lang && String(query.del) === '0')
-        return [`${from === 'author' ? 'a' : 's'}.books > 0`];
+        return [`${index.booksSql(from, from === 'author' ? 'a' : 's')} > 0`];
 
     currentMask = bookMask(index, query);
     return [from === 'author'
@@ -171,7 +172,7 @@ function bookWhere(index, query, params) {
         params.push(String(query.sourceId));
         where.push('b.source = ?');
     }
-    if (hasBookFilter(query)) {
+    if (hasBookFilter(query) || index.hidden.size) {
         currentMask = bookMask(index, query);
         where.push('catalog_ok(b.id)');
     }
@@ -285,7 +286,7 @@ module.exports = {
             if (cond)
                 where.push(cond);
             where.push(...availability(this, from, query));
-            sql = `SELECT substr(${alias}.name_norm, 1, ?) AS value, COUNT(*) AS count, SUM(${alias}.books) AS bookCount, MIN(${alias}.id) AS id, MIN(${alias}.name) AS name
+            sql = `SELECT substr(${alias}.name_norm, 1, ?) AS value, COUNT(*) AS count, SUM(${this.booksSql(from, alias)}) AS bookCount, MIN(${alias}.id) AS id, MIN(${alias}.name) AS name
                 FROM ${from} ${alias}${whereSql(where)} GROUP BY value`;
         }
 
@@ -319,7 +320,7 @@ module.exports = {
             if (cond)
                 where.push(cond);
             where.push(...availability(this, from, query));
-            select = `SELECT ${alias}.id AS id, ${alias}.name AS ${from}, ${alias}.books AS bookCount FROM ${from} ${alias}${whereSql(where)}`;
+            select = `SELECT ${alias}.id AS id, ${alias}.name AS ${from}, ${this.booksSql(from, alias)} AS bookCount FROM ${from} ${alias}${whereSql(where)}`;
             order = `ORDER BY ${alias}.name_norm, ${alias}.id`;
         }
 

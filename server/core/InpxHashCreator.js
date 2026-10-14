@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 
 const utils = require('./utils');
-const {getEnabledLibrarySources} = require('./LibrarySources');
+const {getIndexedLibrarySources} = require('./LibrarySources');
 
 class InpxHashCreator {
     constructor(config) {
@@ -15,8 +15,9 @@ class InpxHashCreator {
         if (await fs.pathExists(config.inpxFilterFile))
             inpxFilterHash = await utils.getFileHash(config.inpxFilterFile, 'sha256', 'hex');
 
+        //включение и выключение библиотеки в хеш не входит: оно не требует пересборки
         const sourceHashes = [];
-        for (const source of getEnabledLibrarySources(config)) {
+        for (const source of await getIndexedLibrarySources(config)) {
             const inpxFile = source.inpxFile || source.inpx;
             sourceHashes.push([
                 source.id,

@@ -8,7 +8,7 @@ const log = new (require('./AppLogger'))().log;//singleton
 const utils = require('./utils');
 const ConfigManager = require('../config');
 const {withFileTransaction} = require('./FilePersistence');
-const {getEnabledLibrarySources} = require('./LibrarySources');
+const {getEnabledLibrarySources, getAllLibrarySources} = require('./LibrarySources');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
@@ -444,9 +444,22 @@ module.exports = {
         if (!normalized.some(source => source.enabled !== false))
             throw new Error(t('errors.sourcesEnabledRequired'));
 
+        //включение и выключение библиотеки пересборки не требует; добавление, удаление и правка путей - требуют
+        const shape = list => JSON.stringify(list.map(source => [
+            source.id, String(source.name || ''),
+            path.resolve(String(source.inpx || source.inpxFile || '.')), path.resolve(String(source.libDir || '.')),
+        ]));
+        const changed = shape(getAllLibrarySources(this.config)) !== shape(normalized);
+
         await this.saveRuntimeConfigPatch({librarySources: normalized});
+        let reindexNeeded = changed;
+        try {
+            reindexNeeded = !await this.catalogSearch.applySourceVisibility() || changed;
+        } catch (e) {
+            log(LM_WARN, `Library sources visibility: ${e.message}`);
+        }
         this.addAdminEvent('info', 'sources', msg('admin.sourcesUpdated', {n: normalized.length}));
-        return {sources: normalized};
+        return {sources: normalized, reindexNeeded};
     },
 
     async diagnoseLibrarySource(userId = '', profileAccessToken = '', source = {}) {

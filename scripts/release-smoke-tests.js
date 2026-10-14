@@ -775,6 +775,90 @@ async function testDisabledLibrarySourceIsKept() {
         worker.adminEvents = [];
         const dashboard = await worker.getAdminDashboard();
         assert.deepStrictEqual(dashboard.sources.map(source => [source.id, source.enabled]), [['a', true], ['b', false]]);
+
+        //выключение и включение уже проиндексированной библиотеки - без переиндексации
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const catalogSearch = new CatalogSearch(worker.config, worker);
+        catalogSearch.ready = true;
+        let hidden = null;
+        catalogSearch.getThread = () => ({call: async(action, ids) => {
+            hidden = ids;
+            return {stats: null, books: 1, indexed: ['a', 'b']};
+        }});
+        worker.catalogSearch = catalogSearch;
+        worker.saveRuntimeConfigPatch = async(patch) => Object.assign(worker.config, patch);
+        const save = sources => worker.updateAdminLibrarySources('', '', sources);
+        const both = enabledB => [{id: 'a', name: 'A', inpx: path.join(libA, 'a.inpx'), libDir: libA}, {id: 'b', name: 'B', inpx: config.librarySources[1].inpx, libDir: path.join(dir, 'missing'), enabled: enabledB}];
+        assert.strictEqual((await save(both(true))).reindexNeeded, false);
+        assert.deepStrictEqual(hidden, []);
+        assert.strictEqual((await save(both(false))).reindexNeeded, false);
+        assert.deepStrictEqual(hidden, ['b']);
+        const moved = both(false);
+        moved[0].libDir = path.join(dir, 'moved');
+        assert.strictEqual((await save(moved)).reindexNeeded, true, 'path change needs reindex');
+        catalogSearch.getThread = () => ({call: async() => ({stats: null, books: 1, indexed: ['a']})});
+        assert.strictEqual((await save(both(true))).reindexNeeded, true, 'enabling a library missing from the index needs reindex');
+        catalogSearch.meta = {inpxHash: 'h'};
+        catalogSearch.visibility = {indexed: ['a', 'b']};
+        assert.strictEqual(catalogSearch.libraryKey(), 'h');
+        worker.config.librarySources[1].enabled = false;
+        assert.notStrictEqual(catalogSearch.libraryKey(), 'h', 'caches keyed by library change when a library is hidden');
+        assert.strictEqual(catalogSearch.libraryConfig().buildHash, 'h');
+    });
+}
+
+//выключенная библиотека остаётся в индексе, но её книги не видны нигде; включение - без пересборки
+async function testDisabledLibraryHiddenWithoutRebuild() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const file = path.join(dir, 'catalog.sqlite');
+        const book = (id, title, author, extra = {}) => Object.assign({
+            id, _uid: `u${id}`, title, author, series: '', serno: 0, genre: 'prose_classic', lang: 'ru', ext: 'fb2',
+            size: 1000, date: '2020-01-01', librate: 4, del: 0, sourceId: 'main', keywords: '', libid: String(id),
+        }, extra);
+
+        const index = new CatalogIndex();
+        index.beginBuild(file, [], [{id: 'main', name: 'Main', libDir: dir}, {id: 'second', name: 'Second', libDir: dir}]);
+        index.insertBooks([
+            book(1, 'Мастер и Маргарита', 'Булгаков Михаил'),
+            book(2, 'Собачье сердце', 'Булгаков Михаил', {sourceId: 'second', series: 'Повести', lang: 'en', genre: 'sf'}),
+            book(3, 'Пикник на обочине', 'Стругацкий Аркадий', {sourceId: 'second', series: 'Повести'}),
+        ]);
+        index.finishBuild({inpxHash: 'hash'});
+
+        index.open(file, ['second', 'unknown']);
+        assert.deepStrictEqual(index.search({q: ''}).ids, [1]);
+        assert.deepStrictEqual(index.search({q: 'булгаков'}).authors, [{name: 'Булгаков Михаил', books: 1}]);
+        assert.deepStrictEqual(index.search({q: 'стругацкий'}).authors, [], 'author with only hidden books is not suggested');
+        assert.deepStrictEqual(index.listNames({kind: 'author'}).items.map(item => [item.name, item.books]), [['Булгаков Михаил', 1]]);
+        assert.deepStrictEqual(index.listNames({kind: 'series'}).items, []);
+        assert.deepStrictEqual(index.suggest({q: 'сердце'}).books, []);
+        assert.deepStrictEqual(index.getBooks([1, 2, 3]).map(row => row.id), [1]);
+        assert.deepStrictEqual(Object.keys(index.getBooksByStableKeys(['second:2'])), []);
+        assert.deepStrictEqual(index.facetValues().lang, ['ru']);
+        assert.deepStrictEqual(index.findBooks({author: 'булгаков'}).ids, [1]);
+        assert.deepStrictEqual(index.opdsNames('author', {}).found.map(row => row.author), ['Булгаков Михаил']);
+        assert.deepStrictEqual(index.opdsNames('series', {}).found, []);
+        const visibility = index.sourceVisibility();
+        assert.strictEqual(visibility.books, 1);
+        assert.strictEqual(visibility.stats.bookCount, 1);
+        assert.strictEqual(visibility.stats.seriesCount, 0);
+        assert.deepStrictEqual(visibility.indexed, ['main', 'second']);
+
+        index.setHiddenSources([]);
+        assert.deepStrictEqual(index.search({q: ''}).ids.sort(), [1, 2, 3]);
+        assert.deepStrictEqual(index.search({q: 'булгаков'}).authors, [{name: 'Булгаков Михаил', books: 2}]);
+        assert.deepStrictEqual(index.opdsNames('series', {}).found.map(row => [row.series, row.bookCount]), [['Повести', 2]]);
+        assert.deepStrictEqual(index.findBooks({author: 'булгаков'}).ids.sort(), [1, 2]);
+        assert.strictEqual(index.sourceVisibility().stats, null);
+
+        //правка метаданных переносит книгу выключаемой библиотеки к другому автору: счётчики по библиотекам следуют за ней
+        index.updateBook(file, {id: 3, title: 'Пикник на обочине', author: 'Булгаков Михаил', series: 'Повести'});
+        index.open(file, []);
+        assert.deepStrictEqual(index.listNames({kind: 'author'}).items.map(item => [item.name, item.books]), [['Булгаков Михаил', 3]]);
+        index.open(file, ['second']);
+        assert.deepStrictEqual(index.listNames({kind: 'author'}).items.map(item => [item.name, item.books]), [['Булгаков Михаил', 1]]);
+        index.close();
     });
 }
 
@@ -2140,6 +2224,7 @@ const tests = [
     testAdminSettingsRestoreKeepsSecrets,
     testAdminBackupArchiveAndDownload,
     testDisabledLibrarySourceIsKept,
+    testDisabledLibraryHiddenWithoutRebuild,
     testUserBackupExportsAndRestoresReaderState,
     testReaderProgressChoice,
     testReaderProgressResetAndHiddenState,
