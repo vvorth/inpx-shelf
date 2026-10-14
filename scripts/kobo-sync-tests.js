@@ -1192,7 +1192,8 @@ async function testKoboReplacementCarriesReadingState() {
 async function testKoboDevicesTravelWithProfileBackup() {
     await fixture({}, async({service, store, worker, device, listA, listB, call, sync}) => {
         const WebWorker = require('../server/core/WebWorker');
-        Object.assign(worker, {checkMyState() {}, koboService: service});
+        Object.assign(worker, {checkMyState() {}, koboService: service, trySyncListedBooks: async() => {},
+            getListedBookRecords: WebWorker.prototype.getListedBookRecords});
         await store.addBooks('default', listA.id, ['fb2-uid']);
         await sync({fresh: true});
         const uuid = kobo.uuidv5('main:101');

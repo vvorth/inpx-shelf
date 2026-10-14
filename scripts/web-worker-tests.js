@@ -477,6 +477,64 @@ async function testListedBooksFollowUpdatedInpxLine() {
     });
 }
 
+//бэкап профиля несёт названия и авторов книг: на сервере с новым INPX пропавшие книги видны и находятся замены
+async function testProfileBackupCarriesBookDetails() {
+    await temporary(async(dataDir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const book = (id, uid, author, title, extra = {}) => Object.assign({id, _uid: uid, author, title, series: 'Цикл', serno: 1, size: 1,
+            librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang: 'ru',
+            date: '2010-01-01'}, extra);
+        const library = (name, books) => {
+            const index = new CatalogIndex();
+            const file = path.join(dataDir, name);
+            index.beginBuild(file, [], []);
+            index.insertBooks(books);
+            index.finishBuild({});
+            index.open(file, []);
+            return index;
+        };
+        const catalog = (index) => ({ready: true,
+            getBooksByUids: async(uids, includeHidden) => index.getBooksByUids(uids, includeHidden),
+            getBooksByTitles: async(titles) => index.getBooksByTitles(titles),
+            getBooksByStableKeys: async(keys) => index.getBooksByStableKeys(keys),
+            authorAliasesOf: async() => ({})});
+        const older = library('older.sqlite', [book(1, 'old-revision', 'Корепанов Алексей', 'Горькие яблоки', {libid: '500'}),
+            book(2, 'old-line', 'Петров Пётр', 'Тот же libid')]);
+        const newer = library('newer.sqlite', [book(1, 'new-revision', 'Корепанов Алексей', 'Горькие яблоки', {libid: '900'}),
+            book(2, 'new-line', 'Петров Пётр', 'Тот же libid', {size: 2})]);
+        try {
+            const oldDir = path.join(dataDir, 'old');
+            const newDir = path.join(dataDir, 'new');
+            await fs.ensureDir(oldDir);
+            await fs.ensureDir(newDir);
+            const oldStore = new ReadingListStore({dataDir: oldDir, adminLogin: 'admin', adminPassword: 'admin'});
+            const list = await oldStore.createList('', 'Queue');
+            await oldStore.addBooks('', list.id, ['old-revision', 'old-line']);
+            const source = bareWorker({readingListStore: oldStore, catalogSearch: catalog(older), checkMyState: () => true, config: {}});
+            const backup = JSON.parse(JSON.stringify(await source.exportReadingLists('')));
+            assert.deepStrictEqual(Object.keys(backup.books).sort(), ['old-line', 'old-revision']);
+            assert.strictEqual(backup.books['old-revision'].author, 'Корепанов Алексей');
+
+            const newStore = new ReadingListStore({dataDir: newDir, adminLogin: 'admin', adminPassword: 'admin'});
+            const target = bareWorker({readingListStore: newStore, catalogSearch: catalog(newer), checkMyState: () => true, config: {}});
+            await target.importReadingLists('', backup);
+            const imported = (await newStore.getLists('')).find(item => item.name === 'Queue');
+            const {books} = await target.getReadingList('', imported.id);
+            //та же библиотека и libid - переходит сама; другая ревизия с новым libid - видна по названию и автору
+            assert.deepStrictEqual(books.map(item => [item._uid, item.title, item.author, item.series, item.unavailable || '']).sort(), [
+                ['new-line', 'Тот же libid', 'Петров Пётр', 'Цикл', ''],
+                ['old-revision', 'Горькие яблоки', 'Корепанов Алексей', 'Цикл', 'missing'],
+            ]);
+            const page = await target.getBook('old-revision');
+            assert.deepStrictEqual(page.replacements.map(item => item._uid), ['new-revision']);
+        } finally {
+            older.close();
+            newer.close();
+        }
+    });
+}
+
 module.exports = [
     testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
@@ -488,6 +546,7 @@ module.exports = [
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
     testListedBooksKeepUntilReaderReplacesThem,
+    testProfileBackupCarriesBookDetails,
     testListedBooksFollowUpdatedInpxLine,
     testReadingStats,
     testLibraryAssetCaches,

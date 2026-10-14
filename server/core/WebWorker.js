@@ -921,6 +921,14 @@ class WebWorker {
     async exportReadingLists(userId = '') {
         this.checkMyState();
         const result = await this.readingListStore.exportData(userId);
+        //названия и авторы книг: на сервере с другой версией INPX у той же книги другой _uid, по ним ищется замена
+        const uids = new Set([...result.lists.flatMap(list => list.books.map(entry => entry.bookUid)),
+            ...Object.keys(result.user.readerProgress), ...Object.keys(result.user.readerBookmarks)]);
+        result.books = {};
+        for (const [uid, book] of await this.getListedBookRecords([...uids])) {
+            if (book.unavailable !== 'missing' || book.author)
+                result.books[uid] = bookNote(book);
+        }
         if (this.koboService) {
             const lists = await this.readingListStore.getLists(userId);
             result.kobo = await this.koboService.store.exportUser(userId, new Map(lists.map(item => [item.id, item.name])));
@@ -931,6 +939,12 @@ class WebWorker {
     async importReadingLists(userId = '', data) {
         this.checkMyState();
         const result = await this.readingListStore.importData(userId, data);
+        if (data.books && typeof(data.books) === 'object') {
+            //заметки, которые уже есть на этом сервере, не заменяются: у них свежее
+            const {notes} = await this.readingListStore.getBookNoteState();
+            await this.readingListStore.saveBookNotes(Object.fromEntries(Object.entries(data.books).filter(([uid]) => !notes[uid])));
+            await this.trySyncListedBooks();
+        }
         if (this.koboService) {
             if (data.kobo) {
                 const lists = await this.readingListStore.getLists(userId);
