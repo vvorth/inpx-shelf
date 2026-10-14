@@ -38,7 +38,7 @@ export async function loadBookStates(api, books = []) {
 
 //библиотека книги - только если их подключено несколько: с одной библиотекой это лишний текст
 export function librarySourceName(config = {}, book = {}) {
-    const sources = Array.isArray(config.librarySources) ? config.librarySources : [];
+    const sources = (Array.isArray(config.librarySources) ? config.librarySources : []).filter(item => item.enabled !== false);
     if (sources.length < 2 || !book.sourceId)
         return '';
     const source = sources.find(item => item.id === book.sourceId);

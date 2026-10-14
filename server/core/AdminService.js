@@ -302,7 +302,9 @@ module.exports = {
         const index = await this.getIndexStatus();
         const dbConfig = (index.ready ? await this.dbConfig() : {});
         const metrics = await this.buildAdminDashboardMetrics(index, dbConfig);
-        const sources = await Promise.all(getEnabledLibrarySources(this.config).map(async(source) => Object.assign({
+        //все источники, включая выключенные: иначе выключенный пропадает из списка в админке
+        const configured = (Array.isArray(this.config.librarySources) && this.config.librarySources.length ? this.config.librarySources : getEnabledLibrarySources(this.config));
+        const sources = await Promise.all(configured.map(async(source) => Object.assign({
             id: source.id || '',
             name: source.name || '',
             enabled: source.enabled !== false,

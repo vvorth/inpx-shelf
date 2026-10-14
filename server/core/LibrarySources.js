@@ -149,24 +149,44 @@ async function resolveLibrarySources(config, argv = {}) {
         }];
     }
 
+    //выключенные источники остаются в config.librarySources: иначе следующее сохранение настроек сотрёт их из config.json
     const result = [];
     for (let i = 0; i < sources.length; i++) {
-        if (sources[i] && sources[i].enabled === false)
+        const source = sources[i];
+        if (!source)
             continue;
 
-        const normalized = await normalizeSource(sources[i], i);
-        result.push(normalized);
+        if (source.enabled === false) {
+            let normalized;
+            try {
+                normalized = await normalizeSource(source, i, {requireExists: false});
+            } catch (e) {
+                const inpx = String(source.inpx || source.inpxFile || '').trim();
+                normalized = {
+                    id: stableId(source.id || source.name || `source-${i + 1}`, `source-${i + 1}`),
+                    name: String(source.name || '').trim() || `source-${i + 1}`,
+                    inpx,
+                    inpxFile: inpx,
+                    libDir: String(source.libDir || source.libraryDir || '').trim(),
+                };
+            }
+            result.push(Object.assign(normalized, {enabled: false}));
+            continue;
+        }
+
+        result.push(await normalizeSource(source, i));
     }
 
-    if (!result.length)
+    const enabled = result.filter(source => source.enabled !== false);
+    if (!enabled.length)
         throw new Error('No enabled INPX library sources configured');
 
     config.librarySources = result;
-    config.libDir = result[0].libDir;
-    config.inpx = result[0].inpx;
-    config.inpxFile = result[0].inpxFile;
+    config.libDir = enabled[0].libDir;
+    config.inpx = enabled[0].inpx;
+    config.inpxFile = enabled[0].inpxFile;
 
-    return result;
+    return enabled;
 }
 
 function getEnabledLibrarySources(config = {}) {

@@ -751,6 +751,33 @@ async function testAdminSettingsRestoreKeepsSecrets() {
     );
 }
 
+async function testDisabledLibrarySourceIsKept() {
+    await withTempDir(async(dir) => {
+        const libA = path.join(dir, 'a');
+        await fs.ensureDir(libA);
+        await fs.writeFile(path.join(libA, 'a.inpx'), '');
+        const {resolveLibrarySources, getEnabledLibrarySources} = require('../server/core/LibrarySources');
+        const config = {librarySources: [
+            {id: 'a', name: 'A', libDir: libA},
+            {id: 'b', name: 'B', libDir: path.join(dir, 'missing'), enabled: false},
+        ]};
+
+        const enabled = await resolveLibrarySources(config);
+        assert.deepStrictEqual(enabled.map(source => source.id), ['a']);
+        assert.deepStrictEqual(config.librarySources.map(source => [source.id, source.enabled]), [['a', true], ['b', false]]);
+        assert.strictEqual(config.libDir, libA);
+        assert.deepStrictEqual(getEnabledLibrarySources(config).map(source => source.id), ['a']);
+
+        const worker = makeWorker({librarySources: config.librarySources, adminEventLogEnabled: false});
+        worker.getIndexStatus = async() => ({ready: false});
+        worker.buildAdminDashboardMetrics = async() => ({paths: {}, sizes: {coverCache: {}}, limits: {}});
+        worker.wState = {get: () => ({})};
+        worker.adminEvents = [];
+        const dashboard = await worker.getAdminDashboard();
+        assert.deepStrictEqual(dashboard.sources.map(source => [source.id, source.enabled]), [['a', true], ['b', false]]);
+    });
+}
+
 async function testAdminBackupArchiveAndDownload() {
     await withTempDir(async(dir) => {
         const bookDir = path.join(dir, 'book');
@@ -2112,6 +2139,7 @@ const tests = [
     testFb2cngConfigAndConversionCache,
     testAdminSettingsRestoreKeepsSecrets,
     testAdminBackupArchiveAndDownload,
+    testDisabledLibrarySourceIsKept,
     testUserBackupExportsAndRestoresReaderState,
     testReaderProgressChoice,
     testReaderProgressResetAndHiddenState,
