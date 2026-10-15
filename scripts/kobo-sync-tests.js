@@ -386,13 +386,36 @@ async function testKoboDevicesAreScopedAndRevocable() {
 async function testKoboFailedMutationKeepsFileState() {
     await fixture({}, async({service, token, call}) => {
         const before = JSON.stringify(service.store.data);
-        await assert.rejects(service.store.mutate((data) => {
+        // Sync code reads store.data synchronously: it must not see the store without data while the file is reread.
+        let settled = false;
+        const failed = service.store.mutate((data) => {
             data.devices[0].name = 'changed';
             data.devices = [];
             throw new Error('boom');
-        }), /boom/);
+        });
+        failed.catch(() => {}).then(() => (settled = true));
+        while (!settled) {
+            assert.ok(service.store.data, 'store data during the reload');
+            await new Promise(resolve => setImmediate(resolve));
+        }
+        await assert.rejects(failed, /boom/);
         assert.strictEqual(JSON.stringify(service.store.data), before);
         assert.ok(service.store.findDeviceByToken(token), 'Token index matches the file again');
+        assert.strictEqual((await call('/v1/initialization')).status, 200);
+
+        // The file cannot be read back: the copy in memory stays.
+        const file = service.store.file;
+        await fs.move(file, `${file}.saved`);
+        await fs.ensureDir(file);
+        try {
+            await assert.rejects(service.store.mutate(() => {
+                throw new Error('boom');
+            }), /boom/);
+            assert.strictEqual(JSON.stringify(service.store.data), before);
+        } finally {
+            await fs.remove(file);
+            await fs.move(`${file}.saved`, file);
+        }
         assert.strictEqual((await call('/v1/initialization')).status, 200);
     });
 }

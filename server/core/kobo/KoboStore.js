@@ -119,22 +119,25 @@ class KoboStore {
             if (this.data)
                 return this.data;
 
-            let raw = null;
-            if (await fs.pathExists(this.file)) {
-                // Only unparsable JSON is a broken file; a read error fails this request and the next one retries.
-                const text = await fs.readFile(this.file, 'utf8');
-                try {
-                    raw = JSON.parse(text);
-                } catch (e) {
-                    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    await fs.copy(this.file, `${this.file}.broken-${stamp}`).catch(() => {});
-                }
-            }
-
-            this.data = this.normalizeData(raw);
+            this.data = await this.readData();
             this.rebuildIndex();
             return this.data;
         });
+    }
+
+    async readData() {
+        let raw = null;
+        if (await fs.pathExists(this.file)) {
+            // Only unparsable JSON is a broken file; a read error fails this request and the next one retries.
+            const text = await fs.readFile(this.file, 'utf8');
+            try {
+                raw = JSON.parse(text);
+            } catch (e) {
+                const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+                await fs.copy(this.file, `${this.file}.broken-${stamp}`).catch(() => {});
+            }
+        }
+        return this.normalizeData(raw);
     }
 
     // All mutations go through here so the in-memory copy and the file never diverge.
@@ -148,8 +151,14 @@ class KoboStore {
                 return result;
             } catch (e) {
                 // The task changes data in place: after a failed task or write, take the file's state back.
-                this.data = null;
-                await this.load().catch(() => {});
+                // Swapped in one step: synchronous readers (sync, auth) never see the store without data.
+                // If the file cannot be read either, the copy in memory stays until a later write.
+                try {
+                    this.data = await this.readData();
+                    this.rebuildIndex();
+                } catch (_) {
+                    // keep the copy in memory
+                }
                 throw e;
             }
         });
