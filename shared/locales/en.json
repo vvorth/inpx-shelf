@@ -1561,7 +1561,8 @@
             "sourcesNeedReindex": "Source changes take effect after reindexing.",
             "tasks": "Tasks and background processes",
             "testEvent": "Test",
-            "title": "Administration"
+            "title": "Administration",
+            "reindexConfirm": "Rebuild the library database and search index from the INPX files? While it runs (several minutes for a large library), readers see the “library is updating” screen and cannot search or open books."
         },
         "allEvents": "All events",
         "allLevels": "All levels",
@@ -1697,7 +1698,10 @@
         "thursday": "Thursday",
         "tuesday": "Tuesday",
         "wednesday": "Wednesday",
-        "awardsShowcase": "{name} · award winners"
+        "awardsShowcase": "{name} · award winners",
+        "clearBothCachesConfirm": "Delete prepared book files and covers? They are rebuilt the next time they are downloaded or shown, so books and covers open more slowly at first.",
+        "clearBookCacheConfirm": "Delete prepared book files? They are rebuilt the next time a book is downloaded or read, so books open more slowly at first.",
+        "clearCoverCacheConfirm": "Delete cached covers? They are extracted from the books again the next time they are shown, so the catalog loads more slowly for a while."
     },
     "shellUserMenu": {
         "devicesOpdsAndKobo": "Devices: OPDS and Kobo",

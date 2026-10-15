@@ -810,6 +810,14 @@ class AdminPage {
 
     async cleanAdminCache(kind = 'all') {
         const normalizedKind = String(kind || 'all');
+        //очистка необратима: готовые файлы книг и обложки будут заново собираться при первом обращении
+        const [message, caption] = {
+            book: ['settings.clearBookCacheConfirm', 'settings.clearBookCache'],
+            cover: ['settings.clearCoverCacheConfirm', 'settings.clearCoverCache'],
+        }[normalizedKind] || ['settings.clearBothCachesConfirm', 'settings.clearBothCaches'];
+        if (!await this.$root.stdDialog.confirm(t(message), t(caption), {okLabel: t(caption)}))
+            return;
+
         if (normalizedKind === 'book')
             this.adminCleanBookCacheLoading = true;
         else if (normalizedKind === 'cover')
@@ -868,6 +876,10 @@ class AdminPage {
     }
 
     async reindexAdmin() {
+        //на время перестройки библиотека недоступна всем читателям
+        if (!await this.$root.stdDialog.confirm(t('settings.admin.reindexConfirm'), t('settings.admin.reindex'), {okLabel: t('settings.admin.reindex')}))
+            return;
+
         this.adminReindexLoading = true;
         try {
             await this.api.adminReindex();
