@@ -65,7 +65,6 @@ function init(app, config, worker, security) {
 
     const store = worker.readingListStore;
     const router = express.Router();
-    router.use(express.json({type: () => true, limit: '64kb'}));
     router.use((req, res, next) => {
         res.set('Cache-Control', 'no-store');
         next();
@@ -104,7 +103,8 @@ function init(app, config, worker, security) {
         sendJson(res, {document, progress, percentage, device, device_id, timestamp});
     }));
 
-    router.put('/syncs/progress', handle(async(req, res) => {
+    // тело читается только после проверки входа: без пароля запрос не тратит разбор JSON
+    router.put('/syncs/progress', express.json({type: () => true, limit: '64kb'}), handle(async(req, res) => {
         const body = (req.body && typeof(req.body) === 'object' ? req.body : {});
         const document = String(body.document || '').toLowerCase();
         if (!document)

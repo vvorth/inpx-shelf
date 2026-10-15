@@ -137,6 +137,14 @@ async function testKosyncFailedLoginsAreRateLimited() {
     });
 }
 
+async function testKosyncChecksKeyBeforeReadingBody() {
+    await fixture({}, async({call}) => {
+        //тело больше лимита разбора: без пароля оно не читается, ответ - 401, а не 413
+        const body = JSON.stringify({document: 'a'.repeat(32), progress: 'x'.repeat(100 * 1024), percentage: 0.5, device: 'd', device_id: 'i'});
+        assert.strictEqual((await call('/syncs/progress', 'wrong-key', {method: 'PUT', body})).status, 401);
+    });
+}
+
 async function testKosyncFindsServedCacheFile() {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kosync-state-'));
     const state = new StateStore({dataDir: dir});
@@ -157,6 +165,7 @@ module.exports = [
     testKosyncPartialMd5MatchesKoreader,
     testKosyncProtocolAndWebProgress,
     testKosyncFailedLoginsAreRateLimited,
+    testKosyncChecksKeyBeforeReadingBody,
     testKosyncFindsServedCacheFile,
 ];
 
