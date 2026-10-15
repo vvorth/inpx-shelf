@@ -454,7 +454,10 @@ import ReaderHome from './ReaderHome.vue';
 import ReaderDialogs from './ReaderDialogs.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 const readerTextAnchors = require('./readerTextAnchors');
-import _ from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
+import debounce from 'lodash/debounce';
+import isEqual from 'lodash/isEqual';
+import omit from 'lodash/omit';
 const readerProgress = require('../../share/readerProgress');
 const readerStorage = require('../../share/readerStorage');
 import {t, tm, formatDateTime} from '../../share/i18n';
@@ -593,7 +596,7 @@ class Reader extends ReaderPaginator {
         compactProfile: {},
         einkProfile: {...einkReaderDefaults, regularProfile: {}, compactProfile: {}},
     };
-    defaultReaderPreferences = _.cloneDeep(this.preferences);
+    defaultReaderPreferences = cloneDeep(this.preferences);
     progress = {
         percent: 0,
         sectionId: '',
@@ -788,11 +791,11 @@ class Reader extends ReaderPaginator {
         });
 
         // uid книги фиксируется при вызове: отложенное сохранение не должно попасть в другую книгу
-        this.saveProgressDebounced = _.debounce((bookUid) => {
+        this.saveProgressDebounced = debounce((bookUid) => {
             this.queuePersistProgress(bookUid);// no await
         }, 800);
 
-        this.savePreferencesDebounced = _.debounce(() => {
+        this.savePreferencesDebounced = debounce(() => {
             this.persistPreferences();// no await
         }, 500);
     }
@@ -2857,7 +2860,7 @@ class Reader extends ReaderPaginator {
         if (this.savePreferencesDebounced && this.savePreferencesDebounced.cancel)
             this.savePreferencesDebounced.cancel();
 
-        this.preferences = _.cloneDeep(this.defaultReaderPreferences);
+        this.preferences = cloneDeep(this.defaultReaderPreferences);
         this.writeStoredReaderPreferences();
         this.requestReaderSettingsReflow();
         try {
@@ -5951,7 +5954,7 @@ class Reader extends ReaderPaginator {
         const preferences = this.preferences;
         const backgroundImage = String(preferences.backgroundImage || '');
         const patch = (backgroundImage === this.serverBackgroundImage
-            ? _.omit(preferences, ['backgroundImage', 'backgroundImageName'])
+            ? omit(preferences, ['backgroundImage', 'backgroundImageName'])
             : preferences);
         try {
             await api.updateReaderPreferences(patch, {suppressProfileLogin: true});
@@ -6034,7 +6037,7 @@ class Reader extends ReaderPaginator {
 
     applyReaderPreferences(preferences = {}, options = {}) {
         const nextPreferences = this.mergeReaderPreferences(preferences);
-        if (_.isEqual(nextPreferences, this.preferences)) {
+        if (isEqual(nextPreferences, this.preferences)) {
             if (options.persistLocal)
                 this.writeStoredReaderPreferences();
             return;

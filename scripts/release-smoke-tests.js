@@ -582,7 +582,7 @@ async function testReaderTextShadowDefaultsOff() {
         assert.match(readerSource, /next\.pagePaddingBottom = Math\.max\(0, vertical \+ 4\);/);
         assert.match(readerSource, /require\('\.\.\/\.\.\/\.\.\/shared\/readerPreferences'\)/);
         assert.match(readerSource, /normalizeReaderSpacingPreferences\(migrateReaderPreferences\(preferences\)\)/);
-        assert.match(readerSource, /defaultReaderPreferences = _\.cloneDeep\(this\.preferences\);/);
+        assert.match(readerSource, /defaultReaderPreferences = cloneDeep\(this\.preferences\);/);
     });
 }
 
