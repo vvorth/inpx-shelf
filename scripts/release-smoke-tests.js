@@ -39,6 +39,13 @@ async function withTempDir(fn) {
     }
 }
 
+// Reader.vue, его слои и дочерние компоненты одним текстом: проверки находят код, в каком бы файле читалки он ни был
+async function readReaderSources() {
+    const dir = path.resolve(__dirname, '../client/components/Reader');
+    const files = (await fs.readdir(dir)).filter(file => /\.(vue|js)$/.test(file)).sort();
+    return (await Promise.all(files.map(file => fs.readFile(path.join(dir, file), 'utf8')))).join('\n');
+}
+
 function createHttpServer(app) {
     return new Promise((resolve, reject) => {
         const server = http.createServer(app);
@@ -344,7 +351,7 @@ async function testFb2ContentsExcludeNotesBodies() {
 }
 
 async function testReaderAnnotationStaysOutsideReadingFlow() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = await readReaderSources();
     const fb2ToReaderHtml = require('../client/components/Reader/fb2ToReaderHtml');
     const annotationParser = new (require('../server/core/fb2/Fb2Parser'))();
     annotationParser.fromString(`<?xml version="1.0" encoding="utf-8"?>
@@ -413,7 +420,7 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
 }
 
 async function testReaderBookNotesMenuAndReturnLayout() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = await readReaderSources();
     const dialogsSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/ReaderDialogs.vue'), 'utf8');
     const paginatorSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/readerPaginator.js'), 'utf8');
 
@@ -484,11 +491,11 @@ async function testReaderBookNotesMenuAndReturnLayout() {
         options: {returnPoint: {pageIndex: 6, scrollTop: 240}},
     }]);
 
-    assert.match(readerSource, /:class="\{'reader-back-btn--note-return': readerNoteReturnPoint\}"/);
-    assert.match(readerSource, /:aria-label="readerNoteReturnPoint \? uiText\.noteReturn : uiText\.back"/);
-    assert.match(readerSource, /:data-testid="readerNoteReturnPoint \? 'reader-note-return' : null"/);
-    assert.match(readerSource, /:label="isCompactLayout \? '' : \(readerNoteReturnPoint \? uiText\.noteReturn : uiText\.back\)"/);
-    assert.doesNotMatch(readerSource, /\{\{ readerNoteReturnPoint \? uiText\.noteReturn : uiText\.back \}\}/);
+    assert.match(readerSource, /:class="\{'reader-back-btn--note-return': reader\.readerNoteReturnPoint\}"/);
+    assert.match(readerSource, /:aria-label="reader\.readerNoteReturnPoint \? reader\.uiText\.noteReturn : reader\.uiText\.back"/);
+    assert.match(readerSource, /:data-testid="reader\.readerNoteReturnPoint \? 'reader-note-return' : null"/);
+    assert.match(readerSource, /:label="reader\.isCompactLayout \? '' : \(reader\.readerNoteReturnPoint \? reader\.uiText\.noteReturn : reader\.uiText\.back\)"/);
+    assert.doesNotMatch(readerSource, /\{\{ (reader\.)?readerNoteReturnPoint \? (reader\.)?uiText\.noteReturn : (reader\.)?uiText\.back \}\}/);
     assert.match(readerSource, /\.reader-back-btn--note-return :deep\(\.block\) \{\s*display: none;/);
     assert.doesNotMatch(readerSource, /class="reader-note-return-btn"/);
     assert.match(readerSource, /v-if="bookUid && isCompactLayout"\s*ref="readerMobileFooter"/);
@@ -546,7 +553,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
 }
 
 async function testReaderTextShadowDefaultsOff() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = await readReaderSources();
     const ReadingListStore = require('../server/core/ReadingListStore');
     await withTempDir(async dir => {
         const store = new ReadingListStore({dataDir: dir});
@@ -587,7 +594,7 @@ async function testReaderTextShadowDefaultsOff() {
 }
 
 async function testReaderPaginationResumesAcrossViewportGeometry() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = await readReaderSources();
     const paginatorSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/readerPaginator.js'), 'utf8');
 
     assert.match(readerSource, /beforeCreate\(\) \{\s*this\.pagedLayoutCache = new Map\(\);/, 'The layout cache lives outside reactive data');
@@ -600,7 +607,7 @@ async function testReaderPaginationResumesAcrossViewportGeometry() {
 }
 
 async function testReaderDefersViewportRefreshAcrossScreenUnlock() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = await readReaderSources();
 
     assert.match(readerSource, /document\.visibilityState === 'hidden'[\s\S]{0,140}this\.suspendViewportRefreshForVisibility\(\);/);
     assert.match(readerSource, /document\.visibilityState === 'visible'[\s\S]{0,140}this\.resumeViewportRefreshAfterVisibility\(\);/);
@@ -612,26 +619,26 @@ async function testReaderDefersViewportRefreshAcrossScreenUnlock() {
 
 // Hiding the reader bars keeps their place: the text does not jump and pages are not rebuilt.
 async function testReaderChromeToggleKeepsLayout() {
-    const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
+    const readerSource = await readReaderSources();
     const toggle = readerSource.slice(readerSource.indexOf('    async setReaderChromeHidden('), readerSource.indexOf('    async toggleCompactChromeVisibility('));
 
     assert.ok(toggle.includes('this.chromeHidden = nextHidden;'));
     assert.doesNotMatch(toggle, /beginLayoutRefresh|pagedBuild|requestAnimationFrame|updateScrollerViewport/);
-    assert.doesNotMatch(readerSource, /v-show="!readerChromeHidden"/);
-    assert.match(readerSource, /'reader-toolbar--hidden': readerChromeHidden/);
+    assert.doesNotMatch(readerSource, /v-show="!(reader\.)?readerChromeHidden"/);
+    assert.match(readerSource, /'reader-toolbar--hidden': reader\.readerChromeHidden/);
     assert.match(readerSource, /'reader-mobile-bar--hidden': compactChromeHidden/);
     assert.match(readerSource, /\.reader-toolbar--hidden \{\s*opacity: 0;\s*visibility: hidden;/);
 }
 
 async function testReaderHomeFieldsIgnoreGlobalDarkTheme() {
-    const readerSource = (await Promise.all(['Reader.vue', 'ReaderHome.vue']
-        .map(file => fs.readFile(path.resolve(__dirname, '../client/components/Reader', file), 'utf8')))).join('\n');
+    const readerSource = await readReaderSources();
 
     assert.match(
         readerSource,
         /\.reader-page \.reader-home-search :deep\(\.q-field__control\),\s*\.reader-page \.reader-home-sort :deep\(\.q-field__control\) \{[\s\S]{0,180}background: var\(--reader-surface\);/
     );
-    assert.match(readerSource, /\.reader-toolbar,\s*\.reader-home \{\s*text-shadow: none !important;/);
+    assert.match(readerSource, /\.reader-toolbar \{\s*text-shadow: none !important;/);
+    assert.match(readerSource, /\.reader-home \{\s*text-shadow: none !important;/);
 }
 
 async function testReaderImageDataUrlsAreValidated() {

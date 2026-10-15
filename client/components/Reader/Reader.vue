@@ -5,150 +5,9 @@
         :class="[readerThemeClass, readerBackgroundClass, {'reader-page--immersive': readerChromeHidden}]"
         :style="readerPageStyle"
     >
-        <!-- Панель не убирается из разметки, а гаснет: область чтения не меняет размер, текст не прыгает -->
-        <div
-            ref="readerToolbar"
-            class="reader-toolbar"
-            :class="{
-                'reader-toolbar--home': !bookUid,
-                'reader-toolbar--hidden': readerChromeHidden,
-                'reader-toolbar--overlay': readerToolbarOverlay,
-            }"
-        >
-            <div class="reader-toolbar-main">
-                <q-btn
-                    flat
-                    no-caps
-                    :icon="readerNoteReturnPoint ? 'la la-undo-alt' : 'la la-arrow-left'"
-                    class="reader-back-btn"
-                    :class="{'reader-back-btn--note-return': readerNoteReturnPoint}"
-                    :aria-label="readerNoteReturnPoint ? uiText.noteReturn : uiText.back"
-                    :data-testid="readerNoteReturnPoint ? 'reader-note-return' : null"
-                    :label="isCompactLayout ? '' : (readerNoteReturnPoint ? uiText.noteReturn : uiText.back)"
-                    @click="goBack"
-                />
-
-                <div v-if="bookUid" class="reader-book-meta">
-                    <div
-                        class="reader-book-title"
-                        :class="{'is-expanded': isCompactLayout && readerMetaExpanded}"
-                        @click="toggleReaderMeta"
-                    >
-                        {{ readerHeaderTitle }}
-                    </div>
-                    <div
-                        v-if="readerHeaderSubtitle"
-                        class="reader-book-author"
-                        :class="{'is-expanded': isCompactLayout && readerMetaExpanded}"
-                        @click="toggleReaderMeta"
-                    >
-                        {{ readerHeaderSubtitle }}
-                    </div>
-                    <div
-                        v-if="bookUid && !isCompactLayout"
-                        class="reader-book-progress"
-                        :class="{'is-clickable': hasReaderPlaces}"
-                        @click="hasReaderPlaces && openPlacesDialog(defaultPlacesTab)"
-                    >
-                        {{ readerProgressLabel }}<span v-if="readerPageMeta"> | {{ readerPageMeta }}</span><span v-if="readerSectionMeta"> &middot; {{ readerSectionMeta }}</span>
-                    </div>
-                </div>
-
-                <button
-                    v-if="bookUid && !isStandaloneMode"
-                    type="button"
-                    class="reader-profile-chip"
-                    :class="readerProfileChipClass"
-                    @click="handleReaderProfileChipClick"
-                >
-                    <q-icon :name="readerProfileChipIcon" />
-                    <span>{{ readerProfileChipLabel }}</span>
-                </button>
-
-                <div v-if="bookUid" class="reader-toolbar-quick-actions">
-                    <q-btn
-                        v-if="hasPrevSection"
-                        flat
-                        dense
-                        round
-                        icon="la la-angle-left"
-                        class="reader-icon-btn"
-                        @click="jumpToAdjacentSection(-1)"
-                    />
-                    <q-btn
-                        v-if="hasContentsMenu"
-                        flat
-                        dense
-                        round
-                        icon="la la-list"
-                        class="reader-icon-btn"
-                        @click="toggleContentsDialog"
-                    />
-                    <q-btn
-                        v-if="isPagedMode"
-                        flat
-                        dense
-                        round
-                        icon="la la-search"
-                        class="reader-icon-btn"
-                        :class="{'is-active': searchDialogOpen}"
-                        @click="toggleSearchDialog"
-                    />
-                    <q-btn
-                        flat
-                        dense
-                        round
-                        icon="la la-bookmark"
-                        class="reader-icon-btn"
-                        @click="addCurrentBookmark"
-                    />
-                    <q-btn
-                        flat
-                        dense
-                        round
-                        :icon="isBookMarkedRead ? 'la la-undo' : 'la la-check-circle'"
-                        class="reader-icon-btn"
-                        @click="toggleCurrentBookRead"
-                    />
-                    <q-btn
-                        flat
-                        dense
-                        round
-                        :icon="fullscreenActive ? 'la la-compress-arrows-alt' : 'la la-expand-arrows-alt'"
-                        class="reader-icon-btn"
-                        @click="toggleFullscreen"
-                    />
-                    <q-btn
-                        flat
-                        dense
-                        round
-                        icon="la la-question-circle"
-                        class="reader-icon-btn"
-                        @click="toggleHelpDialog"
-                    />
-                    <q-btn
-                        flat
-                        dense
-                        round
-                        icon="la la-sliders-h"
-                        class="reader-icon-btn"
-                        :class="{'is-active': controlsOpen}"
-                        @click="toggleControls"
-                    />
-                    <q-btn
-                        v-if="hasNextSection"
-                        flat
-                        dense
-                        round
-                        icon="la la-angle-right"
-                        class="reader-icon-btn"
-                        @click="jumpToAdjacentSection(1)"
-                    />
-                </div>
-            </div>
-
+        <ReaderToolbar ref="readerToolbar" :reader="readerContext">
             <ReaderSettingsPanel ref="settingsPanel" :reader="readerContext" />
-        </div>
+        </ReaderToolbar>
 
         <div v-if="loading" class="reader-loading">
             <q-icon class="la la-spinner icon-rotate text-green-8" size="28px" />
@@ -453,6 +312,7 @@ import ReaderSearch from './readerSearch.js';
 import ReaderBookmarks from './readerBookmarks.js';
 import ReaderDebugPanel from './ReaderDebugPanel.vue';
 import ReaderSettingsPanel from './ReaderSettingsPanel.vue';
+import ReaderToolbar from './ReaderToolbar.vue';
 import ReaderHome from './ReaderHome.vue';
 import ReaderDialogs from './ReaderDialogs.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
@@ -491,7 +351,7 @@ const readerDeviceScopedPreferenceKeys = new Set([
 ]);
 
 const componentOptions = {
-    components: {ReaderDebugPanel, ReaderSettingsPanel, ReaderHome, ReaderDialogs},
+    components: {ReaderDebugPanel, ReaderSettingsPanel, ReaderToolbar, ReaderHome, ReaderDialogs},
     watch: {
         readerSourceKey: {
             immediate: true,
@@ -2931,7 +2791,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         });
         this.resizeObserver.observe(scroller);
 
-        const toolbar = this.$refs.readerToolbar;
+        const toolbar = this.$refs.readerToolbar && this.$refs.readerToolbar.$el;
         if (toolbar) {
             this.toolbarResizeObserver = new ResizeObserver(() => {
                 if (toolbar.offsetHeight)
@@ -5748,184 +5608,6 @@ export default vueComponent(Reader);
     border-color: var(--reader-accent);
 }
 
-.reader-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 12;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--reader-border);
-    background: color-mix(in srgb, var(--reader-surface) 92%, transparent);
-    backdrop-filter: blur(10px);
-    overflow: visible;
-    transition: opacity 0.18s ease, visibility 0.18s ease;
-}
-
-.reader-toolbar--hidden {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-}
-
-.reader-toolbar--overlay {
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-}
-
-.reader-toolbar-main {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    flex: 1 1 auto;
-    gap: 12px;
-    width: 100%;
-    min-width: 0;
-}
-
-.reader-back-btn :deep(.q-btn__content) {
-    flex-wrap: nowrap;
-}
-
-.reader-back-btn--note-return {
-    border: 1px solid color-mix(in srgb, var(--reader-accent) 38%, var(--reader-border));
-    border-radius: var(--reader-radius);
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
-    font-weight: 800;
-}
-
-.reader-toolbar--home {
-    align-items: stretch;
-    justify-content: flex-start;
-}
-
-.reader-toolbar--home .reader-toolbar-main {
-    display: flex;
-    width: 100%;
-    max-width: none;
-    margin: 0;
-}
-
-.reader-book-meta {
-    min-width: 0;
-    width: 100%;
-}
-
-.reader-book-title {
-    font-family: var(--app-font-serif, Georgia, serif);
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 1.2;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reader-book-author {
-    margin-top: 2px;
-    color: var(--reader-muted);
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reader-book-progress {
-    margin-top: 6px;
-    color: var(--reader-muted);
-    font-size: 12px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.reader-book-progress.is-clickable {
-    cursor: pointer;
-    transition: color 0.18s ease;
-}
-
-.reader-book-progress.is-clickable:hover {
-    color: var(--reader-accent);
-}
-
-.reader-toolbar-quick-actions {
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    gap: 6px;
-}
-
-.reader-icon-btn {
-    border-radius: var(--reader-radius);
-    color: var(--reader-muted);
-}
-
-.reader-icon-btn:hover {
-    color: var(--reader-text);
-}
-
-.reader-icon-btn.is-active {
-    background: var(--reader-accent-soft);
-    color: var(--reader-accent);
-}
-
-.reader-profile-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: 0 1 auto;
-    width: fit-content;
-    min-width: 96px;
-    max-width: 220px;
-    min-height: 34px;
-    padding: 6px 10px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface);
-    color: var(--reader-muted);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1.1;
-    cursor: default;
-}
-
-.reader-profile-chip span {
-    min-width: 0;
-    max-width: 170px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reader-profile-chip--authorized {
-    border-color: color-mix(in srgb, var(--reader-text) 18%, var(--reader-border));
-    color: var(--reader-muted);
-    background: color-mix(in srgb, var(--reader-surface) 86%, var(--reader-surface-2) 14%);
-}
-
-.reader-profile-chip--open {
-    border-color: color-mix(in srgb, #60a5fa 30%, var(--reader-border));
-    color: color-mix(in srgb, #60a5fa 72%, var(--reader-text));
-}
-
-.reader-profile-chip--locked {
-    border-color: color-mix(in srgb, var(--reader-accent) 42%, var(--reader-border));
-    color: var(--reader-accent);
-    cursor: pointer;
-}
-
-.reader-profile-chip--missing {
-    color: var(--reader-muted);
-}
-
 .reader-theme-switch,
 .reader-stepper {
     display: inline-flex;
@@ -6884,7 +6566,6 @@ export default vueComponent(Reader);
     box-shadow: 0 24px 56px rgba(0, 0, 0, 0.26);
 }
 
-.reader-toolbar,
 .reader-home {
     text-shadow: none !important;
 }
@@ -7047,121 +6728,7 @@ export default vueComponent(Reader);
     will-change: auto;
 }
 
-@media (max-width: 1023.98px) {
-    .reader-back-btn--note-return {
-        min-width: 42px;
-        min-height: 42px;
-    }
-
-    .reader-back-btn--note-return :deep(.block) {
-        display: none;
-    }
-}
-
-@media (max-width: 900px) {
-    .reader-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-    }
-}
-
 @media (max-width: 640px) {
-    .reader-toolbar {
-        padding: 8px 8px 10px;
-        gap: 8px;
-        z-index: 40;
-        backdrop-filter: none;
-    }
-
-    .reader-toolbar-main {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .reader-back-btn {
-        min-width: 42px;
-        min-height: 42px;
-    }
-
-    .reader-back-btn :deep(.block) {
-        display: none;
-    }
-
-    .reader-book-meta {
-        flex: 1 1 auto;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .reader-book-title {
-        font-size: 13px;
-        line-height: 1.12;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        white-space: normal;
-        overflow: hidden;
-    }
-
-    .reader-book-title.is-expanded {
-        -webkit-line-clamp: initial;
-        overflow: visible;
-    }
-
-    .reader-book-author {
-        margin-top: 0;
-        font-size: 12px;
-        line-height: 1.2;
-        display: -webkit-box;
-        -webkit-line-clamp: 1;
-        -webkit-box-orient: vertical;
-        white-space: normal;
-        overflow: hidden;
-    }
-
-    .reader-book-author.is-expanded {
-        -webkit-line-clamp: initial;
-        overflow: visible;
-    }
-
-    .reader-book-progress {
-        margin-top: 2px;
-        font-size: 11px;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .reader-toolbar-quick-actions {
-        display: none;
-    }
-
-    .reader-profile-chip {
-        flex: 0 0 auto;
-        max-width: 94px;
-        min-height: 32px;
-        padding: 5px 8px;
-        gap: 5px;
-        font-size: 11px;
-        border-radius: var(--reader-radius);
-    }
-
-    .reader-profile-chip :deep(.q-icon) {
-        font-size: 16px;
-    }
-
-    .reader-profile-chip span {
-        max-width: 58px;
-    }
-
-    .reader-icon-btn {
-        width: 34px;
-        height: 34px;
-    }
 
     .reader-mobile-footer--settings {
         flex: 0 0 var(--reader-mobile-settings-height, min(46dvh, 388px));
