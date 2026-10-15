@@ -395,6 +395,15 @@ class CatalogSearch {
         return (await this.callWithBooks('seriesBooks', name)).books;
     }
 
+    //Книги нескольких серий (с правками метаданных) одним вызовом потока: [[записи серии], ...] по порядку names
+    async seriesBooksOf(names = []) {
+        if (!names.length)
+            return [];
+        const {series, books} = await this.callWithBooks('seriesBooksOf', names);
+        const byId = new Map(books.map(book => [book.id, book]));
+        return series.map(ids => ids.map(id => byId.get(id)).filter(Boolean));
+    }
+
     async facetValues() {
         this.checkReady();
         return await this.getThread().call('facetValues');

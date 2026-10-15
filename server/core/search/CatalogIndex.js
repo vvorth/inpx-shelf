@@ -1387,6 +1387,12 @@ class CatalogIndex {
         return (value ? this.db.prepare('SELECT id FROM book WHERE series_norm = ? ORDER BY id').all(value).map(row => row.id) : []);
     }
 
+    //Книги нескольких серий одним запросом: series - id книг каждой серии по порядку names, ids - все эти id
+    seriesBooksOf(names = []) {
+        const series = names.map(name => this.seriesBooks(name));
+        return {series, ids: [...new Set(series.flat())]};
+    }
+
     //Значения фильтров, встречающиеся в библиотеке
     facetValues() {
         if (!this.db)

@@ -2094,6 +2094,43 @@ async function testPersonalDiscoveryCacheAndSingleFlight() {
     assert.strictEqual(builds, 3, 'forceRefresh rebuilds');
 }
 
+// The unfinished-series shelf skips deleted books and gets all series in one library thread call.
+async function testUnfinishedSeriesSkipsDeletedBooks() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const book = (id, series, serno, del = 0) => ({_uid: `u${id}`, title: `Книга ${id}`, author: 'Автор', series, serno, del, genre: 'sf', lang: 'ru',
+            ext: 'fb2', date: '2026-01-01', sourceId: 'main', folder: 'a.zip', file: String(id), libid: String(id)});
+        const index = new CatalogIndex();
+        index.beginBuild(path.join(dir, 'library.sqlite'), [], [{id: 'main', name: 'Main', libDir: dir}]);
+        index.insertBooks([book(1, 'Сага', 1), book(2, 'Сага', 2, 1), book(3, 'Сага', 3), book(4, 'Цикл', 1), book(5, 'Цикл', 2)]);
+        index.finishBuild({});
+
+        const worker = makeWorker();
+        worker.readingListStore = {getMetadataOverrides: async() => ({})};
+        worker.resetLibraryAssetCaches();
+        const search = new CatalogSearch({dataDir: dir}, worker);
+        worker.catalogSearch = search;
+        await search.openIndex(search.getThread());
+        search.ready = true;
+        const thread = search.getThread();
+        const call = thread.call.bind(thread);
+        const actions = [];
+        thread.call = (action, ...args) => {
+            actions.push(action === 'withBooks' ? args[0] : action);
+            return call(action, ...args);
+        };
+        try {
+            const progressMap = {u1: {percent: 1, updatedAt: '2026-09-02T00:00:00Z'}, u4: {percent: 1, updatedAt: '2026-09-01T00:00:00Z'}};
+            const shelf = await worker.buildUnfinishedSeriesShelfV2({id: 'reader'}, 8, {progressMap, lists: [], readBookUids: new Set()});
+            assert.deepStrictEqual(shelf.items.map(item => item._uid), ['u3', 'u5']);
+            assert.deepStrictEqual(actions.filter(action => action === 'seriesBooksOf'), ['seriesBooksOf']);
+        } finally {
+            await search.close();
+        }
+    });
+}
+
 async function testDiscoveryPreferencesAndEventsPersist() {
     await withTempDir(async(dir) => {
         const ReadingListStore = require('../server/core/ReadingListStore');
@@ -2379,6 +2416,7 @@ const tests = [
     testDiscoveryShelvesBuildOnlyRequestedSection,
     testOpdsIndexQueries,
     testPersonalDiscoveryCacheAndSingleFlight,
+    testUnfinishedSeriesSkipsDeletedBooks,
     testPersonalDiscoveryUsesColdStartTaste,
     testPersonalDiscoveryUsesEngagementTopicsAndDismissals,
     testPersonalDiscoveryDiversifiesAuthorsAndSeries,

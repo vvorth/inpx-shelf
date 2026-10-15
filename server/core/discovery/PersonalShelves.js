@@ -252,11 +252,11 @@ module.exports = {
         const seenBookUids = new Set();
         let updatedAt = 0;
 
-        for (const state of candidates) {
-            const response = await this.getSeriesBookList(state.series);
-            const books = Array.isArray(response && response.books) ? response.books : [];
-            const nextBook = books
-                .filter((book) => book && book.series && Number(book.serno || 0) > Number(state.maxSerno || 0))
+        const seriesBooks = await this.catalogSearch.seriesBooksOf(candidates.map(state => state.series));
+        for (const [index, state] of candidates.entries()) {
+            //удалённая из библиотеки книга не может быть следующей в серии
+            const nextBook = seriesBooks[index]
+                .filter((book) => book && !book.del && book.series && Number(book.serno || 0) > Number(state.maxSerno || 0))
                 .sort((a, b) => {
                     const sernoCmp = Number(a.serno || 0) - Number(b.serno || 0);
                     if (sernoCmp)
