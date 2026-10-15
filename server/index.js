@@ -242,6 +242,12 @@ async function main() {
         },
     });
 
+    wss.on('headers', (headers, req) => {
+        const cookie = security.upgradeCookie(req);
+        if (cookie)
+            headers.push(`Set-Cookie: ${cookie}`);
+    });
+
     let devModule = undefined;
     if (branch == 'development') {
         const devFileName = './dev.js'; //require ignored by pkg -50Mb executable size
@@ -275,7 +281,7 @@ async function main() {
     app.post(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/upload`, webSocketController.uploadHandler());
 
     const initStatic = require('./static');
-    initStatic(app, config, webSocketController.webWorker, security);
+    initStatic(app, config, webSocketController.webWorker, security, webAccess);
 
     if (devModule) {
         devModule.logErrors(app);

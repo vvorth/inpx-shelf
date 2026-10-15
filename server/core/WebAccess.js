@@ -91,6 +91,12 @@ class WebAccess {
         return false;
     }
 
+    //книги и обложки по HTTP: токен, с которым уже вошли и сессия которого не истекла; счётчик не меняется
+    hasTokenAccess(accessToken) {
+        const accessRec = this.accessMap.get(accessToken);
+        return !!(accessRec && accessRec.used > 0 && (this.accessTimeout === 0 || Date.now() - accessRec.time < this.accessTimeout));
+    }
+
     //токен уже прошёл проверку пароля: запрос с ним - не попытка входа
     isActiveToken(accessToken) {
         const accessRec = this.accessMap.get(accessToken);

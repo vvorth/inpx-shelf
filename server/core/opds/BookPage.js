@@ -143,6 +143,11 @@ class BookPage extends BasePage {
         return info;
     }
 
+    //при пароле доступа ссылки на файлы подписаны (Security.signBookLink): читалке не нужна сессия веб-интерфейса
+    fileHref(href) {
+        return (this.config.accessPassword && this.security ? this.security.signBookLink(href) : href);
+    }
+
     async body(req) {
         const result = {};
 
@@ -269,7 +274,7 @@ class BookPage extends BasePage {
                 //links
                 e.link = [];
                 for (const item of links)
-                    e.link.push(this.downLink(item));
+                    e.link.push(this.downLink({...item, href: this.fileHref(item.href)}));
 
                 let coverHref = bookInfo.cover || '';
                 let coverType = 'image/jpeg';
@@ -282,6 +287,7 @@ class BookPage extends BasePage {
                 }
 
                 if (coverHref) {
+                    coverHref = this.fileHref(coverHref);
                     e.link.push(this.imgLink({href: coverHref, type: coverType}));
                     e.link.push(this.imgLink({href: coverHref, type: coverType, thumb: true}));
                 }

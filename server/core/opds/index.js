@@ -63,6 +63,7 @@ module.exports = function(app, config, security = new (require('../Security'))(c
     const title = new TitlePage(config);
     const genre = new GenrePage(config);
     const book = new BookPage(config);
+    book.security = security;
     const readingLists = new ReadingListsPage(config);
     const readingList = new ReadingListPage(config);
     const readingProfiles = new ReadingProfilesPage(config);

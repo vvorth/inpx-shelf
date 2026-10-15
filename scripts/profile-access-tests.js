@@ -31,8 +31,10 @@ async function fixture(options, test) {
     await security.init();
     const access = new ProfileAccess(config, worker, security);
     const controller = Object.create(Controller.prototype);
-    Object.assign(controller, {config, security, webWorker: worker, profileAccess: access,
-        webAccess: {hasAccess: async() => true, freeAccess: true}, activeRequests: 0,
+    const WebAccess = require('../server/core/WebAccess');
+    const webAccess = (config.accessPassword ? Object.assign(Object.create(WebAccess.prototype), {config, freeAccess: false, accessTimeout: 0,
+        accessMap: new Map(), db: {putAccess() {}, deleteAccess() {}}}) : {hasAccess: async() => true, freeAccess: true});
+    Object.assign(controller, {config, security, webWorker: worker, profileAccess: access, webAccess, activeRequests: 0,
         workerState: {getState: () => ({state: 'normal', fileName: 'PRIVATE_LIBRARY_PATH'})}});
     const app = express();
     app.use(security.middleware());
@@ -41,7 +43,7 @@ async function fixture(options, test) {
     await fs.outputFile(path.join(config.bookDir, 'fixture.txt'), 'BOOK_FIXTURE');
     await fs.outputFile(path.join(config.dataDir, 'backups', 'fixture.zip'), 'BACKUP_FIXTURE');
     app.post('/upload', controller.uploadHandler());
-    require('../server/static')(app, config, worker, security);
+    require('../server/static')(app, config, worker, security, (config.accessPassword ? webAccess : null));
     app.use('/opds', access.httpGuard(true), require('../server/core/opds/Auth')(config,
         (...args) => worker.verifyOpdsPassword(...args), security));
     app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
@@ -56,6 +58,11 @@ async function fixture(options, test) {
     }
     const server = http.createServer(app);
     const wss = new WebSocket.Server({server, verifyClient: info => security.verifyWebSocket(info.req)});
+    wss.on('headers', (headers, req) => {
+        const cookie = security.upgradeCookie(req);
+        if (cookie)
+            headers.push(`Set-Cookie: ${cookie}`);
+    });
     wss.on('connection', (socket, req) => {
         socket.req = req;
         socket.on('message', raw => controller.onMessage(socket, raw.toString()));
@@ -360,6 +367,49 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     });
 }
 
+// With accessPassword, books and covers need the browser session that entered it, a remote library's token,
+// a signed OPDS link or OPDS credentials.
+async function testAccessPasswordGuardsBooksAndCovers() {
+    await fixture({accessPassword: 'secret'}, async({config, worker, security, request, session, connect}) => {
+        worker.getBookLink = async() => ({link: '/book/fixture.txt'});
+        for (const url of ['/book/fixture.txt', '/book/by-uid?uid=u1', '/cover/by-uid?uid=u1'])
+            assert.strictEqual((await request(url)).status, 401, url);
+        const browser = session();
+        const call = await connect({cookie: browser.cookie});
+        const {salt} = await call({action: 'test'});
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'Not entered yet');
+        const accessToken = require('../server/core/utils').getBufHash(`secret${salt}`, 'sha256', 'hex');
+        assert.ok((await call({action: 'test', accessToken})).message);
+        const book = await request('/book/fixture.txt', {cookie: browser.cookie});
+        assert.deepStrictEqual([book.status, await book.text()], [200, 'BOOK_FIXTURE']);
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: session().cookie})).status, 401, 'Another browser');
+        assert.strictEqual((await request('/book/fixture.txt', {'x-access-token': accessToken})).status, 200, 'Remote library');
+
+        const signed = security.signBookLink('/book/fixture.txt');
+        assert.strictEqual((await request(signed)).status, 200);
+        assert.strictEqual((await request(signed.replace(/sig=.*/, `sig=${'0'.repeat(64)}`))).status, 401);
+        assert.strictEqual((await request(security.signBookLink('/book/other.txt').replace('other.txt', 'fixture.txt'))).status, 401);
+        const opdsBook = Object.assign(Object.create(require('../server/core/opds/BookPage').prototype), {config, security});
+        assert.strictEqual((await request(opdsBook.fileHref('/cover/by-uid?uid=u1'))).status, 404, 'OPDS links pass the guard');
+        const redirect = await request(security.signBookLink('/book/by-uid?uid=u1'));
+        assert.strictEqual(redirect.status, 302);
+        assert.strictEqual((await request(redirect.headers.get('location'))).status, 200, 'The redirect is signed too');
+        const basic = user => ({authorization: 'Basic ' + Buffer.from(user).toString('base64')});
+        assert.strictEqual((await request('/book/fixture.txt', basic('alice:alice-fixture'))).status, 200, 'OPDS profile credentials');
+        assert.strictEqual((await request('/book/fixture.txt', basic('alice:wrong'))).status, 401);
+
+        const {csrfToken} = await call({action: 'get-config', accessToken});
+        assert.ok(!(await call({action: 'logout', accessToken, csrfToken})).error);
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'Logged out');
+        //a cookie of a session the server no longer knows (restart) is replaced on the WebSocket upgrade
+        const stale = `inpx_web_session=${security.packSessionId('gone')}`;
+        const socket = new WebSocket(`ws://127.0.0.1:${new URL(redirect.url).port}`, {headers: {cookie: stale}});
+        const upgrade = await new Promise((resolve, reject) => { socket.once('upgrade', resolve); socket.once('error', reject); });
+        socket.terminate();
+        assert.match(String(upgrade.headers['set-cookie']), /^inpx_web_session=/);
+    });
+}
+
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
     await fixture({}, async({worker, alice, bob, connect}) => {
@@ -428,6 +478,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testAccessPasswordGuardsBooksAndCovers, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

@@ -70,7 +70,9 @@ class RemoteLib {
             const response = await this.wsRequest({action: 'get-book-link', bookUid});
             const link = response.link;
 
-            const buf = await this.down.load(`${this.remoteHost}${link}`, {decompress: false, httpsAgent: this.httpsAgent});
+            //при пароле доступа файл книги отдаётся только с токеном доступа
+            const headers = (this.accessToken ? {'x-access-token': this.accessToken} : {});
+            const buf = await this.down.load(`${this.remoteHost}${link}`, {decompress: false, httpsAgent: this.httpsAgent, headers});
 
             const hash = path.basename(link);
             const publicPath = `${this.config.bookDir}/${hash}`;

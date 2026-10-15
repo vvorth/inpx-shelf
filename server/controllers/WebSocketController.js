@@ -201,6 +201,9 @@ class WebSocketController {
                 //вход - только первый запрос с новым токеном: иначе каждый запрос сбрасывал бы счётчик неудачных попыток
                 this.security.recordLoginAttempt(ws.req, true);
             }
+            //сессия браузера с этим токеном открывает книги и обложки по HTTP (static.js)
+            if (access !== true && req.accessToken && ws.req && ws.req.securitySession)
+                ws.req.securitySession.accessToken = req.accessToken;
 
             if (this.security && this.isCsrfProtectedAction(req.action) && !this.security.hasValidCsrf(ws.req, req.csrfToken)) {
                 this.send({error: 'bad_csrf_token'}, req, ws);

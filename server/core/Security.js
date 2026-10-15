@@ -9,6 +9,7 @@ const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
 const maxWebSocketsPerIp = 50;
+const bookLinkLifetimeMs = 7*24*60*60*1000;
 
 function parseIpv4(value = '') {
     const normalized = String(value || '').trim()
@@ -178,14 +179,49 @@ class Security {
 
         req.securitySession = session;
 
-        if (res) {
-            res.setHeader(
-                'Set-Cookie',
-                `${sessionCookieName}=${encodeURIComponent(this.packSessionId(session.id))}; ${this.cookieOptions(req)}`
-            );
-        }
+        if (res)
+            res.setHeader('Set-Cookie', this.sessionCookie(req, session));
 
         return session;
+    }
+
+    sessionCookie(req, session) {
+        return `${sessionCookieName}=${encodeURIComponent(this.packSessionId(session.id))}; ${this.cookieOptions(req)}`;
+    }
+
+    //WebSocket пришёл с cookie сессии, которой сервер не знает (перезапуск): новая уходит в ответе на upgrade,
+    //иначе книги и обложки по HTTP шли бы со старой cookie без входа
+    upgradeCookie(req) {
+        const session = req.securitySession;
+        const cookies = this.parseCookies(req.headers.cookie || '');
+        return (session && this.unpackSessionId(cookies[sessionCookieName] || '') !== session.id ? this.sessionCookie(req, session) : '');
+    }
+
+    //OPDS-ссылки на книгу или обложку подписаны: при пароле доступа (accessPassword) читалка скачивает
+    //их без сессии веб-интерфейса. Ключ - uid книги или имя файла в кэше книг (первая часть пути после /book/).
+    bookLinkKey(pathname = '', uid = '') {
+        if (uid)
+            return `uid:${uid}`;
+        const prefix = `${this.config.bookPathStatic || '/book'}/`;
+        return (pathname.startsWith(prefix) ? `file:${pathname.slice(prefix.length).split('/')[0]}` : '');
+    }
+
+    signBookLink(href = '') {
+        const url = new URL(href, 'http://localhost');
+        const key = this.bookLinkKey(url.pathname, url.searchParams.get('uid') || '');
+        if (!key)
+            return href;
+        const exp = String(Date.now() + bookLinkLifetimeMs);
+        return `${href}${href.includes('?') ? '&' : '?'}exp=${exp}&sig=${this.sign(`book-link:${key}:${exp}`)}`;
+    }
+
+    hasBookLinkSignature(req) {
+        const query = req.query || {};
+        const key = this.bookLinkKey(String(req.originalUrl || '').split('?')[0], String(query.uid || ''));
+        const exp = String(query.exp || '');
+        const time = Number(exp);
+        return !!key && Number.isSafeInteger(time) && time > Date.now() && time <= Date.now() + bookLinkLifetimeMs
+            && timingSafeStringEqual(String(query.sig || ''), this.sign(`book-link:${key}:${exp}`));
     }
 
     isSecureRequest(req) {
