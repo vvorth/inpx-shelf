@@ -602,6 +602,52 @@ async function testAccessPasswordLimitBlocksCorrectGuess() {
     assert.strictEqual((await call(token)).ok, true);
 }
 
+// Anonymous callers of /api/index-status see only the indexing progress; WebSocket errors and the book cache keep server paths.
+async function testServerDetailsStayPrivate() {
+    await temporary(async(dir) => {
+        const config = {dataDir: dir, libDir: path.join(dir, 'library'), rootPathStatic: '', bookPathStatic: '/book', publicDir: path.join(dir, 'public'),
+            bookDir: path.join(dir, 'book'), tempDir: dir, server: {ready: true}, version: '1.2.3', metricsToken: 'metrics-fixture'};
+        const security = new Security(config);
+        security.secret = 'test-secret';
+        const worker = {getIndexStatus: async() => ({ready: true, state: 'normal', progress: 1, sources: [{id: 'a', name: 'Private shelf'}],
+            inpxInfo: {collection: 'Private collection'}, stats: {bookCount: 5}, inpxFileHash: 'hash'}),
+        getProfileSessionUser: token => (token === 'admin-token' ? 'admin' : ''),
+        requireAdmin: async(userId) => { if (userId !== 'admin') throw new Error('not admin'); }};
+        await fs.outputFile(path.join(config.bookDir, 'abcdef.d.json'), JSON.stringify({sourceLibDir: config.libDir}));
+        const app = require('express')();
+        app.use(security.middleware());
+        require('../server/core/HealthRoutes')(app, config, worker, security);
+        require('../server/static')(app, config, worker, security);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        const get = (url, headers = {}) => fetch(`http://127.0.0.1:${server.address().port}${url}`, {headers});
+        try {
+            const anonymous = await (await get('/api/index-status')).json();
+            assert.deepStrictEqual(anonymous, {serverReady: true, ready: true, state: 'normal', progress: 1});
+            const scraper = await (await get('/api/index-status', {authorization: 'Bearer metrics-fixture'})).json();
+            assert.strictEqual(scraper.sources[0].name, 'Private shelf');
+            const session = security.ensureSession({headers: {}});
+            const cookie = `inpx_web_session=${security.packSessionId(session.id)}`;
+            assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo, undefined, 'Not signed in');
+            session.profileAccessToken = 'admin-token';
+            assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo.collection, 'Private collection');
+            assert.strictEqual((await get('/book/abcdef.d.json')).status, 404);
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+
+        const Controller = require('../server/controllers/WebSocketController');
+        const controller = Object.assign(Object.create(Controller.prototype), {config, webAccess: {hasAccess: async() => true}, activeRequests: 0});
+        controller.webWorker = {getBookLink: async() => { throw new Error(`archive not found: ${config.libDir}/fb2-000001.zip`); }};
+        const sent = [];
+        const ws = {readyState: 1, req: {headers: {}}, send: message => sent.push(JSON.parse(message))};
+        await controller.processMessage(ws, JSON.stringify({action: 'get-book-link', bookUid: 'x'}));
+        const error = sent.find(message => !message._rok).error;
+        assert.ok(error && !error.includes(dir), error);
+        assert.match(error, /журнале сервера|server log/);
+    });
+}
+
 // INPX text (authors, titles, series) reaches OPDS XML as text: escaped once, never as markup.
 async function testOpdsEscapesLibraryText() {
     const XmlParser = require('../server/core/xml/XmlParser');
@@ -782,7 +828,7 @@ async function testGunzipBufferIsBounded() {
 }
 
 module.exports = [
-    testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

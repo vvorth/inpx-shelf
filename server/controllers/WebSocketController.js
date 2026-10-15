@@ -390,7 +390,7 @@ class WebSocketController {
             }
             metricOk = true;
         } catch (e) {
-            this.send({error: (e && e.i18nKey ? i18n.t(e.i18nKey, e.i18nParams) : i18n.render(e && e.message))}, req || {}, ws);
+            this.send({error: this.errorText(e, req)}, req || {}, ws);
         } finally {
             ws.activeRequests--;
             releaseGlobalSlot();
@@ -483,6 +483,18 @@ class WebSocketController {
         } catch (e) {
             throw (ws.uploadFile ? new Error(i18n.t('errors.uploadInvalidJson')) : e);
         }
+    }
+
+    //пути сервера (библиотека, данные, временные файлы) из ошибок архивов и файловой системы остаются в журнале
+    errorText(e, req = {}) {
+        const text = String((e && e.i18nKey ? i18n.t(e.i18nKey, e.i18nParams) : i18n.render(e && e.message)) || '');
+        const sources = (Array.isArray(this.config.librarySources) ? this.config.librarySources : []).map(source => source && source.libDir);
+        const dirs = [this.config.libDir, this.config.dataDir, this.config.tempDir, this.config.bookDir, this.config.execDir, os.tmpdir(), ...sources]
+            .map(dir => String(dir || '')).filter(dir => dir.length > 1);
+        if (!dirs.some(dir => text.includes(dir) || text.includes(dir.replace(/\\/g, '/'))))
+            return text;
+        log(LM_ERR, `WebSocket ${(req && req.action) || ''}: ${text}`);
+        return i18n.t('errors.serverErrorSeeLog');
     }
 
     send(res, req, ws) {

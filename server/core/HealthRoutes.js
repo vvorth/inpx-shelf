@@ -133,6 +133,24 @@ function metricsAuthorized(req, config, security) {
     return true;
 }
 
+async function indexStatusDetailsAllowed(req, webWorker, security) {
+    if (!security)
+        return false;
+    if (security.hasValidMetricsToken(req))
+        return true;
+    const session = security.getSession(req);
+    const token = (session && session.profileAccessToken) || '';
+    const userId = (token ? webWorker.getProfileSessionUser(token) : '');
+    if (!userId)
+        return false;
+    try {
+        await webWorker.requireAdmin(userId, token);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 module.exports = function initHealthRoutes(app, config, webWorker, security = null, webSocketController = null) {
     app.get('/health', (req, res) => {
         noStore(res);
@@ -162,13 +180,16 @@ module.exports = function initHealthRoutes(app, config, webWorker, security = nu
         });
     });
 
+    //Открыт без входа (health-check): всем - только ход индексации; источники, статистика и сведения
+    //о коллекции - администратору (сессия веб-интерфейса) и с токеном метрик
     app.get('/api/index-status', async(req, res) => {
         noStore(res);
         const index = await webWorker.getIndexStatus();
-        res.json(Object.assign({
-            serverReady: !!config.server.ready,
-            version: config.version,
-        }, index));
+        const full = Object.assign({serverReady: !!config.server.ready, version: config.version}, index);
+        if (await indexStatusDetailsAllowed(req, webWorker, security))
+            return res.json(full);
+        res.json(Object.fromEntries(['serverReady', 'ready', 'state', 'serverMessage', 'job', 'jobMessage', 'jobStep', 'jobStepCount',
+            'progress', 'recsLoaded', 'dbLoaded', 'searchReady'].filter(key => Object.hasOwn(full, key)).map(key => [key, full[key]])));
     });
 
     const metricsPath = config.metricsPath || '/metrics';

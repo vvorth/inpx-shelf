@@ -338,6 +338,9 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
         }
         if (pathname === '/backup' || pathname.startsWith('/backup/'))
             return res.sendStatus(403);
+        //описание файла кэша (.d.json) хранит папку библиотеки на сервере
+        if (pathname.endsWith('.d.json'))
+            return res.sendStatus(404);
         next();
     });
 
