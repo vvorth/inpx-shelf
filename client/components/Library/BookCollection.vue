@@ -43,6 +43,7 @@
                     <div class="wide-card-foot">
                         <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
                         <span v-else-if="book.unavailable" class="pill pill--warn">{{ $t('bookCard.unavailable') }}</span>
+                        <span v-else-if="book.newerEdition" class="pill pill--warn">{{ $t('bookCard.newerEdition') }}</span>
                         <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                         <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ $t('bookCollection.read', {n: Math.round(stateOf(book).percent * 100)}) }}</span>
                         <span v-if="!isExternal(book) && Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>
@@ -83,6 +84,7 @@
                 <div class="row-side">
                     <span v-if="isExternal(book)" class="pill pill--warn">{{ $t('bookCard.notInTheLibrary') }}</span>
                     <span v-else-if="book.unavailable" class="pill pill--warn">{{ $t('bookCard.unavailable') }}</span>
+                    <span v-else-if="book.newerEdition" class="pill pill--warn">{{ $t('bookCard.newerEdition') }}</span>
                     <span v-else-if="stateOf(book).read" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
                     <span v-else-if="stateOf(book).percent > 0" class="pill num">{{ Math.round(stateOf(book).percent * 100) }}%</span>
                     <span v-if="!isExternal(book) && Number(book.librate) > 0" class="rating" :title="$t('common.rating')">{{ stars(book) }}</span>

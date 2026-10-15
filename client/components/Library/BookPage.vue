@@ -43,6 +43,10 @@
                             <q-icon name="la la-exclamation-circle" size="18px" />
                             <span>{{ unavailable === 'disabled' ? $t('book.unavailableDisabled') : $t('book.unavailableMissing') }}</span>
                         </div>
+                        <div v-else-if="book.del" class="book-unavailable">
+                            <q-icon name="la la-exclamation-circle" size="18px" />
+                            <span>{{ $t('book.deletedNotice') }}</span>
+                        </div>
 
                         <div v-if="progress > 0 && progress < 1" class="book-progress">
                             <div class="progress">
@@ -159,14 +163,14 @@
                     </div>
                 </section>
 
-                <section v-if="unavailable" class="book-section">
+                <section v-if="replaceable" class="book-section">
                     <div class="card-head">
                         <h2 class="card-title">
                             {{ $t('book.potentialReplacements') }}
                         </h2>
                     </div>
                     <div class="card-hint">
-                        {{ replacements.length ? $t('book.replacementsHint') : $t('book.noReplacements') }}
+                        {{ replacements.length ? (unavailable ? $t('book.replacementsHint') : $t('book.deletedReplacementsHint')) : $t('book.noReplacements') }}
                     </div>
                     <ol v-if="shownReplacements.length" class="replacements">
                         <li v-for="item in shownReplacements" :key="item._uid" class="replacement">
@@ -402,6 +406,11 @@ class BookPage {
         return (this.book && this.book.unavailable) || '';
     }
 
+    //недоступная или помеченная удалённой: читатель может перейти на другую книгу со списками и прогрессом
+    get replaceable() {
+        return !!(this.unavailable || (this.book && this.book.del));
+    }
+
     bookAuthorsOf(book) {
         return bookAuthors(book);
     }
@@ -545,10 +554,10 @@ class BookPage {
                 return;
             //«Мои языки» плюс язык самой книги: у английской книги видна английская серия
             this.related = (books || []).filter(item => !item.del && bookUid(item) !== bookUid(book) && this.inMyLanguages(item)).slice(0, 12);
-            await this.loadStates([book, ...this.editions, ...this.related]);
+            await this.loadStates([book, ...this.editions, ...this.replacements, ...this.related]);
         } catch (e) {
             this.related = [];
-            await this.loadStates([book, ...this.editions]);
+            await this.loadStates([book, ...this.editions, ...this.replacements]);
         }
     }
 

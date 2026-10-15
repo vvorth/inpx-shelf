@@ -1426,6 +1426,23 @@ async function testBookPageRecordAndReaderStates() {
     assert.deepStrictEqual(page.editions.map(book => book._uid), ['book:2'], 'the book page gets the other editions, whatever their series');
     await assert.rejects(() => worker.getBook('missing'), /Книга не найдена/);
 
+    //помеченная удалённой: вместо изданий - неудалённые замены, и старые тоже; новая редакция на том же языке - флаг для списков
+    const hyperion = {_uid: 'del:1', title: 'Гиперион', author: 'Симмонс Дэн', lang: 'en', date: '2017-10-27', del: 1};
+    const editionsOf = (...rows) => async() => ({'гиперион': [hyperion, ...rows.map(row => Object.assign({title: 'Гиперион', author: 'Симмонс Дэн', del: 0}, row))]});
+    worker.getBookRecordByUid = async(uid) => (uid === hyperion._uid ? Object.assign({}, hyperion) : null);
+    worker.catalogSearch.getBooksByTitles = editionsOf({_uid: 'old', lang: 'en', date: '2013-10-30'}, {_uid: 'gone', lang: 'en', date: '2020-01-01', del: 1},
+        {_uid: 'new', lang: 'en', date: '2026-09-12'}, {_uid: 'ru', lang: 'ru', date: '2026-10-01'});
+    const deleted = await worker.getBook(hyperion._uid);
+    assert.deepStrictEqual(deleted.editions, []);
+    assert.deepStrictEqual(deleted.replacements.map(book => book._uid).sort(), ['new', 'old', 'ru'], 'a deleted book offers every non-deleted match');
+    const listed = [Object.assign({}, hyperion), Object.assign({}, hyperion, {_uid: 'del:2', unavailable: 'disabled'}), {_uid: 'live', title: 'Гиперион', author: 'Симмонс Дэн'}];
+    await worker.markNewerEditions(listed);
+    assert.deepStrictEqual(listed.map(book => !!book.newerEdition), [true, false, false], 'only a readable deleted book with a later edition is flagged');
+    worker.catalogSearch.getBooksByTitles = editionsOf({_uid: 'old', lang: 'en', date: '2013-10-30'}, {_uid: 'ru', lang: 'ru', date: '2026-10-01'});
+    const noNewer = [Object.assign({}, hyperion)];
+    await worker.markNewerEditions(noNewer);
+    assert.strictEqual(noNewer[0].newerEdition, false, 'an older edition or another language is not a newer edition');
+
     const user = {readerProgress: {a: {percent: 0.4}, b: {percent: 1}, c: {percent: 0.2, hidden: true}}};
     assert.deepStrictEqual(worker.getUserBookStates(user, ['a', 'b', 'c', 'missing', '']).states, {
         a: {percent: 0.4, read: false, hidden: false, inList: false},

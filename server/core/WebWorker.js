@@ -421,6 +421,10 @@ class WebWorker {
         const editions = await this.findMatchingBooks(book);
         const result = {books: [Object.assign({}, book)]};
         await this.applyMetadataOverridesToSearchResult(result);
+        //помеченная удалённой (часто её сменила исправленная редакция): вместо изданий - неудалённые замены,
+        //на которые читатель может перейти со списками и прогрессом, даже на более старую редакцию
+        if (book.del)
+            return {book: result.books[0], editions: [], replacements: editions.filter(item => !item.del)};
         return {book: result.books[0], editions};
     }
 
@@ -544,6 +548,18 @@ class WebWorker {
             .filter(item => item._uid !== book._uid).map(item => Object.assign({}, item));
         await this.applyMetadataOverridesToSearchResult({books});
         return books;
+    }
+
+    //newerEdition: книга помечена удалённой, а та же книга на том же языке добавлена в библиотеку позже - скорее всего,
+    //исправленная редакция. Строка списка просит внимания; замену выбирает читатель на странице книги
+    async markNewerEditions(books = []) {
+        for (const book of books) {
+            if (!book.del || book.unavailable)
+                continue;
+            const lang = bookNote(book).lang;
+            book.newerEdition = (await this.findMatchingBooks(book))
+                .some(item => !item.del && bookNote(item).lang === lang && String(item.date || '') > String(book.date || ''));
+        }
     }
 
     //Замена книги, выбранная читателем: его списки (с отметкой «прочитано»), прогресс и закладки переходят на другую книгу
@@ -857,6 +873,7 @@ class WebWorker {
         }
 
         this.sortReadingListBooks(books, listEntries.map((entry) => entry.bookUid));
+        await this.markNewerEditions(books);
 
         //английские имена авторов нужны фильтру списка в браузере
         let aliases = {};
@@ -904,6 +921,7 @@ class WebWorker {
             books.push(book);
         }
         await this.applyMetadataOverridesToSearchResult({books: books.filter(book => !book.unavailable)});
+        await this.markNewerEditions(books);
 
         let aliases = {};
         try {

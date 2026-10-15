@@ -183,6 +183,8 @@
         "continue": "Continue · {n}%",
         "converted": "converted",
         "copyLink": "Copy link",
+        "deletedNotice": "This book is marked as deleted in the library, often because a corrected edition replaced it. You can still read it or switch to a replacement below.",
+        "deletedReplacementsHint": "Books with the same title and first author that are not marked as deleted, best matches first. Switching moves your lists, progress and bookmarks.",
         "couldNotOpenThe": "Could not open the book file, so the annotation is unavailable.",
         "goToCatalog": "Go to catalog",
         "inYourLists": "In your lists:",
@@ -212,6 +214,7 @@
     },
     "bookCard": {
         "notInTheLibrary": "Not in the library",
+        "newerEdition": "Newer edition",
         "unavailable": "Unavailable"
     },
     "bookCollection": {
@@ -975,6 +978,7 @@
         "booksWithSavedProgress": "Books with saved progress. A removed book comes back when you open it again.",
         "filter": "Filter by title, author or series",
         "noBooksInProgress": "No books in progress yet.",
+        "needsAttention": "Needs attention ({n})",
         "nothingMatches": "No books match the filter.",
         "progress": "Progress",
         "readingNow": "Reading now",

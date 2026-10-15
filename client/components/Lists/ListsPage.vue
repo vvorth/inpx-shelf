@@ -116,6 +116,7 @@
                                     </template>
                                 </q-input>
                                 <q-toggle v-if="selectedList" v-model="unreadOnly" :label="$t('discovery.unreadOnly')" />
+                                <q-toggle v-if="attentionCount || attentionOnly" v-model="attentionOnly" :label="$t('lists.needsAttention', {n: attentionCount})" />
                                 <q-space />
                                 <q-btn-toggle
                                     :model-value="view"
@@ -157,6 +158,7 @@
                                                 <router-link class="book-title" :to="bookLink(book)">
                                                     {{ book.title || $t('common.untitled') }}
                                                 </router-link>
+                                                <span v-if="book.newerEdition" class="pill pill--warn">{{ $t('bookCard.newerEdition') }}</span>
                                                 <div class="book-meta show-narrow">
                                                     {{ bookMeta(book) }}
                                                 </div>
@@ -282,6 +284,7 @@ class ListsPage {
     koboDevices = [];
     filterText = '';
     unreadOnly = false;
+    attentionOnly = false;
     listsBook = null;
     listsDialogVisible = false;
 
@@ -379,6 +382,7 @@ class ListsPage {
         this.books = [];
         this.states = {};
         this.filterText = '';
+        this.attentionOnly = false;
         await this.loadBooks();
     }
 
@@ -413,6 +417,8 @@ class ListsPage {
                 percent: Number(book._readerPercent !== undefined ? book._readerPercent : (this.states[bookUid(book)] || {}).percent) || 0,
                 //выключенная библиотека или книги больше нет: строка бледная, открывается только окно книги
                 unavailable: book.unavailable || '',
+                //помечена удалённой, а позже добавлена та же книга: замену выбирают на странице книги
+                newerEdition: !!book.newerEdition,
                 order,
                 record: book,
             }));
@@ -466,10 +472,21 @@ class ListsPage {
         return (sortKeys[key] ? {key, desc: value.startsWith('-')} : {key: '', desc: false});
     }
 
+    //недоступная книга или есть новая редакция удалённой: читателю стоит выбрать замену
+    needsAttention(book) {
+        return !!(book.unavailable || book.newerEdition);
+    }
+
+    get attentionCount() {
+        return this.books.filter(book => this.needsAttention(book)).length;
+    }
+
     get visibleBooks() {
         const words = normalize(this.filterText).split(/\s+/).filter(Boolean);
         const books = this.books.filter((book) => {
             if (this.unreadOnly && book.read)
+                return false;
+            if (this.attentionOnly && !this.needsAttention(book))
                 return false;
             const text = normalize(`${book.title} ${book.author} ${book.aliases} ${book.series}`);
             return words.every(word => text.includes(word));
