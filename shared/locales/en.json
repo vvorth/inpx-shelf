@@ -141,7 +141,9 @@
         "sections": "Sections",
         "setUp": "Set up",
         "signedInWithSso": "Signed in with SSO",
-        "versionIsAvailable": "Version {version} is available"
+        "versionIsAvailable": "Version {version} is available",
+        "newVersionAvailable": "A new version of the app is available.",
+        "reload": "Reload"
     },
     "author": {
         "aZ": "A–Z",

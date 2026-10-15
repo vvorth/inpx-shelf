@@ -91,6 +91,16 @@
                     <q-icon name="la la-times" size="16px" />
                 </button>
             </div>
+            <div v-if="!bare && updateAvailable" class="shell-banner" role="status">
+                <q-icon name="la la-sync" size="18px" />
+                <span class="shell-banner-text">{{ $t('appShell.newVersionAvailable') }}</span>
+                <button type="button" class="shell-link-btn" @click="reloadApp">
+                    {{ $t('appShell.reload') }}
+                </button>
+                <button type="button" class="shell-banner-close" :aria-label="$t('common.hide')" :title="$t('common.hide')" @click="dismissUpdate">
+                    <q-icon name="la la-times" size="16px" />
+                </button>
+            </div>
             <header v-if="!bare" class="shell-top">
                 <Omnibox />
                 <LanguagePicker />
@@ -139,6 +149,7 @@ import {newReleaseAvailable} from '../../share/release';
 import {myLanguages, langDefaultFor} from '../../share/languages';
 import {refreshReadingLists} from '../../share/readingLists';
 import {pageFullPath} from '../../router';
+import {appUpdate} from '../../share/appUpdate';
 
 const discoveryIcons = {
     'bestsellers': 'la la-globe',
@@ -305,6 +316,19 @@ class AppShell {
         } catch (e) {
             //без localStorage подсказка вернётся после перезагрузки
         }
+    }
+
+    get updateAvailable() {
+        return appUpdate.available && !appUpdate.dismissed;
+    }
+
+    reloadApp() {
+        if (appUpdate.reload)
+            appUpdate.reload();
+    }
+
+    dismissUpdate() {
+        appUpdate.dismissed = true;
     }
 
     dismissRelease() {

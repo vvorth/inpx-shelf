@@ -141,7 +141,9 @@
         "sections": "Разделы",
         "setUp": "Настроить",
         "signedInWithSso": "Вход через SSO",
-        "versionIsAvailable": "Доступна версия {version}"
+        "versionIsAvailable": "Доступна версия {version}",
+        "newVersionAvailable": "Доступна новая версия приложения.",
+        "reload": "Перезагрузить"
     },
     "author": {
         "aZ": "А–Я",

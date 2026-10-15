@@ -8,6 +8,7 @@ import i18n, {setLang, setIsoDates, t} from './share/i18n';
 
 import App from './components/App.vue';
 import {bookRoute, authorRoute, seriesRoute} from './share/bookActions';
+import {appUpdate} from './share/appUpdate';
 
 setLang(store.state.settings.uiLang);
 setIsoDates(store.state.settings.isoDates);
@@ -269,6 +270,18 @@ function mountApplication() {
     app.mount('#app');
 }
 
+async function newBuildDeployed() {
+    const deployedBuildId = await fetchDeployedBuildId();
+    return !!(deployedBuildId && currentBuildId && deployedBuildId !== currentBuildId);
+}
+
+function announceAppUpdate() {
+    appUpdate.reload = () => ensureCurrentAppBuild();
+    appUpdate.available = true;
+}
+
+//Открытое приложение само не перезагружается: в читалке, диалоге или форме это потеряло бы несохранённый ввод.
+//Новая версия предлагается баннером; перезагрузка без спроса - только до запуска приложения (bootstrapApplication)
 function startAppVersionMonitor() {
     if (versionMonitorStarted)
         return;
@@ -280,11 +293,21 @@ function startAppVersionMonitor() {
             return;
         checking = true;
         try {
-            await ensureCurrentAppBuild();
+            if (await newBuildDeployed())
+                announceAppUpdate();
         } finally {
             checking = false;
         }
     };
+
+    //кусок прежней сборки (страница, открытая впервые) удалён с сервера: открываем её уже в новой версии
+    router.onError(async(error, to) => {
+        const chunkFailed = error && (error.name === 'ChunkLoadError' || error.code === 'CSS_CHUNK_LOAD_FAILED');
+        if (!chunkFailed || !await newBuildDeployed())
+            return;
+        window.history.replaceState(window.history.state, '', router.resolve(to).href);
+        await ensureCurrentAppBuild();
+    });
 
     window.addEventListener('focus', checkVersion);
     document.addEventListener('visibilitychange', () => {
@@ -310,13 +333,11 @@ function setupServiceWorker() {
     else
         window.addEventListener('load', register, {once: true});
 
-    let refreshing = false;
+    //первая установка воркера страницу не меняет; смена воркера означает новую сборку - предлагаем перезагрузку
+    const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing)
-            return;
-
-        refreshing = true;
-        window.location.reload();
+        if (hadController)
+            announceAppUpdate();
     });
 }
 
