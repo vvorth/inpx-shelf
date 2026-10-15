@@ -301,7 +301,8 @@
         "unmarked": "Unmarked: {n}",
         "untitled": "Untitled",
         "yes": "Yes",
-        "tryAgain": "Try again"
+        "tryAgain": "Try again",
+        "back": "Back"
     },
     "db": {
         "loadInpx": "Loading INPX",

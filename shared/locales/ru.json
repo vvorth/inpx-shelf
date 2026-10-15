@@ -305,7 +305,8 @@
         "unmarked": "Отметка снята: {n}",
         "untitled": "Без названия",
         "yes": "Да",
-        "tryAgain": "Повторить"
+        "tryAgain": "Повторить",
+        "back": "Назад"
     },
     "db": {
         "loadInpx": "Загрузка INPX",

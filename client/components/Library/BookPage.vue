@@ -1,6 +1,10 @@
 <template>
     <div class="page">
         <div class="page-body">
+            <!-- в окне книги есть крестик; у страницы книги на телефоне нет другого пути назад -->
+            <q-btn v-if="!dialogUid" class="book-back" flat dense no-caps icon="la la-arrow-left" @click="goBack">
+                {{ $t('common.back') }}
+            </q-btn>
             <div v-if="loading" class="page-empty page-empty--inline">
                 {{ $t('author.loading') }}
             </div>
@@ -595,6 +599,14 @@ class BookPage {
         }
     }
 
+    //назад по истории приложения; открыта прямой ссылкой - в каталог
+    goBack() {
+        if ((window.history.state || {}).back)
+            this.$router.back();
+        else
+            this.$router.push('/search');
+    }
+
     async toggleRead() {
         const read = !(this.progress >= 1);
         if (await markBooksRead(this, [bookUid(this.book)], read))
@@ -612,6 +624,11 @@ export default vueComponent(BookPage);
 </script>
 
 <style scoped>
+.book-back {
+    align-self: flex-start;
+    margin: -8px 0 -8px -8px;
+}
+
 .book-hero {
     display: grid;
     grid-template-columns: 200px minmax(0, 1fr);
