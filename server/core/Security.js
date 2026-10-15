@@ -202,7 +202,8 @@ class Security {
         return `${sessionCookieName}=${encodeURIComponent(this.packSessionId(session.id))}; ${this.cookieOptions(req)}`;
     }
 
-    //cookie сессии WebSocket (forkSession) - в ответе на upgrade: книги и обложки по HTTP идут с ней
+    //WebSocket пришёл с cookie сессии, которой сервер не знает (перезапуск): новая уходит в ответе на upgrade,
+    //иначе книги и обложки по HTTP шли бы со старой cookie без входа
     upgradeCookie(req) {
         const session = req.securitySession;
         const cookies = this.parseCookies(req.headers.cookie || '');
@@ -471,23 +472,8 @@ class Security {
             return false;
         }
 
-        this.forkSession(req);
+        this.ensureSession(req);
         return true;
-    }
-
-    //Вход (пароль доступа, профиль) идёт по WebSocket и попадает в сессию подключения. Подключение с cookie
-    //получает копию сессии под новым id (cookie уходит в ответе на upgrade, см. upgradeCookie): ни подброшенный
-    //в браузер чужой id, ни сокеты, открытые с ним раньше, вход не увидят. Прежняя сессия остаётся как была:
-    //вкладки, подключающиеся одновременно с той же cookie, не теряют её.
-    forkSession(req) {
-        const source = this.getSession(req);
-        if (!source)
-            return this.ensureSession(req);
-        sessionLifetime.makeRoom(this.sessions);
-        const session = Object.assign({}, source, {id: this.randomToken(24), updatedAt: Date.now()});
-        this.sessions.set(session.id, session);
-        req.securitySession = session;
-        return session;
     }
 
     getCsrfToken(req) {
