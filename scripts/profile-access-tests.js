@@ -70,15 +70,24 @@ async function fixture(options, test) {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     const request = (url, headers = {}) => fetch(base + url, {headers, redirect: 'manual'});
+    //a browser: a WebSocket upgrade gives it the cookie of the connection's own session, and it uses that one
+    const browsers = [];
     const session = () => {
-        const value = security.ensureSession({headers: {}});
-        return {value, cookie: `inpx_web_session=${security.packSessionId(value.id)}`};
+        const browser = {value: security.ensureSession({headers: {}}),
+            get cookie() { return `inpx_web_session=${security.packSessionId(this.value.id)}`; }};
+        browsers.push(browser);
+        return browser;
     };
     const sockets = new Set();
     const connect = async(headers = {}) => {
         const socket = new WebSocket(base.replace('http', 'ws'), {headers});
         sockets.add(socket);
+        const upgrade = new Promise(resolve => socket.once('upgrade', response => resolve(response.headers['set-cookie'])));
         await new Promise((resolve, reject) => {socket.once('open', resolve); socket.once('error', reject);});
+        const setCookie = String(await upgrade || '').split(';')[0];
+        const browser = browsers.findLast(item => item.cookie === headers.cookie);
+        if (browser && setCookie)
+            browser.value = security.getSession({headers: {cookie: setCookie}});
         let counter = 0;
         return async(params) => {
             const requestId = String(++counter);
@@ -175,7 +184,7 @@ async function testProxyProfileBindingAndIdentityChange() {
             const browser = session();
             browser.value.profileAccessToken = worker.createProfileSession('admin');
             const oldToken = browser.value.profileAccessToken;
-            const headers = {cookie: browser.cookie, 'Remote-User': ' ALICE '};
+            const headers = {get cookie() { return browser.cookie; }, 'Remote-User': ' ALICE '};
             const call = await connect(headers);
             const authed = await call({action: 'get-config', userId: bob.id, profileAccessToken: oldToken});
             assert.strictEqual(authed.currentUserId, alice.id);
@@ -367,6 +376,29 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     });
 }
 
+// A session cookie planted in the browser before sign-in gives nothing: each WebSocket gets its own copy of the
+// session under a new id, so neither the planted id nor a socket the attacker opened with it sees the login.
+async function testPlantedSessionCookieIsNotSignedIn() {
+    await fixture({allowAnonymousAccess: false}, async({alice, request, session, connect}) => {
+        const attacker = session();
+        const attackerCall = await connect({cookie: attacker.cookie});
+        const planted = attacker.cookie;//the id the attacker got from the upgrade and puts into the victim's browser
+        const victim = session();
+        victim.value = attacker.value;
+        const call = await connect({cookie: planted});
+        assert.notStrictEqual(victim.cookie, planted, 'The upgrade gives the connection its own session');
+        const {csrfToken} = await call({action: 'get-config'});
+        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
+        assert.strictEqual(login.userId, alice.id);
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: victim.cookie})).status, 200, 'The browser is signed in');
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: planted})).status, 401);
+        assert.strictEqual((await attackerCall({action: 'get-config'})).profileAuthorized, false, 'Nor is the attacker\'s socket');
+        //a reload: the browser's cookie keeps the sign-in for the next WebSocket
+        const reload = await connect({cookie: victim.cookie});
+        assert.strictEqual((await reload({action: 'get-config'})).currentUserId, alice.id);
+    });
+}
+
 // With accessPassword, books and covers need the browser session that entered it, a remote library's token,
 // a signed OPDS link or OPDS credentials.
 async function testAccessPasswordGuardsBooksAndCovers() {
@@ -478,6 +510,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testAccessPasswordGuardsBooksAndCovers, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testPlantedSessionCookieIsNotSignedIn, testAccessPasswordGuardsBooksAndCovers, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];
