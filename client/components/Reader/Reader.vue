@@ -449,6 +449,7 @@ import vueComponent from '../vueComponent.js';
 import ReaderEnvironment from './readerEnvironment.js';
 import ReaderPaginator from './readerPaginator.js';
 import ReaderProgressSync from './readerProgressSync.js';
+import ReaderSearch from './readerSearch.js';
 import ReaderDebugPanel from './ReaderDebugPanel.vue';
 import ReaderSettingsPanel from './ReaderSettingsPanel.vue';
 import ReaderHome from './ReaderHome.vue';
@@ -535,7 +536,7 @@ function readerLayers(...layers) {
     return ReaderLayers;
 }
 
-class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync) {
+class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSearch) {
     _options = componentOptions;
     _props = {
         standaloneSource: {
@@ -1924,16 +1925,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync) {
         return true;
     }
 
-    get hasSearchResults() {
-        return this.searchResults.length > 0;
-    }
-
-    get searchResultsLabel() {
-        if (!this.hasSearchResults)
-            return '';
-        return `${this.currentSearchResultIndex + 1}/${this.searchResults.length} | ${this.uiText.readModePages} ${this.searchResults[this.currentSearchResultIndex].pageIndex + 1}`;
-    }
-
     get pagedTransitionName() {
         if (this.isHorizontalPaged)
             return (this.pageTurnDirection < 0 ? 'reader-page-slide-x-back' : 'reader-page-slide-x-forward');
@@ -2413,13 +2404,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync) {
 
     async toggleCompactChromeVisibility() {
         await this.setReaderChromeHidden(!this.readerChromeHidden);
-    }
-
-    toggleSearchDialog() {
-        if (!this.isPagedMode)
-            return;
-
-        this.searchDialogOpen = !this.searchDialogOpen;
     }
 
     adjustDebugBottomCompensation(direction = 1) {
@@ -4021,73 +4005,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync) {
 
         this.readerSearchText = readerTextAnchors.normalizeReaderSearchText(readerTextAnchors.stripHtml(this.readerHtml || '')).toLowerCase();
         return this.readerSearchText;
-    }
-
-    rebuildSearchResults(resetIndex = false) {
-        const query = String(this.searchQuery || '').trim().toLowerCase();
-        if (!query || !this.isPagedMode || !this.pagedPages.length) {
-            this.searchResults = [];
-            this.currentSearchResultIndex = -1;
-            return;
-        }
-
-        const results = [];
-        for (let index = 0; index < this.pagedPages.length; index += 1) {
-            const text = this.getPagedPageText(this.pagedPages[index]).toLowerCase();
-            if (text.includes(query))
-                results.push({pageIndex: index});
-        }
-
-        this.searchResults = markRaw(results);
-        if (!results.length) {
-            this.currentSearchResultIndex = -1;
-            return;
-        }
-
-        if (resetIndex || this.currentSearchResultIndex < 0 || this.currentSearchResultIndex >= results.length) {
-            const nearestIndex = results.findIndex((item) => item.pageIndex >= this.currentPageIndex);
-            this.currentSearchResultIndex = (nearestIndex >= 0 ? nearestIndex : 0);
-            return;
-        }
-
-        const activePageIndex = (this.searchResults[this.currentSearchResultIndex] || {}).pageIndex;
-        const nextCurrentIndex = results.findIndex((item) => item.pageIndex === activePageIndex);
-        this.currentSearchResultIndex = (nextCurrentIndex >= 0 ? nextCurrentIndex : 0);
-    }
-
-    handleSearchInput() {
-        this.rebuildSearchResults(true);
-        if (this.hasSearchResults)
-            this.goToSearchResult(this.currentSearchResultIndex, false);
-    }
-
-    goToSearchResult(index = 0, save = true) {
-        if (!this.hasSearchResults)
-            return;
-
-        const safeIndex = Math.max(0, Math.min(this.searchResults.length - 1, index));
-        this.currentSearchResultIndex = safeIndex;
-        const result = this.searchResults[safeIndex];
-        if (!result)
-            return;
-
-        this.setCurrentPagedPage(result.pageIndex, save);
-    }
-
-    jumpToNextSearchResult() {
-        if (!this.hasSearchResults)
-            return;
-
-        const nextIndex = (this.currentSearchResultIndex + 1) % this.searchResults.length;
-        this.goToSearchResult(nextIndex, true);
-    }
-
-    jumpToPrevSearchResult() {
-        if (!this.hasSearchResults)
-            return;
-
-        const nextIndex = (this.currentSearchResultIndex <= 0 ? this.searchResults.length - 1 : this.currentSearchResultIndex - 1);
-        this.goToSearchResult(nextIndex, true);
     }
 
     cloneReaderReflowAnchor(anchor = null) {

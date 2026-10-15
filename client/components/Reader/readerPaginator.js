@@ -55,20 +55,6 @@ export default class ReaderPaginator {
         return this.renderPagedPageHtml(page, this.currentPageIndex);
     }
 
-    renderPagedPageHtml(page = null, pageIndex = 0) {
-        if (!page)
-            return '';
-
-        if (!this.searchQuery.trim() || !this.hasSearchResults)
-            return page.html || '';
-
-        const activeResult = this.searchResults[this.currentSearchResultIndex] || null;
-        if (!activeResult || activeResult.pageIndex !== pageIndex)
-            return page.html || '';
-
-        return readerTextAnchors.highlightHtmlMatches(page.html || '', this.searchQuery);
-    }
-
     get pagedStep() {
         return this.isDualPagedSpread ? 2 : 1;
     }
