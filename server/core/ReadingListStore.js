@@ -554,9 +554,32 @@ class ReadingListStore {
         this.persisted = {stamp: this.fileStamp(await fs.stat(this.file)), data};
     }
 
+    // Every catalog read applies the overrides: keep them normalized per file version and read them without
+    // the store lock. Every write (here, another instance, a backup restore) replaces the file, which changes
+    // its stamp, so a completed write is never missed. The result is shared and frozen: callers only read it.
     async getMetadataOverrides() {
+        let stamp = '';
+        try {
+            stamp = this.fileStamp(await fs.stat(this.file));
+        } catch (e) {
+            // No file yet: the locked load below creates it.
+        }
+        const cached = this.overridesCache;
+        if (cached && stamp && cached.stamp === stamp)
+            return cached.overrides;
+        return await this.loadMetadataOverrides();
+    }
+
+    async loadMetadataOverrides() {
         const data = await this.load();
-        return this.normalizeMetadataOverrides(data.metadataOverrides);
+        const overrides = this.normalizeMetadataOverrides(data.metadataOverrides);
+        for (const row of Object.values(overrides))
+            Object.freeze(row);
+        Object.freeze(overrides);
+        // A load that had to write (bootstrap, repair) leaves no stamp: the next read loads again.
+        if (this.loaded)
+            this.overridesCache = {stamp: this.loaded.stamp, overrides};
+        return overrides;
     }
 
     async updateMetadataOverride(bookUid = '', patch = {}) {
@@ -618,8 +641,9 @@ Object.assign(ReadingListStore.prototype,
 
 // Every asynchronous store operation may read or change the persisted state (even
 // load can bootstrap it). Keep its entire call tree in one reentrant transaction.
-// Password checks only take the lock for their reads and writes.
-const unlocked = new Set(['verifyUserPassword', 'verifyOpdsPassword']);
+// Password checks only take the lock for their reads and writes; metadata overrides are read
+// without it while the file is unchanged.
+const unlocked = new Set(['verifyUserPassword', 'verifyOpdsPassword', 'getMetadataOverrides']);
 for (const name of Object.getOwnPropertyNames(ReadingListStore.prototype)) {
     const method = ReadingListStore.prototype[name];
     if (method.constructor.name === 'AsyncFunction' && !unlocked.has(name)) {

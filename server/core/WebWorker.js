@@ -771,11 +771,25 @@ class WebWorker {
         await this.requireAdmin(userId, profileAccessToken);
         const override = await this.readingListStore.updateMetadataOverride(bookUid, patch);
 
-        const book = await this.getBookRecordByUid(bookUid);
-        if (book && this.catalogSearch) {
-            this.applyMetadataOverrideToBook(book, await this.readingListStore.getMetadataOverrides());
-            await this.catalogSearch.updateBook(book);
-        }
+        //индекс книги обновляется по одной правке за раз и по последним правкам: две быстрые правки
+        //иначе могли бы лечь в индекс в обратном порядке
+        if (!this.bookIndexUpdates)
+            this.bookIndexUpdates = new Map();
+        const uid = String(bookUid || '').trim();
+        const update = (this.bookIndexUpdates.get(uid) || Promise.resolve()).then(async() => {
+            const book = await this.getBookRecordByUid(uid);
+            if (book && this.catalogSearch) {
+                this.applyMetadataOverrideToBook(book, await this.readingListStore.getMetadataOverrides());
+                await this.catalogSearch.updateBook(book);
+            }
+        });
+        const queued = update.catch(() => {});
+        this.bookIndexUpdates.set(uid, queued);
+        queued.then(() => {
+            if (this.bookIndexUpdates.get(uid) === queued)
+                this.bookIndexUpdates.delete(uid);
+        });
+        await update;
         return {bookUid, override};
     }
 

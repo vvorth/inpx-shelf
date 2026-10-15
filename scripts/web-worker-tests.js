@@ -325,6 +325,62 @@ async function testProfileLoginChecksPasswordOutsideTheStoreLock() {
     });
 }
 
+//правки метаданных читаются без блокировки хранилища из кэша, который сбрасывает любая запись файла (и восстановление бэкапа)
+async function testMetadataOverridesCacheFollowsWrites() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const {withFileTransaction, writeFileAtomic} = require('../server/core/FilePersistence');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        //первое чтение создаёт файл хранилища (запись): кэш появляется со следующего
+        await store.getMetadataOverrides();
+        const first = await store.getMetadataOverrides();
+        assert.deepStrictEqual(first, {});
+        assert.strictEqual(await store.getMetadataOverrides(), first, 'unchanged file reuses the overrides');
+        assert.ok(Object.isFrozen(first));
+
+        let release = null;
+        const held = withFileTransaction(store.file, () => new Promise(resolve => (release = resolve)));
+        const read = await Promise.race([store.getMetadataOverrides(), new Promise(resolve => setTimeout(() => resolve('blocked'), 200))]);
+        release();
+        await held;
+        assert.strictEqual(read, first, 'the read does not wait for the store lock');
+
+        await store.updateMetadataOverride('book-1', {title: 'Edited'});
+        assert.strictEqual((await store.getMetadataOverrides())['book-1'].title, 'Edited');
+
+        const data = JSON.parse(await fs.readFile(store.file, 'utf8'));
+        data.metadataOverrides['book-1'].title = 'Restored';
+        await writeFileAtomic(store.file, JSON.stringify(data));
+        assert.strictEqual((await store.getMetadataOverrides())['book-1'].title, 'Restored');
+    });
+}
+
+//две быстрые правки одной книги попадают в индекс по порядку, последней - самая новая
+async function testBookMetadataEditsReachIndexInOrder() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        const worker = bareWorker({checkMyState: () => {}, requireAdmin: async() => {}, readingListStore: store});
+        worker.getBookRecordByUid = async uid => ({_uid: uid, id: 1, title: 'Original', author: 'Author', series: ''});
+        const applied = [];
+        let second = null;
+        worker.catalogSearch = {
+            updateBook: async(book) => {
+                //вторая правка приходит, пока первая ещё обновляет индекс
+                if (!second) {
+                    second = worker.updateBookMetadata('admin', '', 'book-1', {title: 'Second'});
+                    await new Promise(resolve => setTimeout(resolve, 30));
+                }
+                applied.push(book.title);
+            },
+        };
+        await worker.updateBookMetadata('admin', '', 'book-1', {title: 'First'});
+        await second;
+        assert.deepStrictEqual(applied, ['First', 'Second']);
+        assert.strictEqual(worker.bookIndexUpdates.size, 0);
+    });
+}
+
 //контроллер передаёт раздел и размеры персональных полок: иначе «ещё» у похожих книг ничего не меняет
 async function testDiscoveryRequestKeepsSectionAndPersonalLimits() {
     const Controller = require('../server/controllers/WebSocketController');
@@ -629,4 +685,6 @@ module.exports = [
     testReadingStats,
     testLibraryAssetCaches,
     testProfileLoginChecksPasswordOutsideTheStoreLock,
+    testMetadataOverridesCacheFollowsWrites,
+    testBookMetadataEditsReachIndexInOrder,
 ];
