@@ -9,19 +9,18 @@ const BackupFiles = require('./BackupFiles');
 const names = new Set(['backup-info.json', 'discovery-cache.json', ...BackupFiles.names]);
 
 // `only`: the data files this archive may hold (the author names import takes a names-only archive)
-async function read(payload, config, folder, options = {}) {
+// source: {file} - the uploaded ZIP on disk, or {buffer}
+async function read(source, config, folder, options = {}) {
     const maximum = limits(config);
-    const raw = payload && (payload.contentBase64 || payload.data);
-    if (typeof raw !== 'string' || raw.length > Math.ceil(maximum.backup/3)*4 + 1024)
+    let file = source && source.file;
+    if (!file && source && Buffer.isBuffer(source.buffer)) {
+        file = path.join(folder, 'backup.zip');
+        await fs.writeFile(file, source.buffer, {mode: 0o600});
+    }
+    if (!file || !await fs.pathExists(file))
         throw new Error(t('errors.backupTooLargeOrInvalid'));
-    const base64 = raw.replace(/^data:[^,]{0,200},/, '').trim();
-    if (!base64 || base64.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64))
-        throw new Error(t('errors.backupInvalidBase64'));
-    const buffer = Buffer.from(base64, 'base64');
-    if (buffer.length > maximum.backup)
+    if ((await fs.stat(file)).size > maximum.backup)
         throw new Error(t('errors.backupTooLarge'));
-    const file = path.join(folder, 'backup.zip');
-    await fs.writeFile(file, buffer, {mode: 0o600});
     const zip = new StreamZip.async({file});
     try {
         const entries = Object.values(await zip.entries());

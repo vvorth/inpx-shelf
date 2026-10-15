@@ -233,6 +233,34 @@ class Api {
         }
     }
 
+    //Файл для импорта - HTTP-запросом (POST /upload): сервер пишет его на диск и проверяет доступ так же, как у WebSocket
+    async upload(action, file, query = {}) {
+        for (let attempt = 0; ; attempt++) {
+            const {accessToken, currentUserId, profileAccessToken} = this.settings;
+            const config = this.$store.state.config;
+            const headers = {'Content-Type': 'application/octet-stream', 'X-Ui-Lang': getLang()};
+            if (accessToken)
+                headers['X-Access-Token'] = accessToken;
+            if (currentUserId)
+                headers['X-User-Id'] = currentUserId;
+            if (profileAccessToken)
+                headers['X-Profile-Token'] = profileAccessToken;
+            if (config.csrfToken)
+                headers['X-CSRF-Token'] = config.csrfToken;
+            const url = `${String(config.rootPathStatic || '').replace(/\/$/, '')}/upload?${new URLSearchParams(Object.assign({action}, query))}`;
+            const response = await fetch(url, {method: 'POST', headers, body: file, credentials: 'same-origin'});
+            const result = await response.json().catch(() => ({error: `${response.status} ${response.statusText}`}));
+            //токен CSRF устарел (новая сессия): берём свежий и пробуем ещё раз
+            if (result.error === 'bad_csrf_token' && !attempt) {
+                await this.updateConfig();
+                continue;
+            }
+            if (result.error)
+                throw new Error(result.error);
+            return result;
+        }
+    }
+
     async request(params, timeoutSecs = 10, options = {}) {
         let errCount = 0;
         while (1) {// eslint-disable-line
@@ -390,8 +418,8 @@ class Api {
         return await this.request({action: 'export-admin-settings'}, 120);
     }
 
-    async importAdminSettings(data) {
-        return await this.request({action: 'import-admin-settings', data}, 120);
+    async importAdminSettings(file) {
+        return await this.upload('import-admin-settings', file);
     }
 
     //scope: '' - полный бэкап, 'author-names' - только английские имена авторов
@@ -399,8 +427,8 @@ class Api {
         return await this.request({action: 'create-admin-backup', scope}, 300);
     }
 
-    async importAdminBackup(data, scope = '') {
-        return await this.request({action: 'import-admin-backup', data, scope}, 300);
+    async importAdminBackup(file, scope = '') {
+        return await this.upload('import-admin-backup', file, {scope});
     }
 
     async updateBookMetadata(bookUid, metadata = {}) {
@@ -564,8 +592,8 @@ class Api {
         return await this.request({action: 'export-reading-lists'}, 120);
     }
 
-    async importReadingLists(data) {
-        return await this.request({action: 'import-reading-lists', data}, 120);
+    async importReadingLists(file) {
+        return await this.upload('import-reading-lists', file);
     }
 
     //замена недоступной книги в списках, прогрессе и закладках читателя

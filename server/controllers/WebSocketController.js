@@ -7,9 +7,39 @@ const log = new (require('../core/AppLogger'))().log;//singleton
 const utils = require('../core/utils');
 const runtimeMetrics = require('../core/RuntimeMetrics');
 const i18n = require('../core/i18n');
+const fs = require('fs-extra');
+const os = require('os');
+const path = require('path');
 
 const cleanPeriod = 1*60*1000;//1 минута
 //пароли и токены не попадают в журнал запросов
+// The request body to `file`; stops reading at `limit` bytes (the caller answers 413 and closes the connection).
+function receiveFile(req, file, limit) {
+    return new Promise((resolve, reject) => {
+        const out = fs.createWriteStream(file, {mode: 0o600});
+        let size = 0;
+        const fail = (error) => {
+            req.pause();
+            req.removeAllListeners('data');
+            out.destroy();
+            reject(error);
+        };
+        req.on('data', (chunk) => {
+            size += chunk.length;
+            if (size > limit)
+                return fail(Object.assign(new Error(i18n.t('errors.requestTooLarge')), {status: 413}));
+            if (!out.write(chunk)) {
+                req.pause();
+                out.once('drain', () => req.resume());
+            }
+        });
+        req.on('end', () => out.end());
+        req.on('error', fail);
+        out.on('error', fail);
+        out.on('finish', resolve);
+    });
+}
+
 const hideSecrets = (key, value) => (/pass|token|secret/i.test(key) && value ? '***' : value);
 const closeSocketOnIdle = 5*60*1000;//5 минут
 //только чтение; всё остальное, в том числе новые действия, требует CSRF-токен
@@ -318,6 +348,77 @@ class WebSocketController {
             if (large)
                 this.largeRequestActive = false;
             runtimeMetrics.endAction(metricToken, metricOk);
+        }
+    }
+
+    // POST <root>/upload?action=...: a file for an import action. The body goes to disk and stops at the action's limit;
+    // then the request runs through processMessage like a WebSocket one (access password, CSRF, profile, handler).
+    // The file is passed on the connection object, never in the request JSON, so a WebSocket client cannot name a file.
+    uploadHandler() {
+        const RequestLimits = require('../core/RequestLimits');
+        return async(req, res) => {
+            res.set('Cache-Control', 'no-store');
+            const action = String(req.query.action || '');
+            const limit = RequestLimits.uploadLimit(action, this.config);
+            //тело, которое не прочитано (отказ или больше лимита), не дочитывается: ответ и закрытие соединения
+            const reply = (status, body) => {
+                if (!req.complete) {
+                    res.set('Connection', 'close');
+                    res.on('finish', () => req.destroy());
+                }
+                res.status(status).json(body);
+            };
+            const fail = (status, error) => reply(status, {error: i18n.render(error)});
+            if (!limit)
+                return fail(404, `Action not found: ${action}`);
+            if (this.security && !this.security.sameOriginCheck(req).ok)
+                return fail(403, 'Forbidden');
+            if (Number(req.headers['content-length']) > limit)
+                return fail(413, i18n.t('errors.requestTooLarge'));
+            if (this.uploadActive)
+                return reply(503, {error: 'server_busy'});
+
+            this.uploadActive = true;
+            let folder = '';
+            let result;
+            try {
+                const tempRoot = this.config.tempDir || os.tmpdir();
+                await fs.ensureDir(tempRoot);
+                folder = await fs.mkdtemp(path.join(tempRoot, 'upload-'));
+                const file = path.join(folder, 'upload');
+                await receiveFile(req, file, limit);
+
+                const header = name => String(req.headers[name] || '');
+                const message = JSON.stringify({action, scope: String(req.query.scope || ''), uiLang: header('x-ui-lang'),
+                    userId: header('x-user-id'), profileAccessToken: header('x-profile-token'), accessToken: header('x-access-token'),
+                    csrfToken: header('x-csrf-token')});
+                const responses = [];
+                const connection = {req, readyState: WebSocket.OPEN, uploadFile: file, send: text => responses.push(JSON.parse(text)),
+                    close: () => responses.push({error: 'server_busy'})};
+                await this.onMessage(connection, message);
+                result = [200, responses.filter(item => !item._rok).pop() || {error: 'No response'}];
+            } catch (e) {
+                result = [e.status || 400, {error: i18n.render(e.message)}];
+            } finally {
+                this.uploadActive = false;
+                if (folder)
+                    await fs.remove(folder).catch(() => {});
+            }
+            reply(...result);
+        };
+    }
+
+    uploadedFile(ws) {
+        if (!ws.uploadFile)
+            throw new Error(i18n.t('errors.uploadOverHttp'));
+        return ws.uploadFile;
+    }
+
+    async uploadedJson(ws) {
+        try {
+            return JSON.parse(await fs.readFile(this.uploadedFile(ws), 'utf8'));
+        } catch (e) {
+            throw (ws.uploadFile ? new Error(i18n.t('errors.uploadInvalidJson')) : e);
         }
     }
 
@@ -954,7 +1055,7 @@ class WebSocketController {
     }
 
     async importAdminSettings(req, ws) {
-        const result = await this.webWorker.importAdminSettings(req.userId, req.profileAccessToken, req.data);
+        const result = await this.webWorker.importAdminSettings(req.userId, req.profileAccessToken, await this.uploadedJson(ws));
         this.send(result, req, ws);
     }
 
@@ -964,7 +1065,7 @@ class WebSocketController {
     }
 
     async importAdminBackup(req, ws) {
-        const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, req.data, req.scope);
+        const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, {file: this.uploadedFile(ws)}, req.scope);
         this.send(result, req, ws);
     }
 
@@ -975,7 +1076,7 @@ class WebSocketController {
 
     async importReadingLists(req, ws) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.importReadingLists(user.id, req.data);
+        const result = await this.webWorker.importReadingLists(user.id, await this.uploadedJson(ws));
         this.send(result, req, ws);
     }
 

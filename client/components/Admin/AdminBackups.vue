@@ -41,7 +41,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import {t} from '../../share/i18n';
-import {downloadJson, fileToBase64} from '../../share/utils';
+import {downloadJson} from '../../share/utils';
 
 const componentOptions = {
     emits: ['restored'],
@@ -101,8 +101,7 @@ class AdminBackups {
 
         this.settingsImportLoading = true;
         try {
-            const data = JSON.parse(await file.text());
-            await this.api.importAdminSettings(data);
+            await this.api.importAdminSettings(file);
             await this.api.updateConfig();
             this.$emit('restored');
             this.$root.notify.success(t('settings.settingsRestored'));
@@ -132,8 +131,7 @@ class AdminBackups {
 
         this.backupImportLoading = true;
         try {
-            const contentBase64 = await fileToBase64(file);
-            await this.api.importAdminBackup({fileName: file.name, contentBase64});
+            await this.api.importAdminBackup(file);
             await this.api.updateConfig();
             this.$emit('restored');
             this.$root.notify.success(t('settings.backup.restored'));

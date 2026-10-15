@@ -78,7 +78,7 @@ class MeData {
 
         this.busy = true;
         try {
-            await this.api.importReadingLists(JSON.parse(await file.text()));
+            await this.api.importReadingLists(file);
             await this.api.updateConfig();
             this.$root.notify.success(t('profiles.profileBackupImported'));
         } catch (e) {

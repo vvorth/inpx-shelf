@@ -10,13 +10,18 @@ function limits(config = {}) {
     return {
         message: bounded(config.wsMessageLimitMb, 1, 16)*MiB,
         import: bounded(config.importLimitMb, 16, 64)*MiB,
-        backup: bounded(config.backupUploadLimitMb, 32, 128)*MiB,
-        expanded: bounded(config.backupExpandedLimitMb, 64, 256)*MiB,
+        // Backups come over HTTP straight to disk (see uploadLimit); only the unpacked files are held in memory.
+        backup: bounded(config.backupUploadLimitMb, 256, 2048)*MiB,
+        expanded: bounded(config.backupExpandedLimitMb, 512, 2048)*MiB,
     };
 }
-function transportLimit(config) {
+// Files are uploaded over HTTP by signed-in users, not sent as WebSocket messages that anyone can send before signing in.
+function uploadLimit(action, config) {
     const value = limits(config);
-    return Math.max(preferencesLimit, value.message, value.import + 65536, Math.ceil(value.backup/3)*4 + 65536);
+    return {'import-admin-backup': value.backup, 'import-reading-lists': value.import, 'import-admin-settings': value.import}[action] || 0;
+}
+function transportLimit(config) {
+    return Math.max(preferencesLimit, limits(config).message);
 }
 function checkRequest(req, bytes, config) {
     if (!req || typeof req !== 'object' || Array.isArray(req) || typeof req.action !== 'string')
@@ -25,10 +30,6 @@ function checkRequest(req, bytes, config) {
     let maximum = value.message;
     if (req.action === 'update-reader-preferences' || req.action === 'update-user-profile')
         maximum = Math.max(maximum, preferencesLimit);
-    if (req.action === 'import-reading-lists' || req.action === 'import-admin-settings')
-        maximum = value.import + 65536;
-    if (req.action === 'import-admin-backup')
-        maximum = Math.ceil(value.backup/3)*4 + 65536;
     if (bytes > maximum)
         throw new Error(t('errors.requestTooLarge'));
 }
@@ -46,4 +47,4 @@ function checkImport(payload, config) {
         }
     }
 }
-module.exports = {limits, transportLimit, checkRequest, checkImport};
+module.exports = {limits, uploadLimit, transportLimit, checkRequest, checkImport};

@@ -30,7 +30,7 @@ async function archive(entries) {
         zip.addBuffer(Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)), name);
     zip.end();
     await done;
-    return {contentBase64: Buffer.concat(chunks).toString('base64')};
+    return {buffer: Buffer.concat(chunks)};
 }
 
 async function testScryptMigrationAndOpds() {
@@ -113,6 +113,72 @@ async function testWebSocketBoundsAndRecovery() {
     assert.throws(() => requestLimits.checkRequest({action: 'update-reader-preferences'}, 6*1024*1024 + 1, controller.config), /размер/);
     assert.throws(() => requestLimits.checkImport({lists: Array.from({length: 1001}, () => ({}))}), /1000/);
     assert.throws(() => requestLimits.checkImport({lists: [{books: Array(100001).fill('book')}]}), /100000/);
+}
+
+// Files come over HTTP: the body is cut at the limit, and the request passes the same checks as a WebSocket one.
+async function testHttpUploadsGoThroughRequestChecks() {
+    await temporary(async(dir) => {
+        const express = require('express');
+        const http = require('http');
+        const Controller = require('../server/controllers/WebSocketController');
+        const controller = Object.create(Controller.prototype);
+        const tempDir = path.join(dir, 'tmp');
+        controller.config = {importLimitMb: 1, backupUploadLimitMb: 1, tempDir};
+        controller.webAccess = {hasAccess: async token => token === 'open', isActiveToken: () => true, newToken: () => 'salt'};
+        let port = 0;
+        controller.security = {
+            sameOriginCheck: req => ({ok: !req.headers.origin || req.headers.origin === `http://127.0.0.1:${port}`}),
+            hasValidCsrf: (req, token) => token === 'csrf',
+            checkLoginRate() {}, recordLoginAttempt() {},
+        };
+        controller.profileAccess = null;
+        const seen = [];
+        controller.webWorker = {
+            requireAuthorizedUser: async userId => ({id: userId || 'default'}),
+            importReadingLists: async(userId, data) => {
+                seen.push(data);
+                return {userId, lists: data.lists.length};
+            },
+        };
+        const app = express();
+        app.post('/upload', controller.uploadHandler());
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        port = server.address().port;
+        const post = (body, headers = {}, action = 'import-reading-lists') => fetch(`http://127.0.0.1:${port}/upload?action=${action}`,
+            {method: 'POST', body, duplex: 'half', headers: Object.assign({'X-Access-Token': 'open', 'X-CSRF-Token': 'csrf', 'X-User-Id': 'reader'}, headers)})
+            .then(async response => ({status: response.status, body: await response.json()}));
+        try {
+            const ok = await post(JSON.stringify({lists: [{name: 'A', books: []}]}));
+            assert.deepStrictEqual(ok, {status: 200, body: {userId: 'reader', lists: 1}});
+            assert.strictEqual((await post('{}', {'X-CSRF-Token': 'stale'})).body.error, 'bad_csrf_token');
+            assert.strictEqual((await post('{}', {'X-Access-Token': 'wrong'})).body.error, 'need_access_token');
+            assert.strictEqual((await post('{}', {Origin: 'https://evil.example'})).status, 403);
+            assert.strictEqual((await post('{}', {}, 'test')).status, 404, 'only import actions take files');
+            assert.match((await post('{broken')).body.error, /JSON/);
+            assert.strictEqual((await post(Buffer.alloc(1024*1024 + 1))).status, 413);
+            //без Content-Length тело обрывается на лимите
+            const stream = new (require('stream').Readable)({read() {}});
+            const streamed = post(stream, {'Content-Type': 'application/octet-stream'});
+            for (let i = 0; i < 3; i++)
+                stream.push(Buffer.alloc(512*1024));
+            stream.push(null);
+            assert.strictEqual((await streamed).status, 413);
+            assert.deepStrictEqual(await fs.readdir(tempDir), [], 'uploads are removed');
+            assert.strictEqual(seen.length, 1);
+
+            //WebSocket-сообщение не может указать файл на сервере
+            const responses = [];
+            const socket = {readyState: require('ws').OPEN, send: text => responses.push(JSON.parse(text)), close() {}};
+            await controller.onMessage(socket, JSON.stringify({action: 'import-reading-lists', accessToken: 'open', csrfToken: 'csrf',
+                uploadFile: '/etc/passwd', data: {lists: []}}));
+            assert.match(responses.pop().error, /HTTP/);
+            assert.strictEqual(seen.length, 1);
+        } finally {
+            server.closeAllConnections();
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
 }
 
 async function testBackupValidationBeforeMutation() {
@@ -217,5 +283,5 @@ async function testBackupRollbackAndCrashRecovery() {
     });
 }
 
-module.exports = [testScryptMigrationAndOpds, testWebSocketBoundsAndRecovery,
+module.exports = [testScryptMigrationAndOpds, testWebSocketBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
     testBackupValidationBeforeMutation, testBackupRollbackAndCrashRecovery];

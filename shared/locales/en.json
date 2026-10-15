@@ -384,11 +384,12 @@
     "errors": {
         "adminOnlyProfiles": "Only the administrator can manage profiles",
         "backupFileInvalid": "Invalid format: {name}",
-        "backupInvalidBase64": "Invalid backup base64",
         "backupKeyDamaged": "The backup key is damaged or config.json is missing",
         "backupKoboInvalid": "Invalid kobo-sync.json format",
         "backupMissingFile": "The archive has no {name}",
         "backupNothingToSave": "Nothing to save yet",
+        "uploadInvalidJson": "The file is not valid JSON",
+        "uploadOverHttp": "Files are uploaded over HTTP (POST /upload)",
         "backupNotFull": "The file does not look like a full inpx-shelf backup",
         "backupReadingListsInvalid": "Invalid reading-lists.json format",
         "backupTooLarge": "Backup size exceeded",

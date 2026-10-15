@@ -901,7 +901,7 @@ async function testAuthorNamesExportAndImport() {
         } finally {
             await zip.close();
         }
-        const upload = async(name) => ({fileName: name, contentBase64: (await fs.readFile(path.join(source.config.dataDir, 'backups', name))).toString('base64')});
+        const upload = async(name) => ({file: path.join(source.config.dataDir, 'backups', name)});
 
         //имена не подменяют полный бэкап, а полный бэкап не загружается вместо имён
         await assert.rejects(target.importAdminBackup('admin', 'token', await upload(exported.fileName)), /полный|full/i);
@@ -1108,10 +1108,7 @@ async function testAdminBackupArchiveAndDownload() {
         restoreWorker.koboService = {store: restoreKoboStore};
         assert.strictEqual(restoreKoboStore.findDeviceByToken(koboToken), null);
 
-        const restored = await restoreWorker.importAdminBackup('admin', 'token', {
-            fileName: result.fileName,
-            contentBase64: (await fs.readFile(path.join(dataDir, 'backups', result.fileName))).toString('base64'),
-        });
+        const restored = await restoreWorker.importAdminBackup('admin', 'token', {file: path.join(dataDir, 'backups', result.fileName)});
         assert.strictEqual(restored.success, true);
         assert.strictEqual(restoreWorker.getProfileSessionUser(preRestoreSession), '');
         assert.strictEqual(restored.restartRecommended, true);

@@ -1129,7 +1129,7 @@ async function testKoboBackupEntryIsValidated() {
         const chunks = [];
         for await (const chunk of zip.outputStream)
             chunks.push(chunk);
-        return {contentBase64: Buffer.concat(chunks).toString('base64')};
+        return {buffer: Buffer.concat(chunks)};
     };
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kobo-backup-'));
     try {

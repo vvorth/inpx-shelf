@@ -388,11 +388,12 @@
     "errors": {
         "adminOnlyProfiles": "Только администратор может управлять профилями",
         "backupFileInvalid": "Неверный формат {name}",
-        "backupInvalidBase64": "Некорректный base64 бэкапа",
         "backupKeyDamaged": "Ключ бэкапа повреждён или отсутствует config.json",
         "backupKoboInvalid": "Неверный формат kobo-sync.json",
         "backupMissingFile": "В архиве нет {name}",
         "backupNothingToSave": "Сохранять пока нечего",
+        "uploadInvalidJson": "Файл не является корректным JSON",
+        "uploadOverHttp": "Файлы загружаются HTTP-запросом (POST /upload)",
         "backupNotFull": "Файл не похож на полный бэкап inpx-shelf",
         "backupReadingListsInvalid": "Неверный формат reading-lists.json",
         "backupTooLarge": "Превышен размер бэкапа",

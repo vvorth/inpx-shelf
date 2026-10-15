@@ -46,7 +46,6 @@
 import vueComponent from '../vueComponent.js';
 
 import {t, formatDateTime} from '../../share/i18n';
-import {fileToBase64} from '../../share/utils';
 
 class AdminAuthorNames {
     status = {ready: false, count: 0, updatedAt: '', matched: 0, job: {}, indexBuilding: false};
@@ -136,7 +135,7 @@ class AdminAuthorNames {
 
         this.importing = true;
         try {
-            await this.api.importAdminBackup({fileName: file.name, contentBase64: await fileToBase64(file)}, 'author-names');
+            await this.api.importAdminBackup(file, 'author-names');
             this.$root.notify.success(t('adminAuthorNames.imported'));
             if (!this.closed)
                 this.timer = setTimeout(() => this.refresh(), 1000);
