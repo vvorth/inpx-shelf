@@ -72,8 +72,9 @@ class AdminAuthorNames {
         return this.status.job || {};
     }
 
+    //скачивание или любая пересборка индекса (после скачивания, импорта имён, смены библиотек): число совпадений ещё старое
     get running() {
-        return !!(this.job.running || (this.status.indexBuilding && this.job.message));
+        return !!(this.job.running || this.status.indexBuilding);
     }
 
     get progress() {
@@ -86,6 +87,7 @@ class AdminAuthorNames {
 
     async refresh() {
         clearTimeout(this.timer);
+        const wasRunning = this.running;
         try {
             this.status = await this.api.adminAuthorNamesStatus();
         } catch (e) {
@@ -95,7 +97,7 @@ class AdminAuthorNames {
             return;
         if (this.running) {
             this.timer = setTimeout(() => this.refresh(), 2000);
-        } else if (this.job.message) {
+        } else if (wasRunning || this.job.message) {
             //готово: обновим сведения о поиске (баннер, подсказки)
             await this.api.updateConfig();
         }

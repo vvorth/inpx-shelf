@@ -872,6 +872,17 @@ async function testDisabledLibraryHiddenWithoutRebuild() {
     });
 }
 
+// The names card shows a rebuild as soon as one is requested, before the INPX hashing starts.
+async function testAuthorNamesStatusSeesRequestedRebuild() {
+    const CatalogSearch = require('../server/core/search/CatalogSearch');
+    const search = Object.create(CatalogSearch.prototype);
+    Object.assign(search, {building: false, meta: {aliases: 0}, worker: {dbLoad: null},
+        authorNames: {info: async() => ({ready: true, count: 2, updatedAt: ''}), status: () => ({running: false})}});
+    assert.strictEqual((await search.authorNamesStatus()).indexBuilding, false);
+    search.worker.dbLoad = Promise.resolve();
+    assert.strictEqual((await search.authorNamesStatus()).indexBuilding, true);
+}
+
 // English author names move between servers in their own archive, through the same checks as the full backup.
 async function testAuthorNamesExportAndImport() {
     await withTempDir(async(dir) => {
@@ -2300,6 +2311,7 @@ const tests = [
     testAdminSettingsRestoreKeepsSecrets,
     testAdminBackupArchiveAndDownload,
     testAuthorNamesExportAndImport,
+    testAuthorNamesStatusSeesRequestedRebuild,
     testDisabledLibrarySourceIsKept,
     testDisabledLibraryHiddenWithoutRebuild,
     testUserBackupExportsAndRestoresReaderState,

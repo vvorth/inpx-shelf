@@ -251,7 +251,8 @@ class CatalogSearch {
         return Object.assign(info, {
             job: this.authorNames.status(),
             matched: Number(this.meta.aliases || 0),
-            indexBuilding: this.building,
+            //dbLoad - запрошенная загрузка или пересборка, ещё до хэширования INPX: после импорта имён карточка сразу видит пересборку
+            indexBuilding: this.building || !!(this.worker && this.worker.dbLoad),
         });
     }
 
