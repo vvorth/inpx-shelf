@@ -31,6 +31,12 @@ module.exports = {
                 //настройки babel в .babelrc: его же читает @babel/eslint-parser
             },
             {
+                //до css-loader: из стилей Quasar и Line Awesome убирается неиспользуемое
+                test: /[\\/](quasar|line-awesome)\.css$/,
+                enforce: 'pre',
+                loader: path.resolve(__dirname, 'css-subset-loader.js'),
+            },
+            {
                 test: /\.(gif|png)$/,
                 type: 'asset/inline',
             },

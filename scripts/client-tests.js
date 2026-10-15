@@ -175,6 +175,52 @@ async function testStorePersistsOnlySettings() {
     assert.deepStrictEqual(Object.keys(options.restoreState('vuex', {getItem: () => '{broken'})), []);
 }
 
+// В сборку попадают только используемые иконки Line Awesome и стили используемых компонентов Quasar
+// (build/css-subset-loader.js): иконка из кода не должна пропасть, а имя иконки - собираться на лету.
+async function testCssSubsetKeepsUsedIconsAndComponents() {
+    const subset = require('../build/css-subset-loader');
+    const icons = subset.usedIcons();
+    const css = await fs.readFile(require.resolve('@quasar/extras/line-awesome/line-awesome.css'), 'utf8');
+    const kept = subset.lineAwesomeSubset(css, icons);
+    for (const icon of ['la-check', 'la-times-circle', 'la-caret-down', 'la-spinner'])
+        assert.ok(icons.has(icon), icon);
+    for (const icon of icons) {
+        if (css.includes(`.${icon}:before`))
+            assert.ok(kept.includes(`.${icon}:before`), `${icon} is missing from the icon subset`);
+        else
+            assert.ok(new RegExp(`\\.${icon}[\\s{,]`).test(css), `${icon} is not a Line Awesome icon or class`);
+    }
+    assert.ok(!kept.includes('.la-500px:before'));
+    assert.ok(kept.includes('.la.la-trash:before'));
+
+    const clientDir = path.resolve(__dirname, '../client');
+    const files = [];
+    const walk = async(dir) => {
+        for (const entry of await fs.readdir(dir, {withFileTypes: true})) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory())
+                await walk(fullPath);
+            else if (/\.(vue|js)$/.test(entry.name))
+                files.push(fullPath);
+        }
+    };
+    await walk(clientDir);
+    for (const file of files) {
+        const text = await fs.readFile(file, 'utf8');
+        assert.ok(!/la-\$\{|['"`]la-['"`]\s*\+/.test(text), `${path.relative(clientDir, file)}: icon name built at runtime`);
+    }
+
+    const quasarJs = await fs.readFile(path.join(clientDir, 'quasar.js'), 'utf8');
+    for (const name of quasarJs.match(/\bQ[A-Z]\w+/g)) {
+        const cssClass = name.replace(/[A-Z]/g, (c, i) => (i ? '-' : '') + c.toLowerCase());
+        assert.ok(!subset.unusedQuasarComponents.includes(cssClass), `${name} is registered, but its styles are cut by css-subset-loader`);
+    }
+    const quasarCss = subset.quasarSubset(await fs.readFile(require.resolve('quasar/dist/quasar.css'), 'utf8'));
+    assert.ok(!quasarCss.includes('.q-date__'));
+    for (const cssClass of ['.q-btn', '.q-btn-group', '.q-field', '.q-select', '.q-item', '.q-menu', '.q-dialog', '.q-notification', '.q-toggle', '.q-textarea'])
+        assert.ok(quasarCss.includes(cssClass), cssClass);
+}
+
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
     testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
-    testStorePersistsOnlySettings];
+    testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents];

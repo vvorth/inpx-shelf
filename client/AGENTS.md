@@ -17,3 +17,4 @@ Vue 3 + Quasar 2 web app, built by webpack (`npm run build:client`).
 
 - UI text lives in `shared/locales/ru.json` and `en.json`; code uses semantic keys only (`$t('settings.darkTheme')`, `t()`; `$tm`/`tm()` for server text or `{key, params}` descriptors). Add the key to both files and run `npm run test:i18n`.
 - Keep the UI consistent: same components, spacing and patterns as the existing pages.
+- Write icon names in full (`'la la-check'`), never build them at runtime: the build keeps only the Line Awesome icons found in `client/` (`build/css-subset-loader.js`). A Quasar component listed there as unused has no styles: remove it from that list before registering it in `quasar.js`.
