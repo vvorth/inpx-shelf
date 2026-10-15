@@ -100,14 +100,24 @@ async function testSessionLifetimeAndMalformedCookies() {
     const security = new Security({});
     security.secret = 'test-secret';
     const middleware = security.middleware();
-    const response = {setHeader: () => assert.fail('Polling or assets must not set cookies')};
+    const response = {setHeader: name => assert.notStrictEqual(name, 'Set-Cookie', 'Polling or assets must not set cookies')};
     for (let i = 0; i < 1000; i++) {
         for (const pathname of ['/health', '/ready', '/metrics', '/app.js'])
             middleware({path: pathname, headers: {}, socket: {}}, response, () => {});
     }
     assert.strictEqual(security.sessions.size, 0);
     let cookie;
-    middleware({path: '/', headers: {}, socket: {}}, {setHeader: (_, value) => { cookie = value; }}, () => {});
+    const headers = {};
+    middleware({path: '/', headers: {}, socket: {}}, {setHeader: (name, value) => { headers[name] = value; }}, () => {});
+    cookie = headers['Set-Cookie'];
+    //no framing by other sites, no MIME sniffing, no referrer to other sites; scripts and styles are not restricted
+    assert.strictEqual(headers['X-Frame-Options'], 'DENY');
+    assert.strictEqual(headers['Content-Security-Policy'], "frame-ancestors 'none'");
+    assert.strictEqual(headers['X-Content-Type-Options'], 'nosniff');
+    assert.strictEqual(headers['Referrer-Policy'], 'same-origin');
+    middleware({path: '/', headers: {}, socket: {encrypted: true}}, {setHeader: (name, value) => { headers[name] = value; }}, () => {});
+    assert.strictEqual(headers['Content-Security-Policy'], "frame-ancestors 'none'; upgrade-insecure-requests");
+    assert.ok(headers['Strict-Transport-Security']);
     assert.ok(cookie.startsWith('inpx_web_session='));
     const request = {headers: {cookie}};
     const session = security.getSession(request);

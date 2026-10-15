@@ -228,11 +228,18 @@ class Security {
         return !!(req.secure || this.requestProto(req) === 'https' || this.forwardedProto(req) === 'https');
     }
 
+    //Приложение не встраивается в чужие фреймы (clickjacking). Скрипты и стили CSP не ограничивает:
+    //Quasar и читалка используют встроенные стили и data:-изображения.
     applySecurityHeaders(req, res) {
+        const csp = ["frame-ancestors 'none'"];
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Referrer-Policy', 'same-origin');
         if (this.isSecureRequest(req)) {
             res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-            res.setHeader('Content-Security-Policy', 'upgrade-insecure-requests');
+            csp.push('upgrade-insecure-requests');
         }
+        res.setHeader('Content-Security-Policy', csp.join('; '));
     }
 
     middleware() {
