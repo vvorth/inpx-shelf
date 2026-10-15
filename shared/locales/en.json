@@ -384,7 +384,14 @@
             "pulitzer": "Pulitzer Prize for Fiction",
             "goncourt": "Prix Goncourt",
             "bornThisMonth": "Writers born this month"
-        }
+        },
+        "yourShelvesAreEmpty": "Your shelves are empty for now",
+        "shelvesAppearAsYouRead": "As you read and add books to lists, these shelves appear here: {shelves}. Meanwhile, look through the new books and genres.",
+        "newInTheLibrary": "New in the library",
+        "latestAdditions": "Latest additions to the catalog",
+        "seeAll": "All new books",
+        "browseByGenre": "Genres",
+        "allGenres": "All genres"
     },
     "discoverySource": {
         "deleteSource": "Delete source",

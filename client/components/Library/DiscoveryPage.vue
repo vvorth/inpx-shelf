@@ -85,56 +85,106 @@
             </section>
 
             <div v-else-if="!requestable" />
-            <div v-else-if="loading && !shelves.length" class="page-empty page-empty--inline">
+            <div v-else-if="loading && !rawShelves.length" class="page-empty page-empty--inline">
                 <q-linear-progress indeterminate size="3px" color="primary" />
                 {{ $t('discovery.buildingShowcase') }}
             </div>
             <div v-else-if="error" class="page-empty page-empty--inline">
                 {{ error }}
             </div>
-            <div v-else-if="!shelves.length" class="page-empty">
+            <div v-else-if="!shelves.length && !emptyShelves.length && kind !== 'home'" class="page-empty">
                 {{ $t('discovery.nothingHereYet') }}
             </div>
 
-            <section v-for="shelf in shelves" :key="shelf.id" class="shelf">
+            <!-- «Новое в библиотеке» - сразу после «Продолжить чтение»; пустые личные полки - одной карточкой:
+                 вверху, пока полок с книгами нет, иначе после них -->
+            <template v-for="shelf in homeShelves" :key="shelf.id">
+                <section v-if="shelf.empty" class="card">
+                    <h2 v-if="!shelves.length" class="card-title">
+                        {{ $t('discovery.yourShelvesAreEmpty') }}
+                    </h2>
+                    <div class="card-hint">
+                        {{ $t('discovery.shelvesAppearAsYouRead', {shelves: emptyShelves.map(item => $tm(item.title)).join(', ')}) }}
+                    </div>
+                </section>
+                <section v-else-if="shelf.recent" class="shelf">
+                    <div class="shelf-head">
+                        <div class="shelf-copy">
+                            <h2 class="card-title">
+                                {{ $t('discovery.newInTheLibrary') }}
+                            </h2>
+                            <div class="card-hint">
+                                {{ $t('discovery.latestAdditions') }}
+                            </div>
+                        </div>
+                        <div class="shelf-actions">
+                            <q-btn flat dense no-caps icon-right="la la-angle-right" :to="{path: '/search', query: {sort: 'date'}}">
+                                {{ $t('discovery.seeAll') }}
+                            </q-btn>
+                        </div>
+                    </div>
+                    <BookCollection :books="recentShown" :states="states" :view="view" />
+                </section>
+                <section v-else class="shelf">
+                    <div class="shelf-head">
+                        <div class="shelf-copy">
+                            <h2 class="card-title">
+                                {{ $tm(shelf.title) }}
+                            </h2>
+                            <div v-if="shelf.subtitle" class="card-hint">
+                                {{ $tm(shelf.subtitle) }}
+                            </div>
+                            <div class="shelf-meta">
+                                <span v-if="shelf.updatedAt">{{ $t('discovery.updated', {time: formatTime(shelf.updatedAt)}) }}</span>
+                                <span v-if="shelf.discoveryStale" class="shelf-warn">{{ $t('discovery.showingCachedData') }}</span>
+                                <span v-if="shelf.discoveryRefreshError" class="shelf-warn">{{ shelf.discoveryRefreshError }}</span>
+                            </div>
+                        </div>
+                        <div class="shelf-actions">
+                            <q-btn v-if="shelf.sourceUrl" flat dense no-caps icon="la la-external-link-alt" type="a" :href="shelf.sourceUrl" target="_blank" rel="noopener">
+                                {{ $t('common.source') }}
+                            </q-btn>
+                            <q-btn v-if="hideSetting(shelf)" flat dense no-caps icon="la la-eye-slash" @click="hideShelf(shelf)">
+                                {{ $t('discovery.hideShelf') }}
+                            </q-btn>
+                        </div>
+                    </div>
+
+                    <BookCollection
+                        v-if="shelf.items.length"
+                        :books="shelf.items"
+                        :states="states"
+                        :view="view"
+                        @interaction="recordInteraction"
+                    />
+                    <div v-else class="card-hint">
+                        {{ shelf.emptyMessage ? $tm(shelf.emptyMessage) : $t('discovery.nothingHereYet') }}
+                    </div>
+
+                    <q-btn v-if="canLoadMore(shelf)" class="shelf-more" outline color="primary" no-caps icon="la la-plus" :loading="loading" @click="loadMore(shelf)">
+                        {{ shelf.id === 'similar-books' ? $t('discovery.moreRecommendations') : $t('discovery.loadMore') }}
+                    </q-btn>
+                </section>
+            </template>
+
+            <!-- вход в каталог по жанрам: поиск с фильтром жанра -->
+            <section v-if="genreTiles.length" class="shelf">
                 <div class="shelf-head">
-                    <div class="shelf-copy">
-                        <h2 class="card-title">
-                            {{ $tm(shelf.title) }}
-                        </h2>
-                        <div v-if="shelf.subtitle" class="card-hint">
-                            {{ $tm(shelf.subtitle) }}
-                        </div>
-                        <div class="shelf-meta">
-                            <span v-if="shelf.updatedAt">{{ $t('discovery.updated', {time: formatTime(shelf.updatedAt)}) }}</span>
-                            <span v-if="shelf.discoveryStale" class="shelf-warn">{{ $t('discovery.showingCachedData') }}</span>
-                            <span v-if="shelf.discoveryRefreshError" class="shelf-warn">{{ shelf.discoveryRefreshError }}</span>
-                        </div>
-                    </div>
+                    <h2 class="card-title">
+                        {{ $t('discovery.browseByGenre') }}
+                    </h2>
                     <div class="shelf-actions">
-                        <q-btn v-if="shelf.sourceUrl" flat dense no-caps icon="la la-external-link-alt" type="a" :href="shelf.sourceUrl" target="_blank" rel="noopener">
-                            {{ $t('common.source') }}
-                        </q-btn>
-                        <q-btn v-if="hideSetting(shelf)" flat dense no-caps icon="la la-eye-slash" @click="hideShelf(shelf)">
-                            {{ $t('discovery.hideShelf') }}
+                        <q-btn flat dense no-caps icon-right="la la-angle-right" to="/search">
+                            {{ $t('discovery.allGenres') }}
                         </q-btn>
                     </div>
                 </div>
-
-                <BookCollection
-                    v-if="shelf.items.length"
-                    :books="shelf.items"
-                    :states="states"
-                    :view="view"
-                    @interaction="recordInteraction"
-                />
-                <div v-else class="card-hint">
-                    {{ shelf.emptyMessage ? $tm(shelf.emptyMessage) : $t('discovery.nothingHereYet') }}
+                <div class="genre-tiles">
+                    <router-link v-for="tile in genreTiles" :key="tile.code" class="genre-tile" :to="{path: '/search', query: {genre: tile.code}}">
+                        <span class="genre-tile-name">{{ tile.name }}</span>
+                        <span class="genre-tile-count num">{{ $t('addToListDialog.books', {n: tile.count.toLocaleString()}) }}</span>
+                    </router-link>
                 </div>
-
-                <q-btn v-if="canLoadMore(shelf)" class="shelf-more" outline color="primary" no-caps icon="la la-plus" :loading="loading" @click="loadMore(shelf)">
-                    {{ shelf.id === 'similar-books' ? $t('discovery.moreRecommendations') : $t('discovery.loadMore') }}
-                </q-btn>
             </section>
         </div>
     </div>
@@ -150,7 +200,8 @@ import {t, tm, formatDateTime} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {bookUid, loadBookStates} from '../../share/bookActions';
 import {bookView, bookViewOptions} from '../../share/bookView';
-import {myLanguages, languageMatches} from '../../share/languages';
+import {myLanguages, languageMatches, langDefaultFor} from '../../share/languages';
+import {loadGenres, genreName} from '../../share/genres';
 import {externalDiscovery, discoveryRouteLabel} from '../../share/discoveryRoutes';
 import {isExternalOnly} from '../../share/discovery';
 
@@ -184,6 +235,10 @@ const componentOptions = {
             if (this.isOwnRoute)
                 this.load();
         },
+        catalogRequestKey() {
+            if (this.isOwnRoute)
+                this.loadCatalog();
+        },
     },
 };
 
@@ -203,9 +258,14 @@ class DiscoveryPage {
     tasteDismissed = false;
     allLanguages = false;
     impressionsKey = '';
+    recentBooks = [];
+    genreFacets = [];
+    catalogKey = '';
+    genresReady = 0;
 
     created() {
         this.api = this.$root.api;
+        loadGenres(this.api).then(() => this.genresReady++).catch(() => {});
     }
 
     activated() {
@@ -216,6 +276,7 @@ class DiscoveryPage {
         this.$root.setAppTitle(this.kind === 'home' ? (this.collectionName || t('discovery.home')) : this.pageTitle);
         if (this.requestKey !== this.loadedKey)
             this.load();
+        this.loadCatalog();
     }
 
     get isOwnRoute() {
@@ -385,11 +446,81 @@ class DiscoveryPage {
             || shelf.id === 'continue-reading' || !book.lang || languageMatches(book, languages);
     }
 
-    get shelves() {
+    get filteredShelves() {
         const keep = this.languageFilter;
         return this.preparedShelves
             .map(shelf => Object.assign({}, shelf, {items: (shelf.items || []).filter(book => keep(book, shelf))}))
             .filter(shelf => shelf.items.length || shelf.emptyMessage || shelf.id === 'similar-books');
+    }
+
+    //на главной пустые полки собраны в одну карточку (emptyShelves)
+    get shelves() {
+        return (this.kind === 'home' ? this.filteredShelves.filter(shelf => shelf.items.length) : this.filteredShelves);
+    }
+
+    get emptyShelves() {
+        return (this.kind === 'home' ? this.filteredShelves.filter(shelf => !shelf.items.length) : []);
+    }
+
+    get homeShelves() {
+        const result = [...this.shelves];
+        if (this.kind !== 'home')
+            return result;
+        if (this.recentBooks.length)
+            result.splice(result.findIndex(shelf => shelf.id === 'continue-reading') + 1, 0, {id: 'new-in-library', recent: true});
+        if (this.emptyShelves.length)
+            result.splice(this.shelves.length ? result.length : 0, 0, {id: 'empty-shelves', empty: true});
+        return result;
+    }
+
+    //карточки и строки крупнее обложек: их меньше, чтобы жанры не уходили далеко вниз
+    get recentShown() {
+        return this.recentBooks.slice(0, (this.view === 'covers' ? 12 : 6));
+    }
+
+    get genreTiles() {
+        void this.genresReady;
+        return this.genreFacets.map(([code, count]) => ({code, count, name: genreName(code)}));
+    }
+
+    //от чего зависят «Новое в библиотеке» и жанры
+    get catalogRequestKey() {
+        return JSON.stringify([
+            this.kind, (this.config.dbConfig || {}).inpxHash || '', !!(this.config.catalogSearch || {}).ready,
+            langDefaultFor(myLanguages(this.config, this.settings)), !!this.settings.showDeleted,
+        ]);
+    }
+
+    //«Новое в библиотеке» и жанры с числом книг - один поиск по всему каталогу, новые сверху.
+    //Видны и гостю, и новому читателю, у которого личные полки ещё пусты
+    async loadCatalog() {
+        const key = this.catalogRequestKey;
+        if (this.kind !== 'home' || key === this.catalogKey)
+            return;
+        this.catalogKey = key;
+        try {
+            const languages = myLanguages(this.config, this.settings);
+            const result = await this.api.catalogSearch({
+                q: '',
+                filters: {lang: (languages.all ? [] : languages.list)},
+                sort: 'date',
+                limit: 12,
+                facets: true,
+                showDeleted: !!this.settings.showDeleted,
+            });
+            if (key !== this.catalogKey)
+                return;
+            this.recentBooks = result.books || [];
+            this.genreFacets = ((result.facets && result.facets.genre) || []).slice(0, 12);
+            this.loadStates();
+        } catch (e) {
+            //поисковый индекс ещё строится или нет связи: главная обходится без этих разделов и повторит при возврате
+            if (key === this.catalogKey) {
+                this.catalogKey = '';
+                this.recentBooks = [];
+                this.genreFacets = [];
+            }
+        }
     }
 
     get hiddenByLanguage() {
@@ -490,7 +621,7 @@ class DiscoveryPage {
     async loadStates() {
         if (!this.signedIn)
             return;
-        const states = await loadBookStates(this.api, this.rawShelves.flatMap(shelf => shelf.items || []));
+        const states = await loadBookStates(this.api, [...this.rawShelves.flatMap(shelf => shelf.items || []), ...this.recentBooks]);
         if (states)
             this.states = states;
     }
@@ -605,5 +736,44 @@ export default vueComponent(DiscoveryPage);
 
 .shelf-more {
     align-self: flex-start;
+}
+
+.genre-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.genre-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
+    color: var(--app-text) !important;
+    text-decoration: none;
+}
+
+.genre-tile:hover {
+    border-color: var(--app-primary);
+}
+
+.genre-tile-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.genre-tile-count {
+    color: var(--app-muted);
+    font-size: 12px;
+}
+
+@media (max-width: 599px) {
+    .genre-tiles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 </style>
