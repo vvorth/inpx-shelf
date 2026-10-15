@@ -68,8 +68,39 @@ async function testReaderReadMarkKeepsPlace() {
     assert.strictEqual(readerProgress.hasPlace(readerProgress.unmarkRead({percent: 1}, 0.5, 't4')), false);
 }
 
+//Позиция с другого устройства: новее и далеко - спросить, без своего места - перейти, рядом - без вопроса
+async function testReaderRemoteProgressChoice() {
+    const readerProgress = require('../client/share/readerProgress');
+    const at = minutes => new Date(Date.UTC(2026, 0, 1, 12, minutes)).toISOString();
+    const local = {percent: 0.2, sectionId: 'section-3', pageIndex: 20, updatedAt: at(10)};
+
+    const far = readerProgress.chooseRemote(local, {percent: 0.63, sectionId: 'section-9', pageIndex: 63, updatedAt: at(30)});
+    assert.strictEqual(far.progress.pageIndex, 20, 'Stay on the local place until the reader decides');
+    assert.strictEqual(far.remote.pageIndex, 63);
+
+    //Kobo и KOReader присылают только долю прочитанного
+    const device = readerProgress.chooseRemote(local, {percent: 0.215, updatedAt: at(30)});
+    assert.strictEqual(device.remote.percent, 0.215, 'More than 1% away asks even without a chapter');
+
+    const near = readerProgress.chooseRemote(local, {percent: 0.205, sectionId: 'section-3', pageIndex: 21, updatedAt: at(30)});
+    assert.strictEqual(near.remote, null);
+    assert.strictEqual(near.progress.pageIndex, 21, 'A close newer position is taken silently');
+
+    const older = readerProgress.chooseRemote(local, {percent: 0.63, sectionId: 'section-9', pageIndex: 63, updatedAt: at(5)});
+    assert.deepStrictEqual([older.remote, older.progress.pageIndex], [null, 20], 'An older remote position is ignored');
+
+    const fresh = readerProgress.chooseRemote(null, {percent: 0.63, sectionId: 'section-9', pageIndex: 63, updatedAt: at(30)});
+    assert.deepStrictEqual([fresh.remote, fresh.progress.pageIndex], [null, 63], 'A fresh device jumps without asking');
+
+    //«Остаться здесь» делает свою позицию новее: вопрос не возвращается
+    const stayed = Object.assign({}, local, {updatedAt: at(31)});
+    assert.strictEqual(readerProgress.chooseRemote(stayed, far.remote).remote, null);
+    assert.strictEqual(readerProgress.shouldUpload(far.remote, stayed), true);
+}
+
 module.exports = [
     testReaderProgressMapIsCapped,
     testReaderReadMarkKeepsPlace,
+    testReaderRemoteProgressChoice,
     testReaderStorageKeepsBackgroundOnceAndForwardProgress,
 ];

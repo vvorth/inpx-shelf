@@ -21,6 +21,7 @@ class Notify {
             position = 'top-right',
             html = false,
             actions = [],//кнопки Quasar ({label, handler}) перед кнопкой закрытия
+            timeout,//0 - пока не закроют
         } = opts;
 
         //сообщения - текст (имена, названия книг); разметка только с opts.html
@@ -36,6 +37,7 @@ class Notify {
             textColor: iconColor,
             icon,
             actions: [...actions, {icon: 'la la-times notify-button-icon', color: 'black'}],
+            ...(timeout === undefined ? {} : {timeout}),
             html: true,
 
             message: 
@@ -58,8 +60,9 @@ class Notify {
         this.notify(Object.assign({color: 'negative', icon: 'la la-exclamation-circle', messageColor: 'yellow', captionColor: 'white', message, caption}, options));
     }
 
+    //возвращает функцию, закрывающую уведомление
     info(message, caption, options) {
-        this.notify(Object.assign({color: 'info', icon: 'la la-bell', message, caption}, options));
+        return this.notify(Object.assign({color: 'info', icon: 'la la-bell', message, caption}, options));
     }
 }
 

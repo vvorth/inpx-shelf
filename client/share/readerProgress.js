@@ -96,20 +96,40 @@ function merge(primary = {}, secondary = {}, options = {}) {
     return first;
 }
 
+function samePosition(first = {}, second = {}) {
+    const a = normalize(first || {});
+    const b = normalize(second || {});
+    return (
+        a.pageIndex === b.pageIndex
+        && a.textOffset === b.textOffset
+        && a.textSnippet === b.textSnippet
+        && Math.abs(a.percent - b.percent) <= 0.0001
+        && a.sectionId === b.sectionId
+    );
+}
+
+//Позиция с другого устройства (браузер, Kobo, KOReader) против своей (local). Новее и далеко (другая глава
+//или дальше 1%) - не переходим молча: remote - куда предложить перейти, progress - своя позиция.
+//Своего места нет (новое устройство) или разница мала - progress по правилам merge, remote = null
+function chooseRemote(local = {}, remote = {}, options = {}) {
+    const own = normalize(local || {}, options.generation);
+    const chosen = merge(remote, own, Object.assign({preferSecondaryRecentForward: true}, options));
+    if (!hasPlace(own) || samePosition(chosen, own))
+        return {progress: chosen, remote: null};
+
+    const otherChapter = !!(own.sectionId && chosen.sectionId && own.sectionId !== chosen.sectionId);
+    if (otherChapter || Math.abs(chosen.percent - own.percent) > 0.01)
+        return {progress: own, remote: chosen};
+    return {progress: chosen, remote: null};
+}
+
 function shouldUpload(serverProgress = {}, restoredProgress = {}) {
     const server = normalize(serverProgress || {});
     const restored = normalize(restoredProgress || {});
     if (!hasPlace(restored))
         return false;
 
-    const differs = (
-        server.pageIndex !== restored.pageIndex
-        || server.textOffset !== restored.textOffset
-        || String(server.textSnippet || '') !== String(restored.textSnippet || '')
-        || Math.abs((server.percent || 0) - (restored.percent || 0)) > 0.0001
-        || String(server.sectionId || '') !== String(restored.sectionId || '')
-    );
-    if (!differs)
+    if (samePosition(server, restored))
         return false;
 
     if (!hasPlace(server))
@@ -158,4 +178,4 @@ function trimMap(map = {}, limit = 500) {
     return Object.fromEntries(entries.slice(0, limit));
 }
 
-module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, shouldUpload, afterReset, trimMap};
+module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, samePosition, chooseRemote, shouldUpload, afterReset, trimMap};

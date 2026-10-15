@@ -599,7 +599,7 @@ class Reader extends ReaderPaginator {
     };
     restorePending = false;
     restoreFromSavedProgress = false;
-    readMarkScrollTop = -1;
+    restoredScrollTop = -1;
     saveProgressDebounced = null;
     savePreferencesDebounced = null;
     progressSavePromise = null;
@@ -714,6 +714,10 @@ class Reader extends ReaderPaginator {
         if (!this.profileReaderPreferencesApplied)
             this.applyStoredReaderPreferences();
 
+        // Предложение перейти к позиции с другого устройства: что предложено и как закрыть уведомление
+        this.offeredRemoteProgress = null;
+        this.dismissRemoteProgressNotify = null;
+
         this.handleBeforeUnload = () => {
             this.flushProgress();
         };
@@ -746,6 +750,7 @@ class Reader extends ReaderPaginator {
             }
             if (document.visibilityState === 'visible') {
                 this.resumeViewportRefreshAfterVisibility();
+                this.checkRemoteProgress();// no await
                 if (this.environment.wakeLockRequested)
                     this.environment.requestWakeLock();// no await
             }
@@ -794,6 +799,7 @@ class Reader extends ReaderPaginator {
     }
 
     deactivated() {
+        this.dismissRemoteProgressOffer();
         this.environment.detach();
         this.detachScrollerObserver();
         this.flushProgress();
@@ -804,6 +810,7 @@ class Reader extends ReaderPaginator {
     }
 
     beforeUnmount() {
+        this.dismissRemoteProgressOffer();
         this.environment.detach();
         this.detachScrollerObserver();
         this.clearSpacingReflowTimer();
@@ -4301,7 +4308,7 @@ class Reader extends ReaderPaginator {
         scroller.scrollTop = (target
             ? this.readerScrollTargetTop(scroller, target)
             : Math.max(0, Number(anchor.scrollTop || 0) || 0));
-        this.readMarkScrollTop = scroller.scrollTop;
+        this.restoredScrollTop = scroller.scrollTop;
         this.updateCurrentSectionFromScroll();
         return true;
     }
@@ -4574,12 +4581,12 @@ class Reader extends ReaderPaginator {
         const usableStoredProgress = this.readerProgressAfterReset(storedProgress, progressResetAt, progressGeneration);
         if (storedProgress && !usableStoredProgress)
             this.clearStoredReaderProgress(this.bookUid);
-        let restoredProgress = this.hasReaderProgressPlace(stateProgress)
+        const remoteProgress = this.hasReaderProgressPlace(stateProgress)
             ? stateProgress
             : this.mergeReaderProgress(stateProgress, profileProgress);
-        restoredProgress = this.mergeReaderProgress(restoredProgress, usableStoredProgress, {
-            preferSecondaryRecentForward: true,
-        });
+        const choice = readerProgress.chooseRemote(usableStoredProgress, remoteProgress, {generation: this.readerProgressGeneration});
+        const restoredProgress = choice.progress;
+        this.offeredRemoteProgress = choice.remote;
         this.progress = restoredProgress;
         this.pendingReaderProgressUpload = this.shouldUploadRestoredReaderProgress(serverProgress, restoredProgress);
         this.bookmarks = Array.isArray(stateResponse && stateResponse.bookmarks) ? stateResponse.bookmarks : [];
@@ -4611,6 +4618,7 @@ class Reader extends ReaderPaginator {
 
     async loadReader() {
         const loadJobId = ++this.readerLoadJobId;
+        this.dismissRemoteProgressOffer();
         // Invalidate queued/in-flight pagination from the previous source before
         // replacing readerHtml and the shared measurement DOM.
         this.pagedBuildJobId += 1;
@@ -4669,7 +4677,7 @@ class Reader extends ReaderPaginator {
         this.currentSectionId = '';
         this.restorePending = false;
         this.restoreFromSavedProgress = false;
-        this.readMarkScrollTop = -1;
+        this.restoredScrollTop = -1;
         this.pendingReflowAnchor = null;
         this.controlsOpen = false;
         this.contentsDialogOpen = false;
@@ -4793,6 +4801,8 @@ class Reader extends ReaderPaginator {
                 this.pendingReaderProgressUpload = false;
                 this.queuePersistProgress();
             }
+            if (this.offeredRemoteProgress)
+                this.offerRemoteProgress(this.offeredRemoteProgress);
             await this.waitForAnimationFrames(2);
         } catch (e) {
             if (loadJobId === this.readerLoadJobId)
@@ -4876,7 +4886,7 @@ class Reader extends ReaderPaginator {
                     this.setPagedScroll(this.getPagedOffset(target));
                 else
                     scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
-                this.readMarkScrollTop = scroller.scrollTop;
+                this.restoredScrollTop = scroller.scrollTop;
                 this.updateCurrentSectionFromScroll();
                 return;
             }
@@ -4888,7 +4898,7 @@ class Reader extends ReaderPaginator {
         } else {
             const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
             scroller.scrollTop = maxScroll * (Number(this.progress.percent || 0) || 0);
-            this.readMarkScrollTop = scroller.scrollTop;
+            this.restoredScrollTop = scroller.scrollTop;
             this.updateCurrentSectionFromScroll();
         }
     }
@@ -4980,14 +4990,11 @@ class Reader extends ReaderPaginator {
         const currentScroll = scroller.scrollTop;
         const percent = (maxScroll > 0 ? currentScroll / maxScroll : 0);
         this.updateCurrentSectionFromScroll();
-        // Отметка «прочитано» держится, пока читатель сам не прокрутит текст: переход к месту её не снимает
-        if (
-            this.readMarkScrollTop >= 0
-            && readerProgress.isRead(this.progress)
-            && Math.abs(currentScroll - this.readMarkScrollTop) < scroller.clientHeight / 2
-        )
+        // Прокрутка самой читалкой к месту (восстановление, отметка «прочитано») - ещё не чтение: прогресс
+        // не перезаписывается, пока читатель сам не прокрутит текст (позиция другого устройства, отметка остаются)
+        if (this.restoredScrollTop >= 0 && Math.abs(currentScroll - this.restoredScrollTop) < scroller.clientHeight / 2)
             return;
-        this.readMarkScrollTop = -1;
+        this.restoredScrollTop = -1;
         this.progress = Object.assign({}, this.progress, {
             percent,
             sectionId: this.currentSectionId || '',
@@ -5715,15 +5722,7 @@ class Reader extends ReaderPaginator {
             return;
         }
 
-        const responseProgress = this.normalizeReaderProgress(rawResponseProgress);
-        const responseDiffers = (
-            responseProgress.pageIndex !== requestProgress.pageIndex
-            || responseProgress.textOffset !== requestProgress.textOffset
-            || String(responseProgress.textSnippet || '') !== String(requestProgress.textSnippet || '')
-            || Math.abs((responseProgress.percent || 0) - (requestProgress.percent || 0)) > 0.0001
-            || String(responseProgress.sectionId || '') !== String(requestProgress.sectionId || '')
-        );
-        if (responseDiffers) {
+        if (!readerProgress.samePosition(rawResponseProgress, requestProgress)) {
             response = await api.updateReaderProgress(bookUid, Object.assign({}, progressPatch, {force: true}), {suppressProfileLogin: true});
             if (bookUid !== this.bookUid)
                 return;
@@ -5750,6 +5749,92 @@ class Reader extends ReaderPaginator {
             });
         this.progressSavePromise = request;
         return request;
+    }
+
+    //Вкладка снова видна: позиция могла уйти вперёд на другом устройстве
+    async checkRemoteProgress() {
+        const api = this.$root.api;
+        const bookUid = this.bookUid;
+        if (!api || !bookUid || this.isStandaloneMode || this.loading || this.bookPreparing || this.error)
+            return;
+        if (this.readerProfileWarningVisible && !this.hasReaderProfileAccessToken)
+            return;
+
+        let state = null;
+        try {
+            state = await api.getReaderState(bookUid, {suppressProfileLogin: true});
+        } catch (e) {
+            return;
+        }
+        if (bookUid !== this.bookUid || this.loading || this.bookPreparing || !state)
+            return;
+
+        // Сброс прогресса на другом устройстве обработает сохранение (handleReaderProgressGenerationResponse)
+        const generation = Math.max(0, parseInt(state.progressGeneration, 10) || 0);
+        const remote = this.readerProgressAfterReset(state.progress, state.progressResetAt, generation);
+        if (!remote || generation !== this.readerProgressGeneration)
+            return;
+
+        // Время своей позиции - последнее сохранение: перестройка страниц обновляет updatedAt без чтения
+        const stored = this.readStoredReaderProgress();
+        const local = Object.assign({}, this.progress, {
+            sectionId: this.currentSectionId || this.progress.sectionId || '',
+            updatedAt: (stored && stored.updatedAt) || this.progress.updatedAt,
+        });
+        const choice = readerProgress.chooseRemote(local, remote, {generation});
+        if (choice.remote)
+            this.offerRemoteProgress(choice.remote);
+        else if (!this.hasReaderProgressPlace(local) && !readerProgress.samePosition(choice.progress, local))
+            this.goToRemoteProgress(bookUid, choice.progress);
+    }
+
+    offerRemoteProgress(remote = {}) {
+        this.dismissRemoteProgressOffer();
+        const bookUid = this.bookUid;
+        const section = this.contents.find(item => item.id === remote.sectionId);
+        const details = [section ? section.title : '', formatDateTime(remote.updatedAt)].filter(Boolean).join(', ');
+        this.offeredRemoteProgress = remote;
+        this.dismissRemoteProgressNotify = this.$root.notify.info(
+            t('reader.remoteProgress', {percent: Math.round((Number(remote.percent) || 0) * 100), details}),
+            '',
+            Object.assign({}, this.readerNotifyOptions, {
+                icon: 'la la-sync',
+                timeout: 0,
+                actions: [
+                    {label: t('reader.remoteProgressGo'), color: 'primary', handler: () => this.goToRemoteProgress(bookUid, remote)},
+                    {label: t('reader.remoteProgressStay'), color: 'primary', handler: () => this.keepLocalProgress(bookUid)},
+                ],
+            }),
+        );
+    }
+
+    dismissRemoteProgressOffer() {
+        if (this.dismissRemoteProgressNotify)
+            this.dismissRemoteProgressNotify();
+        this.dismissRemoteProgressNotify = null;
+        this.offeredRemoteProgress = null;
+    }
+
+    goToRemoteProgress(bookUid = '', remote = {}) {
+        this.dismissRemoteProgressOffer();
+        if (bookUid !== this.bookUid)
+            return;
+
+        this.progress = this.normalizeReaderProgress(remote);
+        this.currentSectionId = this.progress.sectionId;
+        this.writeStoredReaderProgress();
+        this.jumpToProgress();
+    }
+
+    //Остаться здесь: своя позиция становится самой новой, чтобы вопрос не вернулся при следующей сверке
+    keepLocalProgress(bookUid = '') {
+        this.dismissRemoteProgressOffer();
+        if (bookUid !== this.bookUid)
+            return;
+
+        this.progress = Object.assign({}, this.progress, {updatedAt: new Date().toISOString()});
+        this.writeStoredReaderProgress();
+        this.queuePersistProgress(bookUid);// no await
     }
 
     async toggleCurrentBookRead() {
@@ -5790,7 +5875,7 @@ class Reader extends ReaderPaginator {
                 ? readerProgress.markRead(place, updatedAt, this.readerProgressGeneration)
                 : readerProgress.unmarkRead(place, this.currentViewPercent(), updatedAt, this.readerProgressGeneration));
             this.currentSectionId = this.progress.sectionId;
-            this.readMarkScrollTop = ((read && !this.isPagedMode && this.$refs.scroller) ? this.$refs.scroller.scrollTop : -1);
+            this.restoredScrollTop = ((!this.isPagedMode && this.$refs.scroller) ? this.$refs.scroller.scrollTop : -1);
             if (this.hasReaderProgressPlace(this.progress)) {
                 this.writeStoredReaderProgress();
                 this.queuePersistProgress(bookUid);// no await
