@@ -475,6 +475,9 @@ class CatalogIndex {
             db.exec('COMMIT');
             db.exec(`INSERT INTO book_fts(book_fts) VALUES ('optimize')`);
             db.exec('ANALYZE');
+            //VACUUM уменьшает файл примерно на четверть, но с temp_store = MEMORY держит в памяти копию всей БД
+            //(400 тыс. книг: +170 МБ к пику RSS); с временным файлом - около +40 МБ и на треть секунды дольше
+            db.exec('PRAGMA temp_store = FILE');
             db.exec('VACUUM');
         } finally {
             db.close();
