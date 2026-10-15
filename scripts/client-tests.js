@@ -221,6 +221,21 @@ async function testCssSubsetKeepsUsedIconsAndComponents() {
         assert.ok(quasarCss.includes(cssClass), cssClass);
 }
 
+// Браузер загружает словарь только выбранного языка: клиент берёт движок без словарей,
+// а сервер (shared/i18n.js) - все языки из shared/locales.
+async function testClientLoadsOnlySelectedLocale() {
+    const engine = require('../shared/i18nEngine');
+    const i18n = require('../shared/i18n');
+    const files = (await fs.readdir(path.resolve(__dirname, '../shared/locales'))).map(name => path.basename(name, '.json'));
+    assert.deepStrictEqual([...i18n.supportedLangs].sort(), files.sort());
+    assert.deepStrictEqual(Object.keys(i18n.locales).sort(), files.sort());
+    assert.strictEqual(engine, i18n);
+    const client = await fs.readFile(path.resolve(__dirname, '../client/share/i18n.js'), 'utf8');
+    assert.match(client, /from '\.\.\/\.\.\/shared\/i18nEngine\.js'/);
+    assert.match(client, /import\(`\.\.\/\.\.\/shared\/locales\/\$\{lang\}\.json`\)/);
+    assert.doesNotMatch(client, /shared\/i18n(\.js)?'/);
+}
+
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
     testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
-    testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents];
+    testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale];

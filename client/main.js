@@ -10,7 +10,8 @@ import App from './components/App.vue';
 import {bookRoute, authorRoute, seriesRoute} from './share/bookActions';
 import {appUpdate} from './share/appUpdate';
 
-setLang(store.state.settings.uiLang);
+//словарь языка загружается параллельно с проверкой версии сборки, приложение монтируется после него
+const langReady = setLang(store.state.settings.uiLang);
 setIsoDates(store.state.settings.isoDates);
 
 const currentBuildId = (typeof __INPX_WEB_BUILD_ID__ !== 'undefined'
@@ -236,6 +237,7 @@ async function ensureCurrentAppBuild() {
 
     const record = readReloadRecord(deployedBuildId);
     if (record.attempts >= appReloadMaxAttempts) {
+        await langReady;
         showUpdateRecovery(deployedBuildId);
         return 'blocked';
     }
@@ -349,13 +351,15 @@ async function bootstrapApplication() {
     if (buildState !== 'ready')
         return;
 
+    await langReady;
     mountApplication();
     startAppVersionMonitor();
     setupServiceWorker();
 }
 
-bootstrapApplication().catch(() => {
+bootstrapApplication().catch(async() => {
     // A version endpoint failure must not make the application unavailable.
+    await langReady;
     mountApplication();
     startAppVersionMonitor();
     setupServiceWorker();

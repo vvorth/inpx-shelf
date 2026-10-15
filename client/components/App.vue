@@ -131,8 +131,8 @@ class App {
         this.$q.dark.set(!!value);
     }
 
-    applyLang(value) {
-        const lang = setLang(value);
+    async applyLang(value) {
+        const lang = await setLang(value);
         this.$q.lang.set(q.langs[lang] || q.langs.ru);
     }
 

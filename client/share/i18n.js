@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 
-import i18n from '../../shared/i18n.js';
+import i18n from '../../shared/i18nEngine.js';
 
 //Тексты интерфейса - в shared/locales/<lang>.json, в коде только ключи: t('settings.darkTheme').
 //Язык хранится в реактивном состоянии, поэтому шаблоны и вычисляемые свойства перерисовываются при смене языка.
@@ -9,6 +9,8 @@ const ruFamily = new Set(['ru', 'uk', 'be', 'kk']);
 const langCookie = 'inpx_lang';
 
 const state = reactive({lang: i18n.fallbackLang, isoDates: true});
+const localeLoads = {};
+let requestedLang = '';
 
 export function detectLang() {
     const langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || '']);
@@ -26,8 +28,34 @@ export function resolveLang(value) {
     return i18n.normalizeLang(value) || detectLang();
 }
 
-export function setLang(value) {
-    state.lang = resolveLang(value);
+//Словарь языка - отдельный кусок сборки: второй язык не загружается, пока его не выберут
+function loadLocale(lang) {
+    if (!localeLoads[lang]) {
+        localeLoads[lang] = import(`../../shared/locales/${lang}.json`)
+            .then(module => i18n.addLocale(lang, module.default))
+            .catch((error) => {
+                delete localeLoads[lang];
+                throw error;
+            });
+    }
+    return localeLoads[lang];
+}
+
+//Язык меняется, когда его словарь загружен; если загрузить не удалось, остаётся прежний
+//(следующий вызов попробует снова). Возвращает действующий язык.
+export async function setLang(value) {
+    const lang = resolveLang(value);
+    requestedLang = lang;
+    try {
+        await loadLocale(lang);
+    } catch (e) {
+        return state.lang;
+    }
+    //пока словарь загружался, могли выбрать другой язык
+    if (requestedLang !== lang)
+        return state.lang;
+
+    state.lang = lang;
     if (typeof document !== 'undefined') {
         document.documentElement.setAttribute('lang', state.lang);
         //язык нужен и серверу для HTTP-ответов (например, ошибок скачивания)
