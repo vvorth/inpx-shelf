@@ -62,7 +62,7 @@
                             <h1 class="page-title">
                                 {{ q ? $t('search.search', {q}) : $t('author.allBooks') }}
                             </h1>
-                            <div class="card-hint num">
+                            <div v-if="!error" class="card-hint num">
                                 {{ loading && !result ? $t('search.searching') : $t('search.booksFound', {n: total.toLocaleString()}) }}
                                 <template v-if="hiddenByLanguage">
                                     · {{ $t('author.moreInOtherLanguages', {n: hiddenByLanguage.toLocaleString()}) }}
@@ -188,7 +188,10 @@
                     </div>
 
                     <div v-if="error" class="page-empty page-empty--inline">
-                        {{ error }}
+                        <div>{{ error }}</div>
+                        <q-btn outline color="primary" no-caps icon="la la-redo-alt" :loading="loading" @click="load">
+                            {{ $t('common.tryAgain') }}
+                        </q-btn>
                     </div>
                     <div v-else-if="result && !books.length" class="page-empty">
                         <div>{{ activeChips.length ? $t('search.nothingMatchesTheseFilters') : $t('search.nothingFound') }}</div>
@@ -615,6 +618,9 @@ class SearchPage {
                 this.notReady = true;
                 this.schedulePoll();
             } else {
+                //результаты прежнего запроса не выдаём за ответ на новый; при возврате на страницу поиск повторится
+                this.result = null;
+                this.loadedKey = '';
                 this.error = tm(e.message);
             }
         } finally {

@@ -18,6 +18,12 @@
                 </div>
             </div>
         </q-dialog>
+
+        <div v-if="connectionState" class="connection-status" :class="{'connection-status--ok': connectionState === 'restored'}" role="status" aria-live="polite">
+            <q-spinner v-if="connectionState === 'lost'" size="14px" />
+            <q-icon v-else name="la la-check" size="16px" />
+            {{ connectionState === 'lost' ? $t('api.connectionLost') : $t('api.connectionRestored') }}
+        </div>
     </div>
 </template>
 
@@ -33,6 +39,7 @@ const {sha256Hex} = require('../../../shared/sha256');
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tm, getLang} from '../../share/i18n';
+import {isConnectionError, reconnectDelay} from '../../share/connection';
 
 //сессия профиля раньше дублировалась в этих ключах; теперь только в настройках (vuex), ключи читаем один раз для переноса
 const legacyProfileSessionKey = 'inpx-web-profile-session';
@@ -63,6 +70,8 @@ class Api {
     progress = 0;
     profileLoginPromise = null;
     loginPageRequest = null;
+    //'' - связь есть, 'lost' - потеряна, идёт переподключение, 'restored' - только что восстановлена
+    connectionState = '';
 
     created() {
         this.commit = this.$store.commit;
@@ -74,6 +83,81 @@ class Api {
     mounted() {
         if (!this.isStandaloneReaderLab)
             this.updateConfig();//no await
+
+        //после сна телефона или смены сети сокет может быть мёртв: проверяем заранее, а не на первом действии
+        this.onResume = () => this.checkConnection();
+        document.addEventListener('visibilitychange', this.onResume);
+        window.addEventListener('online', this.onResume);
+    }
+
+    beforeUnmount() {
+        document.removeEventListener('visibilitychange', this.onResume);
+        window.removeEventListener('online', this.onResume);
+        clearTimeout(this.restoredTimer);
+    }
+
+    //доступ к библиотеке и профиль - в каждом запросе
+    withAuth(params) {
+        const {accessToken, currentUserId, profileAccessToken} = this.settings;
+        if (accessToken)
+            params.accessToken = accessToken;
+        if (currentUserId)
+            params.userId = currentUserId;
+        if (profileAccessToken)
+            params.profileAccessToken = profileAccessToken;
+        return params;
+    }
+
+    //Сервер подтверждает приём любого запроса сразу (_rok), поэтому для проверки связи хватает подтверждения test.
+    //Повисший сокет при этом закрывается, и вторая попытка идёт уже по новому
+    async probeConnection() {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                const requestId = await wsc.send(this.withAuth({action: 'test', uiLang: getLang()}), 2);
+                wsc.message(requestId, 10).catch(() => {});
+                return true;
+            } catch (e) {
+                //пробуем ещё раз или сообщаем о потере связи
+            }
+        }
+        return false;
+    }
+
+    async checkConnection() {
+        if (document.hidden || this.isStandaloneReaderLab)
+            return;
+        if (await this.probeConnection())
+            this.connectionRestored();
+        else
+            this.connectionLost();
+    }
+
+    connectionLost() {
+        clearTimeout(this.restoredTimer);
+        if (this.connectionState === 'lost')
+            return;
+        this.connectionState = 'lost';
+        this.reconnect();//no await
+    }
+
+    //в скрытой вкладке не переподключаемся: при возврате проверит checkConnection
+    async reconnect() {
+        for (let attempt = 0; this.connectionState === 'lost'; attempt++) {
+            await utils.sleep(reconnectDelay(attempt));
+            if (this.connectionState === 'lost' && !document.hidden && await this.probeConnection())
+                this.connectionRestored();
+        }
+    }
+
+    connectionRestored() {
+        if (this.connectionState !== 'lost')
+            return;
+        this.connectionState = 'restored';
+        clearTimeout(this.restoredTimer);
+        this.restoredTimer = setTimeout(() => {
+            if (this.connectionState === 'restored')
+                this.connectionState = '';
+        }, 3000);
     }
 
     get isStandaloneReaderLab() {
@@ -202,15 +286,7 @@ class Api {
         this.busyDialogVisible = true;
         try {
             while (1) {// eslint-disable-line
-                const params = {action: 'get-worker-state', workerId: 'server_state', uiLang: getLang()};
-                const {accessToken, currentUserId, profileAccessToken} = this.settings;
-                if (accessToken)
-                    params.accessToken = accessToken;
-                if (currentUserId)
-                    params.userId = currentUserId;
-                if (profileAccessToken)
-                    params.profileAccessToken = profileAccessToken;
-
+                const params = this.withAuth({action: 'get-worker-state', workerId: 'server_state', uiLang: getLang()});
                 const server = await wsc.message(await wsc.send(params));
 
                 if (server.state != 'normal') {
@@ -272,20 +348,15 @@ class Api {
         let errCount = 0;
         while (1) {// eslint-disable-line
             try {
-                const {accessToken, currentUserId, profileAccessToken} = this.settings;
                 const csrfToken = this.$store.state.config.csrfToken;
 
-                if (accessToken)
-                    params.accessToken = accessToken;
-                if (currentUserId)
-                    params.userId = currentUserId;
-                if (profileAccessToken)
-                    params.profileAccessToken = profileAccessToken;
+                this.withAuth(params);
                 if (csrfToken)
                     params.csrfToken = csrfToken;
                 params.uiLang = getLang();
 
                 const response = await wsc.message(await wsc.send(params), timeoutSecs);
+                this.connectionRestored();
 
                 if (response && response.error == 'need_access_token') {
                     this.accessGranted = false;
@@ -319,6 +390,8 @@ class Api {
 
                 errCount = 0;
             } catch(e) {
+                if (isConnectionError(e))
+                    this.connectionLost();
                 errCount++;
                 if (e.message !== 'errors.wsNoResponse' || errCount > 10) {
                     errCount = 0;
@@ -796,6 +869,42 @@ export default vueComponent(Api);
 </script>
 
 <style scoped>
+.connection-status {
+    position: fixed;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100vw - 24px);
+    padding: 8px 14px;
+    border-radius: 99px;
+    background: var(--app-text);
+    color: var(--app-surface);
+    box-shadow: var(--app-shadow);
+    font-size: 13px;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.connection-status > * {
+    flex: none;
+}
+
+.connection-status--ok {
+    background: var(--app-primary);
+    color: var(--app-on-primary);
+}
+
+/* над нижней панелью вкладок */
+@media (max-width: 899px) {
+    .connection-status {
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
 .busy-card {
     display: flex;
     flex-direction: column;

@@ -96,13 +96,20 @@ class WebSocketConnection {
                 } else {
                     this.ws = new this.WebSocket(this.url, this.webSocketOptions);
                 }
+                const ws = this.ws;
+                let opened = false;
 
                 const onopen = () => {
+                    if (ws !== this.ws)
+                        return;
+                    opened = true;
                     this.connecting = false;
-                    resolve(this.ws);
+                    resolve(ws);
                 };
 
                 const onmessage = (data) => {
+                    if (ws !== this.ws)
+                        return;
                     try {
                         if (isBrowser)
                             data = data.data;
@@ -115,49 +122,63 @@ class WebSocketConnection {
                     }
                 };
 
-                const onerror = (e) => {
-                    this.emit(e.message, true);
-                    reject(new Error(e.message));
-                };
-
-                const onclose = (e) => {
-                    this.emit(e.message, true);
-                    reject(new Error(e.message));
+                //у события браузера нет message: ожидающие запросы получают ключ ошибки, а не пустую строку.
+                //События старого сокета после terminate() не трогают запросы нового
+                const onfail = () => {
+                    if (ws !== this.ws)
+                        return;
+                    this.connecting = false;
+                    this.ws = null;
+                    this.emit('errors.wsClosed', true);
+                    reject(new Error(opened ? 'errors.wsClosed' : 'errors.wsConnectFailed'));
                 };
 
                 if (isBrowser) {
-                    this.ws.onopen = onopen;
-                    this.ws.onmessage = onmessage;
-                    this.ws.onerror = onerror;
-                    this.ws.onclose = onclose;
+                    ws.onopen = onopen;
+                    ws.onmessage = onmessage;
+                    ws.onerror = onfail;
+                    ws.onclose = onfail;
                 } else {
-                    this.ws.on('open', onopen);
-                    this.ws.on('message', onmessage);
-                    this.ws.on('error', onerror);
-                    this.ws.on('close', onclose);
+                    ws.on('open', onopen);
+                    ws.on('message', onmessage);
+                    ws.on('error', onfail);
+                    ws.on('close', onfail);
                 }
 
                 await utils.sleep(this.openTimeout);
+                //сокет так и не открылся: следующая попытка начнёт заново, не дожидаясь его
+                if (!opened && ws === this.ws) {
+                    this.connecting = false;
+                    this.terminate();
+                }
                 reject(new Error('errors.wsConnectFailed'));
             }
         })() });
     }
 
-    //timeout в секундах (проверка каждый cleanPeriod интервал)
+    //timeout в секундах
     message(requestId, timeoutSecs = 4) {
         return new Promise((resolve, reject) => {
-            this.listeners.push({
+            const listener = {
                 regTime: Date.now(),
                 requestId,
                 timeout: timeoutSecs*1000,
                 onMessage: (mes) => {
+                    clearTimeout(listener.timer);
                     resolve(mes);
                 },
                 onError: (mes) => {
+                    clearTimeout(listener.timer);
                     reject(new Error(mes));
                 }
-            });
-            
+            };
+            //точный срок ожидания: периодическая чистка срабатывает лишь раз в cleanPeriod
+            listener.timer = setTimeout(() => {
+                this.listeners = this.listeners.filter(item => item !== listener);
+                listener.onError('errors.wsTimeout');
+            }, listener.timeout);
+            this.listeners.push(listener);
+
             this.processMessageQueue();
         });
     }
@@ -188,15 +209,18 @@ class WebSocketConnection {
         }
     }
 
+    //запросы, отправленные в закрываемый сокет, ответа уже не получат
     terminate() {
-        if (this.ws) {
-            if (isBrowser) {
-                this.ws.close();
-            } else {
-                this.ws.terminate();
-            }
-        }
+        const ws = this.ws;
         this.ws = null;
+        if (ws) {
+            if (isBrowser) {
+                ws.close();
+            } else {
+                ws.terminate();
+            }
+            this.emit('errors.wsClosed', true);
+        }
     }
 
     close() {

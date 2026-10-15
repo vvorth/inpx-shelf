@@ -122,7 +122,9 @@
         "profileLogin": "Profile login",
         "theLibraryIsUpdating": "The library is updating",
         "theServerIsPreparing": "The server is preparing the book database",
-        "theServerIsReading": "The server is reading the INPX and building the search database. The app opens by itself when it's ready."
+        "theServerIsReading": "The server is reading the INPX and building the search database. The app opens by itself when it's ready.",
+        "connectionLost": "Connection lost, reconnecting…",
+        "connectionRestored": "Connection restored"
     },
     "app": {
         "clearCacheRetry": "Clear application cache and retry",
@@ -295,7 +297,8 @@
         "unmark": "Unmark",
         "unmarked": "Unmarked: {n}",
         "untitled": "Untitled",
-        "yes": "Yes"
+        "yes": "Yes",
+        "tryAgain": "Try again"
     },
     "db": {
         "loadInpx": "Loading INPX",
@@ -514,11 +517,11 @@
         "userNotFound": "User not found",
         "wikidataNoNames": "Wikidata returned no names",
         "wikidataUnavailable": "Wikidata is unavailable: {message}",
-        "wsClosed": "WebSocket connection closed",
-        "wsConnectFailed": "Connection failed",
+        "wsClosed": "The connection to the server was lost. Check your network and try again.",
+        "wsConnectFailed": "Could not connect to the server. Check your network and try again.",
         "wsDestroyed": "This connection was closed. Please create a new one.",
         "wsInvalidRequest": "Invalid WebSocket request",
-        "wsNoResponse": "WebSocket is not responding",
+        "wsNoResponse": "The server is not responding. Check your network and try again.",
         "wsRequestRejected": "The request was not accepted by the server",
         "wsTimeout": "Response timed out"
     },

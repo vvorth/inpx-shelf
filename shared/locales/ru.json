@@ -122,7 +122,9 @@
         "profileLogin": "Вход в профиль",
         "theLibraryIsUpdating": "Библиотека обновляется",
         "theServerIsPreparing": "Сервер готовит базу книг",
-        "theServerIsReading": "Сервер читает INPX и строит базу для поиска. Приложение откроется само, когда всё будет готово."
+        "theServerIsReading": "Сервер читает INPX и строит базу для поиска. Приложение откроется само, когда всё будет готово.",
+        "connectionLost": "Нет связи с сервером, переподключаемся…",
+        "connectionRestored": "Связь восстановлена"
     },
     "app": {
         "clearCacheRetry": "Очистить кэш приложения и повторить",
@@ -299,7 +301,8 @@
         "unmark": "Снять отметку",
         "unmarked": "Отметка снята: {n}",
         "untitled": "Без названия",
-        "yes": "Да"
+        "yes": "Да",
+        "tryAgain": "Повторить"
     },
     "db": {
         "loadInpx": "Загрузка INPX",
@@ -522,11 +525,11 @@
         "userNotFound": "Пользователь не найден",
         "wikidataNoNames": "Wikidata не вернула ни одного имени",
         "wikidataUnavailable": "Wikidata недоступна: {message}",
-        "wsClosed": "WebSocket коннект закрыт",
-        "wsConnectFailed": "Соединение не удалось",
+        "wsClosed": "Связь с сервером прервалась. Проверьте сеть и повторите.",
+        "wsConnectFailed": "Не удалось подключиться к серверу. Проверьте сеть и повторите.",
         "wsDestroyed": "Этот экземпляр класса уничтожен. Пожалуйста, создайте новый.",
         "wsInvalidRequest": "Некорректный запрос WebSocket",
-        "wsNoResponse": "WebSocket не отвечает",
+        "wsNoResponse": "Сервер не отвечает. Проверьте сеть и повторите.",
         "wsRequestRejected": "Запрос не принят сервером",
         "wsTimeout": "Время ожидания ответа истекло"
     },

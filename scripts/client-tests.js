@@ -76,4 +76,57 @@ async function testBookLanguagesDefaultToAll() {
     assert.ok(!languageMatches({lang: 'en'}, chosen));
 }
 
-module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll];
+// Обрыв связи: ожидающие запросы получают ключ ошибки (у события браузера нет message), а не пустую строку;
+// события закрытого сокета не обрывают запросы нового; ответ без подтверждения не ждёт дольше заданного.
+async function testWebSocketConnectionReportsLostConnection() {
+    const WebSocket = require('ws');
+    const WebSocketConnection = require('../server/core/WebSocketConnection');
+    const server = new WebSocket.Server({host: '127.0.0.1', port: 0});
+    await new Promise(resolve => server.on('listening', resolve));
+    server.on('connection', (ws) => {
+        ws.on('message', (raw) => {
+            const req = JSON.parse(raw);
+            if (req.action === 'silent')
+                return;
+            ws.send(JSON.stringify({requestId: req.requestId, _rok: 1}));
+            if (req.action === 'echo')
+                ws.send(JSON.stringify({requestId: req.requestId, ok: 1}));
+            else if (req.action === 'drop')
+                setTimeout(() => ws.terminate(), 50);
+        });
+    });
+    const wsc = new WebSocketConnection(`ws://127.0.0.1:${server.address().port}`, 2, 30);
+    try {
+        const dropped = wsc.message(await wsc.send({action: 'drop'}), 10);
+        await assert.rejects(dropped, {message: 'errors.wsClosed'});
+        assert.strictEqual((await wsc.message(await wsc.send({action: 'echo'}), 5)).ok, 1);
+
+        const pending = wsc.message(await wsc.send({action: 'hold'}), 10);
+        wsc.terminate();
+        await assert.rejects(pending, {message: 'errors.wsClosed'});
+        assert.strictEqual((await wsc.message(await wsc.send({action: 'echo'}), 5)).ok, 1);
+
+        const inFlight = wsc.message(await wsc.send({action: 'hold'}), 10);
+        const started = Date.now();
+        await assert.rejects(wsc.send({action: 'silent'}, 0.3), {message: 'errors.wsNoResponse'});
+        assert.ok(Date.now() - started < 2000);
+        await assert.rejects(inFlight, {message: 'errors.wsClosed'});
+    } finally {
+        wsc.close();
+        await new Promise(resolve => server.close(resolve));
+    }
+}
+
+// Пауза переподключения растёт вдвое до 30 с и случайно уменьшается не больше чем вдвое.
+async function testConnectionErrorsAndReconnectDelay() {
+    const {isConnectionError, reconnectDelay} = await loadClientModule('share/connection.js');
+    assert.ok(isConnectionError(new Error('errors.wsClosed')));
+    assert.ok(isConnectionError('errors.wsNoResponse'));
+    assert.ok(!isConnectionError(new Error('errors.bookNotFound')));
+    assert.ok(!isConnectionError(new Error('')));
+    assert.deepStrictEqual([0, 1, 2, 3, 10].map(attempt => reconnectDelay(attempt, () => 1)), [1000, 2000, 4000, 8000, 30000]);
+    assert.strictEqual(reconnectDelay(2, () => 0), 2000);
+}
+
+module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
+    testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay];
