@@ -909,9 +909,14 @@ async function testAuthorNamesExportAndImport() {
         await assert.rejects(target.importAdminBackup('admin', 'token', await upload(full.fileName), 'author-names'), /неизвестн|unknown/i);
         await assert.rejects(target.importAdminBackup('admin', 'token', await upload(full.fileName), 'everything'));
 
+        const events = [];
+        target.addAdminEvent = (level, area, message) => events.push([level, area, message]);
         target.profileSessions.set('session', {userId: 'reader'});
         const result = await target.importAdminBackup('admin', 'token', await upload(exported.fileName), 'author-names');
         assert.deepStrictEqual(result.restored, ['author-names.json']);
+        assert.deepStrictEqual(events.map(([level, area]) => [level, area]), [['info', 'settings']]);
+        assert.doesNotMatch(JSON.stringify(events), /fullBackupRestored/, 'a names import is not reported as a full restore');
+        assert.match(JSON.stringify(events), /authorNamesImported/);
         assert.strictEqual(result.restartRecommended, false);
         assert.strictEqual(target.profileSessions.size, 1, 'importing names keeps everyone signed in');
         assert.strictEqual(target.catalogSearch.authorNames.infoCache, null, 'the names status is read again');

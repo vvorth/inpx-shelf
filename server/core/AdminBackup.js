@@ -272,9 +272,9 @@ module.exports = {
                     koboData = new KoboStore(this.config).normalizeData(archive['kobo-sync.json']);
                     content['kobo-sync.json'] = JSON.stringify(koboData, null, 2);
                 }
-                const names = archive['author-names.json'];
+                const names = archive['author-names.json'] && require('./search/AuthorNames').normalizeData(archive['author-names.json']);
                 if (names)
-                    content['author-names.json'] = JSON.stringify(require('./search/AuthorNames').normalizeData(names));
+                    content['author-names.json'] = JSON.stringify(names);
                 await transaction.commit(this.config, content);
                 if (names && this.catalogSearch)
                     this.catalogSearch.authorNames.infoCache = null;
@@ -289,7 +289,10 @@ module.exports = {
                 if (archive['config.json'] || archive['reading-lists.json'])
                     this.profileSessions.clear();
                 const restored = Object.keys(content);
-                this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
+                if (only)
+                    this.addAdminEvent('info', 'settings', msg('admin.authorNamesImported', {count: names.entries.length}));
+                else
+                    this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
                 //правки метаданных и английские имена авторов из бэкапа попадают в поиск при пересборке БД библиотеки;
                 //прежняя БД отвечает, пока строится новая
                 if ((archive['reading-lists.json'] || names) && this.catalogSearch && this.catalogSearch.ready)

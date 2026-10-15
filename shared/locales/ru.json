@@ -47,6 +47,7 @@
         "eventLogDisabled": "Журнал событий выключен",
         "eventLogEnabled": "Журнал событий включен",
         "externalShowcase": "Внешняя витрина",
+        "authorNamesImported": "Загружены английские имена авторов: {count}",
         "fullBackupRestored": "Восстановлен полный бэкап: {files}",
         "fullBackupRestoredMessage": "Полный бэкап восстановлен. Перезапустите приложение для применения всех настроек. При смене библиотек выполните переиндексацию.",
         "integrations": "Интеграции",

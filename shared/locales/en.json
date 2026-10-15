@@ -47,6 +47,7 @@
         "eventLogDisabled": "Event log disabled",
         "eventLogEnabled": "Event log enabled",
         "externalShowcase": "External showcase",
+        "authorNamesImported": "English author names imported: {count}",
         "fullBackupRestored": "Full backup restored: {files}",
         "fullBackupRestoredMessage": "Full backup restored. Restart the application to apply all settings. If libraries changed, reindex.",
         "integrations": "Integrations",
