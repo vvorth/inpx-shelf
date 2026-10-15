@@ -147,12 +147,14 @@
                                                     {{ bookMeta(book) }}
                                                 </div>
                                             </td>
-                                            <td class="hide-narrow">
-                                                <template v-for="(name, index) in book.authors" :key="name">
-                                                    <router-link :to="authorLink(name)">
-                                                        {{ name }}
-                                                    </router-link><span v-if="index < book.authors.length - 1">, </span>
-                                                </template>
+                                            <td class="hide-narrow col-authors">
+                                                <div class="clip" :title="book.authors.join(', ')">
+                                                    <template v-for="(name, index) in book.authors" :key="name">
+                                                        <router-link :to="authorLink(name)">
+                                                            {{ name }}
+                                                        </router-link><span v-if="index < book.authors.length - 1">, </span>
+                                                    </template>
+                                                </div>
                                             </td>
                                             <td class="hide-narrow">
                                                 <router-link v-if="book.series" :to="seriesLink(book.series)">
@@ -755,6 +757,18 @@ export default vueComponent(ListsPage);
 }
 
 .col-file {
+    white-space: nowrap;
+}
+
+/* max-width: 0 lets the column take its width share and clip instead of growing */
+.col-authors {
+    width: 25%;
+    max-width: 0;
+}
+
+.col-authors .clip {
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
