@@ -1,7 +1,14 @@
 const {t} = require('../i18n');
+const {READ_PERCENT} = require('../ReaderProgress');
 
 function utilsHasProp(obj, prop) {
     return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
+}
+
+// Доля прочитанного до отметки «прочитано» (setBooksRead): снятие отметки возвращает её вместе с местом в книге
+function percentBeforeRead(row = {}) {
+    const value = Number(row && row.percentBeforeRead);
+    return (Number.isFinite(value) && value >= 0 && value < READ_PERCENT ? {percentBeforeRead: value} : {});
 }
 
 // Reader progress, bookmarks and preferences of a profile. Mixed into ReadingListStore.prototype: `this` is the store.
@@ -25,6 +32,7 @@ module.exports = {
                 updatedAt: String(row.updatedAt || '').trim(),
                 hidden: (row.hidden === true),
                 generation: Math.max(0, parseInt(row.generation, 10) || 0),
+                ...percentBeforeRead(row),
             };
         }
         return result;
@@ -134,8 +142,9 @@ module.exports = {
             && patchTime < currentTime
         )
             return current;
+        const nextPercent = Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0;
         target.readerProgress[normalizedBookUid] = {
-            percent: Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0,
+            percent: nextPercent,
             sectionId,
             pageIndex: Number.isFinite(pageIndex) ? Math.max(0, Math.round(pageIndex)) : 0,
             textOffset: Number.isFinite(textOffset) ? Math.max(-1, Math.round(textOffset)) : -1,
@@ -143,6 +152,8 @@ module.exports = {
             updatedAt: patchUpdatedAt || this.nowIso(),
             hidden,
             generation,
+            //читалка сохраняет место отмеченной книги: доля до отметки нужна, пока книга считается прочитанной
+            ...(nextPercent >= READ_PERCENT ? percentBeforeRead(current) : {}),
         };
         target.updatedAt = this.nowIso();
 

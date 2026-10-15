@@ -1723,6 +1723,53 @@ async function testReaderProgressResetAndHiddenState() {
     });
 }
 
+async function testMarkReadKeepsReadingPlace() {
+    await withTempDir(async(dir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'});
+        const place = {sectionId: 's9', pageIndex: 41, textOffset: 120, textSnippet: 'Глава девятая'};
+        await store.save({
+            version: 5,
+            users: [{
+                id: 'reader',
+                name: 'Reader',
+                readerProgress: {
+                    'book:a': Object.assign({percent: 0.63, updatedAt: '2026-01-01T00:00:00.000Z'}, place),
+                    'book:b': {percent: 1, updatedAt: '2026-01-01T00:00:00.000Z'},
+                },
+            }],
+            lists: [],
+        });
+        const progress = async uid => (await store.load()).users.find(item => item.id === 'reader').readerProgress[uid];
+
+        await store.setBooksRead('reader', ['book:a'], true);
+        let row = await progress('book:a');
+        assert.strictEqual(row.percent, 1);
+        assert.deepStrictEqual([row.sectionId, row.pageIndex, row.textOffset, row.textSnippet], Object.values(place), 'The place stays');
+
+        //читалка пересохраняет место отмеченной книги: доля до отметки не теряется
+        await store.updateReaderProgress('reader', 'book:a', Object.assign({percent: 1, updatedAt: '2026-02-01T00:00:00.000Z'}, place));
+        assert.strictEqual((await progress('book:a')).percentBeforeRead, 0.63);
+        //второе нажатие «прочитано» не затирает долю до первого
+        await store.setBooksRead('reader', ['book:a'], true);
+
+        await store.setBooksRead('reader', ['book:a'], false);
+        row = await progress('book:a');
+        assert.strictEqual(row.percent, 0.63, 'Unmarking returns to the share read before the mark');
+        assert.strictEqual(row.pageIndex, 41);
+        assert.ok(!Object.hasOwn(row, 'percentBeforeRead'));
+
+        //книга прочитана до конца без отметки: снятие отметки сбрасывает её, как раньше
+        await store.setBooksRead('reader', ['book:b'], false);
+        assert.strictEqual(await progress('book:b'), undefined);
+
+        //читатель ушёл с отмеченной книги назад: доля до отметки больше не нужна
+        await store.setBooksRead('reader', ['book:a'], true);
+        await store.updateReaderProgress('reader', 'book:a', {percent: 0.4, updatedAt: new Date(Date.now() + 60000).toISOString()});
+        assert.ok(!Object.hasOwn(await progress('book:a'), 'percentBeforeRead'));
+    });
+}
+
 async function testCoverCacheRoutesAndCleaner() {
     await withTempDir(async(dir) => {
         const coverDir = path.join(dir, 'cover');
@@ -2411,6 +2458,7 @@ const tests = [
     testUserBackupExportsAndRestoresReaderState,
     testReaderProgressChoice,
     testReaderProgressResetAndHiddenState,
+    testMarkReadKeepsReadingPlace,
     testProfileReadingSummaryLeavesOutReadBooks,
     testReaderHomeKeepsUnavailableProgressVisible,
     testBookPageRecordAndReaderStates,

@@ -1,5 +1,6 @@
 const {t} = require('../i18n');
 const {bookNote} = require('../search/bookMatch');
+const {READ_PERCENT} = require('../ReaderProgress');
 
 function utilsHasProp(obj, prop) {
     return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
@@ -178,15 +179,21 @@ module.exports = {
 
         const updatedAt = this.nowIso();
         const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0);
+        //отметка не стирает место в книге: с ним можно перечитать, а снятие отметки возвращает долю прочитанного до неё
+        const progress = this.normalizeReaderProgress(target.readerProgress);
         for (const bookUid of normalizedBookUids) {
+            const current = (progress[bookUid] && progress[bookUid].generation === generation ? progress[bookUid] : null);
             if (read) {
-                target.readerProgress[bookUid] = {
-                    percent: 1,
-                    sectionId: '',
-                    updatedAt,
-                    hidden: false,
-                    generation,
-                };
+                const before = (current && current.percent < READ_PERCENT ? {percentBeforeRead: current.percent} : {});
+                target.readerProgress[bookUid] = Object.assign(
+                    {sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: ''},
+                    current || {},
+                    {percent: 1, updatedAt, hidden: false, generation},
+                    before,
+                );
+            } else if (current && Object.prototype.hasOwnProperty.call(current, 'percentBeforeRead')) {
+                const {percentBeforeRead, ...place} = current;
+                target.readerProgress[bookUid] = Object.assign(place, {percent: percentBeforeRead, updatedAt});
             } else {
                 delete target.readerProgress[bookUid];
             }
