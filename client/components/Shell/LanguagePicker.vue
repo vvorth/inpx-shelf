@@ -1,13 +1,16 @@
 <template>
-    <q-btn class="lang-picker" outline no-caps dense :aria-label="$t('author.myLanguages')" @click="load">
-        <q-icon name="la la-language" size="18px" />
+    <q-btn class="lang-picker" outline no-caps dense :aria-label="`${$t('languagePicker.bookLanguages')}: ${label}`" @click="load">
+        <q-icon name="la la-book-open" size="18px" />
+        <!-- фильтр языков книг, а не языка интерфейса: на широком экране подписан словами -->
+        <span class="lang-picker-prefix">{{ $t('languagePicker.bookLanguages') }}:</span>
         <span class="lang-picker-label">{{ label }}</span>
         <q-icon name="la la-angle-down" size="14px" />
+        <q-tooltip>{{ $t('languagePicker.bookLanguages') }}</q-tooltip>
         <q-menu anchor="bottom right" self="top right" :offset="[0, 6]">
             <div class="lang-menu">
                 <div class="lang-menu-head">
                     <div class="lang-menu-title">
-                        {{ $t('author.myLanguages') }}
+                        {{ $t('languagePicker.bookLanguages') }}
                     </div>
                     <div class="lang-menu-hint">
                         {{ $t('languagePicker.booksInOtherLanguages') }}
@@ -35,7 +38,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 
-import {t} from '../../share/i18n';
+import {t, getLang} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
 import {myLanguages, saveMyLanguages, languageName, allLanguages} from '../../share/languages';
 
@@ -59,7 +62,7 @@ class LanguagePicker {
 
     get label() {
         if (this.languages.all)
-            return t('author.allLanguages');
+            return t('languagePicker.all');
         const codes = this.languages.list.map(code => code.toUpperCase());
         return (codes.length > 3 ? `${codes.slice(0, 3).join(' · ')} +${codes.length - 3}` : codes.join(' · '));
     }
@@ -108,8 +111,8 @@ class LanguagePicker {
     }
 
     toggleAll() {
-        //снять «Все языки» - вернуться к языку интерфейса
-        this.save(this.languages.all ? [] : [allLanguages]);
+        //снять «Все языки» - оставить книги на языке интерфейса
+        this.save(this.languages.all ? [getLang()] : [allLanguages]);
     }
 
     toggle(code) {
@@ -140,6 +143,16 @@ export default vueComponent(LanguagePicker);
 
 .lang-picker-label {
     font-variant-numeric: tabular-nums;
+}
+
+.lang-picker-prefix {
+    color: var(--app-muted);
+}
+
+@media (max-width: 599px) {
+    .lang-picker-prefix {
+        display: none;
+    }
 }
 
 .lang-menu {

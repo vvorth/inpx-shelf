@@ -1,6 +1,6 @@
 //«Мои языки»: какие языки книг показывать в каталоге, на страницах автора и серии, на главной.
 //У вошедшего профиля хранятся на сервере (языки вкуса витрин), у гостя - в этом браузере.
-//Пустой список - ещё не выбирали: показываем язык интерфейса. ['*'] - все языки.
+//Пустой список (ещё не выбирали) и ['*'] - все языки: язык интерфейса не скрывает книги на других языках.
 import {getLang} from './i18n';
 import {isSignedIn, currentProfile} from './session';
 
@@ -14,10 +14,9 @@ export function storedLanguages(config = {}, settings = {}) {
 //{all: true} или {all: false, codes: Set}
 export function myLanguages(config = {}, settings = {}) {
     const list = storedLanguages(config, settings);
-    if (list.includes(allLanguages))
+    if (!list.length || list.includes(allLanguages))
         return {all: true, codes: new Set(), list: []};
-    const codes = (list.length ? list : [getLang()]);
-    return {all: false, codes: new Set(codes), list: codes};
+    return {all: false, codes: new Set(list), list};
 }
 
 export function bookLang(book = {}) {

@@ -930,7 +930,9 @@
     },
     "languagePicker": {
         "booksInOtherLanguages": "Books in other languages are hidden in search, on author and series pages and on Home.",
-        "yourChoiceIsSaved": "Your choice is saved in this browser. When you're signed in, languages are saved in your profile."
+        "yourChoiceIsSaved": "Your choice is saved in this browser. When you're signed in, languages are saved in your profile.",
+        "bookLanguages": "Book languages",
+        "all": "All"
     },
     "list": {
         "bookConversionDisabledImage": "Book conversion is disabled in this image.",
@@ -1704,6 +1706,6 @@
         "lockTheLibrary": "Lock the library"
     },
     "tastePanel": {
-        "genresAndAuthorsRefine": "Genres and authors refine your recommendations. Book languages are set with the “My languages” button next to search."
+        "genresAndAuthorsRefine": "Genres and authors refine your recommendations. Book languages are set with the “Book languages” button next to search."
     }
 }

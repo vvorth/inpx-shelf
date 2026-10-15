@@ -46,4 +46,34 @@ async function testClientSha256MatchesNode() {
         assert.strictEqual(sha256Hex(value), crypto.createHash('sha256').update(value, 'utf8').digest('hex'), `length ${value.length}`);
 }
 
-module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode];
+// Загружает ES-модуль клиента (client/share/*.js) в песочнице: импорты заменяются заглушками из imports.
+async function loadClientModule(file, imports = {}) {
+    let source = await fs.readFile(path.resolve(__dirname, '../client', file), 'utf8');
+    const names = [];
+    source = source.replace(/^import .*$/gm, '').replace(/^export (async function|function|const|let|class) (\w+)/gm, (m, kind, name) => {
+        names.push(name);
+        return `${kind} ${name}`;
+    });
+    return vm.runInNewContext(`${source}\n({${names.join(', ')}})`, Object.assign({}, imports));
+}
+
+// «Языки книг» без выбора - все языки: язык интерфейса не должен прятать книги на других языках.
+async function testBookLanguagesDefaultToAll() {
+    const session = {isSignedIn: config => !!config.signedIn, currentProfile: config => config.profile || {}};
+    const {myLanguages, languageMatches, langDefaultFor} = await loadClientModule('share/languages.js', Object.assign({getLang: () => 'en'}, session));
+
+    const guest = myLanguages({}, {});
+    assert.strictEqual(guest.all, true);
+    assert.ok(languageMatches({lang: 'ru'}, guest));
+    assert.strictEqual(langDefaultFor(guest), '');
+    assert.strictEqual(myLanguages({signedIn: true, profile: {libraryLanguages: []}}, {}).all, true);
+    assert.strictEqual(myLanguages({}, {libraryLanguages: ['*']}).all, true);
+
+    const chosen = myLanguages({signedIn: true, profile: {libraryLanguages: ['RU']}}, {libraryLanguages: ['en']});
+    assert.strictEqual(chosen.all, false);
+    assert.deepStrictEqual([...chosen.list], ['ru']);
+    assert.ok(languageMatches({lang: 'ru'}, chosen));
+    assert.ok(!languageMatches({lang: 'en'}, chosen));
+}
+
+module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll];
