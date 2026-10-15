@@ -261,8 +261,8 @@ class Api {
             });
 
             if (result && result.value) {
-                //получим свежую соль
-                const response = await wsc.message(await wsc.send({}), 10);
+                //получим свежую соль; запрос без action сервер отклоняет
+                const response = await wsc.message(await wsc.send({action: 'test'}), 10);
                 let salt = '';
                 if (response && response.error == 'need_access_token' && response.salt)
                     salt = response.salt;
