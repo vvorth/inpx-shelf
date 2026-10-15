@@ -128,5 +128,31 @@ async function testConnectionErrorsAndReconnectDelay() {
     assert.strictEqual(reconnectDelay(2, () => 0), 2000);
 }
 
+// После обрыва связи повторяется только чтение: список клиента не шире readOnlyActions сервера,
+// изменения не повторяются (кроме запроса, который не ушёл, потому что соединение не открылось).
+async function testOnlyReadOnlyRequestsAreRetried() {
+    const actionList = (source, name) => {
+        const match = new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(source);
+        assert.ok(match, name);
+        return [...match[1].matchAll(/'([a-z-]+)'/g)].map(m => m[1]);
+    };
+    const clientSource = await fs.readFile(path.resolve(__dirname, '../client/share/connection.js'), 'utf8');
+    const serverSource = await fs.readFile(path.resolve(__dirname, '../server/controllers/WebSocketController.js'), 'utf8');
+    const readOnly = new Set(actionList(serverSource, 'readOnlyActions'));
+    const retrySafe = actionList(clientSource, 'retrySafeActions');
+    assert.ok(retrySafe.length > 10);
+    for (const action of retrySafe)
+        assert.ok(readOnly.has(action), `${action} is retried but is not read-only on the server`);
+
+    const {canRetryRequest} = await loadClientModule('share/connection.js');
+    for (const error of ['errors.wsNoResponse', 'errors.wsClosed']) {
+        assert.ok(canRetryRequest('catalog-search', new Error(error)));
+        for (const action of ['update-reading-list-book', 'mark-reader-books-read', 'delete-reading-list', 'update-user-profile', 'login-user-profile'])
+            assert.ok(!canRetryRequest(action, new Error(error)), `${action} after ${error}`);
+    }
+    assert.ok(canRetryRequest('update-reading-list-book', new Error('errors.wsConnectFailed')));
+    assert.ok(!canRetryRequest('catalog-search', new Error('errors.bookNotFound')));
+}
+
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
-    testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay];
+    testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried];

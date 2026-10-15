@@ -39,9 +39,11 @@ const {sha256Hex} = require('../../../shared/sha256');
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tm, getLang} from '../../share/i18n';
-import {isConnectionError, reconnectDelay} from '../../share/connection';
+import {isConnectionError, canRetryRequest, reconnectDelay} from '../../share/connection';
 
 //сессия профиля раньше дублировалась в этих ключах; теперь только в настройках (vuex), ключи читаем один раз для переноса
+//повторы чтения после обрыва связи: паузы 1, 2, 4, 8 с
+const maxRequestRetries = 4;
 const legacyProfileSessionKey = 'inpx-web-profile-session';
 const legacyProfileLoginHistoryKey = 'inpx-web-profile-login-history';
 const componentOptions = {
@@ -345,7 +347,7 @@ class Api {
     }
 
     async request(params, timeoutSecs = 10, options = {}) {
-        let errCount = 0;
+        let retries = 0;
         while (1) {// eslint-disable-line
             try {
                 const csrfToken = this.$store.state.config.csrfToken;
@@ -388,16 +390,14 @@ class Api {
                     return response;
                 }
 
-                errCount = 0;
+                retries = 0;
             } catch(e) {
                 if (isConnectionError(e))
                     this.connectionLost();
-                errCount++;
-                if (e.message !== 'errors.wsNoResponse' || errCount > 10) {
-                    errCount = 0;
+                //изменения не повторяем: читатель видит ошибку и решает сам
+                if (!canRetryRequest(params.action, e) || retries >= maxRequestRetries)
                     throw e;
-                }
-                await utils.sleep(100);
+                await utils.sleep(reconnectDelay(retries++));
             }
         }
     }
