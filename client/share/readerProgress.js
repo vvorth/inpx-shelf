@@ -167,6 +167,29 @@ function afterReset(progress = null, resetAt = '', generation = 0) {
     return (Number.isFinite(progressTime) && progressTime > resetTime) ? progress : null;
 }
 
+//Позиция при открытии книги из ответа getReaderState (state), сводки профиля и копии в браузере (stored).
+//Сброшенное позже (поколение или progressResetAt) не в счёт. dropStored - копию в браузере пора стереть,
+//upload - открытая позиция новее серверной и её надо отправить
+function opening(state = {}, profileProgress = null, storedProgress = null) {
+    const empty = {percent: 0, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '', updatedAt: ''};
+    const resetAt = String((state && state.progressResetAt) || '').trim();
+    const generation = Math.max(0, parseInt(state && state.progressGeneration, 10) || 0);
+    const stateProgress = afterReset(Object.assign({}, empty, (state && state.progress) || {}), resetAt, generation)
+        || Object.assign({}, empty);
+    const stored = afterReset(storedProgress, resetAt, generation);
+    const remote = hasPlace(stateProgress)
+        ? stateProgress
+        : merge(stateProgress, afterReset(profileProgress, resetAt, generation), {generation});
+    const choice = chooseRemote(stored, remote, {generation});
+    return {
+        generation,
+        progress: choice.progress,
+        remote: choice.remote,
+        upload: shouldUpload(normalize(stateProgress, generation), choice.progress),
+        dropStored: !!(storedProgress && !stored),
+    };
+}
+
 //Копия прогресса в localStorage не растёт бесконечно: остаются limit самых свежих книг
 function trimMap(map = {}, limit = 500) {
     const entries = Object.entries(map || {});
@@ -178,4 +201,4 @@ function trimMap(map = {}, limit = 500) {
     return Object.fromEntries(entries.slice(0, limit));
 }
 
-module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, samePosition, chooseRemote, shouldUpload, afterReset, trimMap};
+module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, samePosition, chooseRemote, shouldUpload, afterReset, opening, trimMap};

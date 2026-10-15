@@ -98,7 +98,37 @@ async function testReaderRemoteProgressChoice() {
     assert.strictEqual(readerProgress.shouldUpload(far.remote, stayed), true);
 }
 
+//Позиция при открытии: сервер, сводка профиля, копия в браузере; сброшенное позже не в счёт
+async function testReaderOpeningProgress() {
+    const readerProgress = require('../client/share/readerProgress');
+    const at = minutes => new Date(Date.UTC(2026, 0, 1, 12, minutes)).toISOString();
+
+    const fresh = readerProgress.opening({progress: {percent: 0.3, sectionId: 'section-4', pageIndex: 30, updatedAt: at(10), generation: 2}, progressGeneration: '2'});
+    assert.deepStrictEqual([fresh.generation, fresh.progress.pageIndex, fresh.remote, fresh.upload, fresh.dropStored], [2, 30, null, false, false],
+        'A new device opens the server position without asking');
+
+    const local = {percent: 0.6, sectionId: 'section-8', pageIndex: 60, updatedAt: at(20), generation: 2};
+    const ahead = readerProgress.opening({progress: {percent: 0.3, sectionId: 'section-4', pageIndex: 30, updatedAt: at(10), generation: 2}, progressGeneration: 2}, null, local);
+    assert.deepStrictEqual([ahead.progress.pageIndex, ahead.remote, ahead.upload], [60, null, true], 'A newer browser copy wins and is uploaded');
+
+    const remote = readerProgress.opening({progress: {percent: 0.9, sectionId: 'section-12', pageIndex: 90, updatedAt: at(30), generation: 2}, progressGeneration: 2}, null, local);
+    assert.deepStrictEqual([remote.progress.pageIndex, remote.remote.pageIndex, remote.upload], [60, 90, false], 'A far newer server position is offered');
+
+    //без места на сервере - сводка профиля (Kobo, другой браузер)
+    const profile = readerProgress.opening({progress: {}}, {percent: 0.45, sectionId: 'section-6', pageIndex: 45, updatedAt: at(5)});
+    assert.strictEqual(profile.progress.pageIndex, 45);
+
+    //прогресс другого поколения (сброшен на другом устройстве) не в счёт, копия в браузере стирается
+    const stale = readerProgress.opening({progress: {percent: 0.3, pageIndex: 30, updatedAt: at(10), generation: 1}, progressGeneration: 2});
+    assert.strictEqual(readerProgress.hasPlace(stale.progress), false);
+    const reset = readerProgress.opening({progress: {}, progressGeneration: 3}, null, local);
+    assert.deepStrictEqual([reset.dropStored, readerProgress.hasPlace(reset.progress), reset.upload], [true, false, false]);
+    const resetAt = readerProgress.opening({progress: {percent: 0.2, updatedAt: at(1)}, progressResetAt: at(15)}, null, {percent: 0.5, updatedAt: at(16)});
+    assert.deepStrictEqual([resetAt.progress.percent, resetAt.dropStored], [0.5, false], 'Only what was saved before the reset is dropped');
+}
+
 module.exports = [
+    testReaderOpeningProgress,
     testReaderProgressMapIsCapped,
     testReaderReadMarkKeepsPlace,
     testReaderRemoteProgressChoice,
