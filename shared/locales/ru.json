@@ -417,6 +417,9 @@
         "backupMissingFile": "В архиве нет {name}",
         "backupNothingToSave": "Сохранять пока нечего",
         "currentPasswordInvalid": "Неверный текущий пароль",
+        "deliveryNeedsPassword": "Отправка книг доступна профилям с паролем",
+        "deliveryRateLimit": "Слишком много отправок: не больше {n} в час. Попробуйте позже.",
+        "emailToInvalid": "Укажите один адрес email",
         "openProfileCredentialsAdminOnly": "Логин, пароль и ссылки устройств профилю без пароля задаёт только администратор",
         "uploadInvalidJson": "Файл не является корректным JSON",
         "uploadOverHttp": "Файлы загружаются HTTP-запросом (POST /upload)",
@@ -1021,6 +1024,7 @@
     },
     "meDelivery": {
         "booksCanBeSent": "Книги можно отправлять на этот адрес из карточки книги, например на адрес Send to Kindle.",
+        "needsPassword": "Отправлять книги можно из профиля с паролем: профиль без пароля может открыть любой и слать книги на любой адрес. Попросите администратора задать пароль.",
         "sendTheLibraryBot": "Напишите боту библиотеки любое сообщение и вставьте сюда ваш chat id.",
         "sendToEmail": "Отправка на email",
         "sendToTelegram": "Отправка в Telegram"

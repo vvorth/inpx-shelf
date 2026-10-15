@@ -413,6 +413,9 @@
         "backupMissingFile": "The archive has no {name}",
         "backupNothingToSave": "Nothing to save yet",
         "currentPasswordInvalid": "Wrong current password",
+        "deliveryNeedsPassword": "Sending books is available to profiles with a password",
+        "deliveryRateLimit": "Too many books sent: no more than {n} per hour. Try again later.",
+        "emailToInvalid": "Enter one email address",
         "openProfileCredentialsAdminOnly": "Only the administrator can set a login, password or device links for a profile without a password",
         "uploadInvalidJson": "The file is not valid JSON",
         "uploadOverHttp": "Files are uploaded over HTTP (POST /upload)",
@@ -1013,6 +1016,7 @@
     },
     "meDelivery": {
         "booksCanBeSent": "Books can be sent to this address from the book card, for example your Send to Kindle address.",
+        "needsPassword": "Books can be sent from a profile with a password: anyone who opens a profile without one could send books to any address. Ask the administrator to set a password.",
         "sendTheLibraryBot": "Send the library bot any message, then paste your chat id here.",
         "sendToEmail": "Send to email",
         "sendToTelegram": "Send to Telegram"

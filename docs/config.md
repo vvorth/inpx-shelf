@@ -203,6 +203,8 @@
     "smtpPass": "",
     "emailFrom": "",
     "emailTo": "",
+    // не больше стольких отправок (email и Telegram вместе) в час с одного профиля, от 1 до 1000
+    "deliveryRateLimit": 20,
 
     // журнал событий администратора
     "adminEventLogEnabled": true,

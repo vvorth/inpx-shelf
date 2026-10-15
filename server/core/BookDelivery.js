@@ -8,6 +8,8 @@ const {t, msg} = require('./i18n');
 // Sending books to Telegram and email, and checking those integrations. Mixed into
 // WebWorker.prototype: `this` is the worker.
 
+const deliveryWindowMs = 60*60*1000;
+
 function formatTemplate(template, book = {}) {
     return String(template || '')
         .replace(/\$\{AUTHOR\}/g, book.author || '')
@@ -63,6 +65,19 @@ module.exports = {
         throw new Error(t('errors.unknownTestType'));
     },
 
+    //отправки профиля (email и Telegram вместе) за последний час: открытый SMTP или бот не должны стать рассылкой
+    checkDeliveryRate(userId) {
+        const limit = Math.max(1, Math.min(1000, parseInt(this.config.deliveryRateLimit, 10) || 20));
+        const now = Date.now();
+        if (!this.deliverySends)
+            this.deliverySends = new Map();
+        const times = (this.deliverySends.get(userId) || []).filter(time => now - time < deliveryWindowMs);
+        if (times.length >= limit)
+            throw new Error(t('errors.deliveryRateLimit', {n: limit}));
+        times.push(now);
+        this.deliverySends.set(userId, times);
+    },
+
     async sendBookToTelegram(bookUid, format = '', userId = '') {
         const {currentUser} = await this.readingListStore.getUsers(userId);
         const chatId = String((currentUser && currentUser.telegramChatId) || '').trim();
@@ -72,6 +87,7 @@ module.exports = {
             throw new Error(t('errors.telegramTokenMissing'));
         if (!chatId)
             throw new Error(t('errors.telegramChatIdMissing'));
+        this.checkDeliveryRate(currentUser.id);
 
         const {book, rawFile, downFileName} = await this.getPreparedBookFile(bookUid, format);
         this.addAdminEvent('info', 'delivery', msg('admin.deliveryTelegramSending', {title: book.title || downFileName}));
@@ -101,6 +117,8 @@ module.exports = {
         const emailTo = String((currentUser && currentUser.emailTo) || this.config.emailTo || '').trim();
         if (!this.config.emailShareEnabled || !this.config.smtpHost || !emailTo)
             throw new Error(t('errors.emailNotConfigured'));
+        this.readingListStore.validateEmailTo(emailTo);
+        this.checkDeliveryRate(currentUser.id);
 
         const {book, rawFile, downFileName} = await this.getPreparedBookFile(bookUid, format);
         this.addAdminEvent('info', 'delivery', msg('admin.deliveryEmailSending', {title: book.title || downFileName}), {

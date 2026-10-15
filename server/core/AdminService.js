@@ -566,7 +566,7 @@ module.exports = {
         if (utils.hasProp(patch, 'emailFrom'))
             normalized.emailFrom = String(patch.emailFrom || '').trim();
         if (utils.hasProp(patch, 'emailTo'))
-            normalized.emailTo = String(patch.emailTo || '').trim();
+            normalized.emailTo = this.readingListStore.validateEmailTo(patch.emailTo);
 
         return normalized;
     },

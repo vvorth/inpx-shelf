@@ -583,14 +583,18 @@ class WebSocketController {
         }
 
         const currentUser = currentProfile.currentUserProfile || null;
+        //отправка книг - только из профиля с паролем (или SSO), см. requireProtectedProfile
+        const deliveryAllowed = !!(currentUser && (currentUser.hasPassword || (req.profileBoundId && req.profileBoundId === currentUser.id)));
         config.telegramShareEnabled = !!(
-            this.config.telegramShareEnabled
+            deliveryAllowed
+            && this.config.telegramShareEnabled
             && this.config.telegramBotToken
             && currentUser
             && currentUser.telegramChatId
         );
         config.emailShareEnabled = !!(
-            this.config.emailShareEnabled
+            deliveryAllowed
+            && this.config.emailShareEnabled
             && this.config.smtpHost
             && currentUser
             && (currentUser.emailTo || this.config.emailTo)
@@ -1035,6 +1039,10 @@ class WebSocketController {
         if (isOwnProfile && (profile.password || (utils.hasProp(profile, 'login') && store.normalizeLogin(profile.login) !== (target.login || ''))))
             await this.requireProtectedProfile(target, req);
         //свой пароль меняют, только зная текущий: открытая чужая сессия не должна отнимать профиль
+        const deliveryChanged = ['emailTo', 'telegramChatId'].some(key => utils.hasProp(profile, key)
+            && String(profile[key] || '').trim() !== String(target[key] || ''));
+        if (isOwnProfile && deliveryChanged)
+            await this.requireProtectedProfile(target, req, 'errors.deliveryNeedsPassword');
         if (isOwnProfile && target.passwordHash && profile.password) {
             if (this.security)
                 this.security.checkLoginRate(ws.req, 'profile');
@@ -1060,9 +1068,13 @@ class WebSocketController {
     }
 
     //профиль, закреплённый за пользователем SSO, защищён прокси и без своего пароля
-    async requireProtectedProfile(user, req, messageKey) {
-        if (!(req.profileBoundId && req.profileBoundId === user.id))
-            await this.webWorker.requireProtectedProfile(user, req.profileAccessToken, messageKey);
+    async isProtectedProfile(user, req) {
+        return !!(req.profileBoundId && req.profileBoundId === user.id) || await this.webWorker.isProtectedProfile(user, req.profileAccessToken);
+    }
+
+    async requireProtectedProfile(user, req, messageKey = 'errors.openProfileCredentialsAdminOnly') {
+        if (!await this.isProtectedProfile(user, req))
+            throw new Error(i18n.t(messageKey));
     }
 
     async deleteUserProfile(req, ws) {
@@ -1161,7 +1173,16 @@ class WebSocketController {
         if (await this.uploadAllowed(req, ws, () => this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken)))
             return;
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.importReadingLists(user.id, await this.uploadedJson(ws));
+        const data = await this.uploadedJson(ws);
+        //в открытый профиль из файла не переносятся устройства Kobo (их токены) и адреса отправки, см. requireProtectedProfile
+        if (data && typeof(data) === 'object' && !await this.isProtectedProfile(user, req)) {
+            delete data.kobo;
+            if (data.user && typeof(data.user) === 'object') {
+                delete data.user.emailTo;
+                delete data.user.telegramChatId;
+            }
+        }
+        const result = await this.webWorker.importReadingLists(user.id, data);
         this.send(result, req, ws);
     }
 
@@ -1296,6 +1317,7 @@ class WebSocketController {
             throw new Error(`bookUid is empty`);
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        await this.requireProtectedProfile(user, req, 'errors.deliveryNeedsPassword');
         const result = await this.webWorker.sendBookToTelegram(req.bookUid, req.format, user.id);
         this.send(result, req, ws);
     }
@@ -1305,6 +1327,7 @@ class WebSocketController {
             throw new Error(`bookUid is empty`);
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        await this.requireProtectedProfile(user, req, 'errors.deliveryNeedsPassword');
         const result = await this.webWorker.sendBookToEmail(req.bookUid, req.format, user.id);
         this.send(result, req, ws);
     }

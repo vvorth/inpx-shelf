@@ -40,6 +40,7 @@ async function fixture(options, test) {
     await fs.outputFile(path.join(config.publicDir, 'index.html'), '<html>Login shell</html>');
     await fs.outputFile(path.join(config.bookDir, 'fixture.txt'), 'BOOK_FIXTURE');
     await fs.outputFile(path.join(config.dataDir, 'backups', 'fixture.zip'), 'BACKUP_FIXTURE');
+    app.post('/upload', controller.uploadHandler());
     require('../server/static')(app, config, worker, security);
     app.use('/opds', access.httpGuard(true), require('../server/core/opds/Auth')(config,
         (...args) => worker.verifyOpdsPassword(...args), security));
@@ -90,7 +91,7 @@ async function fixture(options, test) {
         };
     };
     try {
-        await test({config, worker, security, access, alice, bob, request, session, connect});
+        await test({config, worker, security, access, alice, bob, request, session, connect, base});
     } finally {
         for (const socket of sockets) socket.terminate();
         for (const socket of wss.clients) socket.terminate();
@@ -317,6 +318,48 @@ async function testOpenProfileCredentialsAdminOnly() {
     });
 }
 
+// Book delivery: one recipient, only from a profile with a password (or an admin), at most deliveryRateLimit sends an hour.
+async function testDeliveryNeedsPasswordOneRecipientAndRate() {
+    const options = {emailShareEnabled: true, smtpHost: '127.0.0.1', telegramShareEnabled: true, telegramBotToken: 'test', deliveryRateLimit: 2};
+    await fixture(options, async({worker, alice, bob, connect, session, base}) => {
+        worker.getPreparedBookFile = async() => { throw new Error('PREPARE_STUB'); };
+        const call = await connect();
+        const {csrfToken} = await call({action: 'get-config'});
+        const update = (targetUserId, profile, as) => call({action: 'update-user-profile', targetUserId, profile, ...as});
+        const asBob = {userId: bob.id, csrfToken};
+        assert.strictEqual((await call({action: 'get-config', userId: bob.id})).emailShareEnabled, false);
+        assert.match((await update(bob.id, {emailTo: 'relay@example.test'}, asBob)).error, /password|паролем/);
+        assert.match((await update(bob.id, {telegramChatId: '42'}, asBob)).error, /password|паролем/);
+        assert.match((await call({action: 'send-book-email', bookUid: 'book', ...asBob})).error, /password|паролем/);
+        assert.strictEqual((await update(bob.id, {name: 'Bobby', emailTo: 'bob@example.test'}, asBob)).user.name, 'Bobby', 'Unchanged address is no change');
+
+        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
+        const asAlice = {userId: alice.id, profileAccessToken: login.profileAccessToken, csrfToken};
+        assert.strictEqual((await call({action: 'get-config', ...asAlice})).emailShareEnabled, true);
+        for (const emailTo of ['a@example.test, b@example.test', 'a@example.test;b@example.test', 'a@example.test\nBcc: b@example.test', 'nobody', '<a@example.test>'])
+            assert.match((await update(alice.id, {emailTo}, asAlice)).error, /one email|один адрес/, emailTo);
+        assert.strictEqual((await update(alice.id, {emailTo: 'alice2@example.test', telegramChatId: '42'}, asAlice)).user.emailTo, 'alice2@example.test');
+        for (let i = 0; i < 2; i++)
+            assert.match((await call({action: i ? 'send-book-telegram' : 'send-book-email', bookUid: 'book', ...asAlice})).error, /PREPARE_STUB/);
+        for (const action of ['send-book-email', 'send-book-telegram'])
+            assert.match((await call({action, bookUid: 'book', ...asAlice})).error, /2 per hour|2 в час/, action);
+
+        //a profile backup imported into an open profile brings no delivery addresses (nor Kobo tokens)
+        const browser = session();
+        const imported = await fetch(`${base}/upload?action=import-reading-lists`, {method: 'POST', body: JSON.stringify({lists: [],
+            user: {emailTo: 'relay@example.test', telegramChatId: '42'}, kobo: {devices: []}}),
+        headers: {cookie: browser.cookie, 'x-csrf-token': browser.value.csrfToken, 'x-user-id': bob.id}});
+        assert.strictEqual(imported.status, 200, await imported.clone().text());
+        const stored = await worker.readingListStore.getUser(bob.id);
+        assert.deepStrictEqual([stored.emailTo, stored.telegramChatId], ['bob@example.test', '']);
+
+        const adminLogin = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
+        const asAdmin = {userId: adminLogin.userId, profileAccessToken: adminLogin.profileAccessToken, csrfToken};
+        assert.strictEqual((await update(bob.id, {emailTo: 'bob2@example.test'}, asAdmin)).user.emailTo, 'bob2@example.test');
+        await assert.rejects(worker.readingListStore.updateUser(bob.id, {emailTo: 'a@example.test,b@example.test'}), /один адрес|one email/);
+    });
+}
+
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
     await fixture({}, async({worker, alice, bob, connect}) => {
@@ -385,6 +428,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

@@ -139,6 +139,7 @@ async function testHttpUploadsGoThroughRequestChecks() {
                     throw new Error('need_profile_login');
                 return {id: userId || 'default'};
             },
+            isProtectedProfile: async() => true,
             importReadingLists: async(userId, data) => {
                 seen.push(data);
                 return {userId, lists: data.lists.length};

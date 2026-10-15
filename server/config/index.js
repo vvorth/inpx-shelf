@@ -83,6 +83,7 @@ const propsToSave = [
     'smtpPass',
     'emailFrom',
     'emailTo',
+    'deliveryRateLimit',
     'discovery',
     'uiDefaults',
 ];

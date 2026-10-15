@@ -109,13 +109,12 @@ module.exports = {
 
     //Профиль без пароля открыт любому, кто его выберет: постоянные учётные данные (логин, пароль, ссылки устройств)
     //и адреса отправки для него задаёт только вошедший администратор
-    async requireProtectedProfile(user, profileAccessToken = '', messageKey = 'errors.openProfileCredentialsAdminOnly') {
+    async isProtectedProfile(user, profileAccessToken = '') {
         if (user.passwordHash)
-            return;
+            return true;
         const sessionUserId = this.getProfileSessionUser(profileAccessToken);
         const admin = (sessionUserId ? (await this.readingListStore.load()).users.find(item => item.id === sessionUserId) : null);
-        if (!admin || !admin.isAdmin)
-            throw new Error(t(messageKey));
+        return !!(admin && admin.isAdmin);
     },
 
     async getAuthorizedUserOrNull(userId = '', profileAccessToken = '') {

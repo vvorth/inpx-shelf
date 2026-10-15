@@ -145,6 +145,7 @@ module.exports = {
     smtpPass: process.env.SMTP_PASS || '',
     emailFrom: process.env.EMAIL_FROM || process.env.SMTP_USER || '',
     emailTo: process.env.EMAIL_TO || '',
+    deliveryRateLimit: 20,
     onlineReaderEnabled: true,
     discovery: {
         enabled: true,

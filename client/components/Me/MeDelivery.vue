@@ -1,5 +1,12 @@
 <template>
-    <form class="card-stack" @submit.prevent="save">
+    <div v-if="!canDeliver" class="card-stack">
+        <section class="card">
+            <div class="card-hint">
+                {{ $t('meDelivery.needsPassword') }}
+            </div>
+        </section>
+    </div>
+    <form v-else class="card-stack" @submit.prevent="save">
         <section class="card">
             <h2 class="card-title">
                 {{ $t('meDelivery.sendToEmail') }}
@@ -43,6 +50,12 @@ class MeDelivery {
     emailTo = '';
     telegramChatId = '';
     saving = false;
+
+    //профиль без пароля открыт любому: слать книги на свои адреса может только профиль с паролем (или SSO)
+    get canDeliver() {
+        const config = this.$store.state.config;
+        return !!(currentProfile(config).hasPassword || config.profileBoundId);
+    }
 
     created() {
         this.api = this.$root.api;

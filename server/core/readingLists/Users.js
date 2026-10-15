@@ -23,6 +23,14 @@ module.exports = {
             throw new Error(t('errors.userLoginExists'));
     },
 
+    //ровно один адрес: список получателей превратил бы отправку книг в рассылку
+    validateEmailTo(value = '') {
+        const normalized = String(value || '').trim();
+        if (normalized && (normalized.length > 254 || !/^[^\s@,;<>()"'\\]+@[^\s@,;<>()"'\\]+\.[^\s@,;<>()"'\\]+$/.test(normalized)))
+            throw new Error(t('errors.emailToInvalid'));
+        return normalized;
+    },
+
     async getUsers(currentUserId = '') {
         const {data, user} = await this.resolveUser(currentUserId);
         return {
@@ -155,7 +163,7 @@ module.exports = {
             name: normalizedName,
             login: normalizedLogin,
             passwordHash: String(profile.passwordHash || '').trim(),
-            emailTo: profile.emailTo,
+            emailTo: this.validateEmailTo(profile.emailTo),
             telegramChatId: profile.telegramChatId,
             opdsEnabled: profile.opdsEnabled,
             opdsAuthEnabled: profile.opdsAuthEnabled,
@@ -188,7 +196,7 @@ module.exports = {
         if (utilsHasProp(patch, 'passwordHash'))
             target.passwordHash = String(patch.passwordHash || '').trim();
         if (utilsHasProp(patch, 'emailTo'))
-            target.emailTo = String(patch.emailTo || '').trim();
+            target.emailTo = this.validateEmailTo(patch.emailTo);
         if (utilsHasProp(patch, 'telegramChatId'))
             target.telegramChatId = String(patch.telegramChatId || '').trim();
         if (utilsHasProp(patch, 'opdsEnabled'))

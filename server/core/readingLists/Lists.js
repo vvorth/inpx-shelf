@@ -430,8 +430,14 @@ module.exports = {
                 if (!duplicateName)
                     target.name = normalizedName;
             }
-            if (utilsHasProp(incomingUser, 'emailTo'))
-                target.emailTo = String(incomingUser.emailTo || '').trim();
+            //один адрес, как в updateUser; неверный не переносим, остальное импортируется
+            if (utilsHasProp(incomingUser, 'emailTo')) {
+                try {
+                    target.emailTo = this.validateEmailTo(incomingUser.emailTo);
+                } catch (e) {
+                    //адрес остаётся прежним
+                }
+            }
             if (utilsHasProp(incomingUser, 'telegramChatId'))
                 target.telegramChatId = String(incomingUser.telegramChatId || '').trim();
             if (utilsHasProp(incomingUser, 'opdsEnabled'))
