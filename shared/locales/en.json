@@ -183,6 +183,7 @@
         "openSource": "Open source",
         "otherEditions": "Other editions",
         "potentialReplacements": "Potential replacements",
+        "showOtherLanguages": "Show {count} more in other languages",
         "readAgain": "Read again",
         "replaceConfirm": "Replace «{from}» with this book in all your lists? Its place in the lists, reading progress, bookmarks and the read mark move to the new book.",
         "replaceTitle": "Replace book",

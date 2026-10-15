@@ -164,8 +164,8 @@
                     <div class="card-hint">
                         {{ replacements.length ? $t('book.replacementsHint') : $t('book.noReplacements') }}
                     </div>
-                    <ol v-if="replacements.length" class="replacements">
-                        <li v-for="item in replacements" :key="item._uid" class="replacement">
+                    <ol v-if="shownReplacements.length" class="replacements">
+                        <li v-for="item in shownReplacements" :key="item._uid" class="replacement">
                             <button type="button" class="replacement-cover" :aria-label="$t('book.view')" @click="peekUid = item._uid">
                                 <BookCover :book="item" :progress="stateOf(item).percent || 0" small />
                             </button>
@@ -190,6 +190,9 @@
                             </div>
                         </li>
                     </ol>
+                    <q-btn v-if="replacements.length > shownReplacements.length" class="other-languages" flat dense no-caps color="primary" @click="showOtherLanguages = true">
+                        {{ $t('book.showOtherLanguages', {count: replacements.length - shownReplacements.length}) }}
+                    </q-btn>
                 </section>
 
                 <section v-if="editions.length" class="book-section">
@@ -198,7 +201,10 @@
                             {{ $t('book.otherEditions') }}
                         </h2>
                     </div>
-                    <BookCollection :books="editions" :states="states" view="rows" />
+                    <BookCollection v-if="shownEditions.length" :books="shownEditions" :states="states" view="rows" />
+                    <q-btn v-if="editions.length > shownEditions.length" class="other-languages" flat dense no-caps color="primary" @click="showOtherLanguages = true">
+                        {{ $t('book.showOtherLanguages', {count: editions.length - shownEditions.length}) }}
+                    </q-btn>
                 </section>
 
                 <section v-if="!unavailable" class="book-section">
@@ -308,6 +314,8 @@ class BookPage {
     editions = [];
     //недоступная книга: возможные замены из включённых библиотек и книга, открытая поверх для просмотра
     replacements = [];
+    //издания и замены на языках не из «Моих языков» и не на языке самой книги - по кнопке
+    showOtherLanguages = false;
     peekUid = '';
     bookInfo = null;
     infoLoading = false;
@@ -451,6 +459,7 @@ class BookPage {
         this.related = [];
         this.editions = [];
         this.replacements = [];
+        this.showOtherLanguages = false;
         this.peekUid = '';
         this.inLists = [];
         this.states = {};
@@ -504,6 +513,20 @@ class BookPage {
             this.inLists = inLists;
     }
 
+    //«Мои языки» плюс язык самой книги, как у похожих книг: новая редакция книги видна, даже если её языка нет в «Моих языках»
+    inMyLanguages(item) {
+        const languages = myLanguages(this.$store.state.config, this.$store.state.settings);
+        return languages.all || languageMatches(item, languages) || bookLang(item) === bookLang(this.book);
+    }
+
+    get shownReplacements() {
+        return (this.showOtherLanguages ? this.replacements : this.replacements.filter(item => this.inMyLanguages(item)));
+    }
+
+    get shownEditions() {
+        return (this.showOtherLanguages ? this.editions : this.editions.filter(item => this.inMyLanguages(item)));
+    }
+
     async loadRelated() {
         const book = this.book;
         try {
@@ -517,9 +540,7 @@ class BookPage {
             if (book !== this.book)
                 return;
             //«Мои языки» плюс язык самой книги: у английской книги видна английская серия
-            const languages = myLanguages(this.$store.state.config, this.$store.state.settings);
-            const allowed = (item) => languages.all || languageMatches(item, languages) || bookLang(item) === bookLang(book);
-            this.related = (books || []).filter(item => !item.del && bookUid(item) !== bookUid(book) && allowed(item)).slice(0, 12);
+            this.related = (books || []).filter(item => !item.del && bookUid(item) !== bookUid(book) && this.inMyLanguages(item)).slice(0, 12);
             await this.loadStates([book, ...this.editions, ...this.related]);
         } catch (e) {
             this.related = [];
@@ -623,6 +644,10 @@ export default vueComponent(BookPage);
     gap: 8px;
     max-width: 68ch;
     color: var(--app-muted);
+}
+
+.other-languages {
+    margin-top: 8px;
 }
 
 .replacements {
