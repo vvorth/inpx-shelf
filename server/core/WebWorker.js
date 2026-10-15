@@ -534,8 +534,13 @@ class WebWorker {
         const title = normalizeTitle(note.title);
         if (!title)
             return [];
-        const byTitle = await this.catalogSearch.getBooksByTitles([title]);
-        const books = rankReplacements(note, byTitle[title] || []).filter(item => item._uid !== book._uid).map(item => Object.assign({}, item));
+        //то же произведение под названиями на других языках (таблица Wikidata, если скачана)
+        const workTitles = this.catalogSearch.workTitles;
+        const work = (workTitles ? await workTitles.sameWork(note.title, note.author) : {titles: []});
+        const titles = [...new Set([title, ...work.titles])];
+        const byTitle = await this.catalogSearch.getBooksByTitles(titles);
+        const books = rankReplacements(note, titles.flatMap(item => byTitle[item] || []), work)
+            .filter(item => item._uid !== book._uid).map(item => Object.assign({}, item));
         await this.applyMetadataOverridesToSearchResult({books});
         return books;
     }

@@ -40,6 +40,7 @@
     </div>
 
     <AdminAuthorNames v-if="admin.catalogSearchEnabled" />
+    <AdminAuthorNames v-if="admin.catalogSearchEnabled" table="work-titles" />
 
     <section v-if="admin.discoveryEnabled" class="card">
         <h2 class="card-title">{{ $t('admin.externalShowcase') }}</h2>

@@ -447,12 +447,13 @@ class Api {
         return await this.request({action: 'get-author-aliases', author}, 20);
     }
 
-    async adminAuthorNamesStatus() {
-        return await this.request({action: 'admin-author-names-status'}, 30);
+    //table: 'author-names' или 'work-titles'
+    async adminAuthorNamesStatus(table = 'author-names') {
+        return await this.request({action: 'admin-author-names-status', table}, 30);
     }
 
-    async adminAuthorNamesUpdate() {
-        return await this.request({action: 'admin-author-names-update'}, 30);
+    async adminAuthorNamesUpdate(table = 'author-names') {
+        return await this.request({action: 'admin-author-names-update', table}, 30);
     }
 
     async catalogNames(kind, q, offset = 0, limit = 50) {

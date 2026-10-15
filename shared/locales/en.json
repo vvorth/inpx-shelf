@@ -49,6 +49,7 @@
         "externalShowcase": "External showcase",
         "authorNamesImported": "English author names imported: {count}",
         "fullBackupRestored": "Full backup restored: {files}",
+        "workTitlesImported": "Work titles in other languages imported: {count}",
         "fullBackupRestoredMessage": "Full backup restored. Restart the application to apply all settings. If libraries changed, reindex.",
         "integrations": "Integrations",
         "onlyAnAdministratorCan": "Only an administrator can open this section.",
@@ -80,6 +81,14 @@
         "rebuildingTheSearchIndex": "Rebuilding the search index...",
         "searchWillFindFor": "Search will find «Азимов Айзек» for “Isaac Asimov”. Writers' names in Russian and English are downloaded from Wikidata (a few megabytes) and matched to the library's authors. Namesakes with different English names are skipped.",
         "tableEmpty": "The table hasn't been downloaded yet."
+    },
+    "adminWorkTitles": {
+        "title": "Work titles in other languages",
+        "hint": "Other editions and potential replacements will find «Hyperion» for «Гиперион» by the same author. Titles of literary works in Russian, English and the original language are downloaded from Wikidata.",
+        "downloading": "Downloading titles from Wikidata...",
+        "count": "Works in the table: {count}, updated {date}.",
+        "importConfirm": "Replace the work titles with the ones from the file?",
+        "imported": "Work titles imported"
     },
     "adminUsers": {
         "adminHint": "Full access to settings, users and backups. Needs a login and password.",

@@ -13,9 +13,13 @@ const BackupFiles = require('./BackupFiles');
 // What a backup holds: the full one, or only the English author names (exported and imported next to their download)
 const scopes = {
     '': {prefix: 'inpx-shelf-backup', files: BackupFiles.names,
-        note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, Kobo devices and English author names. '
+        note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, Kobo devices, '
+            + 'English author names and work titles in other languages. '
             + 'It does not include source book archives, generated search DB or caches.'},
-    'author-names': {prefix: 'inpx-shelf-author-names', files: ['author-names.json'], note: 'English author names from Wikidata.'},
+    'author-names': {prefix: 'inpx-shelf-author-names', files: ['author-names.json'], note: 'English author names from Wikidata.',
+        event: 'admin.authorNamesImported'},
+    'work-titles': {prefix: 'inpx-shelf-work-titles', files: ['work-titles.json'], note: 'Work titles in other languages from Wikidata.',
+        event: 'admin.workTitlesImported'},
 };
 
 function backupScope(scope = '') {
@@ -223,6 +227,7 @@ module.exports = {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
         const only = (scope ? backupScope(scope).files : null);
+        const importEvent = (scope ? backupScope(scope).event : '');
 
         const transaction = require('./BackupTransaction');
         const {withFileTransactions} = require('./FilePersistence');
@@ -272,12 +277,21 @@ module.exports = {
                     koboData = new KoboStore(this.config).normalizeData(archive['kobo-sync.json']);
                     content['kobo-sync.json'] = JSON.stringify(koboData, null, 2);
                 }
-                const names = archive['author-names.json'] && require('./search/AuthorNames').normalizeData(archive['author-names.json']);
-                if (names)
-                    content['author-names.json'] = JSON.stringify(names);
+                //таблицы Wikidata: файл - только из проверенных записей, после записи сведения о таблице читаются заново
+                const tables = {'author-names.json': ['authorNames', require('./search/AuthorNames')], 'work-titles.json': ['workTitles', require('./search/WorkTitles')]};
+                const counts = {};
+                for (const [name, [, Table]] of Object.entries(tables)) {
+                    if (!archive[name])
+                        continue;
+                    const data = Table.normalizeData(archive[name]);
+                    content[name] = JSON.stringify(data);
+                    counts[name] = data.entries.length;
+                }
+                const names = !!archive['author-names.json'];
                 await transaction.commit(this.config, content);
-                if (names && this.catalogSearch)
-                    this.catalogSearch.authorNames.infoCache = null;
+                for (const name of Object.keys(counts))
+                    if (this.catalogSearch)
+                        this.catalogSearch[tables[name][0]].changed();
                 if (koboData && this.koboService) {
                     // Restored devices and tokens take effect without a restart.
                     this.koboService.store.data = koboData;
@@ -290,7 +304,7 @@ module.exports = {
                     this.profileSessions.clear();
                 const restored = Object.keys(content);
                 if (only)
-                    this.addAdminEvent('info', 'settings', msg('admin.authorNamesImported', {count: names.entries.length}));
+                    this.addAdminEvent('info', 'settings', msg(importEvent, {count: counts[only[0]] || 0}));
                 else
                     this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
                 //правки метаданных и английские имена авторов из бэкапа попадают в поиск при пересборке БД библиотеки;

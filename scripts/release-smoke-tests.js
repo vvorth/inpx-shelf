@@ -876,11 +876,43 @@ async function testDisabledLibraryHiddenWithoutRebuild() {
 async function testAuthorNamesStatusSeesRequestedRebuild() {
     const CatalogSearch = require('../server/core/search/CatalogSearch');
     const search = Object.create(CatalogSearch.prototype);
-    Object.assign(search, {building: false, meta: {aliases: 0}, worker: {dbLoad: null},
-        authorNames: {info: async() => ({ready: true, count: 2, updatedAt: ''}), status: () => ({running: false})}});
-    assert.strictEqual((await search.authorNamesStatus()).indexBuilding, false);
+    const authorNames = {info: async() => ({ready: true, count: 2, updatedAt: ''}), status: () => ({running: false})};
+    Object.assign(search, {building: false, meta: {aliases: 0}, worker: {dbLoad: null}, authorNames, workTitles: {}});
+    assert.strictEqual((await search.wikidataStatus()).indexBuilding, false);
     search.worker.dbLoad = Promise.resolve();
-    assert.strictEqual((await search.authorNamesStatus()).indexBuilding, true);
+    assert.strictEqual((await search.wikidataStatus()).indexBuilding, true);
+}
+
+// Work titles come in one query per source; rows of one work (several authors, original title) become one entry.
+async function testWorkTitlesDownload() {
+    await withTempDir(async(dir) => {
+        const WorkTitles = require('../server/core/search/WorkTitles');
+        const queries = [];
+        const row = (item, ru, en, extra = {}) => Object.assign({item: {value: item}, ru: {value: ru}, en: {value: en}}, extra);
+        const titles = new WorkTitles({dataDir: dir, version: 'test'}, async(query) => {
+            queries.push(query);
+            if (!query.includes('wd:Q7725634'))
+                return {results: {bindings: []}};
+            return {results: {bindings: [
+                row('Q1', 'Гиперион', 'Hyperion', {aru: {value: 'Дэн Симмонс'}, aen: {value: 'Dan Simmons'}}),
+                row('Q2', 'Отверженные', 'Les Misérables', {title: {value: 'Les Misérables'}, aru: {value: 'Виктор Гюго'}}),
+                row('Q3', 'Пикник на обочине', 'Roadside Picnic', {aru: {value: 'Аркадий Стругацкий'}}),
+                row('Q3', 'Пикник на обочине', 'Roadside Picnic', {aru: {value: 'Борис Стругацкий'}}),
+                row('Q4', 'Чикаго', 'Chicago'),
+            ]}};
+        });
+        assert.strictEqual(await titles.download(), 3, 'a work without an author is dropped');
+        assert.strictEqual(queries.length, 3, 'one query per source, no pages');
+        assert.ok(queries.every(query => /wikipedia\.org/.test(query) && !/OFFSET/.test(query)));
+        assert.deepStrictEqual((await titles.readEntries()).entries, [
+            [['Гиперион', 'Hyperion'], ['Дэн Симмонс', 'Dan Simmons']],
+            [['Отверженные', 'Les Misérables'], ['Виктор Гюго']],
+            [['Пикник на обочине', 'Roadside Picnic'], ['Аркадий Стругацкий', 'Борис Стругацкий']],
+        ]);
+        assert.deepStrictEqual(await titles.sameWork('Пикник на обочине', 'Стругацкий Борис Натанович'),
+            {titles: ['пикник на обочине', 'roadside picnic'], authors: ['Аркадий Стругацкий', 'Борис Стругацкий']});
+        assert.deepStrictEqual((await titles.sameWork('Гиперион', 'Гёльдерлин Фридрих')).titles, []);
+    });
 }
 
 // English author names move between servers in their own archive, through the same checks as the full backup.
@@ -892,7 +924,8 @@ async function testAuthorNamesExportAndImport() {
             const dataDir = path.join(dir, name);
             const worker = makeWorker({dataDir, tempDir: path.join(dir, `${name}-tmp`), configFile: path.join(dataDir, 'config.json')});
             worker.readingListStore = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
-            worker.catalogSearch = {ready: false, authorNames: {infoCache: {ready: false}}};
+            const table = () => ({infoCache: {ready: false}, changed() { this.infoCache = null; }});
+            worker.catalogSearch = {ready: false, authorNames: table(), workTitles: table()};
             return worker;
         };
         const source = server('old');
@@ -934,6 +967,18 @@ async function testAuthorNamesExportAndImport() {
         assert.deepStrictEqual(await fs.readJson(path.join(target.config.dataDir, 'author-names.json')),
             {source: 'wikidata', updatedAt: '2026-10-01T00:00:00.000Z', entries: [['Азимов Айзек', 'Isaac Asimov']]});
         assert.strictEqual(await fs.pathExists(target.config.configFile), false, 'nothing else is written');
+
+        //названия произведений - так же, своим архивом
+        await fs.outputJson(path.join(source.config.dataDir, 'work-titles.json'),
+            {source: 'wikidata', updatedAt: '2026-10-02T00:00:00.000Z', entries: [[['Гиперион', 'Hyperion'], ['Дэн Симмонс']]]});
+        const works = await source.createAdminBackup('admin', 'token', 'work-titles');
+        assert.match(works.fileName, /^inpx-shelf-work-titles-/);
+        await assert.rejects(target.importAdminBackup('admin', 'token', await upload(exported.fileName), 'work-titles'), /work-titles|неизвестн|unknown/i);
+        events.length = 0;
+        assert.deepStrictEqual((await target.importAdminBackup('admin', 'token', await upload(works.fileName), 'work-titles')).restored, ['work-titles.json']);
+        assert.strictEqual(target.catalogSearch.workTitles.infoCache, null);
+        assert.match(JSON.stringify(events), /workTitlesImported/);
+        assert.strictEqual((await fs.readJson(path.join(target.config.dataDir, 'work-titles.json'))).entries.length, 1);
 
         //профиль: Kobo из бэкапа проверяется правилами kobo-sync.json до изменения данных
         await target.readingListStore.load();
@@ -2311,6 +2356,7 @@ const tests = [
     testAdminSettingsRestoreKeepsSecrets,
     testAdminBackupArchiveAndDownload,
     testAuthorNamesExportAndImport,
+    testWorkTitlesDownload,
     testAuthorNamesStatusSeesRequestedRebuild,
     testDisabledLibrarySourceIsKept,
     testDisabledLibraryHiddenWithoutRebuild,

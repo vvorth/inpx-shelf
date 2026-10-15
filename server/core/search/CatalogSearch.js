@@ -5,6 +5,7 @@ const fs = require('fs-extra');
 const log = new (require('../AppLogger'))().log;//singleton
 const utils = require('../utils');
 const AuthorNames = require('./AuthorNames');
+const WorkTitles = require('./WorkTitles');
 const InpxParser = require('../InpxParser');
 const {getIndexedLibrarySources, getAllLibrarySources} = require('../LibrarySources');
 const {loadInpxFilter, makeRecordFilter, makeInpxInfo} = require('./LibraryImport');
@@ -26,6 +27,7 @@ class CatalogSearch {
         this.inpxHash = '';
         this.editedDuringBuild = null;
         this.authorNames = new AuthorNames(config);
+        this.workTitles = new WorkTitles(config);
         //книги выключенных библиотек в индексе скрыты: статистика без них и ключи библиотек, что есть в индексе
         this.visibility = {stats: null, books: 0, indexed: []};
     }
@@ -238,18 +240,30 @@ class CatalogSearch {
         };
     }
 
-    //Скачивание английских имён авторов (администратор); по окончании индекс перестраивается
-    startAuthorNamesDownload() {
-        return this.authorNames.start(async() => {
-            if (this.ready)
+    //Таблицы Wikidata, которые скачивает администратор: английские имена авторов, названия произведений
+    wikidataTable(name = '') {
+        const table = {'author-names': this.authorNames, 'work-titles': this.workTitles}[name || 'author-names'];
+        if (!table)
+            throw new Error(`Unknown table: ${name}`);
+        return table;
+    }
+
+    //Скачивание (администратор); имена авторов входят в индекс - по окончании он перестраивается
+    startWikidataDownload(name = '') {
+        const table = this.wikidataTable(name);
+        return table.start(async() => {
+            if (table === this.authorNames && this.ready)
                 await this.ensure(this.inpxHash, {keepReady: true});
         });
     }
 
-    async authorNamesStatus() {
-        const info = await this.authorNames.info();
+    async wikidataStatus(name = '') {
+        const table = this.wikidataTable(name);
+        const info = await table.info();
+        if (table !== this.authorNames)
+            return Object.assign(info, {job: table.status(), indexBuilding: false});
         return Object.assign(info, {
-            job: this.authorNames.status(),
+            job: table.status(),
             matched: Number(this.meta.aliases || 0),
             //dbLoad - запрошенная загрузка или пересборка, ещё до хэширования INPX: после импорта имён карточка сразу видит пересборку
             indexBuilding: this.building || !!(this.worker && this.worker.dbLoad),

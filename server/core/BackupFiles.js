@@ -17,6 +17,7 @@ const files = {
         error: 'errors.backupKoboInvalid',
     },
     'author-names.json': {check: data => Array.isArray(data.entries)},
+    'work-titles.json': {check: data => Array.isArray(data.entries)},
 };
 
 function filePath(config, name) {

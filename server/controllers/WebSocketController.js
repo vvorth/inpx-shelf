@@ -809,13 +809,14 @@ class WebSocketController {
 
     async adminAuthorNamesStatus(req, ws) {
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.catalogSearch.authorNamesStatus(), req, ws);
+        this.send(await this.webWorker.catalogSearch.wikidataStatus(req.table), req, ws);
     }
 
+    //req.table: 'author-names' (по умолчанию) или 'work-titles'
     async adminAuthorNamesUpdate(req, ws) {
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
-        this.webWorker.catalogSearch.startAuthorNamesDownload();
-        this.send(await this.webWorker.catalogSearch.authorNamesStatus(), req, ws);
+        this.webWorker.catalogSearch.startWikidataDownload(req.table);
+        this.send(await this.webWorker.catalogSearch.wikidataStatus(req.table), req, ws);
     }
 
     async catalogNames(req, ws) {

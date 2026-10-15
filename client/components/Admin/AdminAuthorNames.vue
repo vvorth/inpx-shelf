@@ -1,12 +1,12 @@
 <template>
-    <section id="author-names" class="card">
+    <section :id="table" class="card">
         <div class="card-head">
             <div>
                 <h2 class="card-title">
-                    {{ $t('adminAuthorNames.englishAuthorNames') }}
+                    {{ $t(text.title) }}
                 </h2>
                 <div class="card-hint">
-                    {{ $t('adminAuthorNames.searchWillFindFor') }}
+                    {{ $t(text.hint) }}
                 </div>
             </div>
             <div class="names-actions">
@@ -26,14 +26,14 @@
         <div v-if="running" class="names-progress">
             <q-linear-progress rounded size="6px" :value="progress" color="primary" />
             <div class="card-hint">
-                {{ job.running ? $t('adminAuthorNames.downloadingNamesFromWikidata') : $t('adminAuthorNames.rebuildingTheSearchIndex') }}
+                {{ job.running ? $t(text.downloading) : $t('adminAuthorNames.rebuildingTheSearchIndex') }}
             </div>
         </div>
         <div v-else-if="job.error" class="names-error">
             {{ $t('adminAuthorNames.downloadFailed', {error: $tm(job.error)}) }}
         </div>
         <div v-else-if="status.ready" class="card-hint num">
-            {{ $t('adminAuthorNames.namesInTheTable', {count: status.count.toLocaleString(), date: formatDate(status.updatedAt), matched: status.matched.toLocaleString()}) }}
+            {{ $t(text.count, {count: status.count.toLocaleString(), date: formatDate(status.updatedAt), matched: Number(status.matched || 0).toLocaleString()}) }}
         </div>
         <div v-else class="card-hint">
             {{ $t('adminAuthorNames.tableEmpty') }}
@@ -47,7 +47,21 @@ import vueComponent from '../vueComponent.js';
 
 import {t, formatDateTime} from '../../share/i18n';
 
+//Одна карточка для каждой таблицы Wikidata: английские имена авторов и названия произведений на других языках
+const texts = {
+    'author-names': {title: 'adminAuthorNames.englishAuthorNames', hint: 'adminAuthorNames.searchWillFindFor',
+        downloading: 'adminAuthorNames.downloadingNamesFromWikidata', count: 'adminAuthorNames.namesInTheTable',
+        importConfirm: 'adminAuthorNames.importConfirm', imported: 'adminAuthorNames.imported'},
+    'work-titles': {title: 'adminWorkTitles.title', hint: 'adminWorkTitles.hint',
+        downloading: 'adminWorkTitles.downloading', count: 'adminWorkTitles.count',
+        importConfirm: 'adminWorkTitles.importConfirm', imported: 'adminWorkTitles.imported'},
+};
+
 class AdminAuthorNames {
+    _props = {
+        table: {type: String, default: 'author-names'},
+    };
+
     status = {ready: false, count: 0, updatedAt: '', matched: 0, job: {}, indexBuilding: false};
     busy = false;
     exporting = false;
@@ -66,6 +80,10 @@ class AdminAuthorNames {
         //запрос в полёте после закрытия не должен снова запускать таймер
         this.closed = true;
         clearTimeout(this.timer);
+    }
+
+    get text() {
+        return texts[this.table] || texts['author-names'];
     }
 
     get job() {
@@ -89,7 +107,7 @@ class AdminAuthorNames {
         clearTimeout(this.timer);
         const wasRunning = this.running;
         try {
-            this.status = await this.api.adminAuthorNamesStatus();
+            this.status = await this.api.adminAuthorNamesStatus(this.table);
         } catch (e) {
             return;
         }
@@ -107,7 +125,7 @@ class AdminAuthorNames {
     async exportNames() {
         this.exporting = true;
         try {
-            const result = await this.api.createAdminBackup('author-names');
+            const result = await this.api.createAdminBackup(this.table);
             if (result && result.link)
                 window.location.href = result.link;
         } catch (e) {
@@ -130,15 +148,15 @@ class AdminAuthorNames {
         const file = input && input.files && input.files[0];
         if (!file)
             return;
-        if (!await this.$root.stdDialog.confirm(t('adminAuthorNames.importConfirm'), t('adminAuthorNames.import'))) {
+        if (!await this.$root.stdDialog.confirm(t(this.text.importConfirm), t('adminAuthorNames.import'))) {
             input.value = '';
             return;
         }
 
         this.importing = true;
         try {
-            await this.api.importAdminBackup(file, 'author-names');
-            this.$root.notify.success(t('adminAuthorNames.imported'));
+            await this.api.importAdminBackup(file, this.table);
+            this.$root.notify.success(t(this.text.imported));
             if (!this.closed)
                 this.timer = setTimeout(() => this.refresh(), 1000);
         } catch (e) {
@@ -152,7 +170,7 @@ class AdminAuthorNames {
     async update() {
         this.busy = true;
         try {
-            this.status = await this.api.adminAuthorNamesUpdate();
+            this.status = await this.api.adminAuthorNamesUpdate(this.table);
             if (!this.closed)
                 this.timer = setTimeout(() => this.refresh(), 1000);
         } catch (e) {

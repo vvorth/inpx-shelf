@@ -535,6 +535,55 @@ async function testProfileBackupCarriesBookDetails() {
     });
 }
 
+//«Другие издания» находят книгу под названием на другом языке: Wikidata связывает «Гиперион» и «Hyperion» Симмонса
+async function testOtherEditionsAcrossLanguages() {
+    await temporary(async(dataDir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const WorkTitles = require('../server/core/search/WorkTitles');
+        const book = (id, author, title, lang) => ({id, _uid: `b${id}`, author, title, series: '', serno: 0, size: 1, librate: 0, del: 0,
+            sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang, date: '2010-01-01'});
+        const index = new CatalogIndex();
+        const file = path.join(dataDir, 'catalog.sqlite');
+        index.beginBuild(file, [], []);
+        index.insertBooks([
+            book(1, 'Симмонс Дэн', 'Гиперион', 'ru'),
+            book(2, 'Симмонс Дэн', 'Hyperion', 'en'),
+            book(3, 'Simmons Dan', 'Hyperion', 'en'),
+            book(4, 'Гёльдерлин Иоганн Христиан Фридрих', 'Гиперион', 'ru'),
+            book(5, 'Симмонс Дэн', 'Гиперион', 'uk'),
+            book(6, 'Симмонс Дэн', 'Падение Гипериона', 'ru'),
+        ]);
+        index.finishBuild({});
+        index.open(file, []);
+        try {
+            const workTitles = new WorkTitles({dataDir});
+            await fs.writeJson(workTitles.file, WorkTitles.normalizeData({entries: [
+                [['Гиперион', 'Hyperion'], ['Дэн Симмонс', 'Dan Simmons']],
+                [['Падение Гипериона', 'The Fall of Hyperion'], ['Дэн Симмонс', 'Dan Simmons']],
+                [['Гиперион', 'Hyperion'], ['Фридрих Гёльдерлин', 'Friedrich Hölderlin']],
+                [['Одно название'], ['Кто-то']],
+            ]}));
+            const worker = bareWorker({catalogSearch: {workTitles, getBooksByTitles: async(titles) => index.getBooksByTitles(titles)},
+                applyMetadataOverridesToSearchResult: async() => {}});
+            const uids = async(item) => (await worker.findMatchingBooks(item)).map(found => found._uid);
+            //та же книга на том же названии - первой, затем переводы; другой автор и другая книга того же цикла - нет
+            assert.deepStrictEqual(await uids(book(1, 'Симмонс Дэн', 'Гиперион', 'ru')), ['b5', 'b2', 'b3']);
+            assert.deepStrictEqual(await uids(book(3, 'Simmons Dan', 'Hyperion', 'en')), ['b2', 'b1', 'b5'],
+                'an English record under the Latin name finds the Russian ones');
+            assert.deepStrictEqual(await uids(book(4, 'Гёльдерлин Иоганн Христиан Фридрих', 'Гиперион', 'ru')), [],
+                'Hölderlin has no other edition in the library');
+            //без таблицы - как раньше: только то же название
+            await fs.remove(workTitles.file);
+            workTitles.changed();
+            assert.deepStrictEqual(await uids(book(1, 'Симмонс Дэн', 'Гиперион', 'ru')), ['b5']);
+            assert.strictEqual(WorkTitles.normalizeData({entries: [[['Одно название'], ['Кто-то']], 'bad', [['A', 'B'], []]]}).entries.length, 0,
+                'a work needs two different titles and an author');
+        } finally {
+            index.close();
+        }
+    });
+}
+
 module.exports = [
     testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
@@ -547,6 +596,7 @@ module.exports = [
     testReadingListBookReadSavesOnce,
     testListedBooksKeepUntilReaderReplacesThem,
     testProfileBackupCarriesBookDetails,
+    testOtherEditionsAcrossLanguages,
     testListedBooksFollowUpdatedInpxLine,
     testReadingStats,
     testLibraryAssetCaches,
