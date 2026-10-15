@@ -1,6 +1,6 @@
 <template>
     <div>
-        <q-dialog v-model="busyDialogVisible" no-route-dismiss no-esc-dismiss no-backdrop-dismiss>
+        <q-dialog :model-value="busyDialogVisible && !onLoginPage" no-route-dismiss no-esc-dismiss no-backdrop-dismiss>
             <div class="busy-card" role="status" aria-live="polite">
                 <div class="busy-eyebrow">
                     {{ $t('api.theLibraryIsUpdating') }}
@@ -153,6 +153,11 @@ class Api {
         return this.$store.state.settings;
     }
 
+    //вход не требует БД: окно перестройки не закрывает страницу входа, покажется после неё
+    get onLoginPage() {
+        return this.$route.path === '/login';
+    }
+
     async showPasswordDialog() {
         try {
             await this.lock.get();//заход только один раз, остальные ждут закрытия диалога
@@ -226,6 +231,8 @@ class Api {
 
                 await utils.sleep(300);
             }
+            //конфиг, полученный во время сборки, был без БД библиотеки
+            this.updateConfig();//no await
         } finally {
             this.busyDialogVisible = false;
             this.lock.errAll();

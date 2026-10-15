@@ -24,9 +24,8 @@ function isAnonymousDefaultUser(user = {}) {
 // Профили читателей: вход по паролю, сессии профилей, проверка прав (requireAdmin), создание и правка профилей.
 // Подмешивается в WebWorker.prototype: `this` - воркер.
 module.exports = {
+    //профили и вход не зависят от БД библиотеки: работают и пока она строится впервые
     async getUserProfiles(currentUserId = '') {
-        this.checkMyState();
-
         const {users, currentUser} = await this.readingListStore.getUsers(currentUserId);
         return {
             users: users
@@ -118,12 +117,10 @@ module.exports = {
     },
 
     async getCurrentUserProfile(userId = '', profileAccessToken = '') {
-        this.checkMyState();
-
         const user = await this.getEffectiveUser(userId, profileAccessToken);
         const anonymousProfile = isAnonymousDefaultUser(user);
         const profileAuthorized = (!anonymousProfile && (!user.passwordHash || this.getProfileSessionUser(profileAccessToken) === user.id));
-        const readingSummary = (profileAuthorized ? await this.buildUserReadingSummary(user, 48) : {count: 0, items: []});
+        const readingSummary = (profileAuthorized && this.myState === 'normal' ? await this.buildUserReadingSummary(user, 48) : {count: 0, items: []});
         return {
             currentUserId: user.id,
             profileAuthorized,
@@ -151,7 +148,6 @@ module.exports = {
     //Пароль (scrypt, ~0.3 с) проверяется вне блокировки хранилища профилей. Если за это время
     //у профиля сменили пароль или логин или удалили его (сессии отозваны), вход не состоится.
     async loginUserProfile(login = '', password = '') {
-        this.checkMyState();
         const user = await this.readingListStore.findUserByLogin(login);
         if (!user || !user.passwordHash)
             throw new Error(t('errors.invalidLogin'));

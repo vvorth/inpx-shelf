@@ -558,7 +558,7 @@ class WebSocketController {
             config.discovery || {},
             await this.webWorker.getSharedDiscoveryConfig(),
         );
-        config.dbConfig = await this.webWorker.dbConfig();
+        config.dbConfig = (this.webWorker.myState === 'normal' ? await this.webWorker.dbConfig() : {});
         config.catalogSearch = (this.webWorker.catalogSearch ? this.webWorker.catalogSearch.status() : {enabled: false, ready: false});
         if (this.webWorker.catalogSearch && config.catalogSearch.enabled) {
             const names = await this.webWorker.catalogSearch.authorNames.info();
