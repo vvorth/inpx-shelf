@@ -286,6 +286,19 @@ async function testOpdsHidesPasswordProfiles() {
     });
 }
 
+// A client cannot widen the store lookup to someone else's list.
+async function testForeignListNotReadable() {
+    await fixture({}, async({worker, alice, bob, connect}) => {
+        const secret = await worker.readingListStore.createList(alice.id, 'Alice private list');
+        const call = await connect();
+        for (const options of [undefined, {allowForeign: true}, {allowForeign: true, visibility: 'private'}]) {
+            const response = await call({action: 'get-reading-list', userId: bob.id, listId: secret.id, options});
+            assert.ok(response.error && !JSON.stringify(response).includes('Alice private list'), JSON.stringify(response));
+        }
+        assert.strictEqual(await worker.readingListStore.getList(bob.id, secret.id, {allowForeign: true}), null);
+    });
+}
+
 // A stored row that fails today's validation (edited by hand, older rules) keeps its data and lists.
 async function testInvalidStoredRowsAreRepairedNotDropped() {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-repair-'));
@@ -341,6 +354,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

@@ -879,8 +879,13 @@ class WebSocketController {
 
     async getReadingLists(req, ws) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.getReadingLists(user.id, req.bookUid, req.options || {});
+        const result = await this.webWorker.getReadingLists(user.id, req.bookUid, this.listOptions(req));
         this.send(result, req, ws);
+    }
+
+    //от клиента - только фильтр по видимости: прочие опции хранилища не для запросов
+    listOptions(req) {
+        return _.pick((req.options && typeof(req.options) === 'object' ? req.options : {}), ['visibility']);
     }
 
     async getReaderState(req, ws) {
@@ -1060,7 +1065,7 @@ class WebSocketController {
             throw new Error('listId is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.getReadingList(user.id, req.listId, req.options || {});
+        const result = await this.webWorker.getReadingList(user.id, req.listId, this.listOptions(req));
         this.send(result, req, ws);
     }
 

@@ -39,7 +39,6 @@ module.exports = {
     },
 
     async getList(userId = '', listId = '', options = {}) {
-        const allowForeign = !!(options && options.allowForeign);
         const visibility = (options && options.visibility ? this.normalizeVisibility(options.visibility) : '');
         const normalizedListId = String(listId || '').trim();
         if (!normalizedListId)
@@ -50,11 +49,9 @@ module.exports = {
         if (!item)
             return null;
 
-        if (!allowForeign) {
-            const {user} = await this.resolveUser(userId);
-            if (item.userId !== user.id)
-                return null;
-        }
+        const {user} = await this.resolveUser(userId);
+        if (item.userId !== user.id)
+            return null;
 
         if (visibility && item.visibility !== visibility)
             return null;
