@@ -57,7 +57,7 @@ docker compose up -d --build
 
 Свой YAML-конфиг fb2cng можно передать через `INPX_FB2CNG_CONFIG`. Переменная `FB2CNG_CONFIG` поддерживается как совместимый alias, но `INPX_FB2CNG_CONFIG` имеет приоритет. Путь берётся только из окружения и не сохраняется в `config.json`, поэтому его можно менять или удалять при пересоздании контейнера.
 
-Встроенный `fbc` собран из форка [vvorth/fb2cng](https://github.com/vvorth/fb2cng): это fb2cng с дополнительной настройкой `document.images.force_jpeg`. Образец конфига с описанием всех полей выдаёт `fbc dumpconfig --default`.
+Образец конфига с описанием всех полей выдаёт `fbc dumpconfig --default`.
 
 Монтируйте read-only весь каталог конфига, а не только YAML: конфиг fb2cng может ссылаться на CSS, шрифты и другие файлы рядом с ним.
 

@@ -23,7 +23,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
   # Same version as FB2CNG_VERSION in the Dockerfile; update fbc_sha256 below with it.
-  FB2CNG_RELEASE_API: https://api.github.com/repos/vvorth/fb2cng/releases/tags/v1.9.1-forcejpeg-1
+  FB2CNG_RELEASE_API: https://api.github.com/repos/rupor-github/fb2cng/releases/tags/v1.9.1
 
 jobs:
   version:
@@ -109,22 +109,22 @@ jobs:
             label: Linux x64
             target: linux
             fbc_asset: fbc-linux-amd64.zip
-            fbc_sha256: cd9f86ddc294622f69b4526351a67eab37ff7e02e7271c2e7d04388e43d61d17
+            fbc_sha256: 51ae29f268994374fdbf9e7244f37510b46aa9a0439bd57eb89c7c0924359174
           - os: ubuntu-24.04-arm
             label: Linux arm64
             target: linux-arm64
             fbc_asset: fbc-linux-arm64.zip
-            fbc_sha256: f79c7cbdf05db93635e6fcb0d9ddd789ea7460608e79374e15473626a1ebbe90
+            fbc_sha256: 53aeef47359de5782c0e504aa76e69b985c44e612a138cceebe412462b804041
           - os: windows-latest
             label: Windows x64
             target: win
             fbc_asset: fbc-windows-amd64.zip
-            fbc_sha256: c0d9d2bb88ec261ba8180b5d6be23ed2ee5ecf63b20f11044adad2b69bd79b52
+            fbc_sha256: e688a0a4f38a57476ca213ccb7c16c0140c74f28eb8733ea42ce5ccbd3ce596a
           - os: macos-15-intel
             label: macOS x64
             target: macos
             fbc_asset: fbc-darwin-amd64.zip
-            fbc_sha256: a8a6a6698609f0e952cf09fa5b0636e149edabbee95078f531a108629f3a1ef0
+            fbc_sha256: 1448e4b33974ffc31dbfdfc46cbfc7a6ad90b40b1dc2a82bc7d5685c1c78bad4
     steps:
       - uses: actions/checkout@v5
         with:

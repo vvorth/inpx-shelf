@@ -63,7 +63,7 @@ New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 $headers = Get-GitHubHeaders
 $windowsJxlUrl = Get-EnvOrDefault 'WINDOWS_JXL_URL' 'https://github.com/libjxl/libjxl/releases/latest/download/jxl-x64-windows-static.zip'
 $windowsWebpUrl = Get-EnvOrDefault 'WINDOWS_WEBP_URL' 'https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0-windows-x64.zip'
-$fb2cngReleaseApi = Get-EnvOrDefault 'FB2CNG_RELEASE_API' 'https://api.github.com/repos/vvorth/fb2cng/releases/tags/v1.9.1-forcejpeg-1'
+$fb2cngReleaseApi = Get-EnvOrDefault 'FB2CNG_RELEASE_API' 'https://api.github.com/repos/rupor-github/fb2cng/releases/latest'
 
 Write-Host "Bundling Windows tools into $binDir"
 
@@ -94,7 +94,7 @@ $fb2cngAsset = $fb2cngRelease.assets |
   Where-Object { $_.name -eq 'fbc-windows-amd64.zip' } |
   Select-Object -First 1
 if (-not $fb2cngAsset) {
-  throw 'Unable to find fbc-windows-amd64.zip in the fb2cng release'
+  throw 'Unable to find fbc-windows-amd64.zip in the latest fb2cng release'
 }
 
 $fbcArchive = Join-Path $env:TEMP $fb2cngAsset.name
