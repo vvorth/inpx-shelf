@@ -176,13 +176,14 @@
                                                 <q-btn v-if="!book.unavailable" flat dense round color="primary" icon="la la-book-open" :aria-label="$t('common.readBook')" @click="openReader(book.bookUid)">
                                                     <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
                                                 </q-btn>
-                                                <q-btn flat dense round icon="la la-times" :aria-label="removeLabel" @click="removeBook(book)">
-                                                    <q-tooltip>{{ removeLabel }}</q-tooltip>
+                                                <q-btn flat dense round :icon="listIcon(book)" :aria-label="$t('book.list')" @click="openLists(book)">
+                                                    <q-tooltip>{{ $t('book.list') }}</q-tooltip>
                                                 </q-btn>
                                             </td>
                                         </tr>
                                     </tbody>
                                 </table>
+                                <AddToListDialog v-if="listsBook" v-model="listsDialogVisible" :book="listsBook" @changed="load" />
                             </div>
                         </template>
                     </template>
@@ -197,11 +198,13 @@
 import vueComponent from '../vueComponent.js';
 
 import BookCollection from '../Library/BookCollection.vue';
+import AddToListDialog from '../Library/AddToListDialog.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
 import {bookAuthors, bookUid, loadBookStates, markBooksRead} from '../../share/bookActions';
 import {bookViews, bookViewOptions} from '../../share/bookView';
+import {fasBookmark} from '@quasar/extras/fontawesome-v5';
 
 const readingNowId = '__reading__';
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
@@ -220,6 +223,7 @@ const sortKeys = {
 const componentOptions = {
     components: {
         BookCollection,
+        AddToListDialog,
     },
     watch: {
         //в закрытом окне книги могли отметить прочитанное или убрать книгу из списка
@@ -249,6 +253,8 @@ class ListsPage {
     koboDevices = [];
     filterText = '';
     unreadOnly = false;
+    listsBook = null;
+    listsDialogVisible = false;
 
     created() {
         this.api = this.$root.api;
@@ -291,10 +297,6 @@ class ListsPage {
         if (this.isReadingNow)
             return {id: readingNowId, name: t('lists.readingNow')};
         return this.selectedList;
-    }
-
-    get removeLabel() {
-        return (this.isReadingNow ? t('profiles.remove') : t('lists.removeFromList'));
     }
 
     signIn() {
@@ -476,28 +478,6 @@ class ListsPage {
             this.$router.push({path: '/reader', query: {bookUid}});
     }
 
-    async hideReading(book) {
-        const confirmed = await this.$root.stdDialog.confirm(
-            t('profiles.removeReadingConfirm', {title: book.title || ''}),
-            t('profiles.currentReadingTitle'),
-        );
-        if (!confirmed)
-            return;
-
-        try {
-            await this.api.updateReaderProgress(book.bookUid, {
-                hidden: true,
-                percent: Number(book.percent || 0) || 0,
-                sectionId: String(book.sectionId || '').trim(),
-            });
-            await this.api.updateConfig();
-            this.books = this.books.filter(item => item.bookUid !== book.bookUid);
-            this.$root.notify.success(t('profiles.removeReadingSuccess'));
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('common.error'));
-        }
-    }
-
     async createList() {
         const name = String(this.newListName || '').trim();
         if (!name)
@@ -599,26 +579,13 @@ class ListsPage {
         }
     }
 
-    async removeBook(book) {
-        if (this.isReadingNow)
-            return await this.hideReading(book);
-        const list = this.selectedList;
-        const confirmed = await this.$root.stdDialog.confirm(
-            t('common.removeBookList', {title: book.title || t('common.untitled'), list: list.name || ''}),
-            t('readingLists.removeBookList'),
-        );
-        if (!confirmed)
-            return;
+    listIcon(book) {
+        return ((this.bookStates[book.bookUid] || {}).inList ? fasBookmark : 'la la-bookmark');
+    }
 
-        try {
-            await this.api.updateReadingListBook(list.id, book.bookUid, false);
-            if (book.read)
-                list.readCount = Math.max(0, (Number(list.readCount || 0) || 0) - 1);
-            list.bookCount = Math.max(0, (Number(list.bookCount || 0) || 0) - 1);
-            this.books = this.books.filter(item => item.bookUid !== book.bookUid);
-        } catch (e) {
-            this.$root.stdDialog.alert(e.message, t('common.error'));
-        }
+    openLists(book) {
+        this.listsBook = book.record;
+        this.listsDialogVisible = true;
     }
 }
 

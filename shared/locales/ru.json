@@ -286,7 +286,6 @@
         "read": "Прочитано",
         "readBook": "Читать",
         "readingLists": "Списки чтения",
-        "removeBookList": "Убрать книгу «{title}» из списка «{list}»?",
         "renameList": "Переименовать список",
         "reset": "Сбросить",
         "save": "Сохранить",
@@ -965,7 +964,6 @@
         "nothingMatches": "Нет книг, подходящих под фильтр.",
         "progress": "Прогресс",
         "readingNow": "Читаю сейчас",
-        "removeFromList": "Убрать из списка",
         "showInOpds": "Показывать в OPDS",
         "signInToKeep": "Войдите в профиль, чтобы вести списки чтения и сохранять прогресс.",
         "syncTo": "Синхронизировать с {name}",
@@ -1183,7 +1181,6 @@
         "wholeSection": "[Весь раздел]"
     },
     "profiles": {
-        "currentReadingTitle": "Текущее чтение",
         "defaultAdminName": "Администратор",
         "defaultAnonymousName": "Без профиля",
         "defaultUserName": "Пользователь",
@@ -1207,9 +1204,6 @@
         "profileBackupReady": "Бэкап профиля скачан",
         "profileBackupTitle": "Бэкап профиля",
         "profileSaved": "Профиль сохранён",
-        "remove": "Убрать",
-        "removeReadingConfirm": "Скрыть книгу «{title}»? Её можно будет вернуть из главного экрана читалки.",
-        "removeReadingSuccess": "Книга перемещена в «Скрыто»",
         "rename": "Переименовать",
         "requireOpdsAuth": "Требовать пароль для OPDS",
         "resetPasswordPrompt": "Введите новый пароль для профиля «{name}»:",
@@ -1444,8 +1438,7 @@
         "listNameRequired": "Название списка не должно быть пустым",
         "loadingBooks": "Загружаю книги...",
         "loadingLists": "Загрузка списков...",
-        "newList": "Новый список",
-        "removeBookList": "Удаление книги из списка"
+        "newList": "Новый список"
     },
     "reset": {
         "backToApp": "Вернуться в приложение",

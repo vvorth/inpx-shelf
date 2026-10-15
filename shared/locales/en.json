@@ -282,7 +282,6 @@
         "read": "Read",
         "readBook": "Read",
         "readingLists": "Reading lists",
-        "removeBookList": "Remove the book “{title}” from the list “{list}”?",
         "renameList": "Rename list",
         "reset": "Reset",
         "save": "Save",
@@ -957,7 +956,6 @@
         "nothingMatches": "No books match the filter.",
         "progress": "Progress",
         "readingNow": "Reading now",
-        "removeFromList": "Remove from list",
         "showInOpds": "Show in OPDS",
         "signInToKeep": "Sign in to keep reading lists and save your progress.",
         "syncTo": "Sync to {name}",
@@ -1169,7 +1167,6 @@
         "wholeSection": "[Whole section]"
     },
     "profiles": {
-        "currentReadingTitle": "Currently reading",
         "defaultAdminName": "Administrator",
         "defaultAnonymousName": "No profile",
         "defaultUserName": "User",
@@ -1193,9 +1190,6 @@
         "profileBackupReady": "Profile backup downloaded",
         "profileBackupTitle": "Profile backup",
         "profileSaved": "Profile saved",
-        "remove": "Remove",
-        "removeReadingConfirm": "Hide the book “{title}”? You can restore it from the reader home screen.",
-        "removeReadingSuccess": "Book moved to “Hidden”",
         "rename": "Rename",
         "requireOpdsAuth": "Require password for OPDS",
         "resetPasswordPrompt": "Enter a new password for the profile “{name}”:",
@@ -1433,8 +1427,7 @@
         "listNameRequired": "List name must not be empty",
         "loadingBooks": "Loading books...",
         "loadingLists": "Loading lists...",
-        "newList": "New list",
-        "removeBookList": "Remove book from list"
+        "newList": "New list"
     },
     "reset": {
         "backToApp": "Back to the application",
