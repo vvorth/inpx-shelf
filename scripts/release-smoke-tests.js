@@ -749,6 +749,17 @@ async function testAdminSettingsRestoreKeepsSecrets() {
         () => worker.normalizeImportedAdminSettings({settings: {librarySources: {bad: true}}}),
         /librarySources/
     );
+
+    //the stored SMTP password never goes to another server or account: changing them drops it
+    Object.assign(worker.config, {smtpHost: 'smtp.example.test', smtpUser: 'mailer', smtpPass: 'smtp-secret'});
+    worker.readingListStore = {validateEmailTo: value => value};
+    assert.strictEqual(worker.normalizeImportedAdminSettings({settings: {smtpHost: 'evil.example.test'}}).smtpPass, '');
+    assert.strictEqual(worker.normalizeIntegrationPatch({smtpHost: 'evil.example.test', smtpPass: '__KEEP__'}).smtpPass, '');
+    assert.strictEqual(worker.normalizeIntegrationPatch({smtpUser: 'other', smtpPass: '__KEEP__'}).smtpPass, '');
+    assert.strictEqual(worker.normalizeIntegrationPatch({smtpHost: 'evil.example.test', smtpPass: 'new'}).smtpPass, 'new');
+    assert.ok(!Object.hasOwn(worker.normalizeIntegrationPatch({smtpHost: ' smtp.example.test ', smtpUser: 'mailer', smtpPass: '__KEEP__', smtpPort: 465}), 'smtpPass'),
+        'Same server and account keep the password');
+    assert.ok(!Object.hasOwn(worker.normalizeImportedAdminSettings({settings: {smtpHost: 'smtp.example.test', emailFrom: 'a@b.c'}}), 'smtpPass'));
 }
 
 async function testDisabledLibrarySourceIsKept() {

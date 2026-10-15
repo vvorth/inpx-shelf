@@ -568,7 +568,17 @@ module.exports = {
         if (utils.hasProp(patch, 'emailTo'))
             normalized.emailTo = this.readingListStore.validateEmailTo(patch.emailTo);
 
-        return normalized;
+        return this.dropSmtpPassOnNewServer(normalized);
+    },
+
+    //сохранённый пароль SMTP привязан к серверу и логину: при их смене он не уйдёт на новый сервер
+    //(проверка подключения отправила бы его туда), администратор вводит пароль заново
+    dropSmtpPassOnNewServer(patch) {
+        const changed = ['smtpHost', 'smtpUser'].some(key => utils.hasProp(patch, key)
+            && String(patch[key] || '').trim() !== String(this.config[key] || '').trim());
+        if (changed && !utils.hasProp(patch, 'smtpPass'))
+            patch.smtpPass = '';
+        return patch;
     },
 
     normalizeAdminOpdsPatch(patch = {}) {

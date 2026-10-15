@@ -125,7 +125,7 @@ module.exports = {
         if (utils.hasProp(patch, 'librarySources') && !Array.isArray(patch.librarySources))
             throw new Error(t('errors.librarySourcesArray'));
 
-        return patch;
+        return this.dropSmtpPassOnNewServer(patch);
     },
 
     async importAdminSettings(userId = '', profileAccessToken = '', payload = {}) {
