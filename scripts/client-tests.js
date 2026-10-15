@@ -50,7 +50,7 @@ async function testClientSha256MatchesNode() {
 async function loadClientModule(file, imports = {}) {
     let source = await fs.readFile(path.resolve(__dirname, '../client', file), 'utf8');
     const names = [];
-    source = source.replace(/^import .*$/gm, '').replace(/^export (async function|function|const|let|class) (\w+)/gm, (m, kind, name) => {
+    source = source.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export (async function|function|const|let|class) (\w+)/gm, (m, kind, name) => {
         names.push(name);
         return `${kind} ${name}`;
     });
@@ -154,5 +154,27 @@ async function testOnlyReadOnlyRequestsAreRetried() {
     assert.ok(!canRetryRequest('catalog-search', new Error('errors.bookNotFound')));
 }
 
+// В localStorage попадают только настройки: без конфигурации сервера (csrfToken, профили) и токена профиля;
+// сохранённое прежними версиями целиком состояние отбрасывается при чтении.
+async function testStorePersistsOnlySettings() {
+    let options = null;
+    class VuexPersistence {
+        constructor(value) {
+            options = value;
+        }
+    }
+    await loadClientModule('store/index.js', {VuexPersistence, createStore: value => value, root: {}, process: {env: {}}});
+    const state = {
+        config: {csrfToken: 'csrf', userProfiles: [{id: 'admin'}]},
+        settings: {accessToken: 'library-pass-hash', currentUserId: 'admin', profileAccessToken: 'profile-token', darkTheme: true},
+    };
+    const expected = {settings: {accessToken: 'library-pass-hash', currentUserId: 'admin', darkTheme: true}};
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(options.reducer(state))), expected);
+    const storage = {getItem: () => JSON.stringify(state)};
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(options.restoreState('vuex', storage))), expected);
+    assert.deepStrictEqual(Object.keys(options.restoreState('vuex', {getItem: () => '{broken'})), []);
+}
+
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
-    testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried];
+    testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
+    testStorePersistsOnlySettings];
