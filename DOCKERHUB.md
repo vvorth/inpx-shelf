@@ -116,6 +116,8 @@ Keep `/usr/local/bin/.inpx-web` in a persistent volume. It stores:
 
 The book library itself should normally be mounted read-only at `/library`.
 
+The app runs as user `1000:1000`, not root. Set `PUID` / `PGID` to use another user (for example `99` / `100` on Unraid), or `PUID=0` to keep root. On start the data directory and `CACHE_DIR` are given to that user if they belong to someone else, e.g. after an older version that ran as root. The library must be readable by that user.
+
 ## Backups
 
 The admin panel has two different exports:
@@ -138,6 +140,7 @@ After restoring a full backup, restart the container. If library sources changed
 | `LIBDIR` | Path to a single library directory inside the container. |
 | `INPX_LIBRARY_SOURCES` | JSON array or compact string with multiple library sources. |
 | `CACHE_DIR` | Prepared book/conversion cache path. |
+| `PUID` / `PGID` | User and group the app runs as. Default: `1000` / `1000`; `PUID=0` keeps root. |
 | `INPX_COVER_CACHE_SIZE_MB` | Cover cache size limit in MB. Default: `512`. |
 | `INPX_METRICS_ENABLED` | Enable Prometheus metrics when `true`. |
 | `INPX_METRICS_PATH` | Metrics endpoint path. Default: `/metrics`. |
@@ -154,6 +157,8 @@ Available endpoints:
 - `/ready`
 - `/api/index-status`
 - `/metrics` when `INPX_METRICS_ENABLED=true`
+
+The image has a Docker `HEALTHCHECK` on `/health`: the container is `healthy` once the server accepts connections, also while the search index is being built.
 
 Example:
 

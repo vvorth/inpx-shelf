@@ -75,6 +75,8 @@ EXPOSE 12380
 VOLUME ["/usr/local/bin/.inpx-web", "/library"]
 
 ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["/usr/local/bin/docker-entrypoint.sh", "healthcheck"]
 
 FROM base-tools AS conversion-tools
 
