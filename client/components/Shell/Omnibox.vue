@@ -67,11 +67,11 @@ import {bookAuthors} from '../../share/bookActions';
 
 const componentOptions = {
     watch: {
-        '$route.query.q': {
-            handler(value) {
-                if (this.$route.path === '/search')
-                    this.query = String(value || '');
-            },
+        //поле показывает запрос только на странице поиска; на других страницах он устарел.
+        //Пока читатель печатает, поле не трогаем
+        '$route'() {
+            if (!this.focused)
+                this.query = this.searchQuery;
         },
     },
 };
@@ -88,8 +88,7 @@ class Omnibox {
 
     created() {
         this.api = this.$root.api;
-        if (this.$route.path === '/search')
-            this.query = String(this.$route.query.q || '');
+        this.query = this.searchQuery;
 
         //«/» в любом месте приложения ставит курсор в поиск
         this.keyHook = (event) => {
@@ -108,6 +107,10 @@ class Omnibox {
     beforeUnmount() {
         this.$root.removeKeyHook(this.keyHook);
         clearTimeout(this.timer);
+    }
+
+    get searchQuery() {
+        return (this.$route.path === '/search' ? String(this.$route.query.q || '') : '');
     }
 
     get indexReady() {
