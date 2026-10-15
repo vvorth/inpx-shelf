@@ -76,7 +76,7 @@
         <div :class="reader.readerPanelClass" :style="reader.readerDialogSurfaceStyle">
             <div class="reader-dialog-header">
                 <div class="reader-dialog-title">{{ reader.uiText.myPlaces }}</div>
-                <q-btn flat dense round icon="la la-times" @click="bookmarksDialogOpen = false" />
+                <q-btn flat dense round icon="la la-times" @click="reader.bookmarksDialogOpen = false" />
             </div>
 
             <div class="reader-dialog-body">
@@ -85,7 +85,7 @@
                         type="button"
                         class="tab"
                         :class="{'is-active': reader.currentPlacesTab === 'progress'}"
-                        @click="currentPlacesTab = 'progress'"
+                        @click="reader.currentPlacesTab = 'progress'"
                     >
                         {{ reader.uiText.continueReading }}
                     </button>
@@ -93,7 +93,7 @@
                         type="button"
                         class="tab"
                         :class="{'is-active': reader.currentPlacesTab === 'bookmarks'}"
-                        @click="currentPlacesTab = 'bookmarks'"
+                        @click="reader.currentPlacesTab = 'bookmarks'"
                     >
                         {{ reader.uiText.bookmarks }} <span v-if="reader.plainBookmarks.length" class="tab-count">{{ reader.plainBookmarks.length }}</span>
                     </button>
@@ -101,7 +101,7 @@
                         type="button"
                         class="tab"
                         :class="{'is-active': reader.currentPlacesTab === 'notes'}"
-                        @click="currentPlacesTab = 'notes'"
+                        @click="reader.currentPlacesTab = 'notes'"
                     >
                         {{ reader.uiText.notes }} <span v-if="reader.noteBookmarks.length" class="tab-count">{{ reader.noteBookmarks.length }}</span>
                     </button>
@@ -179,7 +179,7 @@
         <div :class="reader.readerPanelClass" :style="reader.readerDialogSurfaceStyle">
             <div class="reader-dialog-header">
                 <div class="reader-dialog-title">{{ reader.uiText.readerHelp }}</div>
-                <q-btn flat dense round icon="la la-times" @click="helpDialogOpen = false" />
+                <q-btn flat dense round icon="la la-times" @click="reader.helpDialogOpen = false" />
             </div>
 
             <div class="reader-dialog-body">
@@ -197,7 +197,7 @@
         <div :class="reader.readerPanelClass" :style="reader.readerDialogSurfaceStyle">
             <div class="reader-dialog-header">
                 <div class="reader-dialog-title">{{ reader.uiText.searchTitle }}</div>
-                <q-btn flat dense round icon="la la-times" @click="searchDialogOpen = false" />
+                <q-btn flat dense round icon="la la-times" @click="reader.searchDialogOpen = false" />
             </div>
 
             <div class="reader-dialog-body">
@@ -246,7 +246,7 @@
         <div class="reader-dialog reader-dialog--composer std-dialog-card--reader" :class="reader.readerThemeClass" :style="reader.readerDialogSurfaceStyle">
             <div class="reader-dialog-header">
                 <div class="reader-dialog-title">{{ reader.uiText.newPlace }}</div>
-                <q-btn flat dense round icon="la la-times" @click="bookmarkComposerOpen = false" />
+                <q-btn flat dense round icon="la la-times" @click="reader.bookmarkComposerOpen = false" />
             </div>
 
             <div class="reader-dialog-body">
