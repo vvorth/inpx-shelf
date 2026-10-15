@@ -592,6 +592,78 @@ async function testAccessPasswordLimitBlocksCorrectGuess() {
     assert.strictEqual((await call(token)).ok, true);
 }
 
+// The server-wide request cap rejects one message and keeps the socket; throttled guesses do not hold its slots.
+async function testWebSocketCapRejectsMessageNotSocket() {
+    const WebSocket = require('ws');
+    const Controller = require('../server/controllers/WebSocketController');
+    const controller = Object.assign(Object.create(Controller.prototype), {config: {}, activeRequests: 0,
+        webAccess: {hasAccess: async token => token === 'open', isActiveToken: () => true, newToken: () => 'salt'}});
+    let release;
+    const gate = new Promise(resolve => release = resolve);
+    controller.test = async(req, ws) => {
+        if (req.hold)
+            await gate;
+        controller.send({ok: true}, req, ws);
+    };
+    const server = new WebSocket.Server({port: 0, host: '127.0.0.1'});
+    server.on('connection', (socket, req) => {
+        socket.req = req;
+        socket.on('message', raw => controller.onMessage(socket, raw.toString()));
+    });
+    await new Promise(resolve => server.once('listening', resolve));
+    const sockets = [];
+    const open = async() => {
+        const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}`);
+        sockets.push(socket);
+        await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+        return socket;
+    };
+    const answer = (socket, requestId, params) => new Promise(resolve => {
+        const receive = raw => {
+            const message = JSON.parse(raw);
+            if (message.requestId === requestId && !message._rok) {
+                socket.off('message', receive);
+                resolve(message);
+            }
+        };
+        socket.on('message', receive);
+        socket.send(JSON.stringify({requestId, action: 'test', ...params}));
+    });
+    try {
+        const reader = await open();
+        //поток неверных токенов: 8 соединений по 8 запросов ждут задержку, но общий лимит свободен
+        const guesses = [];
+        for (let i = 0; i < 8; i++) {
+            const socket = await open();
+            for (let j = 0; j < 8; j++)
+                guesses.push(answer(socket, j + 1, {accessToken: 'wrong'}));
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.strictEqual(controller.activeRequests, 0, 'Throttled guesses hold no server-wide slot');
+        assert.strictEqual((await answer(reader, 1, {accessToken: 'open'})).ok, true);
+        assert.ok((await Promise.all(guesses)).every(message => message.error === 'need_access_token'));
+
+        const held = [];
+        for (let i = 0; i < 8; i++) {
+            const socket = await open();
+            for (let j = 0; j < 8; j++)
+                held.push(answer(socket, j + 1, {accessToken: 'open', hold: true}));
+        }
+        while (controller.activeRequests < 64)
+            await new Promise(resolve => setTimeout(resolve, 10));
+        assert.strictEqual((await answer(reader, 2, {accessToken: 'open'})).error, 'too_many_requests');
+        assert.strictEqual(reader.readyState, WebSocket.OPEN, 'The socket stays open');
+        release();
+        await Promise.all(held);
+        assert.strictEqual((await answer(reader, 3, {accessToken: 'open'})).ok, true);
+    } finally {
+        release();
+        for (const socket of sockets)
+            socket.terminate();
+        await new Promise(resolve => server.close(resolve));
+    }
+}
+
 // Query logging must not write passwords and tokens; unknown actions share one metric label.
 async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     const Controller = require('../server/controllers/WebSocketController');
@@ -640,7 +712,7 @@ async function testGunzipBufferIsBounded() {
 }
 
 module.exports = [
-    testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

@@ -141,14 +141,29 @@ class WebSocketController {
     async processMessage(ws, message) {
         const messageBytes = Buffer.byteLength(message);
         const large = messageBytes > require('../core/RequestLimits').limits(this.config).message;
-        if ((ws.activeRequests || 0) >= 8 || (this.activeRequests || 0) >= 64 || (large && this.largeRequestActive)) {
+        if ((ws.activeRequests || 0) >= 8) {
             ws.close(1013, 'Too many active requests');
+            return;
+        }
+        //общий лимит сервера отклоняет только это сообщение: закрытие сокета дало бы чужому потоку запросов рвать соединения всех
+        if ((this.activeRequests || 0) >= 64 || (large && this.largeRequestActive)) {
+            const requestId = /"requestId":(\d{1,16})[,}]/.exec(message);
+            this.send({error: 'too_many_requests'}, {requestId: (requestId ? Number(requestId[1]) : undefined)}, ws);
             return;
         }
         ws.activeRequests = (ws.activeRequests || 0) + 1;
         this.activeRequests = (this.activeRequests || 0) + 1;
         if (large)
             this.largeRequestActive = true;
+        let globalSlot = true;
+        const releaseGlobalSlot = () => {
+            if (!globalSlot)
+                return;
+            globalSlot = false;
+            this.activeRequests--;
+            if (large)
+                this.largeRequestActive = false;
+        };
         let req = {};
         let metricToken = null;
         let metricOk = false;
@@ -176,6 +191,8 @@ class WebSocketController {
             if (!access) {
                 if (this.security && req.accessToken)
                     this.security.recordLoginAttempt(ws.req, false);
+                //задержка не держит общий слот, только слот этого соединения
+                releaseGlobalSlot();
                 await utils.sleep(500);
                 const salt = this.webAccess.newToken();
                 this.send({error: 'need_access_token', salt}, req, ws);
@@ -373,9 +390,7 @@ class WebSocketController {
             this.send({error: (e && e.i18nKey ? i18n.t(e.i18nKey, e.i18nParams) : i18n.render(e && e.message))}, req || {}, ws);
         } finally {
             ws.activeRequests--;
-            this.activeRequests--;
-            if (large)
-                this.largeRequestActive = false;
+            releaseGlobalSlot();
             runtimeMetrics.endAction(metricToken, metricOk);
         }
     }
