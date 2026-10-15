@@ -104,6 +104,16 @@ async function fixture(options, test) {
     }
 }
 
+// A request with an unknown token is refused before its body is read: no 1 MB parse for anyone who asks.
+async function testKoboChecksTokenBeforeReadingBody() {
+    await fixture({}, async({base, call}) => {
+        const body = Buffer.alloc(2*1024*1024, 'x');
+        const stranger = await fetch(`${base}/kobo/${'0'.repeat(32)}/v1/library/state`, {method: 'PUT', body});
+        assert.strictEqual(stranger.status, 401, 'Refused by the token, not by the body size');
+        assert.strictEqual((await call('/v1/library/state', {method: 'PUT', body})).status, 413, 'A device still has the body limit');
+    });
+}
+
 const entitlementIds = (items, kind) => items.filter(item => item[kind]).map(item => item[kind].BookEntitlement.Id);
 
 async function testKoboSyncListsAndDownloads() {
@@ -1254,6 +1264,7 @@ async function testKoboDevicesTravelWithProfileBackup() {
 }
 
 module.exports = [
+    testKoboChecksTokenBeforeReadingBody,
     testKoboDevicesTravelWithProfileBackup,
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,

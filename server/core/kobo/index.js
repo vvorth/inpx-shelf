@@ -1107,18 +1107,6 @@ class KoboService {
     // ------------------------------------------------------------------ routing
     router() {
         const router = express.Router({mergeParams: true});
-        // Raw bodies so store-bound requests are forwarded byte for byte.
-        router.use(express.raw({type: () => true, limit: '1mb'}));
-        router.use((req, res, next) => {
-            req.rawBody = (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
-            try {
-                req.body = (req.rawBody.length ? JSON.parse(req.rawBody.toString('utf8')) : {});
-            } catch (e) {
-                req.body = {};
-            }
-            next();
-        });
-
         // Express 4 does not catch rejections of async middleware: errors are answered here.
         router.use(async(req, res, next) => {
             res.set('Cache-Control', 'no-store');
@@ -1149,6 +1137,18 @@ class KoboService {
                 return res.sendStatus(401);
             }
             req.koboDevice = device;
+            next();
+        });
+
+        // Raw bodies so store-bound requests are forwarded byte for byte; read only after the token is checked.
+        router.use(express.raw({type: () => true, limit: '1mb'}));
+        router.use((req, res, next) => {
+            req.rawBody = (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
+            try {
+                req.body = (req.rawBody.length ? JSON.parse(req.rawBody.toString('utf8')) : {});
+            } catch (e) {
+                req.body = {};
+            }
             next();
         });
 
