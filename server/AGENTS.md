@@ -6,7 +6,7 @@ Node.js 24 server. Entry: `index.js`.
 
 - `config/` — `base.js` defaults; `index.js` `propsToSave` lists the keys read from and written to `config.json`. `application_env` = `development` runs webpack inside the server: measure memory and speed without it (the release binary runs in production mode).
 - `controllers/WebSocketController.js` — WebSocket API: one `switch` on `action`, handlers call `WebWorker` methods. Read-only actions are listed in `readOnlyActions`; every other action needs the CSRF token.
-- `static.js` — HTTP routes for books, covers, downloads. `core/opds/` — OPDS feed. `core/kobo/` — Kobo sync: `index.js` (service, routes, sync phases) with mixins `Preparation`, `Covers`, `StoreProxy`. `core/HealthRoutes.js` — health and metrics.
+- `static.js` — HTTP routes for books, covers, downloads and the web app; `createWebApp.js` unpacks the web app from `dist/public.json` once per version and writes `.br`/`.gz` copies that `static.js` serves. `core/opds/` — OPDS feed. `core/kobo/` — Kobo sync: `index.js` (service, routes, sync phases) with mixins `Preparation`, `Covers`, `StoreProxy`. `core/HealthRoutes.js` — health and metrics.
 - `core/WebWorker.js` — the application service (`webWorker` everywhere): library DB state, books and prepared files, reader, reading lists. Mixins in their own files add methods to `WebWorker.prototype` (`this` is the worker):
   - `ProfileSessions.js` — profile login, sessions, `requireAdmin`; `AdminService.js` — admin dashboard, events, sources, runtime config; `AdminBackup.js` — settings export and backups.
   - `LibraryAssets.js` — books from archives, covers and images, author info, reviews; `BookDelivery.js` — sending books.

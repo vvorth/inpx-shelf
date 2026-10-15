@@ -52,7 +52,7 @@ module.exports = {
                 test: /\.(ttf|eot|woff|woff2)$/,
                 type: 'asset/resource',
                 generator: {
-                    filename: 'fonts/[name]-[hash:6][ext]'
+                    filename: 'fonts/[name].[contenthash][ext]'
                 },
             },
         ]

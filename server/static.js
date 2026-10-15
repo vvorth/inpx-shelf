@@ -100,6 +100,41 @@ async function writeCachedCover(cacheDir, cacheKey, cover) {
     await utils.prepareCachedFile(`${cacheDir}/${cacheKey}${ext}`, file => fs.writeFile(file, cover.data));
 }
 
+//Статика приложения сжата заранее (createWebApp): готовый .br или .gz рядом с файлом отдаётся, если браузер его принимает.
+//Книги и обложки идут другими маршрутами
+const {compressibleFile} = require('./createWebApp');
+const precompressedEncodings = [['br', '.br'], ['gzip', '.gz']];
+
+function precompressedStatic(publicDir) {
+    const root = path.resolve(publicDir) + path.sep;
+    return async(req, res, next) => {
+        const pathname = (req.path.endsWith('/') ? `${req.path}index.html` : req.path);
+        if ((req.method !== 'GET' && req.method !== 'HEAD') || !compressibleFile.test(pathname))
+            return next();
+
+        res.vary('Accept-Encoding');
+        let file = '';
+        try {
+            file = path.resolve(root, `.${decodeURIComponent(pathname)}`);
+        } catch (e) {
+            return next();
+        }
+        if (!file.startsWith(root))
+            return next();
+
+        for (const [encoding, ext] of precompressedEncodings) {
+            if (req.acceptsEncodings(encoding) !== encoding || !await fs.pathExists(file + ext))
+                continue;
+            //express.static отдаёт сжатый файл со своими ETag, 304 и Range; тип - исходного файла
+            res.set('Content-Encoding', encoding);
+            res.type(path.extname(pathname));
+            req.url = pathname + ext;
+            break;
+        }
+        next();
+    };
+}
+
 function normalizeWebAppBasePath(rootPathStatic = '') {
     const root = String(rootPathStatic || '').trim().replace(/^\/+|\/+$/g, '');
     return root ? `/${root}/` : '/';
@@ -506,18 +541,18 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
     //статика файлов WebApp
     const webAppStaticOptions = {
         setHeaders(res, filePath) {
-            const fileName = path.basename(filePath).toLowerCase();
+            const fileName = path.basename(filePath).toLowerCase().replace(/\.(br|gz)$/, '');
             if (['index.html', 'sw.js', 'manifest.webmanifest', 'reader.webmanifest', 'build-id.txt', 'version.txt'].includes(fileName)) {
                 res.set('Cache-Control', 'no-store');
                 return;
             }
 
-            if (/\.[a-f0-9]{8,}\.(js|css)$/i.test(fileName))
+            if (/\.[a-f0-9]{8,}\.(js|css|woff2?|ttf|eot)$/i.test(fileName))
                 res.set('Cache-Control', 'public, max-age=2592000, immutable');
         },
     };
 
-    app.use(config.rootPathStatic, express.static(config.publicDir, webAppStaticOptions));
+    app.use(config.rootPathStatic, precompressedStatic(config.publicDir), express.static(config.publicDir, webAppStaticOptions));
 };
 
 module.exports.sendCachedCover = sendCachedCover;

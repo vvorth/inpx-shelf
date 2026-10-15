@@ -648,6 +648,64 @@ async function testReaderImageDataUrlsAreValidated() {
     assert.strictEqual(readerContent.createReaderImageDataUrl('image/png', 'AAAA==='), '');
 }
 
+// The web app is compressed once at extraction; static.js serves the .br/.gz copy the browser accepts.
+// Fonts woff2 and books are sent as they are; hashed fonts are cached as immutable.
+async function testStaticAssetsArePrecompressed() {
+    const zlib = require('zlib');
+    await withTempDir(async(dir) => {
+        const publicDir = path.join(dir, 'public');
+        const bookDir = path.join(dir, 'book');
+        const script = `console.log(${JSON.stringify('compressible '.repeat(400))});`;
+        const files = {
+            'index.html': `<html>${'<p>shell</p>'.repeat(200)}</html>`,
+            'app/bundle.0123456789abcdef.js': script,
+            'app/fonts/icons.0123456789abcdef.woff2': 'woff2 '.repeat(400),
+            'app/fonts/plain.woff2': 'woff2 '.repeat(400),
+            'build-id.txt': 'id',
+        };
+        for (const [name, content] of Object.entries(files))
+            await fs.outputFile(path.join(publicDir, name), content);
+        await fs.outputFile(path.join(bookDir, 'fixture.txt'), 'book '.repeat(400));
+        await require('../server/createWebApp').precompress({publicDir});
+        assert.ok(await fs.pathExists(path.join(publicDir, 'app/bundle.0123456789abcdef.js.br')));
+        assert.ok(await fs.pathExists(path.join(publicDir, 'app/bundle.0123456789abcdef.js.gz')));
+        assert.ok(!await fs.pathExists(path.join(publicDir, 'app/fonts/plain.woff2.gz')), 'woff2 is compressed already');
+        assert.ok(!await fs.pathExists(path.join(publicDir, 'build-id.txt.gz')), 'No copy bigger than the file');
+
+        await withStaticServer({rootPathStatic: '/shelf', bookPathStatic: '/shelf/book', bookDir, publicDir,
+            publicFilesDir: dir, tempDir: path.join(dir, 'tmp'), libDir: dir, librarySources: []}, async(server) => {
+            const get = (url, encoding) => request(server, url, (encoding === undefined ? {} : {'accept-encoding': encoding}));
+            const unpack = {br: zlib.brotliDecompressSync, gzip: zlib.gunzipSync};
+            for (const [encoding, expected] of [['gzip, deflate, br', 'br'], ['br', 'br'], ['gzip', 'gzip'], ['br;q=0, gzip', 'gzip'], ['identity', undefined], [undefined, undefined]]) {
+                const res = await get('/shelf/app/bundle.0123456789abcdef.js', encoding);
+                assert.strictEqual(res.status, 200);
+                assert.strictEqual(res.headers['content-encoding'], expected, String(encoding));
+                assert.match(res.headers.vary || '', /Accept-Encoding/i);
+                assert.match(res.headers['content-type'], /javascript/);
+                assert.match(res.headers['cache-control'], /immutable/);
+                assert.strictEqual((expected ? unpack[expected](res.body) : res.body).toString(), script);
+            }
+            const index = await get('/shelf/', 'br');
+            assert.deepStrictEqual([index.headers['content-encoding'], index.headers['cache-control']], ['br', 'no-store']);
+            assert.match(index.headers['content-type'], /text\/html/);
+            assert.strictEqual(zlib.brotliDecompressSync(index.body).toString(), files['index.html']);
+            const cached = await get('/shelf/app/bundle.0123456789abcdef.js', 'br');
+            const notModified = await request(server, '/shelf/app/bundle.0123456789abcdef.js', {'accept-encoding': 'br', 'if-none-match': cached.headers.etag});
+            assert.strictEqual(notModified.status, 304);
+
+            const font = await get('/shelf/app/fonts/icons.0123456789abcdef.woff2', 'gzip, br');
+            assert.strictEqual(font.headers['content-encoding'], undefined);
+            assert.match(font.headers['cache-control'], /immutable/, 'A hashed font is immutable');
+            const plainFont = await get('/shelf/app/fonts/plain.woff2', 'gzip, br');
+            assert.strictEqual(plainFont.headers['content-encoding'], undefined);
+            assert.doesNotMatch(plainFont.headers['cache-control'] || '', /immutable/, 'An unhashed font is not');
+            const book = await get('/shelf/book/fixture.txt', 'gzip, br');
+            assert.deepStrictEqual([book.status, book.headers['content-encoding'], book.body.toString()], [200, undefined, 'book '.repeat(400)]);
+            assert.strictEqual((await get('/shelf/..%2f..%2fbook%2ffixture.txt', 'br')).status, 404);
+        });
+    });
+}
+
 async function testAppCacheRecoveryBootstrapAndRoute() {
     const mainSource = (await fs.readFile(path.resolve(__dirname, '../client/main.js'), 'utf8'))
         .replace(/\r\n/g, '\n');
@@ -2437,6 +2495,7 @@ const tests = [
     ...require('./web-worker-tests'),
     testConfigSecretsSurviveRestart,
     testAppCacheRecoveryBootstrapAndRoute,
+    testStaticAssetsArePrecompressed,
     testFb2ContentsExcludeNotesBodies,
     testReaderAnnotationStaysOutsideReadingFlow,
     testReaderBookNotesMenuAndReturnLayout,
