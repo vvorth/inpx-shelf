@@ -448,6 +448,40 @@ async function testCatalogFailedSwapReopensDb() {
     });
 }
 
+// Relevance ranking scores at most maxRanked matches: a broader query is ordered by rating, while its total,
+// filters and facet counts stay exact. Suggestions follow the same rule and skip deleted books.
+async function testBroadSearchSkipsRanking() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const file = path.join(dir, 'library.sqlite');
+        const index = new CatalogIndex();
+        const book = (id, title, keywords, librate, lang, del = 0) => ({_uid: `u${id}`, title, keywords, librate, lang, del, author: `Автор ${id}`, series: '',
+            genre: 'sf', ext: 'fb2', date: '2026-01-01', sourceId: 'main', folder: 'a.zip', file: String(id), libid: String(id)});
+        index.beginBuild(file, [], [{id: 'main', name: 'Main', libDir: dir}]);
+        index.insertBooks([book(1, 'Звезда', '', 1, 'ru'), book(2, 'Ночь', 'звезда', 5, 'ru'), book(3, 'Звёздный час', '', 3, 'en'),
+            book(4, 'День', 'звезда', 4, 'ru'), book(5, 'Звезда морей', '', 5, 'ru', 1)]);
+        index.finishBuild({});
+        index.open(file);
+        try {
+            const titles = request => index.getBooks(index.search(request).ids).map(row => row.title);
+            const ranked = index.search({q: 'звезд'});
+            assert.deepStrictEqual(titles({q: 'звезд'}), ['Звезда', 'Звёздный час', 'Ночь', 'День'], 'title matches rank first');
+
+            index.maxRanked = 2;
+            const broad = index.search({q: 'звезд'});
+            assert.deepStrictEqual(titles({q: 'звезд'}), ['Ночь', 'День', 'Звёздный час', 'Звезда'], 'too many matches: by rating');
+            assert.strictEqual(broad.total, ranked.total);
+            assert.deepStrictEqual(broad.facets, ranked.facets);
+            assert.deepStrictEqual(titles({q: 'звезд', filters: {lang: 'ru'}, offset: 1}), ['День', 'Звезда']);
+            assert.strictEqual(index.search({q: 'звезд', filters: {lang: 'ru'}}).total, 3);
+            assert.deepStrictEqual(index.getBooks(index.suggest({q: 'звезд'}).books.map(row => row.id)).map(row => row.title),
+                ['Ночь', 'День', 'Звёздный час', 'Звезда']);
+        } finally {
+            index.close();
+        }
+    });
+}
+
 // Search and suggest queries are capped in length and word count before they reach FTS.
 function testSearchQueryIsCapped() {
     const CatalogIndex = require('../server/core/search/CatalogIndex');
@@ -457,7 +491,7 @@ function testSearchQueryIsCapped() {
     assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
 }
 
-module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb,
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb, testBroadSearchSkipsRanking,
     testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
     testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart,
     testWorkKeyMatchesEditionsOnly, testSearchGroupsEditions];

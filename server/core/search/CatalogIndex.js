@@ -12,6 +12,10 @@ const maxLimit = 200;
 //длинный запрос из сотен слов превращается в огромное выражение FTS и перебор опечаток: режем
 const maxQueryLength = 200;
 const maxQueryTokens = 12;
+//Сортировка по релевантности считает bm25 по всем совпадениям запроса (~3,5 мс на тысячу с сортировкой), и короткий
+//префикс («ка» - сотни тысяч книг) занял бы поток на секунду. Больше maxRanked совпадений - порядок «по оценке»:
+//bm25 такие совпадения почти не различает; итог и счётчики фильтров остаются точными
+const maxRanked = 20000;
 const queryTokens = value => tokens(String(value || '').substring(0, maxQueryLength)).slice(0, maxQueryTokens);
 const facetFields = ['lang', 'ext', 'genre', 'source', 'librate'];
 const powerFields = new Map([
@@ -103,6 +107,8 @@ class CatalogIndex {
         this.hidden = new Set();
         this.hiddenBooks = {author: new Map(), series: new Map()};
         this.visibility = {stats: null, books: 0, indexed: []};
+        this.maxRanked = maxRanked;
+        this.hits = null;
     }
 
     //---------- открытие ----------
@@ -122,6 +128,10 @@ class CatalogIndex {
         this.db = db;
         this.sources = new Map(db.prepare('SELECT key, name, lib_dir FROM source').all().map(row => [row.key, row]));
         db.function('catalog_visible', id => (this.columns.flags[id] & 1));
+        db.function('catalog_hit', (id) => {
+            this.hits.push(id);
+            return 1;
+        });
         db.function('catalog_books', (kind, ref, books) => Math.max(0, books - ((kind === 'series' ? this.hiddenBooks.series : this.hiddenBooks.author).get(ref) || 0)));
         this.setHiddenSources(hidden, info);
         return this.meta();
@@ -561,6 +571,17 @@ class CatalogIndex {
         return best ? best.term : null;
     }
 
+    //id всех совпадений FTS: собираются функцией SQL, без объекта строки на каждое совпадение
+    matchIds(expression) {
+        this.hits = [];
+        try {
+            this.db.prepare('SELECT COUNT(catalog_hit(rowid)) AS n FROM book_fts WHERE book_fts MATCH ?').get(expression);
+            return this.hits;
+        } finally {
+            this.hits = null;
+        }
+    }
+
     hasHits(expression) {
         if (!expression)
             return false;
@@ -921,17 +942,12 @@ class CatalogIndex {
         const text = this.resolveText(Object.assign({}, parsed, {exact: []}));
         const hasText = !!text.expression;
         const sort = String(request.sort || (hasText ? 'relevance' : 'date'));
-        //оценка bm25 нужна только сортировке по релевантности; иначе хватает id совпадений
-        let hitIds = null;
+        //итог и счётчики фильтров считаются по всем совпадениям; оценка bm25 нужна только сортировке по релевантности
+        //и только если совпадений не больше maxRanked, иначе они идут «по оценке» (rating)
+        const hitIds = (hasText ? this.matchIds(text.expression) : null);
         let scored = null;
-        if (hasText && sort === 'relevance') {
+        if (hasText && sort === 'relevance' && hitIds.length <= this.maxRanked)
             scored = this.db.prepare(`SELECT rowid AS id, bm25(book_fts, 10.0, 6.0, 4.0, 1.0) AS score FROM book_fts WHERE book_fts MATCH ?`).all(text.expression);
-            hitIds = scored.map(hit => hit.id);
-        } else if (hasText) {
-            hitIds = [];
-            for (const row of this.db.prepare('SELECT rowid AS id FROM book_fts WHERE book_fts MATCH ?').iterate(text.expression))
-                hitIds.push(row.id);
-        }
 
         const exactIds = (parsed.exact.length ? this.exactIdSet(parsed.exact) : null);
         const filter = this.compileFilter(filters, parsed.excludes, {showDeleted: !!request.showDeleted, exactIds});
@@ -1020,7 +1036,7 @@ class CatalogIndex {
             for (let i = 0; i < ranked.length && ids.length < limit; i++)
                 take(ranked[i].id);
         } else {
-            const order = c.order[sort] || c.order.date;
+            const order = c.order[sort === 'relevance' ? 'rating' : sort] || c.order.date;
             for (let i = 0; i < order.length && ids.length < limit; i++) {
                 if (pass[order[i]])
                     take(order[i]);
@@ -1173,13 +1189,28 @@ class CatalogIndex {
                 this.loadColumns();
             //одно издание на произведение
             const seen = new Set();
-            books = this.db.prepare(`SELECT b.id AS id, b.work AS work
-                FROM book_fts f JOIN book b ON b.id = f.rowid
-                WHERE book_fts MATCH ? AND b.del = 0 AND catalog_visible(b.id)
-                ORDER BY bm25(book_fts, 10.0, 6.0, 4.0, 1.0) LIMIT 30`).all(text.expression)
-                .filter(row => !row.work || (!seen.has(row.work) && seen.add(row.work)))
-                .slice(0, 6)
-                .map(row => ({id: row.id}));
+            const firstEdition = work => !work || (!seen.has(work) && seen.add(work));
+            const count = this.db.prepare('SELECT COUNT(*) AS n FROM book_fts WHERE book_fts MATCH ?').get(text.expression).n;
+            if (count <= this.maxRanked) {
+                books = this.db.prepare(`SELECT b.id AS id, b.work AS work
+                    FROM book_fts f JOIN book b ON b.id = f.rowid
+                    WHERE book_fts MATCH ? AND b.del = 0 AND catalog_visible(b.id)
+                    ORDER BY bm25(book_fts, 10.0, 6.0, 4.0, 1.0) LIMIT 30`).all(text.expression)
+                    .filter(row => firstEdition(row.work))
+                    .slice(0, 6)
+                    .map(row => ({id: row.id}));
+            } else {
+                //слишком много совпадений для bm25 (см. maxRanked): лучшие по оценке
+                const c = this.columns;
+                c.pass.fill(0);
+                for (const id of this.matchIds(text.expression))
+                    c.pass[id] = 1;
+                for (let i = 0; i < c.order.rating.length && books.length < 6; i++) {
+                    const id = c.order.rating[i];
+                    if (c.pass[id] && (c.flags[id] & 1) && !(c.flags[id] & 2) && firstEdition(c.work[id]))
+                        books.push({id});
+                }
+            }
         }
 
         return {authors: names.authors, series: names.series, books, corrected: text.corrected || '', layout: !!text.layout};
