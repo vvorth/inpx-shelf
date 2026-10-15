@@ -22,6 +22,29 @@ function normalize(progress = {}, generationFallback = 0) {
     };
 }
 
+//Как на сервере (server/core/ReaderProgress.js): от 99.9% книга прочитана
+const READ_PERCENT = 0.999;
+
+function isRead(progress = {}) {
+    return normalize(progress || {}).percent >= READ_PERCENT;
+}
+
+//Отметка «прочитано»: percent 1, место в книге (глава, страница, текст) остаётся
+function markRead(progress = {}, updatedAt = '', generation = 0) {
+    return Object.assign(normalize(progress || {}, generation), {percent: 1, updatedAt});
+}
+
+//Снятие отметки: то же место, доля прочитанного - по нему (viewPercent).
+//Места нет или оно в самом конце книги - начало, как у непрочитанной
+function unmarkRead(progress = {}, viewPercent = 0, updatedAt = '', generation = 0) {
+    const current = normalize(progress || {}, generation);
+    const percent = Math.max(0, Math.min(1, Number(viewPercent) || 0));
+    const placed = !!(current.sectionId || current.pageIndex > 0 || current.textOffset >= 0 || current.textSnippet);
+    if (!placed || percent >= READ_PERCENT)
+        return Object.assign(normalize({}, current.generation), {updatedAt});
+    return Object.assign(current, {percent, updatedAt});
+}
+
 function hasPlace(progress = {}) {
     const normalized = normalize(progress || {});
     return !!(
@@ -135,4 +158,4 @@ function trimMap(map = {}, limit = 500) {
     return Object.fromEntries(entries.slice(0, limit));
 }
 
-module.exports = {normalize, hasPlace, merge, shouldUpload, afterReset, trimMap};
+module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, shouldUpload, afterReset, trimMap};

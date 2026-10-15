@@ -46,7 +46,30 @@ async function testReaderStorageKeepsBackgroundOnceAndForwardProgress() {
     }
 }
 
+//Отметка «прочитано» не стирает место, снятие отметки возвращает к нему
+async function testReaderReadMarkKeepsPlace() {
+    const readerProgress = require('../client/share/readerProgress');
+    const place = {percent: 0.42, sectionId: 'section-7', pageIndex: 84, textOffset: 1200, textSnippet: 'Глава седьмая', generation: 2};
+
+    const read = readerProgress.markRead(place, 't1');
+    assert.strictEqual(read.percent, 1);
+    assert.strictEqual(readerProgress.isRead(read), true);
+    assert.deepStrictEqual([read.sectionId, read.pageIndex, read.textOffset, read.textSnippet, read.generation, read.updatedAt],
+        ['section-7', 84, 1200, 'Глава седьмая', 2, 't1']);
+
+    const unread = readerProgress.unmarkRead(read, 0.42, 't2');
+    assert.deepStrictEqual(unread, Object.assign({}, readerProgress.normalize(place), {updatedAt: 't2'}));
+    assert.strictEqual(readerProgress.isRead(unread), false);
+
+    //место в самом конце книги или без места - снова с начала
+    const fromEnd = readerProgress.unmarkRead(read, 1, 't3');
+    assert.deepStrictEqual([fromEnd.percent, fromEnd.pageIndex, fromEnd.sectionId, fromEnd.textOffset, fromEnd.generation, fromEnd.updatedAt],
+        [0, 0, '', -1, 2, 't3']);
+    assert.strictEqual(readerProgress.hasPlace(readerProgress.unmarkRead({percent: 1}, 0.5, 't4')), false);
+}
+
 module.exports = [
     testReaderProgressMapIsCapped,
+    testReaderReadMarkKeepsPlace,
     testReaderStorageKeepsBackgroundOnceAndForwardProgress,
 ];

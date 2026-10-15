@@ -599,6 +599,7 @@ class Reader extends ReaderPaginator {
     };
     restorePending = false;
     restoreFromSavedProgress = false;
+    readMarkScrollTop = -1;
     saveProgressDebounced = null;
     savePreferencesDebounced = null;
     progressSavePromise = null;
@@ -1360,6 +1361,7 @@ class Reader extends ReaderPaginator {
             noteSaved: t('reader.noteSaved'),
             readMarked: t('reader.readMarked'),
             readUnmarked: t('reader.readUnmarked'),
+            undo: t('reader.undo'),
             bookmarkTitle: t('reader.bookmarkTitle'),
             error: t('reader.error'),
             profileLoginRequired: t('reader.profileLoginRequired'),
@@ -4293,23 +4295,13 @@ class Reader extends ReaderPaginator {
             target = scroller.querySelector(`#${this.escapeCssId(anchor.id)}`);
         if (!target && anchor.textSnippet)
             target = readerTextAnchors.findReaderNodeByTextSnippet(scroller.querySelector('.reader-html'), anchor.textSnippet);
-
-        if (target) {
-            scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
-            this.updateCurrentSectionFromScroll();
-            return true;
-        }
-
-        if (anchor.sectionId) {
+        if (!target && anchor.sectionId)
             target = scroller.querySelector(`#${this.escapeCssId(anchor.sectionId)}`);
-            if (target) {
-                scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
-                this.updateCurrentSectionFromScroll();
-                return true;
-            }
-        }
 
-        scroller.scrollTop = Math.max(0, Number(anchor.scrollTop || 0) || 0);
+        scroller.scrollTop = (target
+            ? this.readerScrollTargetTop(scroller, target)
+            : Math.max(0, Number(anchor.scrollTop || 0) || 0));
+        this.readMarkScrollTop = scroller.scrollTop;
         this.updateCurrentSectionFromScroll();
         return true;
     }
@@ -4677,6 +4669,7 @@ class Reader extends ReaderPaginator {
         this.currentSectionId = '';
         this.restorePending = false;
         this.restoreFromSavedProgress = false;
+        this.readMarkScrollTop = -1;
         this.pendingReflowAnchor = null;
         this.controlsOpen = false;
         this.contentsDialogOpen = false;
@@ -4883,6 +4876,7 @@ class Reader extends ReaderPaginator {
                     this.setPagedScroll(this.getPagedOffset(target));
                 else
                     scroller.scrollTop = this.readerScrollTargetTop(scroller, target);
+                this.readMarkScrollTop = scroller.scrollTop;
                 this.updateCurrentSectionFromScroll();
                 return;
             }
@@ -4894,6 +4888,7 @@ class Reader extends ReaderPaginator {
         } else {
             const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
             scroller.scrollTop = maxScroll * (Number(this.progress.percent || 0) || 0);
+            this.readMarkScrollTop = scroller.scrollTop;
             this.updateCurrentSectionFromScroll();
         }
     }
@@ -4985,6 +4980,14 @@ class Reader extends ReaderPaginator {
         const currentScroll = scroller.scrollTop;
         const percent = (maxScroll > 0 ? currentScroll / maxScroll : 0);
         this.updateCurrentSectionFromScroll();
+        // Отметка «прочитано» держится, пока читатель сам не прокрутит текст: переход к месту её не снимает
+        if (
+            this.readMarkScrollTop >= 0
+            && readerProgress.isRead(this.progress)
+            && Math.abs(currentScroll - this.readMarkScrollTop) < scroller.clientHeight / 2
+        )
+            return;
+        this.readMarkScrollTop = -1;
         this.progress = Object.assign({}, this.progress, {
             percent,
             sectionId: this.currentSectionId || '',
@@ -5750,6 +5753,20 @@ class Reader extends ReaderPaginator {
     }
 
     async toggleCurrentBookRead() {
+        await this.setCurrentBookRead(!this.isBookMarkedRead);
+    }
+
+    //Доля прочитанного по тому, что сейчас на экране: место, где читатель был до отметки «прочитано»
+    currentViewPercent() {
+        if (this.isPagedMode)
+            return (this.totalPagedLogicalPages > 1 ? this.currentPagedPageIndex / (this.totalPagedLogicalPages - 1) : 0);
+
+        const scroller = this.$refs.scroller;
+        const maxScroll = (scroller ? Math.max(0, scroller.scrollHeight - scroller.clientHeight) : 0);
+        return (maxScroll > 0 ? scroller.scrollTop / maxScroll : 0);
+    }
+
+    async setCurrentBookRead(read = true, {undoable = true} = {}) {
         if (!this.bookUid)
             return;
 
@@ -5760,19 +5777,31 @@ class Reader extends ReaderPaginator {
         if (!api)
             return;
 
-        const read = !this.isBookMarkedRead;
+        const bookUid = this.bookUid;
         try {
-            await api.markReaderBooksRead([this.bookUid], read);
-            this.progress = Object.assign({}, this.progress, {
-                percent: (read ? 1 : 0),
-                sectionId: '',
-                pageIndex: 0,
-                textOffset: -1,
-                textSnippet: '',
-                updatedAt: new Date().toISOString(),
-            });
-            this.currentSectionId = '';
-            this.$root.notify.success(read ? this.uiText.readMarked : this.uiText.readUnmarked, '', this.readerNotifyOptions);
+            // Сервер при отметке стирает место в книге, при снятии - весь прогресс: место сохраняем следом
+            await api.markReaderBooksRead([bookUid], read);
+            if (bookUid !== this.bookUid)
+                return;
+
+            const place = Object.assign({}, this.progress, {sectionId: this.currentSectionId || this.progress.sectionId || ''});
+            const updatedAt = new Date().toISOString();
+            this.progress = (read
+                ? readerProgress.markRead(place, updatedAt, this.readerProgressGeneration)
+                : readerProgress.unmarkRead(place, this.currentViewPercent(), updatedAt, this.readerProgressGeneration));
+            this.currentSectionId = this.progress.sectionId;
+            this.readMarkScrollTop = ((read && !this.isPagedMode && this.$refs.scroller) ? this.$refs.scroller.scrollTop : -1);
+            if (this.hasReaderProgressPlace(this.progress)) {
+                this.writeStoredReaderProgress();
+                this.queuePersistProgress(bookUid);// no await
+            } else {
+                this.clearStoredReaderProgress(bookUid);
+            }
+
+            const actions = (undoable
+                ? [{label: this.uiText.undo, color: 'primary', handler: () => this.setCurrentBookRead(!read, {undoable: false})}]
+                : []);
+            this.$root.notify.success(read ? this.uiText.readMarked : this.uiText.readUnmarked, '', Object.assign({actions}, this.readerNotifyOptions));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, this.uiText.error);
         }

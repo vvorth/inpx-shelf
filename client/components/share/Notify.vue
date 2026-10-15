@@ -20,6 +20,7 @@ class Notify {
             messageColor = 'black',
             position = 'top-right',
             html = false,
+            actions = [],//кнопки Quasar ({label, handler}) перед кнопкой закрытия
         } = opts;
 
         //сообщения - текст (имена, названия книг); разметка только с opts.html
@@ -34,7 +35,7 @@ class Notify {
             color,
             textColor: iconColor,
             icon,
-            actions: [{icon: 'la la-times notify-button-icon', color: 'black'}],
+            actions: [...actions, {icon: 'la la-times notify-button-icon', color: 'black'}],
             html: true,
 
             message: 

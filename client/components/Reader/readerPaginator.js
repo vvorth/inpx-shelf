@@ -2,6 +2,7 @@
 //поиск страницы по якорю или тексту. Своего состояния нет: поля живут в Reader, который наследует этот класс
 //(vueComponent собирает методы и геттеры по всей цепочке прототипов).
 const readerTextAnchors = require('./readerTextAnchors');
+const readerProgress = require('../../share/readerProgress');
 
 const pagedPageTextCache = new WeakMap();
 
@@ -420,7 +421,8 @@ export default class ReaderPaginator {
         this.currentPageIndex = safeIndex;
         this.currentSectionId = sectionId;
         this.progress = Object.assign({}, this.progress, {
-            percent,
+            // Отметка «прочитано» снимается, только когда читатель сам листает (save), а не при перестройке страниц
+            percent: ((!save && readerProgress.isRead(this.progress)) ? 1 : percent),
             sectionId,
             pageIndex: safeIndex,
             textOffset: Number.isFinite(textOffset) ? textOffset : -1,
