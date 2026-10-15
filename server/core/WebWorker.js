@@ -204,7 +204,8 @@ class WebWorker {
             this.stateStore.close();
     }
 
-    //Одна сборка БД за раз: вызов во время сборки ставит в очередь не больше одной следующей
+    //Одна загрузка за раз (состояние сервера, хеш INPX): вызов во время загрузки ставит в очередь не больше одной следующей.
+    //Сами сборки БД упорядочивает catalogSearch.ensure
     loadOrCreateDb(recreate = false) {
         if (!this.dbLoad) {
             this.dbLoad = this.loadOrCreateDbOnce(recreate).finally(() => {

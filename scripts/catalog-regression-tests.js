@@ -280,6 +280,96 @@ async function testCatalogSearchRebuildEditsAndThreadRestart() {
     });
 }
 
+// INPX in a temp dir: rows [author, title] in the INPX field order.
+async function writeInpx(file, rows) {
+    const yazl = require('yazl');
+    const {pipeline} = require('stream/promises');
+    const line = ([author, title], i) => [`${author.replace(' ', ',')}:`, 'sf:', title, '', '0', String(1000 + i), '100', String(1000 + i), '0', 'fb2',
+        '2026-10-01', 'ru', '0', ''].join('\x04');
+    const zip = new yazl.ZipFile();
+    const done = pipeline(zip.outputStream, fs.createWriteStream(file));
+    zip.addBuffer(Buffer.from(rows.map(line).join('\n') + '\n'), 'collection.inp');
+    zip.end();
+    await done;
+}
+
+function catalogWorker() {
+    const WebWorker = require('../server/core/WebWorker');
+    const worker = Object.create(WebWorker.prototype);
+    worker.config = {};
+    worker.readingListStore = {getMetadataOverrides: async() => ({})};
+    worker.resetLibraryAssetCaches();
+    return worker;
+}
+
+// Library DB builds started from different places (reindex, author names download) run one at a time
+// from real INPX: requests made during a build merge into one next build, leftovers of interrupted
+// builds are removed and the final DB answers searches.
+async function testCatalogBuildsAreSerialized() {
+    await withTempDir(async(dir) => {
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const inpxFile = path.join(dir, 'lib.inpx');
+        await writeInpx(inpxFile, [['Тестов Автор', 'Первая книга'], ['Тестов Автор', 'Вторая книга']]);
+        await fs.writeFile(path.join(dir, 'library.sqlite.tmp'), 'stale');
+        await fs.writeFile(path.join(dir, 'library.sqlite.1-1.tmp'), 'stale');
+        const worker = catalogWorker();
+        const search = new CatalogSearch({dataDir: dir, inpxFile, libDir: dir}, worker);
+        worker.catalogSearch = search;
+        let running = 0;
+        let builds = 0;
+        const rebuild = search.rebuild;
+        search.rebuild = async function(...args) {
+            running++;
+            builds++;
+            assert.strictEqual(running, 1, 'Library DB builds overlap');
+            try {
+                return await rebuild.apply(this, args);
+            } finally {
+                running--;
+            }
+        };
+        try {
+            assert.strictEqual(await search.ensure('h1'), true);
+            assert.strictEqual(builds, 1);
+
+            //во время сборки: скачаны английские имена, ещё две пересборки - всё это одна следующая сборка
+            let during = null;
+            worker.readingListStore.getMetadataOverrides = async() => {
+                if (!during) {
+                    let requests = null;
+                    search.authorNames.download = async() => {
+                        await fs.writeJson(search.authorNames.file, {updatedAt: 'names-1', entries: [['Тестов Автор', 'Author Testov']]});
+                        requests = Promise.all([search.ensure('h2', {keepReady: true}), search.ensure('h2', {force: true, keepReady: true})]);
+                        return 1;
+                    };
+                    search.startWikidataDownload('author-names');
+                    during = search.authorNames.job.then(() => requests);
+                }
+                return {};
+            };
+            await writeInpx(inpxFile, [['Тестов Автор', 'Первая книга'], ['Тестов Автор', 'Вторая книга'], ['Другой Писатель', 'Третья книга']]);
+            assert.strictEqual(await search.ensure('h2', {force: true, keepReady: true}), true);
+            assert.deepStrictEqual(await during, [true, true]);
+            assert.strictEqual(builds, 3);
+            assert.strictEqual(running, 0);
+
+            assert.strictEqual(search.ready, true);
+            assert.strictEqual(search.building, false);
+            assert.strictEqual(search.meta.inpxHash, 'h2');
+            assert.strictEqual(search.meta.aliasesStamp, 'names-1');
+            assert.strictEqual((await search.search({q: 'testov'})).total, 2);
+            assert.deepStrictEqual((await search.search({q: 'третья'})).books.map(book => book.title), ['Третья книга']);
+            assert.deepStrictEqual((await fs.readdir(dir)).filter(name => name.endsWith('.tmp')), []);
+
+            //повторный запрос с тем же хешем и именами открывает готовую БД без сборки
+            assert.strictEqual(await search.ensure('h2', {keepReady: true}), true);
+            assert.strictEqual(builds, 3);
+        } finally {
+            await search.close();
+        }
+    });
+}
+
 // Search and suggest queries are capped in length and word count before they reach FTS.
 function testSearchQueryIsCapped() {
     const CatalogIndex = require('../server/core/search/CatalogIndex');
@@ -289,6 +379,6 @@ function testSearchQueryIsCapped() {
     assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
 }
 
-module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testMetadataEditKeepsAliasesSeriesAndOpdsGroups, testMetadataEditKeepsAuthorCounts,
-    testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart, testWorkKeyMatchesEditionsOnly,
-    testSearchGroupsEditions];
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildsAreSerialized, testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
+    testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart,
+    testWorkKeyMatchesEditionsOnly, testSearchGroupsEditions];

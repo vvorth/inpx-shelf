@@ -1,5 +1,6 @@
 //БД библиотеки на SQLite: импорт из INPX, записи книг, поиск, подсказки.
 //Пока БД строится впервые, ready = false и сервер занят; при пересборке прежняя БД отвечает до замены.
+const path = require('path');
 const fs = require('fs-extra');
 
 const log = new (require('../AppLogger'))().log;//singleton
@@ -23,6 +24,9 @@ class CatalogSearch {
         this.progress = 0;
         this.meta = {};
         this.buildPromise = null;
+        this.nextBuild = null;
+        this.buildSeq = 0;
+        this.staleTmpRemoved = false;
         this.generation = 0;
         this.inpxHash = '';
         this.editedDuringBuild = null;
@@ -87,19 +91,43 @@ class CatalogSearch {
         return this.thread;
     }
 
-    //Открыть готовую БД библиотеки или построить её из INPX.
+    //Открыть готовую БД библиотеки или построить её из INPX. Единственный вход в сборку: сборки идут по одной,
+    //запросы во время сборки сливаются в одну следующую (с последним хешем; force, если его просил хоть один).
     //keepReady: прежняя БД отвечает, пока строится новая; force: строить, даже если хеш INPX не изменился
     ensure(inpxHash, options = {}) {
-        const generation = ++this.generation;
         this.inpxHash = inpxHash;
-        if (!options.keepReady)
-            this.ready = false;
-        this.buildPromise = this.ensureInner(inpxHash, generation, !!options.force)
-            .catch((e) => {
-                log(LM_ERR, `Library DB: ${e.message}`);
-                return false;
+        let next = this.nextBuild;
+        if (!next) {
+            next = this.nextBuild = {force: false, keepReady: true};
+            next.promise = this.buildPromise = (this.buildPromise || Promise.resolve()).then(() => {
+                this.nextBuild = null;
+                return this.runBuild(next);
             });
-        return this.buildPromise;
+        }
+        next.inpxHash = inpxHash;
+        next.generation = this.generation;
+        next.force = next.force || !!options.force;
+        next.keepReady = next.keepReady && !!options.keepReady;
+        return next.promise;
+    }
+
+    async runBuild({inpxHash, force, keepReady, generation}) {
+        //запрос, поставленный до закрытия БД, не строит её заново
+        if (generation !== this.generation)
+            return false;
+        if (!keepReady)
+            this.ready = false;
+        try {
+            //сборки идут по одной, поэтому временные файлы до первой из них - остатки прерванных запусков
+            if (!this.staleTmpRemoved) {
+                this.staleTmpRemoved = true;
+                await this.removeStaleTmpFiles();
+            }
+            return await this.ensureInner(inpxHash, generation, force);
+        } catch (e) {
+            log(LM_ERR, `Library DB: ${e.message}`);
+            return false;
+        }
     }
 
     async ensureInner(inpxHash, generation, force) {
@@ -130,8 +158,8 @@ class CatalogSearch {
         //строит отдельный поток: поток запросов продолжает отвечать по прежней БД до замены файла
         const CatalogIndexThread = require('./CatalogIndexThread');
         const thread = new CatalogIndexThread();
-        const tmpFile = `${this.file}.tmp`;
-        await fs.remove(tmpFile);
+        //у каждой сборки свой файл: никакая сборка не удалит и не подменит чужой
+        const tmpFile = `${this.file}.${process.pid}-${++this.buildSeq}.tmp`;
 
         this.building = true;
         this.progress = 0;
@@ -190,12 +218,25 @@ class CatalogSearch {
                 inpxInfo: JSON.stringify(makeInpxInfo(parserInfos, inpxFilter)),
             });
             //в Linux и macOS открытая прежняя БД остаётся читаемой после замены файла: запросы не прерываются;
-            //Windows не даёт заменить открытый файл
+            //Windows не даёт заменить открытый файл: прежняя БД закрывается и, если замена не удалась, открывается снова
             const reader = this.getThread();
-            if (process.platform === 'win32')
+            const closeOld = (process.platform === 'win32');
+            if (closeOld)
                 await reader.call('close');
-            await fs.move(tmpFile, this.file, {overwrite: true});
-            this.meta = await this.openIndex(reader);
+            try {
+                await fs.move(tmpFile, this.file, {overwrite: true});
+            } catch (e) {
+                if (closeOld && this.ready)
+                    await this.openIndex(reader).catch(() => (this.ready = false));
+                throw e;
+            }
+            try {
+                this.meta = await this.openIndex(reader);
+            } catch (e) {
+                //прежнего файла уже нет, а новый не открылся
+                this.ready = false;
+                throw e;
+            }
             this.progress = 1;
             this.ready = (generation === this.generation);
             if (edited.size) {
@@ -221,6 +262,16 @@ class CatalogSearch {
                 this.editedDuringBuild = null;
             //разбор INPX оставляет много мусора: освобождаем память сразу, как прежнее создание БД
             utils.freeMemory();
+        }
+    }
+
+    //Временные файлы сборок, прерванных остановкой сервера
+    async removeStaleTmpFiles() {
+        const dir = path.dirname(this.file);
+        const prefix = `${path.basename(this.file)}.`;
+        for (const name of await fs.readdir(dir).catch(() => [])) {
+            if (name.startsWith(prefix) && name.endsWith('.tmp'))
+                await fs.remove(path.join(dir, name)).catch(() => {});
         }
     }
 
@@ -252,7 +303,8 @@ class CatalogSearch {
     startWikidataDownload(name = '') {
         const table = this.wikidataTable(name);
         return table.start(async() => {
-            if (table === this.authorNames && this.ready)
+            //во время сборки - в очередь: следующая сборка сверит имена с готовой БД
+            if (table === this.authorNames && this.inpxHash)
                 await this.ensure(this.inpxHash, {keepReady: true});
         });
     }
