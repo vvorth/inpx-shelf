@@ -1,6 +1,7 @@
 //Размер области чтения и перестройка под него: наблюдатели размера, отложенное обновление после разблокировки
 //экрана, запуск разбивки под новый размер, индикатор перестройки со стабильной строкой состояния, ожидание
 //кадров, шрифтов и картинок. Своего состояния нет: размеры, кадры и таймеры - поля Reader.
+const readerPaging = require('../../share/readerPaging');
 
 export default class ReaderViewport {
     attachScrollerObserver() {
@@ -560,7 +561,8 @@ export default class ReaderViewport {
 
             lastRect = this.syncMeasureHostToStage();
             const nextKey = `${lastRect.width}x${lastRect.height}`;
-            if (lastRect.width > 0 && lastRect.height > 0) {
+            // Устойчивый, но ещё не перерисованный под новую высоту лист не годится для замера
+            if (lastRect.width > 0 && readerPaging.isPagedStageCurrent(lastRect.height, this.pageMinHeight)) {
                 stableFrames = (nextKey === lastKey ? stableFrames + 1 : 1);
                 lastKey = nextKey;
                 if (stableFrames >= Math.max(1, requiredStableFrames))

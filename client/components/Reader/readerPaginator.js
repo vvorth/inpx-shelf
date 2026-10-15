@@ -6,6 +6,7 @@
 import {markRaw} from 'vue';
 const readerTextAnchors = require('./readerTextAnchors');
 const readerProgress = require('../../share/readerProgress');
+const readerPaging = require('../../share/readerPaging');
 
 const pagedPageTextCache = new WeakMap();
 
@@ -1467,6 +1468,14 @@ export default class ReaderPaginator {
                 });
             }
             return true;
+        }
+
+        // Лист ещё не перерисован под высоту из подписи: замер по нему лёг бы в кэш под чужой подписью
+        // и держался бы до смены размера. Вызывающий повторит разбивку после кадра
+        if (!readerPaging.isPagedStageCurrent(this.getPagedStageRect().height, this.pageMinHeight)) {
+            if (cachedLayout)
+                this.storePagedLayoutCacheEntry(layoutCacheKey, cachedLayout);
+            return false;
         }
 
         const checkpoint = (cachedLayout && cachedLayout.type === 'partial') ? cachedLayout : null;

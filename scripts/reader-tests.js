@@ -155,8 +155,22 @@ async function testReaderScrollAnchor() {
     assert.strictEqual(readerScrollAnchor.keepsPlace({mode: 'scroll', scrollTop: 5000}, 5000), false, 'An anchor without text offset is not kept');
 }
 
+//Разбивка не идёт по листу, который ещё не перерисован под высоту страницы из подписи раскладки
+async function testReaderPagedStageMustMatchSignature() {
+    const readerPaging = require('../client/share/readerPaging');
+    //первое открытие на 1366x800: лист ещё минимальной высоты 180, подпись уже считает 611
+    assert.strictEqual(readerPaging.isPagedStageCurrent(180, 611), false);
+    assert.strictEqual(readerPaging.isPagedStageCurrent(611, 611), true);
+    //дробная высота телефона (visualViewport) округляется так же, как в подписи
+    assert.strictEqual(readerPaging.isPagedStageCurrent(714, 714.6), true);
+    //скрытый или ещё не созданный лист
+    assert.strictEqual(readerPaging.isPagedStageCurrent(0, 611), false);
+    assert.strictEqual(readerPaging.isPagedStageCurrent(611, 0), false);
+}
+
 module.exports = [
     testReaderOpeningProgress,
+    testReaderPagedStageMustMatchSignature,
     testReaderProgressMapIsCapped,
     testReaderReadMarkKeepsPlace,
     testReaderRemoteProgressChoice,

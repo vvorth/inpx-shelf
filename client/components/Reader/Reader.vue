@@ -1338,18 +1338,24 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
                 return;
             if (this.isPagedMode) {
                 let initialBuildCommitted = false;
+                const readScrollerViewport = () => {
+                    this.scrollerViewportWidth = ((this.$refs && this.$refs.scroller && this.$refs.scroller.clientWidth) || 0);
+                    this.scrollerViewportHeight = ((this.$refs && this.$refs.scroller && this.$refs.scroller.clientHeight) || 0);
+                };
                 for (let attempt = 0; attempt < 3 && !initialBuildCommitted; attempt += 1) {
                     const initialBuildJobId = ++this.pagedBuildJobId;
                     if (!await this.waitForPagedBuildIdle(2400))
                         throw new Error(t('reader.couldNotFinishPrevious'));
+                    // Размер области - до ожидания листа: лист успевает перерисоваться под высоту, которую
+                    // подпишет разбивка; и ещё раз после - пока ждали, размер мог смениться
+                    readScrollerViewport();
                     await this.waitForStablePagedStage();
                     if (
                         loadJobId !== this.readerLoadJobId
                         || initialBuildJobId !== this.pagedBuildJobId
                     )
                         return;
-                    this.scrollerViewportWidth = ((this.$refs && this.$refs.scroller && this.$refs.scroller.clientWidth) || 0);
-                    this.scrollerViewportHeight = ((this.$refs && this.$refs.scroller && this.$refs.scroller.clientHeight) || 0);
+                    readScrollerViewport();
                     initialBuildCommitted = await this.buildPagedPagesChunked(initialBuildJobId);
                     if (
                         loadJobId !== this.readerLoadJobId
