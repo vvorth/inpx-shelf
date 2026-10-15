@@ -22,7 +22,7 @@ class SearchHelpPage extends BasePage {
                 title: t(this.title),
                 content: {
                     '*ATTRS': {type: 'text/html'},
-                    '*TEXT': this.escape(content),
+                    '*TEXT': content,
                 },
                 link: [
                     this.downLink({href: '/book/fake-link', type: `application/fb2+zip`})

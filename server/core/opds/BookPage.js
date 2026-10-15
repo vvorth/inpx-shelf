@@ -6,6 +6,7 @@ const BasePage = require('./BasePage');
 const bookConverter = require('../BookConverter');
 const Fb2Parser = require('../fb2/Fb2Parser');
 const {t, tGenre} = require('../i18n');
+const {safeHtml} = require('../../../shared/safeHtml');
 
 const extMime = new Map([['fb2', 'application/fb2+xml'], ['epub', 'application/epub+zip'], ['mobi', 'application/x-mobipocket-ebook']]);
 const convertedMime = new Map([
@@ -263,11 +264,12 @@ class BookPage extends BasePage {
                 //content
                 info += this.htmlInfo(t('opds.inpxInfo'), this.inpxInfo(bookInfo.book));
 
-                content = `${ann}${info}`;
+                //значения INPX и FB2 вставлены в HTML как есть: остаются только теги оформления
+                content = safeHtml(`${ann}${info}`);
                 if (content) {
                     e.content = {
                         '*ATTRS': {type: 'text/html'},
-                        '*TEXT': this.escape(content),
+                        '*TEXT': content,
                     };
                 }
 

@@ -14,6 +14,10 @@ function testXmlParserTrickyInput() {
     const xml = '<a x="1">&amp;<![CDATA[z]]></a>';
     assert.strictEqual(new XmlParser().fromString(xml).toString(), `<?xml version="1.0" encoding="utf-8"?>${xml}`);
 
+    //значения объекта - обычный текст: экранируются один раз
+    assert.strictEqual(new XmlParser().fromObject({a: {'*ATTRS': {x: 'a"&<'}, '*TEXT': '<b>&amp;', c: ['1 < 2'], d: 'x & y'}})
+        .toString({noHeader: true}), '<a x="a&quot;&amp;&lt;">&lt;b&gt;&amp;amp;<c>1 &lt; 2</c><d>x &amp; y</d></a>');
+
     //незакрытые теги не роняют разбор
     assert.deepStrictEqual(parse('<a><b>text'), {a: {b: {'*TEXT': 'text'}}});
 

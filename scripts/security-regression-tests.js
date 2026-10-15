@@ -602,6 +602,44 @@ async function testAccessPasswordLimitBlocksCorrectGuess() {
     assert.strictEqual((await call(token)).ok, true);
 }
 
+// INPX text (authors, titles, series) reaches OPDS XML as text: escaped once, never as markup.
+async function testOpdsEscapesLibraryText() {
+    const XmlParser = require('../server/core/xml/XmlParser');
+    const hostile = '<script>alert(1)</script> Tom & "Jerry"';
+    const book = {_uid: 'uid&1', title: hostile, author: `${hostile},Second`, series: hostile, serno: 1, ext: 'fb2',
+        genre: '', lang: 'ru', folder: 'f', file: 'x', size: 10, date: '2020-01-01', libid: '1', keywords: '<img src=x onerror=alert(1)>'};
+    const page = name => Object.assign(Object.create(require(`../server/core/opds/${name}`).prototype),
+        {config: {opdsRoot: '/opds', bookPathStatic: '/book'}, opdsRoot: '/opds', rootTag: 'feed', id: name, title: 'opds.book'});
+    const req = {query: {user: 'reader&co'}, originalUrl: '/opds/x?a=1&b=<2>'};
+    const check = (xml, label, html = false) => {
+        assert.ok(!xml.includes('<script') && !xml.includes('<img'), `${label}: ${xml}`);
+        assert.ok(!/&(?!(amp|lt|gt|quot|#39);)/.test(xml), `${label}: a bare &: ${xml}`);
+        if (!html)
+            assert.ok(!xml.includes('&amp;amp;') && !xml.includes('&amp;lt;'), `${label}: escaped twice: ${xml}`);
+        const parsed = new XmlParser().fromString(xml);
+        assert.ok(parsed.$$('/feed/'), label);
+        return xml;
+    };
+
+    const base = page('BasePage');
+    const feed = check(base.makeBody({entry: [base.bookEntry(book)]}, req), 'book entry');
+    assert.ok(feed.includes('&lt;script&gt;alert(1)&lt;/script&gt; Tom &amp; &quot;Jerry&quot;'), feed);
+    assert.ok(feed.includes('href="/opds/x?a=1&amp;b=%3C2%3E&amp;user=reader%26co"'), 'Links are escaped once');
+
+    const list = page('ReadingListPage');
+    list.webWorker = {getReadingList: async() => ({list: {name: hostile}, books: [book]})};
+    check(await list.body({...req, query: {user: 'reader', id: 'list'}}), 'reading list');
+
+    const bookPage = page('BookPage');
+    bookPage.webWorker = {getBookRecordByUid: async() => ({...book, ext: 'epub'}), applyMetadataOverridesToSearchResult: async() => {},
+        getGenreTree: async() => ({genreTree: []}), getGenreMap: async() => new Map()};
+    const details = check(await bookPage.body({...req, query: {uid: 'uid&1'}}), 'book page', true);
+    //the HTML description (XML text) keeps its formatting tags and loses the library's markup
+    const description = require('he').decode(/<content type="text\/html">([^<]*)<\/content>/.exec(details)[1]);
+    assert.ok(description.includes('<p>') && !/<(script|img)/i.test(description), description);
+    assert.ok(description.includes('alert(1) Tom &amp; &quot;Jerry&quot;'), description);
+}
+
 // An IPv6 client counts as its /64; a full table drops its oldest entry instead of refusing every new address.
 async function testLoginLimiterKeysIpv6PrefixAndEvictsOldest() {
     const security = new Security({loginRateLimitMaxAttempts: 2});
@@ -744,7 +782,7 @@ async function testGunzipBufferIsBounded() {
 }
 
 module.exports = [
-    testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

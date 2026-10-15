@@ -1,4 +1,5 @@
 const sax = require('./sax');
+const {escapeHtml} = require('../../../shared/safeHtml');
 
 //node types
 const NODE = 1;
@@ -680,13 +681,17 @@ class XmlParser extends NodeBase {
         return nodesToObject(this.rawNodes);
     }
 
+    //Значения объекта - обычный текст: экранируются здесь, при построении узлов. Узлы из fromString
+    //хранят текст как в исходном XML, поэтому toString не экранирует ничего повторно.
     fromObject(xmlObject) {
+        const text = value => this.createText(escapeHtml(value)).raw;
+        const attrs = node => (node['*ATTRS'] ? Object.entries(node['*ATTRS']).map(([name, value]) => [name, (typeof(value) === 'string' ? escapeHtml(value) : value)]) : null);
         const objectToNodes = (obj) => {
             const result = [];
 
             for (const [tag, objNode] of Object.entries(obj)) {
                 if (tag === '*TEXT') {
-                    result.push(this.createText(objNode).raw);
+                    result.push(text(objNode));
                 } else if (tag === '*CDATA') {
                     result.push(this.createCdata(objNode).raw);
                 } else if (tag === '*COMMENT') {
@@ -695,18 +700,18 @@ class XmlParser extends NodeBase {
                     //пропускаем
                 } else {
                     if (typeof(objNode) === 'string' || typeof(objNode) === 'number') {
-                        result.push(this.createNode(tag, null, [this.createText(objNode.toString()).raw]).raw);
+                        result.push(this.createNode(tag, null, [text(objNode.toString())]).raw);
                     } else if (Array.isArray(objNode)) {
                         for (const n of objNode) {
                             if (typeof(n) === 'string') {
-                                result.push(this.createNode(tag, null, [this.createText(n).raw]).raw);
+                                result.push(this.createNode(tag, null, [text(n)]).raw);
                             } else if (typeof(n) === 'object') {
-                                result.push(this.createNode(tag, (n['*ATTRS'] ? Object.entries(n['*ATTRS']) : null), objectToNodes(n)).raw);
+                                result.push(this.createNode(tag, attrs(n), objectToNodes(n)).raw);
                             }
                         }
 
                     } else if (typeof(objNode) === 'object') {
-                        result.push(this.createNode(tag, (objNode['*ATTRS'] ? Object.entries(objNode['*ATTRS']) : null), objectToNodes(objNode)).raw);
+                        result.push(this.createNode(tag, attrs(objNode), objectToNodes(objNode)).raw);
                     } else {
                         throw new Error(`Unknown node type "${typeof(objNode)}" of node: ${objNode}`);
                     }
