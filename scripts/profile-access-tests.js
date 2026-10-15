@@ -286,6 +286,37 @@ async function testOpdsHidesPasswordProfiles() {
     });
 }
 
+// Anyone can open a profile without a password: only an admin gives it credentials. Own password needs the current one.
+async function testOpenProfileCredentialsAdminOnly() {
+    await fixture({kosyncEnabled: true}, async({worker, alice, bob, connect}) => {
+        worker.koboService = {createDevice: async() => ({device: {}}), regenerateToken: async() => ({device: {}})};
+        const call = await connect();
+        const {csrfToken} = await call({action: 'get-config'});
+        const asBob = {userId: bob.id, csrfToken};
+        const update = (profile, as = asBob, targetUserId = bob.id) => call({action: 'update-user-profile', targetUserId, profile, ...as});
+        for (const profile of [{password: 'taken-over'}, {login: 'bobby'}, {login: 'bobby', password: 'taken-over'}, {login: ''}])
+            assert.match((await update(profile)).error || '', /administrator|администратор/, JSON.stringify(profile));
+        for (const action of ['create-kobo-device', 'regenerate-kobo-device-token', 'create-kosync-password'])
+            assert.match((await call({action, ...asBob})).error || '', /administrator|администратор/, action);
+        const renamed = await update({name: 'Bobby', login: 'BOB'});
+        assert.strictEqual(renamed.user && renamed.user.name, 'Bobby', JSON.stringify(renamed), 'Name and other settings stay editable');
+        assert.strictEqual((await worker.readingListStore.getUser(bob.id)).passwordHash, '');
+
+        const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
+        const asAlice = {userId: alice.id, profileAccessToken: aliceLogin.profileAccessToken, csrfToken};
+        assert.ok((await call({action: 'create-kosync-password', ...asAlice})).password, 'A protected profile makes its own');
+        assert.match((await update({password: 'new-pass'}, asAlice, alice.id)).error, /current password|текущий пароль/);
+        assert.match((await update({password: 'new-pass', currentPassword: 'wrong'}, asAlice, alice.id)).error, /current password|текущий пароль/);
+        assert.ok(!(await update({password: 'new-pass', currentPassword: 'alice-fixture'}, asAlice, alice.id)).error);
+        assert.ok(await worker.readingListStore.verifyUserPassword(alice.id, 'new-pass'));
+
+        const adminLogin = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
+        const asAdmin = {userId: adminLogin.userId, profileAccessToken: adminLogin.profileAccessToken, csrfToken};
+        assert.strictEqual((await update({login: 'bobby', password: 'bob-pass'}, asAdmin)).user.login, 'bobby', 'The admin sets credentials');
+        assert.ok(!(await update({password: 'alice-reset'}, asAdmin, alice.id)).error, 'The admin needs no current password of others');
+    });
+}
+
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
     await fixture({}, async({worker, alice, bob, connect}) => {
@@ -354,6 +385,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

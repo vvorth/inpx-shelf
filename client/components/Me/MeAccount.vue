@@ -6,7 +6,10 @@
             </h2>
             <div class="form-grid">
                 <q-input v-model="name" outlined dense :label="$t('profiles.name')" />
-                <q-input v-model="login" outlined dense :disable="sso" :label="$t('common.login')" :hint="sso ? $t('meAccount.yourLoginComesFrom') : ''" />
+                <q-input v-model="login" outlined dense :disable="sso || !profile.hasPassword" :label="$t('common.login')" :hint="sso ? $t('meAccount.yourLoginComesFrom') : ''" />
+            </div>
+            <div v-if="!sso && !profile.hasPassword" class="card-hint">
+                {{ $t('meAccount.noPasswordAdminSets') }}
             </div>
             <div class="card-actions">
                 <q-btn type="submit" color="primary" unelevated no-caps :loading="profileSaving">
@@ -15,11 +18,12 @@
             </div>
         </form>
 
-        <form v-if="!sso" class="card" @submit.prevent="changePassword">
+        <form v-if="!sso && profile.hasPassword" class="card" @submit.prevent="changePassword">
             <h2 class="card-title">
                 {{ $t('common.password') }}
             </h2>
             <div class="form-grid">
+                <q-input v-model="currentPassword" outlined dense type="password" autocomplete="current-password" :label="$t('meAccount.currentPassword')" />
                 <q-input v-model="newPassword" outlined dense type="password" autocomplete="new-password" :label="$t('profiles.newPassword')" />
                 <q-input
                     v-model="repeatPassword"
@@ -64,6 +68,7 @@ class MeAccount {
 
     name = '';
     login = '';
+    currentPassword = '';
     newPassword = '';
     repeatPassword = '';
     profileSaving = false;
@@ -87,7 +92,7 @@ class MeAccount {
     }
 
     get canChangePassword() {
-        return !!(this.newPassword && this.newPassword === this.repeatPassword);
+        return !!(this.currentPassword && this.newPassword && this.newPassword === this.repeatPassword);
     }
 
     syncFromConfig() {
@@ -108,6 +113,7 @@ class MeAccount {
                 if (!prompt || prompt === false)
                     return;
                 patch.password = String(prompt.value || '');
+                patch.currentPassword = patch.password;
             }
         }
 
@@ -136,10 +142,11 @@ class MeAccount {
         const login = this.profile.login || this.login;
         const password = this.newPassword;
         try {
-            await this.api.updateUserProfile(this.profile.id, {password});
+            await this.api.updateUserProfile(this.profile.id, {password, currentPassword: this.currentPassword});
             //смена пароля закрывает все сессии профиля - сразу входим заново с новым паролем
             const result = await this.api.loginUserProfile(login, password);
             await this.api.completeProfileLogin(result);
+            this.currentPassword = '';
             this.newPassword = '';
             this.repeatPassword = '';
             this.$root.notify.success(t('meAccount.passwordChanged'));

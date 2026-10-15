@@ -1031,6 +1031,20 @@ class WebSocketController {
 
         const profile = Object.assign({}, req.profile || {});
         delete profile.passwordHash;
+        const store = this.webWorker.readingListStore;
+        if (isOwnProfile && (profile.password || (utils.hasProp(profile, 'login') && store.normalizeLogin(profile.login) !== (target.login || ''))))
+            await this.requireProtectedProfile(target, req);
+        //свой пароль меняют, только зная текущий: открытая чужая сессия не должна отнимать профиль
+        if (isOwnProfile && target.passwordHash && profile.password) {
+            if (this.security)
+                this.security.checkLoginRate(ws.req, 'profile');
+            if (!await store.verifyUserPassword(target.id, String(profile.currentPassword || ''))) {
+                if (this.security)
+                    this.security.recordLoginAttempt(ws.req, false, 'profile');
+                throw new Error(i18n.t('errors.currentPasswordInvalid'));
+            }
+        }
+        delete profile.currentPassword;
         const passwordLogin = String(profile.login || target.login || '').trim();
         if (profile.password && !passwordLogin)
             throw new Error(i18n.t('errors.passwordNeedsLogin'));
@@ -1043,6 +1057,12 @@ class WebSocketController {
 
         const result = await this.webWorker.updateUserProfile(req.targetUserId, profile);
         this.send(result, req, ws);
+    }
+
+    //профиль, закреплённый за пользователем SSO, защищён прокси и без своего пароля
+    async requireProtectedProfile(user, req, messageKey) {
+        if (!(req.profileBoundId && req.profileBoundId === user.id))
+            await this.webWorker.requireProtectedProfile(user, req.profileAccessToken, messageKey);
     }
 
     async deleteUserProfile(req, ws) {
@@ -1228,6 +1248,7 @@ class WebSocketController {
 
     async createKoboDevice(req, ws) {
         const {kobo, user} = await this.koboUser(req);
+        await this.requireProtectedProfile(user, req);
         this.send(await kobo.createDevice(user.id, this.koboDeviceSettings(req), ws.req), req, ws);
     }
 
@@ -1238,6 +1259,7 @@ class WebSocketController {
 
     async regenerateKoboDeviceToken(req, ws) {
         const {kobo, user} = await this.koboUser(req);
+        await this.requireProtectedProfile(user, req);
         this.send(await kobo.regenerateToken(user.id, String(req.deviceId || ''), ws.req), req, ws);
     }
 
@@ -1264,6 +1286,7 @@ class WebSocketController {
         // The shared "no profile" mode has no owner for the progress.
         if (user.id === 'default' && !user.login && !user.passwordHash)
             throw new Error(i18n.t('errors.kosyncNeedsProfile'));
+        await this.requireProtectedProfile(user, req);
         const password = await this.webWorker.readingListStore.createKosyncPassword(user.id);
         this.send({username: user.login || user.id, password}, req, ws);
     }

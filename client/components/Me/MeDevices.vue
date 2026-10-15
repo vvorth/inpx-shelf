@@ -119,7 +119,7 @@
                     <q-btn flat dense no-caps color="primary" icon="la la-redo-alt" @click="refreshKoboDevice(device)">
                         {{ $t('meDevices.refreshBooksOnDevice') }}
                     </q-btn>
-                    <q-btn flat dense no-caps icon="la la-key" @click="regenerateKoboDevice(device)">
+                    <q-btn flat dense no-caps icon="la la-key" :disable="!canAddDevices" @click="regenerateKoboDevice(device)">
                         {{ $t('meDevices.newLink') }}
                     </q-btn>
                     <q-btn flat dense no-caps color="negative" icon="la la-trash" @click="deleteKoboDevice(device)">
@@ -128,7 +128,10 @@
                 </div>
             </div>
 
-            <form class="device-add" @submit.prevent="createKoboDevice">
+            <div v-if="!canAddDevices" class="card-hint">
+                {{ $t('meDevices.devicesNeedPassword') }}
+            </div>
+            <form v-else class="device-add" @submit.prevent="createKoboDevice">
                 <q-input v-model="newKoboDeviceName" outlined dense class="device-name" :label="$t('meDevices.deviceName')" />
                 <q-btn type="submit" color="primary" unelevated dense no-caps icon="la la-plus" :disable="!String(newKoboDeviceName || '').trim()">
                     {{ $t('meDevices.addDevice') }}
@@ -172,7 +175,10 @@
                 {{ $t('meDevices.koreaderPasswordSet') }}
             </div>
 
-            <div class="card-actions">
+            <div v-if="!canAddDevices" class="card-hint">
+                {{ $t('meDevices.devicesNeedPassword') }}
+            </div>
+            <div v-else class="card-actions">
                 <q-btn color="primary" unelevated dense no-caps icon="la la-key" @click="createKosyncPassword">
                     {{ profile.kosyncPasswordSet ? $t('meDevices.newPassword') : $t('meDevices.createPassword') }}
                 </q-btn>
@@ -209,6 +215,11 @@ class MeDevices {
 
     get profile() {
         return currentProfile(this.config);
+    }
+
+    //профилю без пароля устройства подключает только администратор (кроме входа через SSO)
+    get canAddDevices() {
+        return !!(this.profile.hasPassword || this.config.profileBoundId);
     }
 
     get opdsEnabled() {

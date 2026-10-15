@@ -107,6 +107,17 @@ module.exports = {
         return user;
     },
 
+    //Профиль без пароля открыт любому, кто его выберет: постоянные учётные данные (логин, пароль, ссылки устройств)
+    //и адреса отправки для него задаёт только вошедший администратор
+    async requireProtectedProfile(user, profileAccessToken = '', messageKey = 'errors.openProfileCredentialsAdminOnly') {
+        if (user.passwordHash)
+            return;
+        const sessionUserId = this.getProfileSessionUser(profileAccessToken);
+        const admin = (sessionUserId ? (await this.readingListStore.load()).users.find(item => item.id === sessionUserId) : null);
+        if (!admin || !admin.isAdmin)
+            throw new Error(t(messageKey));
+    },
+
     async getAuthorizedUserOrNull(userId = '', profileAccessToken = '') {
         const user = await this.getEffectiveUser(userId, profileAccessToken);
         if (!user || isAnonymousDefaultUser(user))
