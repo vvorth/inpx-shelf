@@ -86,7 +86,7 @@ const hasBookFilter = query => !!(query.genre || query.lang || hasValue(query.de
 //Кэш запросов живёт, пока не перечитаны колонки и не было правки метаданных (updateBook сбрасывает его)
 function queryCache(index) {
     if (!index.queryMasks || index.queryMasks.columns !== index.columns)
-        index.queryMasks = {columns: index.columns, masks: new Map(), groups: new Map()};
+        index.queryMasks = {columns: index.columns, masks: new Map(), groups: new Map(), totals: new Map()};
     return index.queryMasks;
 }
 
@@ -325,7 +325,14 @@ module.exports = {
         }
 
         const found = this.db.prepare(`${select} ${order} LIMIT ? OFFSET ?`).all(...params, limit, offset);
-        const totalFound = this.db.prepare(`SELECT COUNT(*) AS n FROM (${select})`).get(...params).n;
-        return {found: found.map(row => Object.assign({}, row)), totalFound};
+        //итог одинаков для всех страниц, а у названий это второй GROUP BY по книгам: запоминается, как группы
+        const totals = queryCache(this).totals;
+        const key = JSON.stringify([select, params]);
+        if (!totals.has(key)) {
+            if (totals.size >= 200)
+                totals.clear();
+            totals.set(key, this.db.prepare(`SELECT COUNT(*) AS n FROM (${select})`).get(...params).n);
+        }
+        return {found: found.map(row => Object.assign({}, row)), totalFound: totals.get(key)};
     },
 };

@@ -119,6 +119,21 @@ try {
     assert.deepStrictEqual(sorted({title: '*мастер', sourceId: 'main'}), [1, 6]);
     assert.deepStrictEqual(sorted({title: '*мастер', sourceId: 'other'}), []);
 
+    //итог названий считается раз для всех страниц; правка метаданных его сбрасывает
+    const prepare = index.db.prepare.bind(index.db);
+    let counts = 0;
+    index.db.prepare = (sql) => {
+        if (sql.startsWith('SELECT COUNT(*) AS n FROM (SELECT MIN(b.id)'))
+            counts++;
+        return prepare(sql);
+    };
+    const titlePage = offset => index.opdsNames('title', {del: '0', limit: 2, offset});
+    assert.deepStrictEqual([titlePage(2).totalFound, titlePage(4).totalFound], [7, 7]);
+    assert.strictEqual(counts, 0, 'the total of the query above is reused');
+    index.updateBook(file, {id: 2, title: 'Мастер и Маргарита', author: 'Булгаков Михаил'});
+    assert.strictEqual(titlePage(0).totalFound, 6);
+    assert.strictEqual(counts, 1);
+
     console.log('ok opds-index-tests');
 } catch (e) {
     console.error(e && e.stack || e);
