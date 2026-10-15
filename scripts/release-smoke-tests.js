@@ -590,12 +590,13 @@ async function testReaderPaginationResumesAcrossViewportGeometry() {
     const readerSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/Reader.vue'), 'utf8');
     const paginatorSource = await fs.readFile(path.resolve(__dirname, '../client/components/Reader/readerPaginator.js'), 'utf8');
 
-    assert.match(readerSource, /pagedLayoutCache = new Map\(\);\s*pagedLayoutCacheLimit = 2;/);
+    assert.match(readerSource, /beforeCreate\(\) \{\s*this\.pagedLayoutCache = new Map\(\);/, 'The layout cache lives outside reactive data');
+    assert.match(readerSource, /pagedLayoutCacheLimit = 2;/);
     assert.match(paginatorSource, /const checkpoint = \(cachedLayout && cachedLayout\.type === 'partial'\)/);
     assert.match(paginatorSource, /for \(let index = startIndex; index < queue\.length; index \+= 1\)/);
     assert.match(paginatorSource, /storePartialLayout\(index\);\s*return false;/);
     assert.match(paginatorSource, /type: 'complete',\s*pages: finalPages/);
-    assert.match(readerSource, /async loadReader\(\) \{[\s\S]{0,400}this\.pagedLayoutCache\.clear\(\);/);
+    assert.match(readerSource, /async loadReader\(\) \{[\s\S]{0,600}this\.pagedLayoutCache\.clear\(\);/);
 }
 
 async function testReaderDefersViewportRefreshAcrossScreenUnlock() {

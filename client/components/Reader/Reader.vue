@@ -444,6 +444,7 @@
 </template>
 
 <script>
+import {markRaw} from 'vue';
 import vueComponent from '../vueComponent.js';
 import ReaderEnvironment from './readerEnvironment.js';
 import ReaderPaginator from './readerPaginator.js';
@@ -490,6 +491,11 @@ const componentOptions = {
         readerSourceKey: {
             immediate: true,
             handler() {
+                // Читалка ушла с экрана (keep-alive): книгу не меняем, вернётся - продолжит с того же места
+                if (this.$route.path !== this.readerRoutePath)
+                    return;
+                if (this.readerSourceKey === this.loadedReaderSourceKey && !this.readerBookReleased)
+                    return;
                 // Сохраняем отложенный прогресс прежней книги до смены её состояния
                 if (this.saveProgressDebounced)
                     this.saveProgressDebounced.flush();
@@ -524,7 +530,6 @@ class Reader extends ReaderPaginator {
     bookPreparing = false;
     pagedBuildProgressPercent = 0;
     error = '';
-    bookInfo = null;
     title = '';
     authorLine = '';
     seriesLine = '';
@@ -637,7 +642,6 @@ class Reader extends ReaderPaginator {
     progressPersistPendingAfterPagedBuild = false;
     pagedBuildJobId = 0;
     pagedLayoutSignature = '';
-    pagedLayoutCache = new Map();
     pagedLayoutCacheLimit = 2;
     restoreProgressFrame = 0;
     compactChromePagedBuildPending = false;
@@ -680,8 +684,6 @@ class Reader extends ReaderPaginator {
     dynamicBottomClipCompensationRegular = 0;
     bottomClipCompensationGeometryKey = '';
     bottomClipCompensationPendingKey = '';
-    bottomClipCompensationByGeometry = new Map();
-    bottomClipCalibrationAttemptsByGeometry = new Map();
     bottomClipCalibrationSampleKey = '';
     bottomClipCalibrationSampleCount = 0;
     bottomClipCalibrationSampleOverflow = 0;
@@ -692,10 +694,6 @@ class Reader extends ReaderPaginator {
     pagedCommittedCalibrationKey = '';
     pagedCommittedCalibrationAt = 0;
     pagedCommittedCalibrationGeneration = 0;
-    pagedTextMeasureCanvas = null;
-    pagedTextMeasureContext = null;
-    pagedMeasureAvailableHeight = 0;
-    pagedAppliedBottomClipCompensation = 0;
     readerDebug = {
         measureAvailableHeight: 0,
         measureContentHeight: 0,
@@ -710,13 +708,31 @@ class Reader extends ReaderPaginator {
         paginationStats: null,
     };
 
-    created() {
-        if (!this.profileReaderPreferencesApplied)
-            this.applyStoredReaderPreferences();
-
+    //Поля класса vueComponent делает глубоко реактивными: кэши разбивки, замеры, canvas и служебное состояние
+    //живут вне data. Заводятся до created: immediate-watch readerSourceKey вызывает loadReader раньше него
+    beforeCreate() {
+        this.pagedLayoutCache = new Map();
+        this.bottomClipCompensationByGeometry = new Map();
+        this.bottomClipCalibrationAttemptsByGeometry = new Map();
+        this.pagedTextMeasureCanvas = null;
+        this.pagedTextMeasureContext = null;
+        this.pagedMeasureAvailableHeight = 0;
+        this.pagedAppliedBottomClipCompensation = 0;
         // Предложение перейти к позиции с другого устройства: что предложено и как закрыть уведомление
         this.offeredRemoteProgress = null;
         this.dismissRemoteProgressNotify = null;
+        // Книга закрытой читалки (keep-alive): какая загружена, освобождена ли и таймер освобождения
+        this.readerRoutePath = this.$route.path;
+        this.loadedReaderSourceKey = '';
+        this.readerBookReleased = false;
+        this.releaseBookTimer = null;
+        // Прокрутка ленты: при уходе разметка уже вынута из документа и scrollTop не прочитать
+        this.lastScrollTop = 0;
+    }
+
+    created() {
+        if (!this.profileReaderPreferencesApplied)
+            this.applyStoredReaderPreferences();
 
         this.handleBeforeUnload = () => {
             this.flushProgress();
@@ -791,14 +807,31 @@ class Reader extends ReaderPaginator {
     }
 
     activated() {
+        clearTimeout(this.releaseBookTimer);
+        this.releaseBookTimer = null;
         // При первом монтировании activated тоже вызывается: окружение уже подключено
         if (this.environment.attached)
             return;
         this.environment.attach();
         this.$nextTick(() => this.attachScrollerObserver());
+        if (this.readerBookReleased || this.readerSourceKey !== this.loadedReaderSourceKey) {
+            this.loadReader();// no await
+            return;
+        }
+
+        // Вставленная обратно разметка ленты начинается с начала: возвращаем прокрутку, это не чтение
+        const scroller = this.$refs.scroller;
+        if (scroller) {
+            scroller.scrollTop = this.lastScrollTop;
+            this.restoredScrollTop = scroller.scrollTop;
+        }
+        this.checkRemoteProgress();// no await
     }
 
     deactivated() {
+        // Быстрый возврат в читалку - мгновенный, а надолго закрытая не держит книгу в памяти
+        clearTimeout(this.releaseBookTimer);
+        this.releaseBookTimer = setTimeout(() => this.releaseReaderBook(), 30000);
         this.dismissRemoteProgressOffer();
         this.environment.detach();
         this.detachScrollerObserver();
@@ -810,6 +843,7 @@ class Reader extends ReaderPaginator {
     }
 
     beforeUnmount() {
+        clearTimeout(this.releaseBookTimer);
         this.dismissRemoteProgressOffer();
         this.environment.detach();
         this.detachScrollerObserver();
@@ -3998,7 +4032,7 @@ class Reader extends ReaderPaginator {
                 results.push({pageIndex: index});
         }
 
-        this.searchResults = results;
+        this.searchResults = markRaw(results);
         if (!results.length) {
             this.currentSearchResultIndex = -1;
             return;
@@ -4557,7 +4591,7 @@ class Reader extends ReaderPaginator {
             parser,
             (fb2Info.titleInfo && fb2Info.titleInfo.annotation) || []
         );
-        this.contents = fb2ToReaderHtml.sanitizeContents(fb2ToReaderHtml.extractReaderContents(parser));
+        this.contents = markRaw(fb2ToReaderHtml.sanitizeContents(fb2ToReaderHtml.extractReaderContents(parser)));
         const {html: readerHtml, notesAnchorId} = fb2ToReaderHtml.buildReaderHtml(parser, {
             contents: this.contents,
             notesTitle: t('reader.bookNotes'),
@@ -4616,8 +4650,29 @@ class Reader extends ReaderPaginator {
         };
     }
 
+    //Освобождает книгу закрытой читалки: текст, страницы и кэши разбивки. Место в книге уже сохранено
+    //(deactivated -> flushProgress), при возврате loadReader строит всё заново и открывает его
+    releaseReaderBook() {
+        this.releaseBookTimer = null;
+        if (this.readerBookReleased || (!this.readerHtml && !this.pagedPages.length))
+            return;
+
+        this.readerLoadJobId += 1;
+        this.pagedBuildJobId += 1;
+        this.pagedLayoutCache.clear();
+        this.pagedPages = [];
+        this.readerHtml = '';
+        this.readerAnnotationHtml = '';
+        this.readerSearchText = '';
+        this.searchResults = [];
+        this.contents = [];
+        this.readerBookReleased = true;
+    }
+
     async loadReader() {
         const loadJobId = ++this.readerLoadJobId;
+        this.loadedReaderSourceKey = this.readerSourceKey;
+        this.readerBookReleased = false;
         this.dismissRemoteProgressOffer();
         // Invalidate queued/in-flight pagination from the previous source before
         // replacing readerHtml and the shared measurement DOM.
@@ -4701,7 +4756,7 @@ class Reader extends ReaderPaginator {
 
         if (this.isStandaloneMode) {
                 const source = (this.standaloneSource || {});
-                this.bookInfo = {
+                await this.applyReaderDocumentSource({
                     book: Object.assign({}, source.book || {}, {
                         title: source.title || (source.book && source.book.title) || '',
                         author: source.author || (source.book && source.book.author) || '',
@@ -4710,13 +4765,6 @@ class Reader extends ReaderPaginator {
                     }),
                     fb2: source.fb2 || '',
                     cover: source.cover || '',
-                    contents: Array.isArray(source.contents) ? source.contents : [],
-                };
-
-                await this.applyReaderDocumentSource({
-                    book: this.bookInfo.book || {},
-                    fb2: this.bookInfo.fb2 || '',
-                    cover: this.bookInfo.cover || '',
                     stateResponse: (source.stateResponse || {}),
                 });
             } else {
@@ -4726,8 +4774,8 @@ class Reader extends ReaderPaginator {
                 ]);
                 const stateResponse = (stateResponseRaw || {preferences: {}, progress: {}});
 
-                this.bookInfo = (bookResponse ? bookResponse.bookInfo : null);
-                const info = (this.bookInfo || {});
+                // Исходный FB2 нужен только для разбора: в состоянии читалки его не держим
+                const info = ((bookResponse && bookResponse.bookInfo) || {});
                 if (!info.fb2)
                     throw new Error(t('common.builtReaderCurrentlySupports'));
 
@@ -4988,6 +5036,7 @@ class Reader extends ReaderPaginator {
         const scroller = this.$refs.scroller;
         const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
         const currentScroll = scroller.scrollTop;
+        this.lastScrollTop = currentScroll;
         const percent = (maxScroll > 0 ? currentScroll / maxScroll : 0);
         this.updateCurrentSectionFromScroll();
         // Прокрутка самой читалкой к месту (восстановление, отметка «прочитано») - ещё не чтение: прогресс

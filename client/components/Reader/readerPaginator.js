@@ -1,6 +1,9 @@
 //Пагинация режима страниц: замеры и разбивка текста на страницы, кэш разбивки, переход по страницам,
 //поиск страницы по якорю или тексту. Своего состояния нет: поля живут в Reader, который наследует этот класс
 //(vueComponent собирает методы и геттеры по всей цепочке прототипов).
+//Массив страниц (pagedPages) - markRaw: реактивно только само поле, оно заменяется целиком,
+//а циклы по тысячам страниц идут без прокси.
+import {markRaw} from 'vue';
 const readerTextAnchors = require('./readerTextAnchors');
 const readerProgress = require('../../share/readerProgress');
 
@@ -1462,7 +1465,7 @@ export default class ReaderPaginator {
         );
         const cachedLayout = this.takePagedLayoutCacheEntry(layoutCacheKey);
         if (cachedLayout && cachedLayout.type === 'complete' && Array.isArray(cachedLayout.pages) && cachedLayout.pages.length) {
-            this.pagedPages = cachedLayout.pages;
+            this.pagedPages = markRaw(cachedLayout.pages);
             this.currentPageIndex = Math.max(0, Math.min(this.pagedPages.length - 1, this.currentPageIndex));
             this.pagedLayoutSignature = buildLayoutSignature;
             this.pagedCommittedCalibrationKey = buildCalibrationKey;
@@ -1545,8 +1548,12 @@ export default class ReaderPaginator {
             currentEstimatedLines = 0;
             applyUnits([]);
         };
+        // Кадр отдаём по времени (12 мс работы), как и при уплотнении страниц: раньше - каждые 18 блоков,
+        // и на быстрых блоках ожидание кадров занимало две трети разбивки
+        const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        let sliceStartedAt = now();
         const maybeYield = async(index) => {
-            if (index <= 0 || index % 18 !== 0)
+            if (index <= 0 || now() - sliceStartedAt < 12)
                 return;
             if (jobId && jobId !== this.pagedBuildJobId)
                 return;
@@ -1556,6 +1563,7 @@ export default class ReaderPaginator {
             this.pagedBuildProgressPercent = buildProgressPercent;
             this.loadingMessage = `${this.uiText.loadingPages} ${buildProgressPercent}%`;
             await this.waitForAnimationFrames(1);
+            sliceStartedAt = now();
         };
         const storePartialLayout = (nextIndex = 0) => {
             if (!layoutCacheKey || buildSourceKey !== this.readerSourceKey)
@@ -1757,7 +1765,7 @@ export default class ReaderPaginator {
                 this.pagedBuildNeedsRefresh = true;
                 return false;
             }
-            this.pagedPages = finalPages;
+            this.pagedPages = markRaw(finalPages);
             this.currentPageIndex = Math.max(0, Math.min(this.pagedPages.length - 1, this.currentPageIndex));
             this.pagedLayoutSignature = buildLayoutSignature;
             this.pagedCommittedCalibrationKey = buildCalibrationKey;

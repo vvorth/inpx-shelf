@@ -5,7 +5,7 @@ Vue 3 + Quasar 2 web app, built by webpack (`npm run build:client`).
 ## Map
 
 - `main.js`, `quasar.js`, `router.js` — bootstrap and routes. Hash URLs; every route is kept alive (`activated`/`deactivated`).
-- `components/vueComponent.js` — class-based components: getters become computed; only `components`, `watch` and `emits` are taken from `_options`.
+- `components/vueComponent.js` — class-based components: getters become computed; only `components`, `watch` and `emits` are taken from `_options`. Class fields become deep-reactive `data`: keep big or non-UI structures (caches, Maps, DOM/canvas objects) out of them — assign them in `beforeCreate`/`created`, or store big arrays that are only replaced as a whole with `markRaw` (see `Reader/Reader.vue`).
 - `components/Shell/` — app frame: navigation rail, top bar with search, tab bar.
 - `components/Library/` — home, search, book, author and series pages. `BookCollection`, `BookCard`, `BookCover`, `BookQuickActions` are the only way to show books: reuse them so a change shows up everywhere.
 - `components/Lists/`, `Me/`, `Admin/`, `Login/`, `Reader/` — lists, profile, administration, sign-in, reader.
