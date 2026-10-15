@@ -134,7 +134,11 @@ async function testHttpUploadsGoThroughRequestChecks() {
         controller.profileAccess = null;
         const seen = [];
         controller.webWorker = {
-            requireAuthorizedUser: async userId => ({id: userId || 'default'}),
+            requireAuthorizedUser: async(userId) => {
+                if (userId === 'stranger')
+                    throw new Error('need_profile_login');
+                return {id: userId || 'default'};
+            },
             importReadingLists: async(userId, data) => {
                 seen.push(data);
                 return {userId, lists: data.lists.length};
@@ -149,6 +153,10 @@ async function testHttpUploadsGoThroughRequestChecks() {
             {method: 'POST', body, duplex: 'half', headers: Object.assign({'X-Access-Token': 'open', 'X-CSRF-Token': 'csrf', 'X-User-Id': 'reader'}, headers)})
             .then(async response => ({status: response.status, body: await response.json()}));
         try {
+            //кто не прошёл проверки, ничего не пишет на диск: тело читается и отбрасывается
+            const stranger = await post(Buffer.alloc(512*1024), {'X-User-Id': 'stranger'});
+            assert.deepStrictEqual([stranger.status, stranger.body.error], [403, 'need_profile_login']);
+            assert.strictEqual(await fs.pathExists(tempDir), false, 'nothing is stored before the checks pass');
             const ok = await post(JSON.stringify({lists: [{name: 'A', books: []}]}));
             assert.deepStrictEqual(ok, {status: 200, body: {userId: 'reader', lists: 1}});
             assert.strictEqual((await post('{}', {'X-CSRF-Token': 'stale'})).body.error, 'bad_csrf_token');
@@ -156,7 +164,14 @@ async function testHttpUploadsGoThroughRequestChecks() {
             assert.strictEqual((await post('{}', {Origin: 'https://evil.example'})).status, 403);
             assert.strictEqual((await post('{}', {}, 'test')).status, 404, 'only import actions take files');
             assert.match((await post('{broken')).body.error, /JSON/);
-            assert.strictEqual((await post(Buffer.alloc(1024*1024 + 1))).status, 413);
+            //слишком большой Content-Length - отказ сразу, тело не нужно
+            const declared = await new Promise((resolve, reject) => {
+                const request = http.request({host: '127.0.0.1', port, method: 'POST', path: '/upload?action=import-reading-lists',
+                    headers: {'Content-Length': String(1024*1024 + 1)}}, response => resolve(response.statusCode));
+                request.on('error', reject);
+                request.flushHeaders();
+            });
+            assert.strictEqual(declared, 413);
             //без Content-Length тело обрывается на лимите
             const stream = new (require('stream').Readable)({read() {}});
             const streamed = post(stream, {'Content-Type': 'application/octet-stream'});
