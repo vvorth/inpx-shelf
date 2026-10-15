@@ -602,6 +602,28 @@ async function testAccessPasswordLimitBlocksCorrectGuess() {
     assert.strictEqual((await call(token)).ok, true);
 }
 
+// An IPv6 client counts as its /64; a full table drops its oldest entry instead of refusing every new address.
+async function testLoginLimiterKeysIpv6PrefixAndEvictsOldest() {
+    const security = new Security({loginRateLimitMaxAttempts: 2});
+    const from = address => ({headers: {}, socket: {remoteAddress: address}});
+    for (const address of ['2001:db8:1:2::1', '2001:0db8:0001:0002:ffff::5'])
+        security.recordLoginAttempt(from(address), false, 'profile');
+    assert.throws(() => security.checkLoginRate(from('2001:db8:1:2:abcd::9'), 'profile'), {code: 'INPX_LOGIN_RATE_LIMIT'});
+    security.checkLoginRate(from('2001:db8:1:3::1'), 'profile');
+    security.checkLoginRate(from('::ffff:192.0.2.1'), 'profile');
+    assert.strictEqual(security.loginAttemptKey(from('::ffff:192.0.2.1'), 'profile'), 'profile:::ffff:192.0.2.1');
+
+    security.loginAttempts.clear();
+    for (let i = 0; i < 10000; i++)
+        security.recordLoginAttempt(from(`10.${i >> 16 & 255}.${i >> 8 & 255}.${i & 255}`), false, 'access');
+    security.recordLoginAttempt(from('10.0.0.0'), false, 'access');//the first one fails again: no longer the oldest
+    security.checkLoginRate(from('192.0.2.200'));
+    security.recordLoginAttempt(from('192.0.2.200'), false);
+    assert.strictEqual(security.loginAttempts.size, 10000);
+    assert.ok(security.loginAttempts.has('access:192.0.2.200') && security.loginAttempts.has('access:10.0.0.0'));
+    assert.ok(!security.loginAttempts.has('access:10.0.0.1'), 'The oldest entry goes');
+}
+
 // The server-wide request cap rejects one message and keeps the socket; throttled guesses do not hold its slots.
 async function testWebSocketCapRejectsMessageNotSocket() {
     const WebSocket = require('ws');
@@ -722,7 +744,7 @@ async function testGunzipBufferIsBounded() {
 }
 
 module.exports = [
-    testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testReaderLabSourceClosedByAccessPassword, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

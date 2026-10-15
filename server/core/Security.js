@@ -9,6 +9,7 @@ const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
 const maxWebSocketsPerIp = 50;
+const maxLoginAttemptKeys = 10000;
 const bookLinkLifetimeMs = 7*24*60*60*1000;
 
 function parseIpv4(value = '') {
@@ -47,6 +48,18 @@ function parseCidr(value = '') {
 
     const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
     return {base: (base & mask) >>> 0, mask};
+}
+
+// IPv6 client gets a whole /64: one address per request would bypass the per-IP login limit.
+function loginAddress(value = '') {
+    const address = String(value || '').replace(/^\[|\]$/g, '').split('%')[0];
+    if (!require('net').isIPv6(address) || /^::ffff:\d+\.\d+\.\d+\.\d+$/i.test(address))
+        return value;
+    const [head, tail = ''] = address.toLowerCase().split('::');
+    const left = head ? head.split(':') : [];
+    const right = (address.includes('::') && tail ? tail.split(':') : []);
+    const groups = left.concat(Array(Math.max(0, 8 - left.length - right.length)).fill('0'), right);
+    return `${groups.slice(0, 4).map(group => group.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 function timingSafeStringEqual(a = '', b = '') {
@@ -494,7 +507,7 @@ class Security {
 
     loginAttemptKey(req, kind) {
         // One counter per kind: a success of one kind must not clear the failures of another.
-        return `${this.normalizeLoginKind(kind)}:${this.clientIp(req) || 'unknown'}`;
+        return `${this.normalizeLoginKind(kind)}:${loginAddress(this.clientIp(req)) || 'unknown'}`;
     }
 
     incrementLoginMetric(kind = 'access', result = 'failure') {
@@ -503,7 +516,7 @@ class Security {
     }
 
     pruneLoginAttempts(now = Date.now()) {
-        if (now - this.lastLoginAttemptSweep < 60000 && this.loginAttempts.size < 10000)
+        if (now - this.lastLoginAttemptSweep < 60000 && this.loginAttempts.size < maxLoginAttemptKeys)
             return;
         for (const [key, rec] of this.loginAttempts) {
             if (now > rec.resetAt)
@@ -528,7 +541,7 @@ class Security {
             rec.resetAt = now + windowMs;
         }
 
-        if (rec.count >= maxAttempts || (!this.loginAttempts.has(ip) && this.loginAttempts.size >= 10000)) {
+        if (rec.count >= maxAttempts) {
             this.incrementLoginMetric(kind, 'blocked');
             throw Object.assign(new Error('Too many login attempts. Try again later.'), {
                 code: 'INPX_LOGIN_RATE_LIMIT', retryAfter: Math.max(1, Math.ceil((rec.resetAt - now)/1000)),
@@ -552,8 +565,9 @@ class Security {
 
         const now = Date.now();
         this.pruneLoginAttempts(now);
-        if (!this.loginAttempts.has(ip) && this.loginAttempts.size >= 10000)
-            return;
+        //таблица полна: вытесняем самую старую запись, а не отказываем всем новым адресам
+        if (!this.loginAttempts.has(ip) && this.loginAttempts.size >= maxLoginAttemptKeys)
+            this.loginAttempts.delete(this.loginAttempts.keys().next().value);
         const windowMs = Math.max(60*1000, Number(this.config.loginRateLimitWindowMs || defaultLoginWindowMs));
         const rec = this.loginAttempts.get(ip) || {count: 0, resetAt: now + windowMs};
         if (now > rec.resetAt) {
@@ -561,6 +575,8 @@ class Security {
             rec.resetAt = now + windowMs;
         }
         rec.count++;
+        //порядок в Map - по последней неудаче: вытесняются давно не ошибавшиеся адреса
+        this.loginAttempts.delete(ip);
         this.loginAttempts.set(ip, rec);
     }
 
