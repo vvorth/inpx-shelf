@@ -104,7 +104,7 @@
                             </q-btn>
 
                             <q-btn v-if="signedIn" flat color="primary" no-caps :icon="progress >= 1 ? 'la la-undo' : 'la la-check'" @click="toggleRead">
-                                {{ progress >= 1 ? $t('common.unmark') : $t('common.read') }}
+                                {{ progress >= 1 ? $t('book.markAsUnread') : $t('book.markAsRead') }}
                             </q-btn>
                         </div>
 

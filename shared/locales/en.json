@@ -206,7 +206,9 @@
         "unavailableDisabled": "This book's library is turned off. The book can't be opened, but it stays in your lists.",
         "unavailableMissing": "This book is no longer in any connected library. It can't be opened, but it stays in your lists.",
         "useInstead": "Use instead",
-        "view": "View"
+        "view": "View",
+        "markAsRead": "Mark as read",
+        "markAsUnread": "Mark as unread"
     },
     "bookCard": {
         "notInTheLibrary": "Not in the library",
@@ -296,7 +298,6 @@
         "size": "Size",
         "source": "Source",
         "title": "Title",
-        "unmark": "Unmark",
         "unmarked": "Unmarked: {n}",
         "untitled": "Untitled",
         "yes": "Yes",
