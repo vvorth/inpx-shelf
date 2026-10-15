@@ -9,9 +9,18 @@
                     {{ $t('adminAuthorNames.searchWillFindFor') }}
                 </div>
             </div>
-            <q-btn color="primary" unelevated no-caps icon="la la-download" :loading="busy" @click="update">
-                {{ status.ready ? $t('reader.refresh') : $t('adminAuthorNames.downloadAndMatch') }}
-            </q-btn>
+            <div class="names-actions">
+                <q-btn color="primary" unelevated no-caps icon="la la-download" :loading="busy" :disable="running" @click="update">
+                    {{ status.ready ? $t('reader.refresh') : $t('adminAuthorNames.downloadAndMatch') }}
+                </q-btn>
+                <q-btn outline color="primary" no-caps icon="la la-file-export" :loading="exporting" :disable="!status.ready" @click="exportNames">
+                    {{ $t('adminAuthorNames.export') }}
+                </q-btn>
+                <q-btn outline color="primary" no-caps icon="la la-file-import" :loading="importing" :disable="running" @click="openImport">
+                    {{ $t('adminAuthorNames.import') }}
+                </q-btn>
+                <input ref="importInput" type="file" accept="application/zip,.zip" style="display: none" @change="onImportSelected" />
+            </div>
         </div>
 
         <div v-if="running" class="names-progress">
@@ -37,10 +46,13 @@
 import vueComponent from '../vueComponent.js';
 
 import {t, formatDateTime} from '../../share/i18n';
+import {fileToBase64} from '../../share/utils';
 
 class AdminAuthorNames {
     status = {ready: false, count: 0, updatedAt: '', matched: 0, job: {}, indexBuilding: false};
     busy = false;
+    exporting = false;
+    importing = false;
     timer = null;
 
     created() {
@@ -90,6 +102,52 @@ class AdminAuthorNames {
         }
     }
 
+    //тот же архив, что полный бэкап, но только с author-names.json: на новом сервере не нужно ждать Wikidata
+    async exportNames() {
+        this.exporting = true;
+        try {
+            const result = await this.api.createAdminBackup('author-names');
+            if (result && result.link)
+                window.location.href = result.link;
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('common.error'));
+        } finally {
+            this.exporting = false;
+        }
+    }
+
+    openImport() {
+        const input = this.$refs.importInput;
+        if (!input)
+            return;
+        input.value = '';
+        input.click();
+    }
+
+    async onImportSelected(event) {
+        const input = event && event.target;
+        const file = input && input.files && input.files[0];
+        if (!file)
+            return;
+        if (!await this.$root.stdDialog.confirm(t('adminAuthorNames.importConfirm'), t('adminAuthorNames.import'))) {
+            input.value = '';
+            return;
+        }
+
+        this.importing = true;
+        try {
+            await this.api.importAdminBackup({fileName: file.name, contentBase64: await fileToBase64(file)}, 'author-names');
+            this.$root.notify.success(t('adminAuthorNames.imported'));
+            if (!this.closed)
+                this.timer = setTimeout(() => this.refresh(), 1000);
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('common.error'));
+        } finally {
+            this.importing = false;
+            input.value = '';
+        }
+    }
+
     async update() {
         this.busy = true;
         try {
@@ -109,6 +167,12 @@ export default vueComponent(AdminAuthorNames);
 </script>
 
 <style scoped>
+.names-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .names-progress {
     display: flex;
     flex-direction: column;

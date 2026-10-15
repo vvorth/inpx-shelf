@@ -5,6 +5,16 @@ export function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+//содержимое выбранного файла для отправки на сервер (бэкапы)
+export async function fileToBase64(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize)
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    return btoa(binary);
+}
+
 export function downloadJson(data, fileName) {
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json;charset=utf-8'});
     const href = window.URL.createObjectURL(blob);

@@ -959,12 +959,12 @@ class WebSocketController {
     }
 
     async createAdminBackup(req, ws) {
-        const result = await this.webWorker.createAdminBackup(req.userId, req.profileAccessToken);
+        const result = await this.webWorker.createAdminBackup(req.userId, req.profileAccessToken, req.scope);
         this.send(result, req, ws);
     }
 
     async importAdminBackup(req, ws) {
-        const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, req.data);
+        const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, req.data, req.scope);
         this.send(result, req, ws);
     }
 

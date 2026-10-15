@@ -8,6 +8,22 @@ const utils = require('./utils');
 const {t, msg} = require('./i18n');
 const ConfigManager = require('../config');
 const log = new (require('./AppLogger'))().log;//singleton
+const BackupFiles = require('./BackupFiles');
+
+// What a backup holds: the full one, or only the English author names (exported and imported next to their download)
+const scopes = {
+    '': {prefix: 'inpx-shelf-backup', files: BackupFiles.names,
+        note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, Kobo devices and English author names. '
+            + 'It does not include source book archives, generated search DB or caches.'},
+    'author-names': {prefix: 'inpx-shelf-author-names', files: ['author-names.json'], note: 'English author names from Wikidata.'},
+};
+
+function backupScope(scope = '') {
+    const result = scopes[String(scope || '')];
+    if (!result)
+        throw new Error(t('errors.backupUnknownFile'));
+    return result;
+}
 
 // Admin settings export/import and full backups. Mixed into WebWorker.prototype: `this` is the worker.
 module.exports = {
@@ -138,26 +154,31 @@ module.exports = {
         zipFile.addFile(sourcePath, zipPath);
     },
 
-    async createAdminBackup(userId = '', profileAccessToken = '') {
+    async createAdminBackup(userId = '', profileAccessToken = '', scope = '') {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
+        const {files} = backupScope(scope);
+        if (!(await Promise.all(files.map(name => fs.pathExists(BackupFiles.filePath(this.config, name))))).some(Boolean))
+            throw new Error(t('errors.backupNothingToSave'));
         //заметки о книгах в архиве: по ним списки найдут те же книги в другой библиотеке
-        await this.trySyncListedBooks();
+        if (files.includes('reading-lists.json'))
+            await this.trySyncListedBooks();
         const {withFileTransactions} = require('./FilePersistence');
-        const files = Object.values(require('./BackupTransaction').targets(this.config));
-        return withFileTransactions(files, () => this.createAdminBackupSnapshot(userId, profileAccessToken));
+        const targets = Object.values(require('./BackupTransaction').targets(this.config));
+        return withFileTransactions(targets, () => this.createAdminBackupSnapshot(userId, profileAccessToken, scope));
     },
 
-    async createAdminBackupSnapshot(userId = '', profileAccessToken = '') {
+    async createAdminBackupSnapshot(userId = '', profileAccessToken = '', scope = '') {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
+        const {prefix, files, note} = backupScope(scope);
 
         const backupDir = path.join(this.config.dataDir, 'backups');
         await fs.ensureDir(backupDir);
 
         const createdAt = new Date();
         const stamp = createdAt.toISOString().replace(/[:.]/g, '-');
-        const fileName = `inpx-shelf-backup-${stamp}-${utils.randomHexString(4)}.zip`;
+        const fileName = `${prefix}-${stamp}-${utils.randomHexString(4)}.zip`;
         const outFile = path.join(backupDir, fileName);
         //в архиве secret.key: только владельцу, и под своим именем - только целиком записанный
         const tempFile = `${outFile}.tmp`;
@@ -174,17 +195,13 @@ module.exports = {
             app: this.config.name,
             version: this.config.version,
             createdAt: createdAt.toISOString(),
-            note: 'Backup includes runtime config, secrets, user profiles, reading lists, reader progress and bookmarks, Kobo devices and English author names. '
-                + 'It does not include source book archives, generated search DB or caches.',
+            note,
         }, null, 4)), 'backup-info.json');
 
-        await this.addBackupPath(zipFile, this.config.configFile, 'config.json');
-        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'secret.key'), 'secret.key');
-        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'reading-lists.json'), 'reading-lists.json');
-        // Token hashes included: restored devices keep syncing without being set up again.
-        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'kobo-sync.json'), 'kobo-sync.json');
-        // Wikidata often refuses the download for hours (504): a new server takes the names from the backup.
-        await this.addBackupPath(zipFile, path.join(this.config.dataDir, 'author-names.json'), 'author-names.json');
+        // kobo-sync.json keeps token hashes: restored devices sync without being set up again.
+        // author-names.json: Wikidata often refuses the download for hours (504), a new server takes the names from here.
+        for (const name of files)
+            await this.addBackupPath(zipFile, BackupFiles.filePath(this.config, name), name);
 
         zipFile.end();
         try {
@@ -202,9 +219,10 @@ module.exports = {
         };
     },
 
-    async importAdminBackup(userId = '', profileAccessToken = '', payload = {}) {
+    async importAdminBackup(userId = '', profileAccessToken = '', payload = {}, scope = '') {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
+        const only = (scope ? backupScope(scope).files : null);
 
         const transaction = require('./BackupTransaction');
         const {withFileTransactions} = require('./FilePersistence');
@@ -212,7 +230,7 @@ module.exports = {
         await fs.ensureDir(tempRoot);
         const folder = await fs.mkdtemp(path.join(tempRoot, 'admin-restore-'));
         try {
-            const archive = await require('./BackupArchive').read(payload, this.config, folder);
+            const archive = await require('./BackupArchive').read(payload, this.config, folder, {only});
             return await withFileTransactions(Object.values(transaction.targets(this.config)), async() => {
                 // Recheck after waiting for earlier writes or another restore.
                 await this.requireAdmin(userId, profileAccessToken);
@@ -255,12 +273,8 @@ module.exports = {
                     content['kobo-sync.json'] = JSON.stringify(koboData, null, 2);
                 }
                 const names = archive['author-names.json'];
-                if (names) {
-                    const entries = names.entries.filter(row => Array.isArray(row) && typeof row[0] === 'string' && typeof row[1] === 'string')
-                        .map(row => [row[0], row[1]]);
-                    content['author-names.json'] = JSON.stringify({source: String(names.source || 'wikidata'),
-                        updatedAt: String(names.updatedAt || ''), entries});
-                }
+                if (names)
+                    content['author-names.json'] = JSON.stringify(require('./search/AuthorNames').normalizeData(names));
                 await transaction.commit(this.config, content);
                 if (names && this.catalogSearch)
                     this.catalogSearch.authorNames.infoCache = null;
@@ -271,7 +285,9 @@ module.exports = {
                 }
                 if (runtimePatch)
                     Object.assign(this.config, runtimePatch);
-                this.profileSessions.clear();
+                //профили и пароли могли смениться - сеансы сбрасываются; одни имена авторов их не трогают
+                if (archive['config.json'] || archive['reading-lists.json'])
+                    this.profileSessions.clear();
                 const restored = Object.keys(content);
                 this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
                 //правки метаданных и английские имена авторов из бэкапа попадают в поиск при пересборке БД библиотеки;
@@ -279,8 +295,8 @@ module.exports = {
                 if ((archive['reading-lists.json'] || names) && this.catalogSearch && this.catalogSearch.ready)
                     this.recreateDb().catch(e => log(LM_ERR, `Library DB rebuild after restore: ${e.message}`));//no await
                 return {
-                    success: true, restored, restartRecommended: true,
-                    message: t('admin.fullBackupRestoredMessage'),
+                    success: true, restored, restartRecommended: !only,
+                    message: (only ? '' : t('admin.fullBackupRestoredMessage')),
                 };
             });
         } finally {

@@ -67,6 +67,10 @@
         "users": "Пользователи"
     },
     "adminAuthorNames": {
+        "export": "Экспорт",
+        "import": "Импорт",
+        "importConfirm": "Заменить английские имена авторов именами из файла? После этого поисковый индекс пересоберётся.",
+        "imported": "Имена авторов загружены, поисковый индекс пересобирается",
         "downloadAndMatch": "Скачать и сопоставить",
         "downloadFailed": "Не удалось скачать: {error}",
         "downloadingNamesFromWikidata": "Скачиваю имена из Wikidata...",
@@ -387,6 +391,8 @@
         "backupInvalidBase64": "Некорректный base64 бэкапа",
         "backupKeyDamaged": "Ключ бэкапа повреждён или отсутствует config.json",
         "backupKoboInvalid": "Неверный формат kobo-sync.json",
+        "backupMissingFile": "В архиве нет {name}",
+        "backupNothingToSave": "Сохранять пока нечего",
         "backupNotFull": "Файл не похож на полный бэкап inpx-shelf",
         "backupReadingListsInvalid": "Неверный формат reading-lists.json",
         "backupTooLarge": "Превышен размер бэкапа",

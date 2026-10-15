@@ -41,7 +41,7 @@
 //-----------------------------------------------------------------------------
 import vueComponent from '../vueComponent.js';
 import {t} from '../../share/i18n';
-import {downloadJson} from '../../share/utils';
+import {downloadJson, fileToBase64} from '../../share/utils';
 
 const componentOptions = {
     emits: ['restored'],
@@ -89,15 +89,6 @@ class AdminBackups {
         input.click();
     }
 
-    arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        const chunkSize = 0x8000;
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += chunkSize)
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-        return btoa(binary);
-    }
-
     async onSettingsImportSelected(event) {
         const input = event && event.target;
         const file = input && input.files && input.files[0];
@@ -141,7 +132,7 @@ class AdminBackups {
 
         this.backupImportLoading = true;
         try {
-            const contentBase64 = this.arrayBufferToBase64(await file.arrayBuffer());
+            const contentBase64 = await fileToBase64(file);
             await this.api.importAdminBackup({fileName: file.name, contentBase64});
             await this.api.updateConfig();
             this.$emit('restored');

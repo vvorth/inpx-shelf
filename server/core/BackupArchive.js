@@ -3,10 +3,13 @@ const path = require('path');
 const StreamZip = require('node-stream-zip');
 const {limits} = require('./RequestLimits');
 const {t} = require('./i18n');
+const BackupFiles = require('./BackupFiles');
 
-const names = new Set(['backup-info.json', 'config.json', 'secret.key', 'reading-lists.json', 'discovery-cache.json', 'kobo-sync.json', 'author-names.json']);
+// discovery-cache.json: older and upstream inpx-web backups carry it; it is rebuilt, never restored
+const names = new Set(['backup-info.json', 'discovery-cache.json', ...BackupFiles.names]);
 
-async function read(payload, config, folder) {
+// `only`: the data files this archive may hold (the author names import takes a names-only archive)
+async function read(payload, config, folder, options = {}) {
     const maximum = limits(config);
     const raw = payload && (payload.contentBase64 || payload.data);
     if (typeof raw !== 'string' || raw.length > Math.ceil(maximum.backup/3)*4 + 1024)
@@ -26,7 +29,7 @@ async function read(payload, config, folder) {
             throw new Error(t('errors.backupTooManyFiles'));
         let declared = 0;
         for (const entry of entries) {
-            if (!names.has(entry.name) || entry.isDirectory)
+            if (!names.has(entry.name) || entry.isDirectory || (options.only && BackupFiles.names.includes(entry.name) && !options.only.includes(entry.name)))
                 throw new Error(t('errors.backupUnknownFile'));
             declared += entry.size;
             if (!Number.isSafeInteger(entry.size) || entry.size < 0 || declared > maximum.expanded)
@@ -35,7 +38,6 @@ async function read(payload, config, folder) {
         const result = {};
         let total = 0;
         for (const entry of entries) {
-            // Older and upstream inpx-web backups carry the discovery cache; it is rebuilt, never restored.
             if (entry.name === 'discovery-cache.json')
                 continue;
             const stream = await zip.stream(entry.name);
@@ -50,25 +52,13 @@ async function read(payload, config, folder) {
             }
             result[entry.name] = Buffer.concat(chunks);
         }
-        if (!result['backup-info.json'] || (!result['config.json'] && !result['reading-lists.json']))
-            throw new Error(t('errors.backupNotFull'));
-        for (const [name, data] of Object.entries(result)) {
-            if (!name.endsWith('.json'))
-                continue;
-            const parsed = JSON.parse(data.toString('utf8'));
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-                throw new Error(t('errors.backupFileInvalid', {name}));
-            result[name] = parsed;
+        const wanted = options.only || ['config.json', 'reading-lists.json'];
+        if (!result['backup-info.json'] || !wanted.some(name => result[name]))
+            throw new Error(options.only ? t('errors.backupMissingFile', {name: wanted.join(', ')}) : t('errors.backupNotFull'));
+        for (const name of Object.keys(result)) {
+            if (name !== 'backup-info.json')
+                result[name] = BackupFiles.parse(name, result[name]);
         }
-        const lists = result['reading-lists.json'];
-        if (lists && (!Array.isArray(lists.users) || !Array.isArray(lists.lists)))
-            throw new Error(t('errors.backupReadingListsInvalid'));
-        const kobo = result['kobo-sync.json'];
-        if (kobo && (!Array.isArray(kobo.devices) || (kobo.states && (typeof kobo.states !== 'object' || Array.isArray(kobo.states)))))
-            throw new Error(t('errors.backupKoboInvalid'));
-        const authorNames = result['author-names.json'];
-        if (authorNames && !Array.isArray(authorNames.entries))
-            throw new Error(t('errors.backupFileInvalid', {name: 'author-names.json'}));
         const key = result['secret.key'];
         if (key && (!result['config.json'] || !/^[A-Za-z0-9+/]{43}=\s*$/.test(key.toString('utf8'))))
             throw new Error(t('errors.backupKeyDamaged'));

@@ -3,15 +3,10 @@ const path = require('path');
 const {writeFileAtomic, withFileTransactions} = require('./FilePersistence');
 
 function targets(config) {
-    return {
-        'config.json': config.configFile,
-        'secret.key': path.join(config.dataDir, 'secret.key'),
-        'reading-lists.json': path.join(config.dataDir, 'reading-lists.json'),
+    return Object.assign(require('./BackupFiles').targets(config), {
         // No longer backed up; kept so a journal written by an older version can still be rolled back.
         'discovery-cache.json': path.join(config.dataDir, 'discovery-cache.json'),
-        'kobo-sync.json': path.join(config.dataDir, 'kobo-sync.json'),
-        'author-names.json': path.join(config.dataDir, 'author-names.json'),
-    };
+    });
 }
 
 async function recover(config) {

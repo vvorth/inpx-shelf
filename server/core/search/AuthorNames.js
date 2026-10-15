@@ -70,6 +70,14 @@ function englishName(lookup, name = '') {
     return '';
 }
 
+//Содержимое author-names.json: после скачивания, из бэкапа или импорта - только пары строк [русское имя, английское]
+function normalizeData(raw = {}) {
+    const entries = (Array.isArray(raw.entries) ? raw.entries : [])
+        .filter(row => Array.isArray(row) && typeof row[0] === 'string' && typeof row[1] === 'string')
+        .map(row => [row[0], row[1]]);
+    return {source: String(raw.source || 'wikidata'), updatedAt: String(raw.updatedAt || ''), entries};
+}
+
 class AuthorNames {
     constructor(config, fetchJson = null) {
         this.config = config;
@@ -163,7 +171,7 @@ class AuthorNames {
             throw keyError('errors.wikidataNoNames');
 
         const tmpFile = `${this.file}.tmp`;
-        await fs.writeJson(tmpFile, {source: 'wikidata', updatedAt: new Date().toISOString(), entries: [...byItem.values()]});
+        await fs.writeJson(tmpFile, normalizeData({source: 'wikidata', updatedAt: new Date().toISOString(), entries: [...byItem.values()]}));
         await fs.move(tmpFile, this.file, {overwrite: true});
         this.infoCache = null;
         return byItem.size;
@@ -188,3 +196,4 @@ module.exports = AuthorNames;
 module.exports.buildLookup = buildLookup;
 module.exports.englishName = englishName;
 module.exports.nameKey = nameKey;
+module.exports.normalizeData = normalizeData;

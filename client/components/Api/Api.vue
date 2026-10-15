@@ -394,12 +394,13 @@ class Api {
         return await this.request({action: 'import-admin-settings', data}, 120);
     }
 
-    async createAdminBackup() {
-        return await this.request({action: 'create-admin-backup'}, 300);
+    //scope: '' - полный бэкап, 'author-names' - только английские имена авторов
+    async createAdminBackup(scope = '') {
+        return await this.request({action: 'create-admin-backup', scope}, 300);
     }
 
-    async importAdminBackup(data) {
-        return await this.request({action: 'import-admin-backup', data}, 300);
+    async importAdminBackup(data, scope = '') {
+        return await this.request({action: 'import-admin-backup', data, scope}, 300);
     }
 
     async updateBookMetadata(bookUid, metadata = {}) {

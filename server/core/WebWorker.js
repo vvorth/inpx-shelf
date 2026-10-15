@@ -937,6 +937,9 @@ class WebWorker {
 
     async importReadingLists(userId = '', data) {
         this.checkMyState();
+        //Kobo проверяется теми же правилами, что kobo-sync.json в полном бэкапе, и до изменения данных
+        if (data && data.kobo)
+            require('./BackupFiles').parse('kobo-sync.json', data.kobo);
         const result = await this.readingListStore.importData(userId, data);
         if (data.books && typeof(data.books) === 'object') {
             //заметки, которые уже есть на этом сервере, не заменяются: у них свежее

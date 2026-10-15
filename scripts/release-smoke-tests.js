@@ -872,6 +872,61 @@ async function testDisabledLibraryHiddenWithoutRebuild() {
     });
 }
 
+// English author names move between servers in their own archive, through the same checks as the full backup.
+async function testAuthorNamesExportAndImport() {
+    await withTempDir(async(dir) => {
+        const StreamZip = require('node-stream-zip');
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const server = (name) => {
+            const dataDir = path.join(dir, name);
+            const worker = makeWorker({dataDir, tempDir: path.join(dir, `${name}-tmp`), configFile: path.join(dataDir, 'config.json')});
+            worker.readingListStore = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+            worker.catalogSearch = {ready: false, authorNames: {infoCache: {ready: false}}};
+            return worker;
+        };
+        const source = server('old');
+        const target = server('new');
+        await fs.ensureDir(target.config.dataDir);
+        await assert.rejects(target.createAdminBackup('admin', 'token', 'author-names'), /Nothing to save|нечего/);
+
+        const names = {source: 'wikidata', updatedAt: '2026-10-01T00:00:00.000Z', entries: [['Азимов Айзек', 'Isaac Asimov'], [1, 2]]};
+        await fs.outputJson(path.join(source.config.dataDir, 'author-names.json'), names);
+        await fs.outputJson(source.config.configFile, {opds: {}});
+        const exported = await source.createAdminBackup('admin', 'token', 'author-names');
+        assert.match(exported.fileName, /^inpx-shelf-author-names-.+\.zip$/);
+        const file = path.join(source.config.dataDir, 'backups', exported.fileName);
+        const zip = new StreamZip.async({file});
+        try {
+            assert.deepStrictEqual(Object.keys(await zip.entries()).sort(), ['author-names.json', 'backup-info.json']);
+        } finally {
+            await zip.close();
+        }
+        const upload = async(name) => ({fileName: name, contentBase64: (await fs.readFile(path.join(source.config.dataDir, 'backups', name))).toString('base64')});
+
+        //имена не подменяют полный бэкап, а полный бэкап не загружается вместо имён
+        await assert.rejects(target.importAdminBackup('admin', 'token', await upload(exported.fileName)), /полный|full/i);
+        const full = await source.createAdminBackup('admin', 'token');
+        await assert.rejects(target.importAdminBackup('admin', 'token', await upload(full.fileName), 'author-names'), /неизвестн|unknown/i);
+        await assert.rejects(target.importAdminBackup('admin', 'token', await upload(full.fileName), 'everything'));
+
+        target.profileSessions.set('session', {userId: 'reader'});
+        const result = await target.importAdminBackup('admin', 'token', await upload(exported.fileName), 'author-names');
+        assert.deepStrictEqual(result.restored, ['author-names.json']);
+        assert.strictEqual(result.restartRecommended, false);
+        assert.strictEqual(target.profileSessions.size, 1, 'importing names keeps everyone signed in');
+        assert.strictEqual(target.catalogSearch.authorNames.infoCache, null, 'the names status is read again');
+        assert.deepStrictEqual(await fs.readJson(path.join(target.config.dataDir, 'author-names.json')),
+            {source: 'wikidata', updatedAt: '2026-10-01T00:00:00.000Z', entries: [['Азимов Айзек', 'Isaac Asimov']]});
+        assert.strictEqual(await fs.pathExists(target.config.configFile), false, 'nothing else is written');
+
+        //профиль: Kobo из бэкапа проверяется правилами kobo-sync.json до изменения данных
+        await target.readingListStore.load();
+        const before = await fs.readFile(target.readingListStore.file, 'utf8');
+        await assert.rejects(target.importReadingLists('', {lists: [{name: 'New', books: []}], kobo: {devices: {}}}), /kobo-sync\.json/);
+        assert.strictEqual(await fs.readFile(target.readingListStore.file, 'utf8'), before);
+    });
+}
+
 async function testAdminBackupArchiveAndDownload() {
     await withTempDir(async(dir) => {
         const bookDir = path.join(dir, 'book');
@@ -2242,6 +2297,7 @@ const tests = [
     testFb2cngConfigAndConversionCache,
     testAdminSettingsRestoreKeepsSecrets,
     testAdminBackupArchiveAndDownload,
+    testAuthorNamesExportAndImport,
     testDisabledLibrarySourceIsKept,
     testDisabledLibraryHiddenWithoutRebuild,
     testUserBackupExportsAndRestoresReaderState,
