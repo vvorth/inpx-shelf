@@ -366,7 +366,7 @@ async function testReaderAnnotationStaysOutsideReadingFlow() {
     assert.match(readerSource, /this\.readerAnnotationHtml = fb2ToReaderHtml\.buildReaderAnnotationHtml\(/);
     assert.match(readerSource, /this\.readerSearchText = readerTextAnchors\.normalizeReaderSearchText\(readerTextAnchors\.stripHtml\(this\.readerHtml \|\| ''\)\)\.toLowerCase\(\);/);
     assert.match(readerSource, /get hasContentsMenu\(\)[\s\S]{0,160}this\.hasContents \|\| this\.hasAnnotation/);
-    assert.match(readerSource, /v-if="hasContentsMenu"/);
+    assert.match(readerSource, /v-if="reader\.hasContentsMenu"/);
     assert.match(readerSource, /contentsPanelView === 'annotation'/);
     assert.match(readerSource, /this\.findPagedPageIndexByAnchor\(targetId\)/);
     assert.match(readerSource, /this\.readerHtmlHasAnchor\(targetId\)/);
@@ -498,8 +498,8 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.doesNotMatch(readerSource, /\{\{ (reader\.)?readerNoteReturnPoint \? (reader\.)?uiText\.noteReturn : (reader\.)?uiText\.back \}\}/);
     assert.match(readerSource, /\.reader-back-btn--note-return :deep\(\.block\) \{\s*display: none;/);
     assert.doesNotMatch(readerSource, /class="reader-note-return-btn"/);
-    assert.match(readerSource, /v-if="bookUid && isCompactLayout"\s*ref="readerMobileFooter"/);
-    assert.match(readerSource, /v-if="bookUid && showDesktopStatusBar"/);
+    assert.match(readerSource, /v-if="reader\.bookUid && reader\.isCompactLayout"\s*ref="readerMobileFooter"/);
+    assert.match(readerSource, /v-if="reader\.bookUid && reader\.showDesktopStatusBar"/);
 
     const goBackStart = readerSource.indexOf('    goBack() {');
     const goBackEnd = readerSource.indexOf('    toggleControls() {', goBackStart);
@@ -626,7 +626,7 @@ async function testReaderChromeToggleKeepsLayout() {
     assert.doesNotMatch(toggle, /beginLayoutRefresh|pagedBuild|requestAnimationFrame|updateScrollerViewport/);
     assert.doesNotMatch(readerSource, /v-show="!(reader\.)?readerChromeHidden"/);
     assert.match(readerSource, /'reader-toolbar--hidden': reader\.readerChromeHidden/);
-    assert.match(readerSource, /'reader-mobile-bar--hidden': compactChromeHidden/);
+    assert.match(readerSource, /'reader-mobile-bar--hidden': reader\.compactChromeHidden/);
     assert.match(readerSource, /\.reader-toolbar--hidden \{\s*opacity: 0;\s*visibility: hidden;/);
 }
 

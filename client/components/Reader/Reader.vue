@@ -185,118 +185,7 @@
             />
         </template>
 
-        <div
-            v-if="bookUid && isCompactLayout"
-            ref="readerMobileFooter"
-            class="reader-mobile-footer"
-            :style="readerMobileFooterStyle"
-            :class="{
-                'reader-mobile-footer--settings': controlsOpen,
-            }"
-        >
-            <div
-                v-if="showCompactStatusBar && !controlsOpen"
-                class="reader-status-bar"
-                :class="statusBarClass"
-                :style="statusBarStyle"
-            >
-                <q-icon
-                    v-if="showCompactPagedBuildIndicator"
-                    class="la la-spinner icon-rotate reader-status-bar-spinner"
-                    size="14px"
-                />
-                <span class="reader-status-main">
-                    {{ showCompactPagedBuildIndicator ? compactStatusBarBuildText : compactStatusBarText }}
-                </span>
-                <span v-if="activePreferences.statusBarClock" class="reader-status-clock">{{ statusClockText }}</span>
-                <div v-if="activePreferences.statusBarProgressBar" class="reader-status-progress">
-                    <div :style="{width: `${statusBarProgressPercent}%`}"></div>
-                </div>
-            </div>
-
-            <div
-                v-if="!controlsOpen"
-                class="reader-mobile-bar"
-                :class="{
-                    'reader-mobile-bar--with-contents': hasContentsMenu,
-                    'reader-mobile-bar--hidden': compactChromeHidden,
-                }"
-            >
-                <q-btn
-                    flat
-                    no-caps
-                    stack
-                    icon="la la-bookmark"
-                    :label="uiText.myPlaces"
-                    class="reader-mobile-btn"
-                    @click="openPlacesDialog(defaultPlacesTab)"
-                />
-                <q-btn
-                    v-if="hasContentsMenu"
-                    flat
-                    no-caps
-                    stack
-                    icon="la la-list"
-                    :label="uiText.contents"
-                    class="reader-mobile-btn"
-                    @click="toggleContentsDialog"
-                />
-                <q-btn
-                    flat
-                    no-caps
-                    stack
-                    icon="la la-sliders-h"
-                    :label="uiText.settings"
-                    class="reader-mobile-btn"
-                    :class="{'is-active': controlsOpen}"
-                    @click="toggleControls"
-                />
-                <q-btn
-                    flat
-                    no-caps
-                    stack
-                    :icon="fullscreenActive ? 'la la-compress-arrows-alt' : 'la la-expand-arrows-alt'"
-                    :label="uiText.screen"
-                    class="reader-mobile-btn"
-                    @click="toggleFullscreen"
-                />
-            </div>
-        </div>
-
-        <div
-            v-if="bookUid && showCompactPagedBuildOverlay"
-            class="reader-compact-build-overlay"
-            :class="{'reader-compact-build-overlay--above-chrome': !compactChromeHidden}"
-        >
-            <div class="reader-status-bar" :class="statusBarClass" :style="statusBarStyle">
-                <q-icon class="la la-spinner icon-rotate reader-status-bar-spinner" size="14px" />
-                <span class="reader-status-main">{{ compactStatusBarBuildText }}</span>
-            </div>
-        </div>
-
-        <div
-            v-if="bookUid && showDesktopStatusBar"
-            class="reader-desktop-footer"
-            :class="{'reader-desktop-footer--edge': activePreferences.statusBarAlign === 'edge'}"
-        >
-            <div class="reader-status-bar reader-status-bar--desktop" :class="statusBarClass" :style="statusBarStyle">
-                <template v-if="showDesktopPagedBuildIndicator">
-                    <q-icon class="la la-spinner icon-rotate reader-status-bar-spinner" size="14px" />
-                    <span class="reader-status-main">{{ compactStatusBarBuildText }}</span>
-                    <span v-if="activePreferences.statusBarClock" class="reader-status-clock">{{ statusClockText }}</span>
-                    <div v-if="activePreferences.statusBarProgressBar" class="reader-status-progress">
-                        <div :style="{width: `${statusBarProgressPercent}%`}"></div>
-                    </div>
-                </template>
-                <template v-else>
-                    <span class="reader-status-main">{{ desktopStatusBarText }}</span>
-                    <span v-if="activePreferences.statusBarClock" class="reader-status-clock">{{ statusClockText }}</span>
-                    <div v-if="activePreferences.statusBarProgressBar" class="reader-status-progress">
-                        <div :style="{width: `${statusBarProgressPercent}%`}"></div>
-                    </div>
-                </template>
-            </div>
-        </div>
+        <ReaderFooter :reader="readerContext" />
 
         <ReaderDialogs :reader="readerContext" />
     </div>
@@ -321,6 +210,7 @@ import ReaderProfile from './readerProfile.js';
 import ReaderDebugPanel from './ReaderDebugPanel.vue';
 import ReaderSettingsPanel from './ReaderSettingsPanel.vue';
 import ReaderToolbar from './ReaderToolbar.vue';
+import ReaderFooter from './ReaderFooter.vue';
 import ReaderHome from './ReaderHome.vue';
 import ReaderDialogs from './ReaderDialogs.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
@@ -332,7 +222,7 @@ import {t, tm, formatDateTime} from '../../share/i18n';
 const {readerPreferencesVersion, readerDefaults, einkReaderDefaults} = require('../../../shared/readerPreferences');
 
 const componentOptions = {
-    components: {ReaderDebugPanel, ReaderSettingsPanel, ReaderToolbar, ReaderHome, ReaderDialogs},
+    components: {ReaderDebugPanel, ReaderSettingsPanel, ReaderToolbar, ReaderFooter, ReaderHome, ReaderDialogs},
     watch: {
         readerSourceKey: {
             immediate: true,
@@ -3127,95 +3017,6 @@ export default vueComponent(Reader);
     border-top: 1px solid var(--reader-border);
 }
 
-.reader-mobile-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px 8px calc(8px + env(safe-area-inset-bottom));
-    border-top: 0;
-    background: linear-gradient(to top, color-mix(in srgb, var(--reader-bg) 96%, transparent), transparent);
-}
-
-.reader-compact-build-overlay {
-    position: absolute;
-    right: 8px;
-    bottom: calc(10px + env(safe-area-inset-bottom));
-    left: 8px;
-    z-index: 18;
-    display: flex;
-    justify-content: center;
-    pointer-events: none;
-}
-
-.reader-compact-build-overlay--above-chrome {
-    bottom: calc(96px + env(safe-area-inset-bottom));
-}
-
-.reader-compact-build-overlay .reader-status-bar {
-    width: min(100%, 520px);
-    flex-wrap: nowrap;
-}
-
-.reader-desktop-footer {
-    display: flex;
-    justify-content: center;
-    flex: 0 0 auto;
-    padding: 6px 16px 12px;
-    background: linear-gradient(to top, color-mix(in srgb, var(--reader-bg) 94%, transparent), transparent);
-}
-
-.reader-desktop-footer--edge {
-    justify-content: flex-end;
-}
-
-.reader-status-bar--desktop {
-    justify-content: center;
-    min-width: 180px;
-    max-width: min(620px, 100%);
-}
-
-.reader-mobile-bar--hidden {
-    visibility: hidden;
-    pointer-events: none;
-}
-
-.reader-mobile-bar {
-    display: flex;
-    margin: 0 -8px calc(-8px - env(safe-area-inset-bottom));
-    padding: 2px 0 env(safe-area-inset-bottom);
-    border-top: 1px solid var(--reader-border);
-    background: var(--reader-surface);
-}
-
-.reader-mobile-btn {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 56px;
-    padding: 6px 4px;
-    border-radius: 0;
-    background: transparent;
-    color: var(--reader-muted);
-}
-
-.reader-mobile-btn :deep(.q-btn__content) {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    width: 100%;
-    min-width: 0;
-    min-height: 100%;
-    line-height: 1.08;
-    overflow: hidden;
-}
-
-.reader-mobile-btn :deep(.q-icon) {
-    font-size: 19px;
-    margin: 0;
-}
-
-.reader-mobile-btn :deep(.block),
 .reader-mobile-btn-label {
     display: block;
     width: 100%;
@@ -3230,67 +3031,6 @@ export default vueComponent(Reader);
     overflow-wrap: anywhere;
     word-break: normal;
     hyphens: auto;
-}
-
-.reader-mobile-btn.is-active {
-    color: var(--reader-accent);
-}
-
-.reader-status-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: var(--reader-status-padding-y, 4px) var(--reader-status-padding-x, 10px);
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface);
-    color: var(--reader-muted);
-    font-size: var(--reader-status-font-size, 12px);
-    font-weight: 600;
-}
-
-.reader-status-main {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reader-mobile-footer .reader-status-main {
-    flex-basis: 0;
-}
-
-.reader-status-clock {
-    flex: 0 0 auto;
-    color: var(--reader-text);
-    font-variant-numeric: tabular-nums;
-}
-
-.reader-status-progress {
-    flex: 1 0 100%;
-    height: var(--reader-status-progress-height, 4px);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--reader-muted) 20%, transparent);
-    overflow: hidden;
-}
-
-.reader-status-bar--progress-side .reader-status-progress {
-    flex: 0 0 clamp(86px, 18vw, 150px);
-    order: 8;
-}
-
-.reader-status-progress div {
-    height: 100%;
-    border-radius: inherit;
-    background: var(--reader-accent);
-}
-
-.reader-status-bar-spinner {
-    flex: 0 0 auto;
-    opacity: 0.9;
 }
 
 .reader-dialog {
@@ -3388,47 +3128,9 @@ export default vueComponent(Reader);
 
 .reader-theme-eink .reader-inline-image,
 .reader-theme-eink .reader-page-sheet,
-.reader-theme-eink .reader-mobile-bar,
-.reader-theme-eink .reader-status-bar,
 .reader-theme-eink .reader-dialog,
 .reader-theme-eink .reader-overlay-panel {
     box-shadow: none;
-}
-
-.reader-theme-eink .reader-mobile-bar,
-.reader-theme-eink .reader-status-bar {
-    backdrop-filter: none;
-}
-
-.reader-theme-sepia .reader-mobile-footer,
-.reader-theme-light .reader-mobile-footer,
-.reader-theme-sepia .reader-desktop-footer,
-.reader-theme-light .reader-desktop-footer {
-    background:
-        linear-gradient(
-            to top,
-            color-mix(in srgb, var(--reader-bg) 90%, var(--reader-surface-2) 10%) 0%,
-            color-mix(in srgb, var(--reader-bg) 84%, var(--reader-surface) 16%) 28%,
-            color-mix(in srgb, var(--reader-bg) 90%, transparent) 62%,
-            transparent 100%
-        );
-    gap: 10px;
-    padding-top: 14px;
-    box-shadow:
-        inset 0 1px 0 color-mix(in srgb, var(--reader-text) 12%, transparent),
-        inset 0 12px 24px color-mix(in srgb, var(--reader-bg) 82%, transparent);
-}
-
-.reader-theme-sepia .reader-mobile-footer,
-.reader-theme-sepia .reader-desktop-footer {
-    background:
-        linear-gradient(
-            to top,
-            color-mix(in srgb, var(--reader-bg) 84%, var(--reader-surface-2) 16%) 0%,
-            color-mix(in srgb, var(--reader-bg) 76%, var(--reader-surface) 24%) 28%,
-            color-mix(in srgb, var(--reader-bg) 88%, transparent) 62%,
-            transparent 100%
-        );
 }
 
 .reader-page--transparent-pages .reader-page-sheet:not(.reader-page-sheet--measure):not(.reader-page-sheet--dual),
@@ -3444,26 +3146,8 @@ export default vueComponent(Reader);
     text-shadow: 0 1px 2px color-mix(in srgb, var(--reader-bg) 36%, transparent);
 }
 
-.reader-page--transparent-status .reader-mobile-footer,
-.reader-page--transparent-status .reader-desktop-footer {
-    background: transparent !important;
-    box-shadow: none;
-}
-
-.reader-page--transparent-status .reader-status-bar {
-    border-color: color-mix(in srgb, var(--reader-border) 48%, transparent) !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    color: var(--reader-text);
-}
-
-.reader-page--text-shadow.reader-page--transparent-status .reader-status-bar {
-    text-shadow: 0 1px 2px color-mix(in srgb, var(--reader-bg) 42%, transparent);
-}
-
 .reader-page:not(.reader-page--text-shadow) .reader-body,
-.reader-page:not(.reader-page--text-shadow) .reader-page-sheet .reader-html,
-.reader-page:not(.reader-page--text-shadow) .reader-status-bar {
+.reader-page:not(.reader-page--text-shadow) .reader-page-sheet .reader-html {
     text-shadow: none !important;
 }
 
@@ -3480,18 +3164,6 @@ export default vueComponent(Reader);
 }
 
 @media (max-width: 640px) {
-
-    .reader-mobile-footer--settings {
-        flex: 0 0 var(--reader-mobile-settings-height, min(46dvh, 388px));
-        height: var(--reader-mobile-settings-height, min(46dvh, 388px));
-        min-height: 0;
-        gap: 0;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        box-shadow: none;
-        pointer-events: none;
-    }
 
     .reader-mobile-spacing-target strong {
         color: var(--reader-text);
@@ -3569,24 +3241,6 @@ export default vueComponent(Reader);
         width: 100%;
     }
 
-    .reader-mobile-bar {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .reader-mobile-bar--with-contents {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .reader-mobile-btn {
-        min-height: 52px;
-    }
-
-    .reader-mobile-btn :deep(.q-icon) {
-        font-size: 18px;
-    }
-
-    .reader-mobile-btn :deep(.block),
     .reader-mobile-btn-label {
         font-size: 10px;
     }
