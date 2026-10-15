@@ -2287,8 +2287,7 @@ async function testPersonalDiscoveryDiversifiesAuthorsAndSeries() {
             worker.catalogSearch = {
                 ready: true,
                 getBooksByUids,
-                similarCandidates: async request => index.similarCandidates(request),
-                loadBooks: async ids => index.getBooks(ids),
+                similarCandidates: async request => index.withBooks('similarCandidates', request),
             };
             const shelf = await worker.buildSimilarBooksShelfV2(user, 4, {
                 lists: [],

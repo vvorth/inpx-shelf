@@ -177,11 +177,14 @@ class BasePage {
     }
 
     // -- stuff -------------------------------------------
-    //для названий запросы отдают id книги: название (с правкой метаданных) берётся из её записи
-    async fillTitles(rows, key) {
-        if (!rows.length)
-            return;
-        const books = await this.webWorker.catalogSearch.loadBooks(rows.map(row => row.id));
+    //для названий запросы отдают id книги: её запись приходит тем же вызовом потока (books), иначе после замены БД id указал бы на другую книгу
+    opdsCall(action, from, query) {
+        const catalog = this.webWorker.catalogSearch;
+        return (from === 'title' ? catalog.callWithBooks(action, from, query) : catalog.call(action, from, query));
+    }
+
+    //название (с правкой метаданных) берётся из записи книги
+    fillTitles(rows, key, books) {
         const titles = new Map(books.map(book => [book.id, book.title || '']));
         for (const row of rows)
             row[key] = titles.get(row.id) || '';
@@ -189,9 +192,9 @@ class BasePage {
 
     async search(from, query) {
         const result = [];
-        const queryRes = await this.webWorker.catalogSearch.call('opdsNames', from, query);
+        const queryRes = await this.opdsCall('opdsNames', from, query);
         if (from === 'title')
-            await this.fillTitles(queryRes.found, 'title');
+            this.fillTitles(queryRes.found, 'title', queryRes.books);
 
         for (const row of queryRes.found) {
             const rec = {
@@ -208,7 +211,7 @@ class BasePage {
     }
 
     async opdsQuery(from, query, otherTitle = t('opds.others'), prevLen = 0) {
-        const queryRes = await this.webWorker.catalogSearch.call('opdsGroups', from, query);
+        const queryRes = await this.opdsCall('opdsGroups', from, query);
         let count = 0;
         for (const row of queryRes.found)
             count += row.count;
@@ -220,7 +223,7 @@ class BasePage {
             return await this.search(from, query);
         } else {
             if (from === 'title')
-                await this.fillTitles(queryRes.found.filter(row => row.count == 1), 'name');
+                this.fillTitles(queryRes.found.filter(row => row.count == 1), 'name', queryRes.books);
 
             let len = 0;
             const enResult = [];

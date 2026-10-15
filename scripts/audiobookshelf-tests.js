@@ -42,7 +42,7 @@ async function fixture(test, options = {}) {
             readingListStore: {getMetadataOverrides: async() => ({})}, dbConfig: async() => ({}),
             catalogSearch: {
                 call: async(action, ...args) => index[action](...args),
-                loadBooks: async ids => index.getBooks(ids),
+                findBooks: async query => index.withBooks('findBooks', query),
                 getBooksByUids: async uids => index.getBooksByUids(uids),
             },
             stateStore: {getBookFiles: () => [], putBookFile: () => {}}});

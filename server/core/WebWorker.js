@@ -310,8 +310,8 @@ class WebWorker {
     async bookSearch(query) {
         this.checkMyState();
 
-        const {ids, totalFound} = await this.catalogSearch.call('findBooks', query);
-        const result = {found: await this.catalogSearch.loadBooks(ids), totalFound};
+        const {books, totalFound} = await this.catalogSearch.findBooks(query);
+        const result = {found: books, totalFound};
         result.inpxHash = (await this.dbConfig()).inpxHash || '';
         return result;
     }

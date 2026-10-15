@@ -509,7 +509,7 @@ module.exports = {
         return Math.max(0, score);
     },
 
-    //Кандидаты «Похожих» из индекса каталога: лучшие id по оценке, затем записи книг из основной БД.
+    //Кандидаты «Похожих» из индекса каталога: лучшие id по оценке и записи этих книг.
     //null - БД библиотеки ещё строится.
     async similarCandidatesFromIndex(profile, weights, limit) {
         const catalog = this.catalogSearch;
@@ -518,15 +518,15 @@ module.exports = {
         try {
             const known = profile.knownBookUids;
             const result = await catalog.similarCandidates(Object.assign({}, weights, {limit: limit + known.size, now: Date.now()}));
-            const pick = async(list, explore) => {
+            const byId = new Map(result.books.map(book => [book.id, book]));
+            const pick = (list, explore) => {
                 const scores = new Map(list.map(item => [item.id, item.score]));
-                const books = await catalog.loadBooks(list.map(item => item.id));
-                return books
+                return list.map(item => byId.get(item.id))
                     .filter(book => book && !book.del && book.title && book._uid && !known.has(book._uid))
                     .slice(0, limit)
                     .map(book => Object.assign({}, book, {_similarityScore: scores.get(book.id), _discoveryExplore: explore}));
             };
-            return (await pick(result.affinity, false)).concat(await pick(result.explore, true));
+            return pick(result.affinity, false).concat(pick(result.explore, true));
         } catch (e) {
             log(LM_WARN, `Similar books from catalog index: ${e.message}`);
             return null;

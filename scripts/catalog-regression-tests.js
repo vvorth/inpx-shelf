@@ -370,6 +370,84 @@ async function testCatalogBuildsAreSerialized() {
     });
 }
 
+// A DB swap between two library thread calls must not pair ids from the old DB with records of the new one:
+// search, findBooks and OPDS title lists get their records in the same thread call.
+async function testCatalogRecordsSurviveDbSwap() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const build = (file, titles) => {
+            const index = new CatalogIndex();
+            index.beginBuild(file, [], [{id: 'main', name: 'Main', libDir: dir}]);
+            index.insertBooks(titles.map((title, i) => ({_uid: `${file}-${i}`, title, author: 'Автор Один', series: '', genre: 'sf', lang: 'ru', ext: 'fb2',
+                date: '2026-01-01', sourceId: 'main', folder: 'a.zip', file: String(i), libid: String(i)})));
+            index.finishBuild({});
+        };
+        build(path.join(dir, 'library.sqlite'), ['Альфа', 'Бета']);
+        build(path.join(dir, 'next.sqlite'), ['Омега', 'Пси']);
+        const worker = catalogWorker();
+        const search = new CatalogSearch({dataDir: dir}, worker);
+        const thread = search.getThread();
+        await search.openIndex(thread);
+        search.ready = true;
+        //первый ответ потока на запрос - и сразу замена БД, как при пересборке
+        const call = thread.call.bind(thread);
+        let swapNext = false;
+        thread.call = async(action, ...args) => {
+            const result = await call(action, ...args);
+            if (swapNext) {
+                swapNext = false;
+                await call('open', path.join(dir, 'next.sqlite'));
+            }
+            return result;
+        };
+        const swapped = async(task) => {
+            await call('open', path.join(dir, 'library.sqlite'));
+            swapNext = true;
+            return await task();
+        };
+        try {
+            assert.deepStrictEqual((await swapped(() => search.search({q: 'альфа'}))).books.map(book => book.title), ['Альфа']);
+            assert.deepStrictEqual((await swapped(() => search.findBooks({title: '=бета'}))).books.map(book => book.title), ['Бета']);
+            const names = await swapped(() => search.callWithBooks('opdsNames', 'title', {}));
+            assert.deepStrictEqual(names.books.map(book => book.title), ['Альфа', 'Бета']);
+            assert.deepStrictEqual((await swapped(() => search.authorBooks('Автор Один'))).books.map(book => book.title), ['Альфа', 'Бета']);
+        } finally {
+            await search.close();
+        }
+    });
+}
+
+// On Windows the current DB is closed for the swap: a failed swap reopens it and the catalog keeps answering.
+async function testCatalogFailedSwapReopensDb() {
+    await withTempDir(async(dir) => {
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const inpxFile = path.join(dir, 'lib.inpx');
+        await writeInpx(inpxFile, [['Тестов Автор', 'Первая книга']]);
+        const search = new CatalogSearch({dataDir: dir, inpxFile, libDir: dir}, catalogWorker());
+        const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+        const move = fs.move;
+        try {
+            assert.strictEqual(await search.ensure('h1'), true);
+            Object.defineProperty(process, 'platform', {value: 'win32'});
+            fs.move = async() => {
+                throw new Error('EBUSY: file is locked');
+            };
+            assert.strictEqual(await search.ensure('h2', {force: true, keepReady: true}), false);
+            Object.defineProperty(process, 'platform', platform);
+            fs.move = move;
+            assert.strictEqual(search.ready, true);
+            assert.strictEqual(search.meta.inpxHash, 'h1');
+            assert.deepStrictEqual((await search.search({q: 'первая'})).books.map(book => book.title), ['Первая книга']);
+            assert.deepStrictEqual((await fs.readdir(dir)).filter(name => name.endsWith('.tmp')), []);
+        } finally {
+            Object.defineProperty(process, 'platform', platform);
+            fs.move = move;
+            await search.close();
+        }
+    });
+}
+
 // Search and suggest queries are capped in length and word count before they reach FTS.
 function testSearchQueryIsCapped() {
     const CatalogIndex = require('../server/core/search/CatalogIndex');
@@ -379,6 +457,7 @@ function testSearchQueryIsCapped() {
     assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
 }
 
-module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildsAreSerialized, testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb,
+    testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
     testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart,
     testWorkKeyMatchesEditionsOnly, testSearchGroupsEditions];

@@ -1298,6 +1298,19 @@ class CatalogIndex {
         return ids.map(id => byId.get(Number(id))).filter(Boolean);
     }
 
+    //Ответ запроса с записями его книг в books: id и записи берутся из одной БД, даже если между двумя вызовами потока её заменили.
+    //id книг - в ids, в самом ответе-массиве или в строках books, found (названия OPDS), affinity и explore (похожие книги)
+    withBooks(action, ...args) {
+        const result = this[action](...args);
+        if (Array.isArray(result))
+            return {books: this.getBooks(result)};
+        const ids = result.ids || ['books', 'found', 'affinity', 'explore'].flatMap(key => (result[key] || []).map(row => row.id));
+        //ответ может лежать в кэше запросов: меняется копия
+        const answer = Object.assign({}, result, {books: this.getBooks(ids)});
+        delete answer.ids;
+        return answer;
+    }
+
     getBooksByUids(uids = [], includeHidden = false) {
         if (!this.db)
             throw new Error('catalog_index_not_ready');

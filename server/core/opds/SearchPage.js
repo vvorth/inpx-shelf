@@ -25,8 +25,8 @@ class SearchPage extends BasePage {
         const seen = new Set();
 
         for (const query of queries) {
-            const res = await this.webWorker.catalogSearch.call('findBooks', query);
-            for (const book of await this.webWorker.catalogSearch.loadBooks(res.ids)) {
+            const res = await this.webWorker.catalogSearch.findBooks(query);
+            for (const book of res.books) {
                 if (!book || seen.has(book._uid))
                     continue;
 

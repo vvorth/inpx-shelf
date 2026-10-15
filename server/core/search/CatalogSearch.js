@@ -345,39 +345,38 @@ class CatalogSearch {
     }
 
     async search(request = {}) {
-        this.checkReady();
-        const result = await this.getThread().call('search', request);
-        const books = await this.loadBooks(result.ids);
-        for (const book of books) {
+        const result = await this.callWithBooks('search', request);
+        for (const book of result.books) {
             if (result.editions[book.id])
                 book.editions = result.editions[book.id];
         }
-        delete result.ids;
         delete result.editions;
-        return Object.assign(result, {books});
-    }
-
-    //Кандидаты для полки «Похоже на то, что вы читали»: id и оценки из индекса
-    async similarCandidates(request = {}) {
-        this.checkReady();
-        return await this.getThread().call('similarCandidates', request);
-    }
-
-    async suggest(request = {}) {
-        this.checkReady();
-        const result = await this.getThread().call('suggest', request);
-        const uids = await this.loadBooks(result.books.map(book => book.id));
-        result.books = uids.map(book => ({_uid: book._uid, title: book.title, author: book.author, ext: book.ext, lang: book.lang}));
         return result;
     }
 
-    //Записи книг в порядке выдачи, с правками метаданных
-    async loadBooks(ids = []) {
-        if (!ids.length)
-            return [];
-        const books = await this.getThread().call('getBooks', ids);
-        await this.worker.applyMetadataOverridesToSearchResult({books});
-        return books;
+    //Кандидаты для полки «Похоже на то, что вы читали»: id и оценки из индекса, записи этих книг в books
+    async similarCandidates(request = {}) {
+        return await this.callWithBooks('similarCandidates', request);
+    }
+
+    async suggest(request = {}) {
+        const result = await this.callWithBooks('suggest', request);
+        result.books = result.books.map(book => ({_uid: book._uid, title: book.title, author: book.author, ext: book.ext, lang: book.lang}));
+        return result;
+    }
+
+    //Поиск книг по полям (findBooks): {books: записи с правками, totalFound}
+    async findBooks(query = {}) {
+        return await this.callWithBooks('findBooks', query);
+    }
+
+    //Запрос к потоку, ответ которого ссылается на книги по id: записи (с правками метаданных) приходят тем же вызовом в books,
+    //иначе замена БД между двумя вызовами сопоставила бы id другим книгам
+    async callWithBooks(action, ...args) {
+        this.checkReady();
+        const result = await this.getThread().call('withBooks', action, ...args);
+        await this.worker.applyMetadataOverridesToSearchResult({books: result.books});
+        return result;
     }
 
     //Записи по _uid (без правок метаданных: их накладывает вызывающий)
@@ -389,14 +388,11 @@ class CatalogSearch {
 
     //Книги автора и серии с правками метаданных
     async authorBooks(name = '') {
-        this.checkReady();
-        const result = await this.getThread().call('authorBooks', name);
-        return {author: result.author, books: await this.loadBooks(result.ids)};
+        return await this.callWithBooks('authorBooks', name);
     }
 
     async seriesBooks(name = '') {
-        this.checkReady();
-        return await this.loadBooks(await this.getThread().call('seriesBooks', name));
+        return (await this.callWithBooks('seriesBooks', name)).books;
     }
 
     async facetValues() {

@@ -22,7 +22,7 @@ Node.js 24 server. Entry: `index.js`.
 
 ## Rules
 
-- SQLite (`node:sqlite`) is synchronous: library queries run only in the library thread. Add a method to `CatalogIndex`/`CatalogIndexQueries` and call it via `catalogSearch.call(...)` or a wrapper. Small point lookups in `state.sqlite` may run in the main thread.
+- SQLite (`node:sqlite`) is synchronous: library queries run only in the library thread. Add a method to `CatalogIndex`/`CatalogIndexQueries` and call it via `catalogSearch.call(...)` or a wrapper. A query that answers with book ids gets the records in the same call (`catalogSearch.callWithBooks`): a rebuild may swap the DB between two calls. Small point lookups in `state.sqlite` may run in the main thread.
 - Changing the `library.sqlite` schema: bump `schemaVersion` in `CatalogIndex.js`; it is rebuilt from INPX on start.
 - Book records keep the original INPX fields. Metadata overrides are applied on read (`applyMetadataOverridesToSearchResult`) and to search columns and author links at build and in `updateBook`.
 - While the library DB builds for the first time the server is busy (`server_busy`); later rebuilds run in a separate thread while the current DB keeps serving.
