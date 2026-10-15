@@ -35,6 +35,17 @@ module.exports = merge(baseWpConfig, {
         ]
     },
     optimization: {
+        //библиотеки стартовой страницы (Vue, Quasar, их CSS) - отдельным файлом: после обновления
+        //приложения браузер берёт его из кэша, если библиотеки не менялись
+        splitChunks: {
+            cacheGroups: {
+                vendor: {
+                    test: /[\\/]node_modules[\\/]/,
+                    name: 'vendor',
+                    chunks: 'initial',
+                },
+            },
+        },
         minimizer: [
             new TerserPlugin({
                 parallel: true,
