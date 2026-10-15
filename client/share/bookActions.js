@@ -3,6 +3,7 @@
 
 import * as utils from './utils';
 import {t} from './i18n';
+import readerStorage from './readerStorage';
 
 const defaultConversionFormats = ['epub', 'epub3', 'kepub', 'kfx', 'azw8', 'pdf'];
 
@@ -190,6 +191,33 @@ export async function markBooksRead(vm, bookUids = [], read = true) {
         const result = await vm.$root.api.markReaderBooksRead(normalized, read);
         const count = (result && result.changedBooks) || normalized.length;
         vm.$root.notify.success(read ? t('list.markedRead', {n: count}) : t('common.unmarked', {n: count}));
+        return true;
+    } catch (e) {
+        vm.$root.stdDialog.alert(e.message, t('common.error'));
+        return false;
+    }
+}
+
+//«Забыть» книги: из профиля уходит всё о них - прогресс, закладки, история, места в своих списках.
+//books - [{bookUid, title}]; confirmOptions - вид окна подтверждения (у читалки свой)
+export async function forgetBooks(vm, books = [], confirmOptions = {}) {
+    const uids = Array.from(new Set(books.map(book => String(book.bookUid || book._uid || '').trim()).filter(Boolean)));
+    if (!uids.length)
+        return false;
+
+    const question = (uids.length === 1
+        ? t('reader.forgetBookConfirm', {title: books[0].title || t('common.untitled')})
+        : t('reader.forgetBooksConfirm', {n: uids.length}));
+    if (!await vm.$root.stdDialog.confirm(question, t('reader.forgetBook'), confirmOptions))
+        return false;
+
+    try {
+        await vm.$root.api.forgetBooks(uids);
+        const {settings, config} = vm.$store.state;
+        const userId = String(settings.currentUserId || config.currentUserId || '').trim();
+        for (const uid of uids)
+            readerStorage.clearProgress(userId, uid);
+        vm.$root.notify.success(t('reader.forgetSuccess', {n: uids.length}));
         return true;
     } catch (e) {
         vm.$root.stdDialog.alert(e.message, t('common.error'));

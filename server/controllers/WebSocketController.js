@@ -289,6 +289,8 @@ class WebSocketController {
                     await this.updateReaderProgress(req, ws); break;
                 case 'delete-reader-progress':
                     await this.deleteReaderProgress(req, ws); break;
+                case 'forget-books':
+                    await this.forgetBooks(req, ws); break;
                 case 'clear-reader-progress':
                     await this.clearReaderProgress(req, ws); break;
                 case 'update-reader-preferences':
@@ -919,6 +921,14 @@ class WebSocketController {
         this.send(result, req, ws);
     }
 
+    async forgetBooks(req, ws) {
+        if (!Array.isArray(req.bookUids) || req.bookUids.length > 5000)
+            throw new Error('bookUids is invalid');
+
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        this.send(await this.webWorker.forgetBooks(user.id, req.bookUids), req, ws);
+    }
+
     async clearReaderProgress(req, ws) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.clearReaderProgress(user.id);
@@ -1042,7 +1052,7 @@ class WebSocketController {
 
     async getReadingNow(req, ws) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.getReadingNow(user), req, ws);
+        this.send(await this.webWorker.getReadingNow(user, req.hidden === true), req, ws);
     }
 
     async getReadingList(req, ws) {

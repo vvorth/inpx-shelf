@@ -969,7 +969,10 @@
         "syncTo": "Синхронизировать с {name}",
         "thisListIsEmpty": "Список пуст. Добавляйте книги из каталога кнопкой «В список».",
         "thisListNoLonger": "Список больше не синхронизируется с «{name}»",
-        "willGetThisList": "«{name}» получит книги списка при следующей синхронизации"
+        "willGetThisList": "«{name}» получит книги списка при следующей синхронизации",
+        "hiddenBooks": "Скрытые",
+        "hiddenBooksSub": "Книги, скрытые из «Читаю сейчас». Верните книгу или забудьте её, чтобы в профиле не осталось следа.",
+        "noHiddenBooks": "Скрытых книг нет."
     },
     "login": {
         "continueWithoutSigningIn": "Продолжить без входа",
@@ -1415,7 +1418,12 @@
         "useMouseTouchpadPageup": "Используйте мышь, тачпад или клавиши `PageUp`/`PageDown`, `Space`, `Home`, `End`.",
         "usePageupPagedownSpace": "Клавиши `← → ↑ ↓`, `PageUp`, `PageDown` и `Space` работают для навигации.",
         "widthFixed": "Фикс",
-        "widthViewport": "Экран"
+        "widthViewport": "Экран",
+        "forgetBook": "Забыть",
+        "forgetBookConfirm": "Забыть «{title}»? Прогресс, закладки, история и места в ваших списках удалятся насовсем.",
+        "forgetBooksConfirm": "Забыть скрытые книги ({n})? Прогресс, закладки, история и места в ваших списках удалятся насовсем.",
+        "forgetAllHidden": "Забыть все",
+        "forgetSuccess": "Забыто: {n}"
     },
     "readerLab": {
         "anotherFb2": "Другой FB2",

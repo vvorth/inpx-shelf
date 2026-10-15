@@ -194,6 +194,42 @@ module.exports = {
         return {success: true, count, resetAt, generation, bookUids};
     },
 
+    // Everything the profile knows about the books: progress (and so the hidden mark), bookmarks,
+    // discovery history, KOReader sync rows and entries in the profile's own lists.
+    async forgetBooks(userId = '', bookUids = []) {
+        const {data, user: target} = await this.resolveUser(userId);
+        const uids = new Set((Array.isArray(bookUids) ? bookUids : []).map(uid => this.normalizeBookUid(uid)).filter(Boolean));
+        if (!uids.size)
+            throw new Error('bookUids is empty');
+
+        const dropKeys = (rows, keys) => {
+            for (const key of keys)
+                delete rows[key];
+        };
+        if (target.readerProgress)
+            dropKeys(target.readerProgress, uids);
+        if (target.readerBookmarks)
+            dropKeys(target.readerBookmarks, uids);
+        if (target.discoveryPreferences && target.discoveryPreferences.events)
+            dropKeys(target.discoveryPreferences.events, uids);
+        if (target.kosyncProgress)
+            dropKeys(target.kosyncProgress, Object.keys(target.kosyncProgress).filter(key => uids.has((target.kosyncProgress[key] || {}).bookUid)));
+
+        const now = this.nowIso();
+        for (const item of data.lists) {
+            if (item.userId !== target.id)
+                continue;
+            const books = this.normalizeEntries(item.books);
+            item.books = books.filter(entry => !uids.has(entry.bookUid));
+            if (item.books.length !== books.length)
+                item.updatedAt = now;
+        }
+
+        target.updatedAt = now;
+        await this.save(data);
+        return {count: uids.size};
+    },
+
     async addReaderBookmark(userId = '', bookUid = '', bookmark = {}) {
         const {data, user: target} = await this.resolveUser(userId);
 

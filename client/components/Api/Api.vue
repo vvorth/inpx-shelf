@@ -499,6 +499,11 @@ class Api {
         return await this.request({action: 'update-reader-progress', bookUid, progress}, 120, options);
     }
 
+    //всё о книгах в профиле: прогресс, закладки, история, места в своих списках
+    async forgetBooks(bookUids) {
+        return await this.request({action: 'forget-books', bookUids}, 120);
+    }
+
     async clearReaderProgress() {
         return await this.request({action: 'clear-reader-progress'}, 120);
     }
@@ -539,9 +544,9 @@ class Api {
         return await this.request({action: 'delete-user-profile', targetUserId}, 120);
     }
 
-    //«Читаю сейчас» в виде списка: {count, books}
-    async getReadingNow() {
-        return await this.request({action: 'get-reading-now'}, 120);
+    //«Читаю сейчас» в виде списка: {count, books}; hidden - скрытые книги
+    async getReadingNow(hidden = false) {
+        return await this.request({action: 'get-reading-now', hidden}, 120);
     }
 
     async getReadingList(listId) {

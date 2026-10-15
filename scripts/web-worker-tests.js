@@ -216,6 +216,33 @@ async function testReadingListBookReadSavesOnce() {
     });
 }
 
+//«Забыть» книгу: из профиля уходит всё о ней, другие книги и чужие списки не трогаются
+async function testForgetBooksClearsProfile() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+        await store.load();
+        const list = await store.createList('', 'Queue');
+        await store.addBooks('', list.id, ['gone', 'kept']);
+        await store.setBookRead('', list.id, 'gone', true);
+        await store.updateReaderProgress('', 'gone', {percent: 0.3, hidden: true});
+        await store.updateReaderProgress('', 'kept', {percent: 0.5});
+        await store.addReaderBookmark('', 'gone', {title: 'b'});
+        await store.recordDiscoveryEvents('', [{bookUid: 'gone', type: 'open'}, {bookUid: 'kept', type: 'open'}]);
+        await store.putKosyncProgress('', 'a'.repeat(32), {percentage: 0.3, timestamp: 1, bookUid: 'gone'});
+        await store.putKosyncProgress('', 'b'.repeat(32), {percentage: 0.5, timestamp: 1, bookUid: 'kept'});
+
+        assert.deepStrictEqual(await store.forgetBooks('', ['gone']), {count: 1});
+        const {user} = await store.resolveUser('');
+        assert.deepStrictEqual(Object.keys(user.readerProgress), ['kept']);
+        assert.strictEqual(user.readerBookmarks.gone, undefined);
+        assert.deepStrictEqual(Object.keys(user.discoveryPreferences.events), ['kept']);
+        assert.deepStrictEqual(Object.values(user.kosyncProgress).map(row => row.bookUid), ['kept']);
+        assert.deepStrictEqual(store.normalizeEntries((await store.getList('', list.id)).books).map(entry => entry.bookUid), ['kept']);
+        await assert.rejects(store.forgetBooks('', []));
+    });
+}
+
 //архивы обложек книги и справки об авторах кешируются до сброса кешей библиотеки; справок не больше 1000
 async function testLibraryAssetCaches() {
     await temporary(async(libDir) => {
@@ -594,6 +621,7 @@ module.exports = [
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadingListBookReadSavesOnce,
+    testForgetBooksClearsProfile,
     testListedBooksKeepUntilReaderReplacesThem,
     testProfileBackupCarriesBookDetails,
     testOtherEditionsAcrossLanguages,

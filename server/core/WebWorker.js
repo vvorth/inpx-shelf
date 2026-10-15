@@ -794,6 +794,11 @@ class WebWorker {
         return await this.readingListStore.clearReaderProgress(userId);
     }
 
+    async forgetBooks(userId = '', bookUids = []) {
+        this.checkMyState();
+        return await this.readingListStore.forgetBooks(userId, bookUids);
+    }
+
     async addReaderBookmark(userId = '', bookUid = '', bookmark = {}) {
         this.checkMyState();
         const bookmarks = await this.readingListStore.addReaderBookmark(userId, bookUid, bookmark);
@@ -864,13 +869,14 @@ class WebWorker {
     }
 
     //«Читаю сейчас» в том же виде, что и список (getReadingList): полные записи книг с начатым чтением,
-    //недоступные - бледными; свежие первыми. _readerPercent и _readerUpdatedAt - прогресс читателя
-    async getReadingNow(user = null) {
+    //недоступные - бледными; свежие первыми. _readerPercent и _readerUpdatedAt - прогресс читателя.
+    //hidden - вместо них скрытые читателем книги
+    async getReadingNow(user = null, hidden = false) {
         this.checkMyState();
 
         const rows = Object.entries(readerProgressOf(user))
             .map(([bookUid, progress]) => ({bookUid: String(bookUid || '').trim(), progress: progress || {}}))
-            .filter(item => item.bookUid && isReadingInProgress(item.progress))
+            .filter(item => item.bookUid && (hidden ? item.progress.hidden === true : isReadingInProgress(item.progress)))
             .sort((a, b) => String(b.progress.updatedAt || '').localeCompare(String(a.progress.updatedAt || '')));
         const booksByUid = await this.getListedBookRecords(rows.map(item => item.bookUid));
         const books = [];

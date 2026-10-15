@@ -48,6 +48,18 @@
                     </div>
                     <div class="reader-home-tab-actions">
                         <q-btn
+                            v-if="reader.readerHomeFilter === 'hidden' && reader.readerHomeBooks.length"
+                            flat
+                            dense
+                            no-caps
+                            icon="la la-trash"
+                            class="reader-home-reset-btn"
+                            :disable="reader.readerHomeResetting"
+                            @click="reader.forgetReaderHomeBooks(reader.readerHomeBooks)"
+                        >
+                            {{ reader.uiText.forgetAllHidden }}
+                        </q-btn>
+                        <q-btn
                             flat
                             dense
                             no-caps
@@ -154,6 +166,16 @@
                             @click="reader.restoreReaderHomeBook(book)"
                         >
                             {{ reader.uiText.restoreToReading }}
+                        </q-btn>
+                        <q-btn
+                            v-if="book.hidden"
+                            flat
+                            no-caps
+                            icon="la la-trash"
+                            class="reader-home-action-btn reader-home-action-btn--muted"
+                            @click="reader.forgetReaderHomeBooks([book])"
+                        >
+                            {{ reader.uiText.forgetBook }}
                         </q-btn>
                         <q-btn
                             v-if="!book.hidden"

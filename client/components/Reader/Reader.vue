@@ -457,6 +457,7 @@ import _ from 'lodash';
 const readerProgress = require('../../share/readerProgress');
 const readerStorage = require('../../share/readerStorage');
 import {t, tm, formatDateTime} from '../../share/i18n';
+import {forgetBooks} from '../../share/bookActions';
 
 const {readerPreferencesVersion, readerDefaults, einkReaderDefaults, migrateReaderPreferences} = require('../../../shared/readerPreferences');
 const readerDeviceProfileKeys = ['regularProfile', 'compactProfile'];
@@ -1395,6 +1396,8 @@ class Reader extends ReaderPaginator {
             resetReaderProgressSuccess: t('reader.resetReaderProgressSuccess'),
             openBook: t('reader.openBook'),
             restoreToReading: t('reader.restoreToReading'),
+            forgetBook: t('reader.forgetBook'),
+            forgetAllHidden: t('reader.forgetAllHidden'),
             restoreReadingSuccess: t('reader.restoreReadingSuccess'),
             removeFromReading: t('reader.removeFromReading'),
             removeReadingConfirm: t('reader.removeReadingConfirm'),
@@ -2517,6 +2520,11 @@ class Reader extends ReaderPaginator {
         } catch (e) {
             this.$root.stdDialog.alert(e.message || String(e), this.uiText.error);
         }
+    }
+
+    async forgetReaderHomeBooks(books = []) {
+        if (await forgetBooks(this, books, {dialogClass: 'std-dialog-card--reader', dialogStyle: this.readerDialogStyle}))
+            await this.loadReaderHome();
     }
 
     async resetReaderHomeProgress() {

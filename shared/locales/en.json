@@ -961,7 +961,10 @@
         "syncTo": "Sync to {name}",
         "thisListIsEmpty": "This list is empty. Add books from the catalog with the list button.",
         "thisListNoLonger": "This list no longer syncs to {name}",
-        "willGetThisList": "{name} will get this list's books on the next sync"
+        "willGetThisList": "{name} will get this list's books on the next sync",
+        "hiddenBooks": "Hidden",
+        "hiddenBooksSub": "Books hidden from Reading now. Restore one, or forget it to leave no trace in the profile.",
+        "noHiddenBooks": "No hidden books."
     },
     "login": {
         "continueWithoutSigningIn": "Continue without signing in",
@@ -1404,7 +1407,12 @@
         "useMouseTouchpadPageup": "Use the mouse, touchpad or `PageUp`/`PageDown`, `Space`, `Home`, `End` keys.",
         "usePageupPagedownSpace": "Use `← → ↑ ↓`, `PageUp`, `PageDown` and `Space` to navigate.",
         "widthFixed": "Fixed",
-        "widthViewport": "Screen"
+        "widthViewport": "Screen",
+        "forgetBook": "Forget",
+        "forgetBookConfirm": "Forget “{title}”? Its progress, bookmarks, history and places in your lists are deleted for good.",
+        "forgetBooksConfirm": "Forget {n} hidden books? Their progress, bookmarks, history and places in your lists are deleted for good.",
+        "forgetAllHidden": "Forget all",
+        "forgetSuccess": "Forgotten: {n}"
     },
     "readerLab": {
         "anotherFb2": "Another FB2",

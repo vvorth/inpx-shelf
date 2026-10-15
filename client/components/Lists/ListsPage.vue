@@ -33,6 +33,15 @@
                         <span class="lists-side-count">{{ readingNowCount }}</span>
                     </button>
                     <button
+                        type="button"
+                        class="lists-side-item"
+                        :class="{'is-active': isHidden}"
+                        @click="select(hiddenId)"
+                    >
+                        <q-icon name="la la-eye-slash" size="18px" />
+                        <span class="lists-side-name">{{ $t('lists.hiddenBooks') }}</span>
+                    </button>
+                    <button
                         v-for="item in lists"
                         :key="item.id"
                         type="button"
@@ -60,8 +69,13 @@
                                     {{ current.name }}
                                 </h2>
                                 <div class="lists-main-sub">
-                                    {{ isReadingNow ? $t('lists.booksWithSavedProgress') : $t('lists.booksRead', {read: selectedList.readCount || 0, total: selectedList.bookCount || 0}) }}
+                                    {{ subtitle }}
                                 </div>
+                            </div>
+                            <div v-if="isHidden && books.length" class="page-actions">
+                                <q-btn flat dense no-caps icon="la la-trash" color="negative" @click="forget(books)">
+                                    {{ $t('reader.forgetAllHidden') }}
+                                </q-btn>
                             </div>
                             <div v-if="selectedList" class="page-actions">
                                 <q-btn flat dense no-caps icon="la la-pen" @click="renameList(selectedList)">
@@ -92,7 +106,7 @@
                             {{ $t('readingLists.loadingBooks') }}
                         </div>
                         <div v-else-if="!books.length" class="page-empty page-empty--inline">
-                            {{ isReadingNow ? $t('lists.noBooksInProgress') : $t('lists.thisListIsEmpty') }}
+                            {{ isHidden ? $t('lists.noHiddenBooks') : (isReadingNow ? $t('lists.noBooksInProgress') : $t('lists.thisListIsEmpty')) }}
                         </div>
                         <template v-else>
                             <div class="lists-tools">
@@ -101,7 +115,7 @@
                                         <q-icon name="la la-search" size="18px" />
                                     </template>
                                 </q-input>
-                                <q-toggle v-if="!isReadingNow" v-model="unreadOnly" :label="$t('discovery.unreadOnly')" />
+                                <q-toggle v-if="selectedList" v-model="unreadOnly" :label="$t('discovery.unreadOnly')" />
                                 <q-space />
                                 <q-btn-toggle
                                     :model-value="view"
@@ -122,7 +136,7 @@
                                 <table class="data-table">
                                     <thead>
                                         <tr>
-                                            <th class="col-check">
+                                            <th v-if="!isHidden" class="col-check">
                                                 {{ $t('common.read') }}
                                             </th>
                                             <th v-for="column in columns" :key="column.key" :class="column.class">
@@ -136,7 +150,7 @@
                                     </thead>
                                     <tbody>
                                         <tr v-for="book in visibleBooks" :key="book.bookUid" :class="{'is-unavailable': book.unavailable}">
-                                            <td class="col-check">
+                                            <td v-if="!isHidden" class="col-check">
                                                 <q-checkbox :model-value="book.read" dense :aria-label="$t('common.read')" @update:model-value="toggleRead(book, $event)" />
                                             </td>
                                             <td>
@@ -176,9 +190,22 @@
                                                 <q-btn v-if="!book.unavailable" flat dense round color="primary" icon="la la-book-open" :aria-label="$t('common.readBook')" @click="openReader(book.bookUid)">
                                                     <q-tooltip>{{ $t('common.readBook') }}</q-tooltip>
                                                 </q-btn>
-                                                <q-btn flat dense round :icon="listIcon(book)" :aria-label="$t('book.list')" @click="openLists(book)">
-                                                    <q-tooltip>{{ $t('book.list') }}</q-tooltip>
-                                                </q-btn>
+                                                <template v-if="isHidden">
+                                                    <q-btn flat dense round icon="la la-undo" :aria-label="$t('reader.restoreToReading')" @click="restoreReading(book)">
+                                                        <q-tooltip>{{ $t('reader.restoreToReading') }}</q-tooltip>
+                                                    </q-btn>
+                                                    <q-btn flat dense round icon="la la-trash" color="negative" :aria-label="$t('reader.forgetBook')" @click="forget([book])">
+                                                        <q-tooltip>{{ $t('reader.forgetBook') }}</q-tooltip>
+                                                    </q-btn>
+                                                </template>
+                                                <template v-else>
+                                                    <q-btn v-if="isReadingNow" flat dense round icon="la la-eye-slash" :aria-label="$t('reader.removeFromReading')" @click="hideReading(book)">
+                                                        <q-tooltip>{{ $t('reader.removeFromReading') }}</q-tooltip>
+                                                    </q-btn>
+                                                    <q-btn flat dense round :icon="listIcon(book)" :aria-label="$t('book.list')" @click="openLists(book)">
+                                                        <q-tooltip>{{ $t('book.list') }}</q-tooltip>
+                                                    </q-btn>
+                                                </template>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -202,11 +229,12 @@ import AddToListDialog from '../Library/AddToListDialog.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
-import {bookAuthors, bookUid, loadBookStates, markBooksRead} from '../../share/bookActions';
+import {bookAuthors, bookUid, forgetBooks, loadBookStates, markBooksRead} from '../../share/bookActions';
 import {bookViews, bookViewOptions} from '../../share/bookView';
 import {fasBookmark} from '@quasar/extras/fontawesome-v5';
 
 const readingNowId = '__reading__';
+const hiddenId = '__hidden__';
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 const normalize = value => String(value || '').toLowerCase().replace(/ё/g, 'е');//i18n-ignore: поиск без учёта ё
 
@@ -242,6 +270,7 @@ class ListsPage {
     _options = componentOptions;
 
     readingNowId = readingNowId;
+    hiddenId = hiddenId;
     isActive = false;
     lists = [];
     selectedId = readingNowId;
@@ -288,6 +317,18 @@ class ListsPage {
         return this.selectedId === readingNowId;
     }
 
+    get isHidden() {
+        return this.selectedId === hiddenId;
+    }
+
+    get subtitle() {
+        if (this.isHidden)
+            return t('lists.hiddenBooksSub');
+        if (this.isReadingNow)
+            return t('lists.booksWithSavedProgress');
+        return t('lists.booksRead', {read: this.selectedList.readCount || 0, total: this.selectedList.bookCount || 0});
+    }
+
     get selectedList() {
         return this.lists.find(item => item.id === this.selectedId) || null;
     }
@@ -296,6 +337,8 @@ class ListsPage {
     get current() {
         if (this.isReadingNow)
             return {id: readingNowId, name: t('lists.readingNow')};
+        if (this.isHidden)
+            return {id: hiddenId, name: t('lists.hiddenBooks')};
         return this.selectedList;
     }
 
@@ -314,7 +357,7 @@ class ListsPage {
             const response = await this.api.getReadingLists('');
             this.lists = response.lists || [];
             setReadingLists(String(this.config.currentUserId || ''), response);
-            if (this.selectedId !== readingNowId && !this.selectedList)
+            if (this.selectedId !== readingNowId && !this.isHidden && !this.selectedList)
                 this.selectedId = readingNowId;
             await this.loadBooks();
         } catch (e) {
@@ -346,7 +389,7 @@ class ListsPage {
 
         this.booksLoading = true;
         try {
-            const response = (this.isReadingNow ? await this.api.getReadingNow() : await this.api.getReadingList(current.id));
+            const response = (this.selectedList ? await this.api.getReadingList(current.id) : await this.api.getReadingNow(this.isHidden));
             if (current.id !== this.selectedId)
                 return;
             const records = (response && Array.isArray(response.books) ? response.books : []);
@@ -400,7 +443,7 @@ class ListsPage {
     get bookStates() {
         return Object.fromEntries(this.books.map((book) => {
             const state = Object.assign({}, this.states[book.bookUid] || {}, {percent: book.percent});
-            if (!this.isReadingNow)
+            if (this.selectedList)
                 Object.assign(state, {read: book.read, percent: (book.read ? 1 : book.percent), inList: true});
             return [book.bookUid, state];
         }));
@@ -581,6 +624,32 @@ class ListsPage {
 
     listIcon(book) {
         return ((this.bookStates[book.bookUid] || {}).inList ? fasBookmark : 'la la-bookmark');
+    }
+
+    async hideReading(book) {
+        if (!await this.$root.stdDialog.confirm(t('reader.removeReadingConfirm', {title: book.title || ''}), t('lists.readingNow')))
+            return;
+        await this.setHidden(book, true, t('reader.removeReadingSuccess'));
+    }
+
+    async restoreReading(book) {
+        await this.setHidden(book, false, t('reader.restoreReadingSuccess'));
+    }
+
+    async setHidden(book, hidden, message) {
+        try {
+            await this.api.updateReaderProgress(book.bookUid, {hidden, percent: Number(book.percent || 0) || 0});
+            await this.api.updateConfig();
+            this.books = this.books.filter(item => item.bookUid !== book.bookUid);
+            this.$root.notify.success(message);
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('common.error'));
+        }
+    }
+
+    async forget(books) {
+        if (await forgetBooks(this, books))
+            await this.load();
     }
 
     openLists(book) {
