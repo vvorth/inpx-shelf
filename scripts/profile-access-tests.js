@@ -43,7 +43,7 @@ async function fixture(options, test) {
     require('../server/static')(app, config, worker, security);
     app.use('/opds', access.httpGuard(true), require('../server/core/opds/Auth')(config,
         (...args) => worker.verifyOpdsPassword(...args), security));
-    app.use('/opds', require('../server/core/opds').scopeGuard(() => worker));
+    app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
     app.get('/opds', (req, res) => res.json({user: req.query.user || ''}));
     for (const [url, name] of [['/opds/reading-profiles', 'ReadingProfilesPage'], ['/opds/reading-lists/list', 'ReadingListPage']]) {
         const page = Object.create(require(`../server/core/opds/${name}`).prototype);
@@ -250,6 +250,42 @@ async function testOpdsScopeNeedsAnOpdsProfile() {
     });
 }
 
+// A profile with a password stays out of OPDS for everyone but itself (its Basic login or web session) and an admin.
+async function testOpdsHidesPasswordProfiles() {
+    await fixture({}, async({worker, alice, bob, request, session}) => {
+        const store = worker.readingListStore;
+        const carol = await store.createUser({name: 'Carol', login: 'carol', passwordHash: await worker.hashProfilePassword('carol', 'carol-fixture')});
+        const lists = {};
+        for (const user of [alice, bob, carol])
+            lists[user.id] = await store.createList(user.id, `${user.name} OPDS list`, 'opds');
+        await store.updateReaderProgress(carol.id, 'book:1', {percent: 0.5});
+        const list = (user, headers) => request(`/opds/reading-lists/list?user=${user.login}&id=${lists[user.id].id}`, headers);
+
+        const anonymous = await (await request('/opds/reading-profiles')).text();
+        assert.ok(anonymous.includes('Bob') && !anonymous.includes('Alice') && !anonymous.includes('Carol'), anonymous);
+        assert.strictEqual((await list(bob)).status, 200);
+        assert.strictEqual((await list(carol)).status, 404, 'No OPDS auth: hidden, not open');
+        assert.strictEqual((await request(`/opds?user=${carol.id}&state=all`)).status, 404);
+        assert.strictEqual((await list(alice)).status, 401);
+
+        const aliceBasic = {authorization: 'Basic ' + Buffer.from('alice:alice-fixture').toString('base64')};
+        assert.strictEqual((await list(alice, aliceBasic)).status, 200);
+        const asAlice = await (await request('/opds/reading-profiles?user=alice', aliceBasic)).text();
+        assert.ok(asAlice.includes('Alice') && !asAlice.includes('Carol'), asAlice);
+        const carolBasic = {authorization: 'Basic ' + Buffer.from('carol:carol-fixture').toString('base64')};
+        assert.strictEqual((await list(carol, carolBasic)).status, 404, 'Basic login needs opdsAuthEnabled');
+
+        const browser = session();
+        browser.value.profileAccessToken = worker.createProfileSession(alice.id);
+        assert.strictEqual((await list(carol, {cookie: browser.cookie})).status, 404, 'Another reader');
+        browser.value.profileAccessToken = worker.createProfileSession(carol.id);
+        assert.strictEqual((await list(carol, {cookie: browser.cookie})).status, 200, 'Own web session');
+        browser.value.profileAccessToken = worker.createProfileSession('admin');
+        assert.strictEqual((await list(carol, {cookie: browser.cookie})).status, 200, 'Admin');
+        assert.ok((await (await request('/opds/reading-profiles', {cookie: browser.cookie})).text()).includes('Carol'));
+    });
+}
+
 // A stored row that fails today's validation (edited by hand, older rules) keeps its data and lists.
 async function testInvalidStoredRowsAreRepairedNotDropped() {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-repair-'));
@@ -305,6 +341,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];

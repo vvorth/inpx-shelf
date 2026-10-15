@@ -34,6 +34,8 @@ module.exports = function opdsAuth(config, verifyPassword, security) {
                 if (!auth.user || auth.user.opdsAuthEnabled !== true)
                     return next();
                 authorized = auth.authorized;
+                if (authorized)
+                    req.opdsProfileUser = auth.user;
             }
             if (attempted)
                 security.recordLoginAttempt(req, authorized, 'opds');
@@ -55,4 +57,26 @@ module.exports = function opdsAuth(config, verifyPassword, security) {
     };
 };
 
+// Кто смотрит ленту: профиль, вошедший по Basic (свои учётные данные с opdsAuthEnabled), по SSO-привязке
+// или в веб-интерфейсе (cookie сессии). Общий логин opds.user - не профиль.
+async function resolveViewer(req, worker, security) {
+    const users = [req.opdsProfileUser, req.profileAccessIdentity && req.profileAccessIdentity.user].filter(Boolean);
+    const session = security && security.getSession(req);
+    const sessionUserId = (session && session.profileAccessToken ? worker.getProfileSessionUser(session.profileAccessToken) : '');
+    if (sessionUserId) {
+        const user = (await worker.readingListStore.load()).users.find(item => item.id === sessionUserId);
+        if (user)
+            users.push(user);
+    }
+    return {ids: new Set(users.map(user => user.id)), admin: users.some(user => user.isAdmin)};
+}
+
+// Профиль с паролем (история чтения, списки) показывается в OPDS только ему самому и администратору
+function canSeeProfile(req, userId, hasPassword) {
+    const viewer = req.opdsViewer;
+    return !hasPassword || !!(viewer && (viewer.admin || viewer.ids.has(userId)));
+}
+
 module.exports.parseBasicAuth = parseBasicAuth;
+module.exports.resolveViewer = resolveViewer;
+module.exports.canSeeProfile = canSeeProfile;

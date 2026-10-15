@@ -1,5 +1,6 @@
 const BasePage = require('./BasePage');
 const {t} = require('../i18n');
+const {canSeeProfile} = require('./Auth');
 
 class ReadingProfilesPage extends BasePage {
     constructor(config) {
@@ -12,7 +13,7 @@ class ReadingProfilesPage extends BasePage {
     async body(req) {
         const result = {};
         const entry = [];
-        let users = await this.webWorker.getOpdsUsers();
+        let users = (await this.webWorker.getOpdsUsers()).filter(user => canSeeProfile(req, user.id, user.hasPassword));
         if (req.profileAccessIdentity && req.profileAccessIdentity.user)
             users = users.filter(user => user.id === req.profileAccessIdentity.user.id);
 

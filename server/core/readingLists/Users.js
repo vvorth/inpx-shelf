@@ -83,6 +83,7 @@ module.exports = {
                 id: item.id,
                 publicId: item.login || item.id,
                 name: item.name,
+                hasPassword: !!item.passwordHash,
                 opdsAuthEnabled: item.opdsAuthEnabled === true,
                 opdsListCount: stats.get(item.id) || 0,
                 opdsProgressCount: progressCounts.get(item.id) || 0,

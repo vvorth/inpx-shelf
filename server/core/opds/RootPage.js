@@ -6,6 +6,7 @@ const GenrePage = require('./GenrePage');
 const ReadingListsPage = require('./ReadingListsPage');
 const ReadingProfilesPage = require('./ReadingProfilesPage');
 const ReadingProgressPage = require('./ReadingProgressPage');
+const {canSeeProfile} = require('./Auth');
 
 class RootPage extends BasePage {
     constructor(config) {
@@ -51,7 +52,7 @@ class RootPage extends BasePage {
             );
             resultEntry.push(this.readingListsPage.myEntry(req));
         } else {
-            const publicUsers = await this.webWorker.getOpdsUsers();
+            const publicUsers = (await this.webWorker.getOpdsUsers()).filter(user => canSeeProfile(req, user.id, user.hasPassword));
             if (publicUsers.length)
                 resultEntry.push(this.readingProfilesPage.myEntry(req));
         }
