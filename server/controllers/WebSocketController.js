@@ -204,6 +204,8 @@ class WebSocketController {
             //сессия браузера с этим токеном открывает книги и обложки по HTTP (static.js)
             if (access !== true && req.accessToken && ws.req && ws.req.securitySession)
                 ws.req.securitySession.accessToken = req.accessToken;
+            if (access === 1 && req.accessToken)
+                this.rotateSession(req, ws);
 
             if (this.security && this.isCsrfProtectedAction(req.action) && !this.security.hasValidCsrf(ws.req, req.csrfToken)) {
                 this.send({error: 'bad_csrf_token'}, req, ws);
@@ -503,6 +505,8 @@ class WebSocketController {
             let r = res;
             if (req.requestId)
                 r = Object.assign({requestId: req.requestId}, r);
+            if (req.sessionRotateToken)
+                r = Object.assign({sessionRotateToken: req.sessionRotateToken}, r);
 
             const message = JSON.stringify(r);
             ws.send(message);
@@ -513,6 +517,13 @@ class WebSocketController {
             }
 
         }
+    }
+
+    //Вход в профиль или по паролю доступа: сессия браузера получает новый id (Security.rotateSession), токен для новой
+    //cookie уходит в ответе на этот запрос. Загрузка файла (uploadHandler) - HTTP-запрос, её ответ токен не передаёт
+    rotateSession(req, ws) {
+        if (this.security && ws.req && ws.req.securitySession && !('uploadFile' in ws))
+            req.sessionRotateToken = this.security.rotateSession(ws.req.securitySession);
     }
 
     //метка метрики только для действий, у которых есть обработчик (имя метода = camelCase действия),
@@ -1015,6 +1026,7 @@ class WebSocketController {
             const result = await this.webWorker.loginUserProfile(req.login, req.password);
             if (this.security && ws.req && ws.req.securitySession)
                 ws.req.securitySession.profileAccessToken = result.profileAccessToken;
+            this.rotateSession(req, ws);
             ws.userId = String(result.userId || '').trim();
             ws.userLastActivity = Date.now();
             if (this.security)

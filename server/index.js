@@ -279,6 +279,7 @@ async function main() {
     initHealthRoutes(app, config, webSocketController.webWorker, security, webSocketController);
 
     app.post(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/upload`, webSocketController.uploadHandler());
+    app.post(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/session/rotate`, security.sessionRotateHandler());
 
     const initStatic = require('./static');
     initStatic(app, config, webSocketController.webWorker, security, webAccess);

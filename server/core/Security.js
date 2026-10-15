@@ -11,6 +11,8 @@ const defaultLoginMaxAttempts = 8;
 const maxWebSocketsPerIp = 50;
 const maxLoginAttemptKeys = 10000;
 const bookLinkLifetimeMs = 7*24*60*60*1000;
+const sessionRotateLifetimeMs = 60*1000;
+const maxSessionRotations = 1000;
 
 function parseIpv4(value = '') {
     const normalized = String(value || '').trim()
@@ -80,6 +82,7 @@ class Security {
     constructor(config) {
         this.config = config;
         this.sessions = new Map();
+        this.sessionRotations = new Map();
         this.loginAttempts = new Map();
         this.lastLoginAttemptSweep = 0;
         this.loginAttemptTotals = new Map();
@@ -200,6 +203,47 @@ class Security {
 
     sessionCookie(req, session) {
         return `${sessionCookieName}=${encodeURIComponent(this.packSessionId(session.id))}; ${this.cookieOptions(req)}`;
+    }
+
+    //Вход по WebSocket: сессия переезжает на новый id, и cookie со старым id, в том числе подброшенная до входа
+    //(session fixation), входа не видит. Объект сессии тот же: открытые WebSocket держат его и работают дальше.
+    //Новую cookie браузер получает одноразовым токеном через POST <root>/session/rotate (sessionRotateHandler)
+    rotateSession(session) {
+        const now = Date.now();
+        if (this.sessions.get(session.id) === session)
+            this.sessions.delete(session.id);
+        else
+            sessionLifetime.makeRoom(this.sessions);
+        session.id = this.randomToken(24);
+        session.createdAt = now;
+        session.updatedAt = now;
+        this.sessions.set(session.id, session);
+
+        //срок у всех токенов одинаковый, поэтому в начале Map - самые старые: оттуда уходят истёкшие и лишние сверх предела
+        for (const [token, rotation] of this.sessionRotations) {
+            if (rotation.expiresAt > now && this.sessionRotations.size < maxSessionRotations)
+                break;
+            this.sessionRotations.delete(token);
+        }
+        const token = this.randomToken(32);
+        this.sessionRotations.set(token, {session, expiresAt: now + sessionRotateLifetimeMs});
+        return token;
+    }
+
+    //Токен приходит в заголовке: с чужого сайта такой запрос без CORS не отправить, отдельный CSRF-токен не нужен.
+    //Прежняя cookie не сверяется: вход из вкладки, чью cookie уже перезаписала другая вкладка, тоже должен пережить перезагрузку
+    sessionRotateHandler() {
+        return (req, res) => {
+            res.set('Cache-Control', 'no-store');
+            const token = String(req.headers['x-session-rotate'] || '');
+            const rotation = this.sessionRotations.get(token);
+            this.sessionRotations.delete(token);
+            const session = (rotation && rotation.expiresAt > Date.now() && this.sameOriginCheck(req).ok ? rotation.session : null);
+            if (!session || this.sessions.get(session.id) !== session)
+                return res.sendStatus(403);
+            res.setHeader('Set-Cookie', this.sessionCookie(req, session));
+            res.sendStatus(204);
+        };
     }
 
     //WebSocket пришёл с cookie сессии, которой сервер не знает (перезапуск): новая уходит в ответе на upgrade,

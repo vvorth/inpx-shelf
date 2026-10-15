@@ -116,7 +116,7 @@ class Api {
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
                 const requestId = await wsc.send(this.withAuth({action: 'test', uiLang: getLang()}), 2);
-                wsc.message(requestId, 10).catch(() => {});
+                wsc.message(requestId, 10).then(response => this.rotateSession(response)).catch(() => {});
                 return true;
             } catch (e) {
                 //пробуем ещё раз или сообщаем о потере связи
@@ -346,6 +346,21 @@ class Api {
         }
     }
 
+    //Вход по WebSocket переносит сессию на новый id: новую HttpOnly-cookie браузер получает только ответом на HTTP-запрос.
+    //Без неё вход работает до перезагрузки страницы. Адрес относительный: страница приложения всегда <root>/
+    async rotateSession(response) {
+        const token = response && response.sessionRotateToken;
+        if (!token)
+            return;
+        try {
+            const result = await fetch('session/rotate', {method: 'POST', headers: {'X-Session-Rotate': token}, credentials: 'same-origin'});
+            if (!result.ok)
+                throw new Error(`${result.status} ${result.statusText}`);
+        } catch (e) {
+            console.warn(`Session cookie was not renewed after login: ${e.message}`);
+        }
+    }
+
     async request(params, timeoutSecs = 10, options = {}) {
         let retries = 0;
         while (1) {// eslint-disable-line
@@ -359,6 +374,7 @@ class Api {
 
                 const response = await wsc.message(await wsc.send(params), timeoutSecs);
                 this.connectionRestored();
+                await this.rotateSession(response);
 
                 if (response && response.error == 'need_access_token') {
                     this.accessGranted = false;

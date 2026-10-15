@@ -43,6 +43,7 @@ async function fixture(options, test) {
     await fs.outputFile(path.join(config.bookDir, 'fixture.txt'), 'BOOK_FIXTURE');
     await fs.outputFile(path.join(config.dataDir, 'backups', 'fixture.zip'), 'BACKUP_FIXTURE');
     app.post('/upload', controller.uploadHandler());
+    app.post('/session/rotate', security.sessionRotateHandler());
     require('../server/static')(app, config, worker, security, (config.accessPassword ? webAccess : null));
     app.use('/opds', access.httpGuard(true), require('../server/core/opds/Auth')(config,
         (...args) => worker.verifyOpdsPassword(...args), security));
@@ -74,6 +75,11 @@ async function fixture(options, test) {
         const value = security.ensureSession({headers: {}});
         return {value, cookie: `inpx_web_session=${security.packSessionId(value.id)}`};
     };
+    //cookie после входа: POST /session/rotate с токеном из ответа на вход, как в Api.vue
+    const rotate = async(token, headers = {}) => {
+        const response = await fetch(`${base}/session/rotate`, {method: 'POST', headers: {'x-session-rotate': String(token || ''), ...headers}});
+        return {status: response.status, cookie: String(response.headers.get('set-cookie') || '').split(';')[0]};
+    };
     const sockets = new Set();
     const connect = async(headers = {}) => {
         const socket = new WebSocket(base.replace('http', 'ws'), {headers});
@@ -98,7 +104,7 @@ async function fixture(options, test) {
         };
     };
     try {
-        await test({config, worker, security, access, alice, bob, request, session, connect, base});
+        await test({config, worker, security, access, alice, bob, request, session, connect, rotate, base});
     } finally {
         for (const socket of sockets) socket.terminate();
         for (const socket of wss.clients) socket.terminate();
@@ -127,7 +133,7 @@ async function testProxyHeaderRequiredWithOldCookie() {
 }
 
 async function testAnonymousAccessDisabledHttpAndWebSocket() {
-    await fixture({allowAnonymousAccess: false}, async({worker, alice, bob, request, session, connect}) => {
+    await fixture({allowAnonymousAccess: false}, async({worker, alice, bob, request, session, connect, rotate}) => {
         assert.strictEqual((await request('/')).status, 200, 'Login shell stays reachable');
         for (const url of ['/book/fixture.txt', '/cover/by-uid?uid=x', '/reader-lab-source/example.fb2', '/opds'])
             assert.strictEqual((await request(url)).status, 401, url);
@@ -148,6 +154,7 @@ async function testAnonymousAccessDisabledHttpAndWebSocket() {
         assert.match(bad.error, /Неверный/);
         const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: config.csrfToken});
         assert.strictEqual(login.userId, alice.id);
+        browser.cookie = (await rotate(login.sessionRotateToken)).cookie;
         const authed = await call({action: 'get-config', userId: bob.id});
         assert.strictEqual(authed.currentUserId, alice.id, 'Stale selection must be replaced');
         assert.strictEqual(authed.profileAuthorized, true);
@@ -370,7 +377,7 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
 // With accessPassword, books and covers need the browser session that entered it, a remote library's token,
 // a signed OPDS link or OPDS credentials.
 async function testAccessPasswordGuardsBooksAndCovers() {
-    await fixture({accessPassword: 'secret'}, async({config, worker, security, request, session, connect}) => {
+    await fixture({accessPassword: 'secret'}, async({config, worker, security, request, session, connect, rotate}) => {
         worker.getBookLink = async() => ({link: '/book/fixture.txt'});
         for (const url of ['/book/fixture.txt', '/book/by-uid?uid=u1', '/cover/by-uid?uid=u1'])
             assert.strictEqual((await request(url)).status, 401, url);
@@ -379,7 +386,11 @@ async function testAccessPasswordGuardsBooksAndCovers() {
         const {salt} = await call({action: 'test'});
         assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'Not entered yet');
         const accessToken = require('../server/core/utils').getBufHash(`secret${salt}`, 'sha256', 'hex');
-        assert.ok((await call({action: 'test', accessToken})).message);
+        const entered = await call({action: 'test', accessToken});
+        assert.ok(entered.message);
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'The cookie from before the password');
+        assert.strictEqual((await call({action: 'test', accessToken})).sessionRotateToken, undefined, 'Only the first request is a login');
+        browser.cookie = (await rotate(entered.sessionRotateToken)).cookie;
         const book = await request('/book/fixture.txt', {cookie: browser.cookie});
         assert.deepStrictEqual([book.status, await book.text()], [200, 'BOOK_FIXTURE']);
         assert.strictEqual((await request('/book/fixture.txt', {cookie: session().cookie})).status, 401, 'Another browser');
@@ -407,6 +418,51 @@ async function testAccessPasswordGuardsBooksAndCovers() {
         const upgrade = await new Promise((resolve, reject) => { socket.once('upgrade', resolve); socket.once('error', reject); });
         socket.terminate();
         assert.match(String(upgrade.headers['set-cookie']), /^inpx_web_session=/);
+    });
+}
+
+// A login over the WebSocket moves the browser session to a new id: a cookie planted before it (session fixation) does
+// not get the login. The browser gets the new cookie with a one-time token; open sockets keep the session object.
+async function testLoginRotatesSession() {
+    await fixture({allowAnonymousAccess: false}, async({security, alice, request, session, connect, rotate}) => {
+        const planted = session();
+        const call = await connect({cookie: planted.cookie});
+        const otherTab = await connect({cookie: planted.cookie});
+        const {csrfToken} = await call({action: 'get-config'});
+        const sessions = security.sessions.size;
+        const signIn = () => call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
+        const login = await signIn();
+        assert.match(login.sessionRotateToken, /^[0-9a-f]{64}$/);
+        assert.strictEqual(security.sessions.size, sessions, 'The session is moved, not copied');
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: planted.cookie})).status, 401, 'The planted cookie');
+        assert.strictEqual((await (await connect({cookie: planted.cookie}))({action: 'get-config'})).profileAuthorized, false);
+        assert.strictEqual((await call({action: 'get-config'})).profileAuthorized, true, 'The open socket keeps the login');
+        assert.strictEqual((await otherTab({action: 'get-config'})).profileAuthorized, true, 'So does another tab on the same cookie');
+
+        const rotated = await rotate(login.sessionRotateToken);
+        assert.strictEqual(rotated.status, 204);
+        assert.notStrictEqual(rotated.cookie, planted.cookie);
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: rotated.cookie})).status, 200, 'The new cookie');
+        const reloaded = await (await connect({cookie: rotated.cookie}))({action: 'get-config'});
+        assert.deepStrictEqual([reloaded.profileAuthorized, reloaded.currentUserId], [true, alice.id], 'A reload stays signed in');
+        assert.strictEqual((await rotate(login.sessionRotateToken)).status, 403, 'The token is single-use');
+        assert.strictEqual((await rotate('')).status, 403);
+        assert.strictEqual((await rotate((await signIn()).sessionRotateToken, {origin: 'http://evil.example'})).status, 403, 'Another site');
+        const late = (await signIn()).sessionRotateToken;
+        security.sessionRotations.get(late).expiresAt = Date.now() - 1;
+        assert.strictEqual((await rotate(late)).status, 403, 'An expired token');
+
+        //повторные входы не растят ни реестр сессий, ни таблицу токенов
+        for (let i = 0; i < 1100; i++)
+            security.rotateSession(planted.value);
+        assert.ok(security.sessionRotations.size <= 1000, String(security.sessionRotations.size));
+        const lifetime = require('../server/core/SessionLifetime');
+        while (security.sessions.size < lifetime.maxSessions)
+            security.ensureSession({headers: {}});
+        security.sessions.delete(planted.value.id);
+        security.rotateSession(planted.value);
+        assert.strictEqual(security.sessions.size, lifetime.maxSessions, 'A session evicted meanwhile comes back within the limit');
+        assert.strictEqual(security.sessions.get(planted.value.id), planted.value);
     });
 }
 
@@ -478,6 +534,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testAccessPasswordGuardsBooksAndCovers, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];
