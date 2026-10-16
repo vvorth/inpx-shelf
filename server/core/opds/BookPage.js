@@ -1,6 +1,5 @@
 const path = require('path');
 const _ = require('lodash');
-const dayjs = require('dayjs');
 
 const BasePage = require('./BasePage');
 const bookConverter = require('../BookConverter');
@@ -79,9 +78,6 @@ class BookPage extends BasePage {
 
             if (nodePath == 'fileInfo/size')
                 return `${this.formatSize(value)} (${value.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1 ')} Bytes)`;
-
-            if (nodePath == 'fileInfo/date')
-                return dayjs(value, 'YYYY-MM-DD').format('DD.MM.YYYY');
 
             if (nodePath == 'fileInfo/del')
                 return (value ? t('common.yes') : null);

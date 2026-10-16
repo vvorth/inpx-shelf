@@ -125,7 +125,6 @@ import vueComponent from '../vueComponent.js';
 
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 const {escapeHtml, safeHtml} = require('../../../shared/safeHtml');
-import * as utils from '../../share/utils';
 import {t, getLocale} from '../../share/i18n';
 import {isAdmin} from '../../share/session';
 import {genreName} from '../../share/genres';
@@ -253,7 +252,7 @@ class BookDetails {
                 {name: 'folder', label: t('bookInfo.archive'), value: escapeHtml(book.folder || '')},
                 {name: 'file', label: t('bookInfo.fileArchive'), value: (book.file ? escapeHtml(`${book.file}.${book.ext}`) : '')},
                 {name: 'size', label: t('common.size'), value: (book.size ? `${this.formatSize(book.size)} (${Number(book.size).toLocaleString(getLocale())} Bytes)` : '')},
-                {name: 'date', label: t('bookInfo.added'), value: (book.date ? escapeHtml(utils.sqlDateFormat(book.date)) : '')},
+                {name: 'date', label: t('bookInfo.added'), value: (book.date ? escapeHtml(book.date) : '')},
                 {name: 'del', label: t('bookInfo.deleted'), value: (book.del ? t('common.yes') : '')},
                 {name: 'libid', label: 'LibId', value: escapeHtml(String(book.libid || ''))},
                 {name: 'insno', label: 'InsideNo', value: escapeHtml(String(book.insno || ''))},

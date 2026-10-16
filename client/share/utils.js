@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 //import _ from 'lodash';
 
 export function sleep(ms) {
@@ -50,8 +49,4 @@ export async function copyTextToClipboard(text) {
     }
 
     return result;
-}
-
-export function sqlDateFormat(date, format = 'DD.MM.YYYY') {
-    return dayjs(date, 'YYYY-MM-DD').format(format);
 }
