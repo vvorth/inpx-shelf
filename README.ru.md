@@ -71,9 +71,9 @@ docker run -d \
 
 ## Документация
 
-* [Docker: образы, сборка, обновление](./docs/docker.md)
+* [Docker: образы, сборка, обновление, AWS Fargate](./docs/docker.md)
 * [Авторизация и мониторинг](./docs/auth-monitoring.md)
-* [Несколько INPX-источников](./docs/sources.md)
+* [Несколько INPX-источников, библиотека в S3](./docs/sources.md)
 * [Админ-панель, бэкапы, кэш книг и обложек](./docs/admin.md)
 * [Отправка книг в Telegram и на email](./docs/sending.md)
 * [Пользователи, личные списки и OPDS](./docs/users-opds.md)

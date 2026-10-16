@@ -74,9 +74,9 @@ Image tags: `latest` (stable), `beta` (pre-releases), `dev` (for testing); each 
 
 The detailed documentation is in Russian.
 
-* [Docker: images, build, update](./docs/docker.md)
+* [Docker: images, build, update, AWS Fargate](./docs/docker.md)
 * [Authentication and monitoring](./docs/auth-monitoring.md)
-* [Multiple INPX sources, search](./docs/sources.md)
+* [Multiple INPX sources, search, library in S3](./docs/sources.md)
 * [Admin panel, backups, book and cover cache](./docs/admin.md)
 * [Sending books via Telegram and email](./docs/sending.md)
 * [Users, reading lists and OPDS](./docs/users-opds.md)

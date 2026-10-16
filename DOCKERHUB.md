@@ -137,9 +137,9 @@ After restoring a full backup, restart the container. If library sources changed
 | --- | --- |
 | `DATA_DIR` | Persistent app data directory. Default in Docker: `/usr/local/bin/.inpx-web`. |
 | `INPX` | Path to a single `.inpx` file inside the container. |
-| `LIBDIR` | Path to a single library directory inside the container. |
+| `LIBDIR` | Path to a single library directory inside the container, or `s3://bucket/prefix` for a library in S3 (also for `INPX`). |
 | `INPX_LIBRARY_SOURCES` | JSON array or compact string with multiple library sources. |
-| `CACHE_DIR` | Prepared book/conversion cache path. |
+| `CACHE_DIR` | Cache directory: search DB, book and cover cache, temp files. Default: `DATA_DIR`. Can be throwaway storage. |
 | `PUID` / `PGID` | User and group the app runs as. Default: `1000` / `1000`; `PUID=0` keeps root. |
 | `INPX_COVER_CACHE_SIZE_MB` | Cover cache size limit in MB. Default: `512`. |
 | `INPX_METRICS_ENABLED` | Enable Prometheus metrics when `true`. |
