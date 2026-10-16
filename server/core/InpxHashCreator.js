@@ -35,7 +35,7 @@ class InpxHashCreator {
     async getInpxFileHash() {
         return (
             await libraryFs.pathExists(this.config.inpxFile) ?
-            utils.getBufHash(await libraryFs.readFile(this.config.inpxFile), 'sha256', 'hex') :
+            await libraryFs.sha256(this.config.inpxFile) :
             ''
         );
     }

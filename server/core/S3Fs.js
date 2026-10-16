@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const fs = require('fs-extra');
 const {pipeline} = require('stream/promises');
 
@@ -175,6 +176,15 @@ class S3Fs {
         const {bucket, key} = parse(uri);
         const res = await this.send('GetObjectCommand', {Bucket: bucket, Key: key}, uri);
         return Buffer.from(await res.Body.transformToByteArray());
+    }
+
+    //хеш потока объекта: без копии в памяти или на диске
+    async sha256(uri) {
+        const {bucket, key} = parse(uri);
+        const res = await this.send('GetObjectCommand', {Bucket: bucket, Key: key}, uri);
+        const hash = crypto.createHash('sha256');
+        await pipeline(res.Body, hash);
+        return hash.digest('hex');
     }
 
     async copyToLocal(uri, outFile) {
