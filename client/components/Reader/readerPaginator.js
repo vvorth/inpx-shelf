@@ -360,12 +360,18 @@ export default class ReaderPaginator {
     }
 
     doesPagedMeasureOverflow(measureHost, measureHtml = null) {
+        const measure = this.measurePagedOverflow(measureHost, measureHtml);
+        return !!(measure && measure.overflow > 0);
+    }
+
+    // Насколько содержимое измерительного листа выше допустимого (overflow > 0 - не помещается)
+    measurePagedOverflow(measureHost, measureHtml = null) {
         if (!measureHost)
-            return false;
+            return null;
 
         const availableHeight = this.getPagedMeasureAvailableHeight(measureHost);
         if (!availableHeight)
-            return false;
+            return null;
 
         const htmlNode = (measureHtml || measureHost.querySelector('.reader-html') || null);
         const contentNode = (
@@ -387,7 +393,7 @@ export default class ReaderPaginator {
             });
         }
 
-        return measuredHeight > Math.max(0, availableHeight - 12);
+        return {overflow: measuredHeight - Math.max(0, availableHeight - 12)};
     }
 
     syncPagedProgress(save = false) {
@@ -492,6 +498,47 @@ export default class ReaderPaginator {
         `;
     }
 
+    // Блоки страницы в измерительном листе. Кандидат почти всегда отличается от прошлого замера только
+    // хвостом (ещё один блок, другой кусок абзаца), поэтому заменяем только хвост: браузер перекладывает
+    // один блок, а не всю страницу. Дерево то же, что даёт innerHTML = wrapPagedMeasureHtml(units)
+    renderPagedMeasureUnits(measureHtml, units = []) {
+        let state = this.pagedMeasureDom;
+        if (!state || state.html !== measureHtml || !state.content || state.content.parentNode !== measureHtml) {
+            measureHtml.innerHTML = this.wrapPagedMeasureHtml([]);
+            const content = measureHtml.querySelector('.reader-page-content');
+            state = this.pagedMeasureDom = {
+                html: measureHtml,
+                content,
+                spacer: content.querySelector('.reader-page-spacer'),
+                parser: document.createElement('div'),
+                // Один Range на все замеры: каждый живой Range браузер обновляет при любой правке документа,
+                // а новые копились бы до сборки мусора и делали дорогими remove/insertBefore
+                range: document.createRange(),
+                units: [],
+                nodes: [],
+            };
+        }
+
+        const list = (Array.isArray(units) ? units : []);
+        let same = 0;
+        while (same < list.length && same < state.units.length && state.units[same] === list[same])
+            same += 1;
+        for (let index = state.nodes.length - 1; index >= same; index -= 1) {
+            for (const node of state.nodes[index])
+                node.remove();
+        }
+        state.units.length = same;
+        state.nodes.length = same;
+        for (let index = same; index < list.length; index += 1) {
+            state.parser.innerHTML = list[index];
+            const nodes = Array.from(state.parser.childNodes);
+            for (const node of nodes)
+                state.content.insertBefore(node, state.spacer);
+            state.units.push(list[index]);
+            state.nodes.push(nodes);
+        }
+    }
+
     extractPagedContentUnits(html = '') {
         if (typeof(document) === 'undefined')
             return [];
@@ -517,7 +564,7 @@ export default class ReaderPaginator {
         let compactSliceStartedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
         const finalizeCompactedPages = () => {
-            measureHtml.innerHTML = '';
+            this.renderPagedMeasureUnits(measureHtml, []);
             return compacted
                 .filter((page) => page.units && page.units.length && !this.isBlankPagedPageUnits(page.units))
                 .map((page) => ({
@@ -562,14 +609,14 @@ export default class ReaderPaginator {
 
             while (next.units.length) {
                 const candidateUnits = page.units.concat(next.units[0]);
-                measureHtml.innerHTML = this.wrapPagedMeasureHtml(candidateUnits);
+                this.renderPagedMeasureUnits(measureHtml, candidateUnits);
                 if (this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
                     const splitUnits = this.splitUnitToFitCurrentPage({html: next.units[0]}, page.units);
                     if (splitUnits.length > 1) {
                         const firstSplitUnit = splitUnits[0];
                         const remainingSplitUnits = splitUnits.slice(1).map((unit) => unit.html).filter(Boolean);
                         const splitCandidateUnits = page.units.concat(firstSplitUnit.html);
-                        measureHtml.innerHTML = this.wrapPagedMeasureHtml(splitCandidateUnits);
+                        this.renderPagedMeasureUnits(measureHtml, splitCandidateUnits);
                         if (firstSplitUnit.html && remainingSplitUnits.length && !this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
                             page.units.push(firstSplitUnit.html);
                             next.units.splice(0, 1, ...remainingSplitUnits);
@@ -728,27 +775,66 @@ export default class ReaderPaginator {
         const chunks = [];
         let start = 0;
 
-        const fits = (end) => {
+        let fitsByEnd = new Map();
+        const render = (end) => {
             const clone = root.cloneNode(false);
             clone.textContent = words.slice(start, end).join(' ');
-            measureHtml.innerHTML = this.wrapPagedMeasureHtml(baseHtml.concat(clone.outerHTML));
-            return !this.doesPagedMeasureOverflow(measureHost, measureHtml);
+            this.renderPagedMeasureUnits(measureHtml, baseHtml.concat(clone.outerHTML));
+            return this.measurePagedOverflow(measureHost, measureHtml);
         };
-
-        while (start < words.length) {
-            let low = start + 1;
-            let high = words.length;
-            let best = -1;
-
+        const fits = (end) => {
+            if (!fitsByEnd.has(end)) {
+                const measure = render(end);
+                fitsByEnd.set(end, !(measure && measure.overflow > 0));
+            }
+            return fitsByEnd.get(end);
+        };
+        // Догадка для поиска: весь остаток абзаца одним замером, по строкам видно, на каком слове
+        // текст дойдёт до низа листа. Поиск проверяет догадку и соседа, так что итог тот же, что у
+        // двоичного поиска по словам, но замеров обычно три, а не десяток
+        const guessEnd = () => {
+            const measure = render(words.length);
+            const fitsAll = !(measure && measure.overflow > 0);
+            fitsByEnd.set(words.length, fitsAll);
+            if (!measure || fitsAll)
+                return words.length;
+            const nodes = this.pagedMeasureDom.nodes[this.pagedMeasureDom.nodes.length - 1] || [];
+            const textNode = (nodes[0] && nodes[0].firstChild) || null;
+            if (!textNode || textNode.nodeType !== Node.TEXT_NODE)
+                return NaN;
+            const ends = [];
+            let offset = 0;
+            for (let index = start; index < words.length; index += 1) {
+                offset += words[index].length;
+                ends.push(offset);
+                offset += 1;
+            }
+            const range = this.pagedMeasureDom.range;
+            const wordBottom = (count) => {
+                range.setStart(textNode, ends[count - 1] - words[start + count - 1].length);
+                range.setEnd(textNode, ends[count - 1]);
+                const rects = range.getClientRects();
+                return rects.length ? rects[rects.length - 1].bottom : NaN;
+            };
+            const limit = wordBottom(ends.length) - measure.overflow;
+            let low = 1;
+            let high = ends.length;
+            let count = 0;
             while (low <= high) {
                 const mid = Math.floor((low + high) / 2);
-                if (fits(mid)) {
-                    best = mid;
+                if (wordBottom(mid) <= limit) {
+                    count = mid;
                     low = mid + 1;
                 } else {
                     high = mid - 1;
                 }
             }
+            return start + count;
+        };
+
+        while (start < words.length) {
+            fitsByEnd = new Map();
+            let best = readerPaging.findLastFit(fits, start + 1, words.length, guessEnd());
 
             if (best <= start) {
                 if (!allowOverflowFallback)
@@ -764,7 +850,7 @@ export default class ReaderPaginator {
             start = best;
         }
 
-        measureHtml.innerHTML = '';
+        this.renderPagedMeasureUnits(measureHtml, []);
         if (chunks.length <= 1)
             return (allowOverflowFallback ? this.wrapSplitTextChunks(root, unit, fallbackChunks) : []);
 
@@ -1506,7 +1592,7 @@ export default class ReaderPaginator {
         }, (checkpoint && checkpoint.stats) || {});
 
         const applyUnits = (list) => {
-            measureHtml.innerHTML = this.wrapPagedMeasureHtml(list);
+            this.renderPagedMeasureUnits(measureHtml, list);
         };
         const publishStats = (status = stats.status) => {
             stats.status = status;
@@ -1657,7 +1743,9 @@ export default class ReaderPaginator {
                 recordFallbackRoot(unit);
                 const candidateUnits = currentUnits.concat(unit.html);
                 applyUnits(candidateUnits);
-                if (this.doesPagedMeasureOverflow(measureHost, measureHtml) && !currentUnits.length) {
+                // Один замер на кандидата: до второй проверки лист не меняется
+                const candidateOverflows = this.doesPagedMeasureOverflow(measureHost, measureHtml);
+                if (candidateOverflows && !currentUnits.length) {
                     const splitUnits = this.splitOversizedUnit(unit);
                     if (splitUnits.length) {
                         stats.domSplits += 1;
@@ -1670,7 +1758,7 @@ export default class ReaderPaginator {
                     }
                 }
 
-                if (this.doesPagedMeasureOverflow(measureHost, measureHtml) && currentUnits.length) {
+                if (candidateOverflows && currentUnits.length) {
                     const fitCurrentPageSplit = this.splitUnitToFitCurrentPage(unit, currentUnits);
                     if (fitCurrentPageSplit.length) {
                         stats.domSplits += 1;

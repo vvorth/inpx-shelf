@@ -168,7 +168,41 @@ async function testReaderPagedStageMustMatchSignature() {
     assert.strictEqual(readerPaging.isPagedStageCurrent(611, 0), false);
 }
 
+//Поиск конца куска абзаца с догадкой даёт тот же разрез, что двоичный поиск, при любой догадке
+async function testReaderFindLastFitMatchesBinarySearch() {
+    const {findLastFit} = require('../client/share/readerPaging');
+    const binary = (fits, low, high) => {
+        let best = -1;
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            if (fits(mid)) {
+                best = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return best;
+    };
+    for (let low = 1; low <= 3; low += 1) {
+        for (let high = low; high <= 12; high += 1) {
+            for (let limit = low - 1; limit <= high; limit += 1) {
+                const fits = end => end <= limit;
+                const expected = binary(fits, low, high);
+                for (const guess of [NaN, low - 3, low - 1, low, limit - 1, limit, limit + 1, high, high + 5]) {
+                    let calls = 0;
+                    const counted = end => { calls += 1; return fits(end); };
+                    assert.strictEqual(findLastFit(counted, low, high, guess), expected, `low ${low} high ${high} limit ${limit} guess ${guess}`);
+                    if (guess === limit)
+                        assert.ok(calls <= 2, 'A right guess costs at most two measurements');
+                }
+            }
+        }
+    }
+}
+
 module.exports = [
+    testReaderFindLastFitMatchesBinarySearch,
     testReaderOpeningProgress,
     testReaderPagedStageMustMatchSignature,
     testReaderProgressMapIsCapped,

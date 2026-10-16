@@ -9,6 +9,47 @@ function isPagedStageCurrent(stageHeight = 0, pageHeight = 0) {
     return stage > 0 && page > 0 && Math.abs(stage - page) <= 1;
 }
 
+//Наибольший конец end из [low, high], при котором fits(end) (fits монотонна: больше слов - не уже), или -1.
+//Итог тот же, что у двоичного поиска, но сперва проверяется догадка и её сосед: при верной догадке
+//это два замера вместо log2(high - low). Догадка low - 1 значит «не войдёт ни одно слово»
+function findLastFit(fits, low, high, guess = NaN) {
+    let best = -1;
+    let lo = low;
+    let hi = high;
+    const at = Math.round(Number(guess));
+    if (Number.isFinite(at) && low <= high) {
+        const probe = Math.max(low - 1, Math.min(high, at));
+        if (probe < low) {
+            if (!fits(low))
+                return -1;
+            best = low;
+            lo = low + 1;
+        } else if (fits(probe)) {
+            best = probe;
+            if (probe === high || !fits(probe + 1))
+                return probe;
+            best = probe + 1;
+            lo = probe + 2;
+        } else {
+            if (probe === low || fits(probe - 1))
+                return (probe === low ? -1 : probe - 1);
+            hi = probe - 2;
+        }
+    }
+
+    while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (fits(mid)) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return best;
+}
+
 module.exports = {
     isPagedStageCurrent,
+    findLastFit,
 };

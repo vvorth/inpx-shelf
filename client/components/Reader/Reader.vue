@@ -470,6 +470,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         this.bottomClipCalibrationAttemptsByGeometry = new Map();
         this.pagedTextMeasureCanvas = null;
         this.pagedTextMeasureContext = null;
+        this.pagedMeasureDom = null;
         this.pagedMeasureAvailableHeight = 0;
         this.pagedAppliedBottomClipCompensation = 0;
         // Предложение перейти к позиции с другого устройства: что предложено и как закрыть уведомление
