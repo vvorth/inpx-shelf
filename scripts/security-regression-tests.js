@@ -579,6 +579,28 @@ async function testWriteActionsNeedCsrf() {
         assert.strictEqual(isProtected(action), false, action);
 }
 
+// Every request without the access password gets a salt: unused ones are capped and never written to disk.
+async function testUnusedAccessTokensAreCapped() {
+    const WebAccess = require('../server/core/WebAccess');
+    const saved = [];
+    const webAccess = Object.assign(Object.create(WebAccess.prototype),
+        {config: {accessPassword: 'secret'}, freeAccess: false, accessTimeout: 0, accessMap: new Map(),
+            db: {putAccess: token => saved.push(token), deleteAccess() {}}});
+    webAccess.accessMap.set('signed-in', {time: Date.now(), used: 3});
+    for (let i = 0; i < WebAccess.maxUnusedTokens + 50; i++)
+        webAccess.newToken();
+    assert.strictEqual(webAccess.accessMap.size, WebAccess.maxUnusedTokens);
+    assert.ok(webAccess.accessMap.has('signed-in'), 'a signed-in token is never pushed out');
+    const sleep = require('../server/core/utils').sleep;
+    require('../server/core/utils').sleep = () => Promise.reject(new Error('stop'));
+    try {
+        await webAccess.periodicClean().catch(() => {});
+    } finally {
+        require('../server/core/utils').sleep = sleep;
+    }
+    assert.deepStrictEqual(saved, ['signed-in']);
+}
+
 // A client over the login limit must not get in even with the right access password.
 async function testAccessPasswordLimitBlocksCorrectGuess() {
     const Controller = require('../server/controllers/WebSocketController');
@@ -832,7 +854,7 @@ async function testGunzipBufferIsBounded() {
 module.exports = [
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
-    testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
+    testAccessPasswordLimitBlocksCorrectGuess, testUnusedAccessTokensAreCapped, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,

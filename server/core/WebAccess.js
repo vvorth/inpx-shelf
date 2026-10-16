@@ -5,6 +5,8 @@ const asyncExit = new (require('./AsyncExit'))();
 
 const cleanPeriod = 1*60*1000;//1 минута
 const cleanUnusedTokenTimeout = 5*60*1000;//5 минут
+//соль выдаётся на каждый запрос без пароля: столько неиспользованных храним, самые старые уходят
+const maxUnusedTokens = 10000;
 
 class WebAccess {
     constructor(config) {
@@ -55,7 +57,7 @@ class WebAccess {
                             || !(this.accessTimeout === 0 || now - accessRec.time < this.accessTimeout)
                             ) {
                             await this.deleteAccess(accessToken);
-                        } else if (!accessRec.saved) {
+                        } else if (accessRec.used > 0 && !accessRec.saved) {
                             await this.saveAccess(accessToken);
                         }
                     }
@@ -118,6 +120,14 @@ class WebAccess {
     }
 
     newToken() {
+        if (this.accessMap.size >= maxUnusedTokens) {
+            for (const [token, rec] of this.accessMap) {
+                if (!rec.used) {
+                    this.accessMap.delete(token);
+                    break;
+                }
+            }
+        }
         const salt = utils.randomHexString(32);
         const accessToken = utils.getBufHash(this.config.accessPassword + salt, 'sha256', 'hex');
         this.accessMap.set(accessToken, {time: Date.now(), used: 0});
@@ -127,3 +137,4 @@ class WebAccess {
 }
 
 module.exports = WebAccess;
+module.exports.maxUnusedTokens = maxUnusedTokens;
