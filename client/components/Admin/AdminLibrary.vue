@@ -23,7 +23,6 @@
                     <span>covers: {{ source.hasCovers ? 'ok' : '-' }}</span>
                     <span>etc: {{ source.hasEtc ? 'ok' : '-' }}</span>
                     <span>images: {{ source.hasImages ? 'ok' : '-' }}</span>
-                    <span>bin: {{ source.hasBin ? 'ok' : '-' }}</span>
                     <span v-if="source.foundInpx && source.foundInpx.length">{{ $t('settings.admin.foundInpx') }}: {{ source.foundInpx.length }}</span>
                 </div>
             </div>

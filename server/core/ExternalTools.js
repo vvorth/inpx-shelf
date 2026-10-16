@@ -55,23 +55,8 @@ function resolveConverterPaths(converterPaths = null) {
     return converterPaths || currentConverterPaths();
 }
 
-function toolCandidatesFromDirs(extraDirs = [], fileNames = []) {
-    const result = [];
-    for (const dir of (Array.isArray(extraDirs) ? extraDirs : [])) {
-        const baseDir = String(dir || '').trim();
-        if (!baseDir)
-            continue;
-
-        for (const fileName of fileNames)
-            result.push(path.join(baseDir, fileName));
-    }
-
-    return result;
-}
-
-function djxlCommandCandidates(extraDirs = [], converterPaths = null) {
+function djxlCommandCandidates(converterPaths = null) {
     const configured = configuredToolCandidates(resolveConverterPaths(converterPaths), ['djxl', 'jxl']);
-    const extra = toolCandidatesFromDirs(extraDirs, process.platform === 'win32' ? ['djxl.exe', 'djxl'] : ['djxl']);
     const local = [
         process.platform === 'win32' ? resolveBundledPath('djxl.exe') : '',
         resolveBundledPath('djxl'),
@@ -84,12 +69,11 @@ function djxlCommandCandidates(extraDirs = [], converterPaths = null) {
         'djxl',
     ]);
 
-    return [...configured, ...extra, ...local, ...system];
+    return [...configured, ...local, ...system];
 }
 
-function dwebpCommandCandidates(extraDirs = [], converterPaths = null) {
+function dwebpCommandCandidates(converterPaths = null) {
     const configured = configuredToolCandidates(resolveConverterPaths(converterPaths), ['dwebp', 'webp']);
-    const extra = toolCandidatesFromDirs(extraDirs, process.platform === 'win32' ? ['dwebp.exe', 'dwebp'] : ['dwebp']);
     const local = [
         process.platform === 'win32' ? resolveBundledPath('dwebp.exe') : '',
         resolveBundledPath('dwebp'),
@@ -102,7 +86,7 @@ function dwebpCommandCandidates(extraDirs = [], converterPaths = null) {
         'dwebp',
     ]);
 
-    return [...configured, ...extra, ...local, ...system];
+    return [...configured, ...local, ...system];
 }
 
 function missingDjxlMessage() {

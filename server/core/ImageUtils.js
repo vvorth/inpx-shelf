@@ -79,35 +79,35 @@ async function convertWithTool(buf, tempDir, inputExt, outputExt, commands, tool
     }
 }
 
-function jxlToImage(buf, tempDir, toolDirs = [], converterPaths = null, extension = 'png') {
-    return convertWithTool(buf, tempDir, 'jxl', extension, externalTools.djxlCommandCandidates(toolDirs, converterPaths),
+function jxlToImage(buf, tempDir, converterPaths = null, extension = 'png') {
+    return convertWithTool(buf, tempDir, 'jxl', extension, externalTools.djxlCommandCandidates(converterPaths),
         (input, output) => [input, output], 'INPX_MISSING_DJXL', externalTools.missingDjxlMessage());
 }
 
-async function normalizeForEpub(buf, fileName, tempDir, toolDirs = [], converterPaths = null) {
+async function normalizeForEpub(buf, fileName, tempDir, converterPaths = null) {
     const extension = path.extname(fileName).slice(1).toLowerCase();
     const type = contentType(buf);
     if (type === 'image/jxl') {
         if (!['png', 'jpg', 'jpeg'].includes(extension))
             throw new Error(t('errors.epubUnsupportedImage', {name: fileName}));
-        return await jxlToImage(buf, tempDir, toolDirs, converterPaths, extension);
+        return await jxlToImage(buf, tempDir, converterPaths, extension);
     }
     if (type === 'image/webp' && extension === 'png')
-        return await webpToPng(buf, tempDir, toolDirs, converterPaths);
+        return await webpToPng(buf, tempDir, converterPaths);
     return buf;
 }
 
-function webpToPng(buf, tempDir, toolDirs = [], converterPaths = null) {
-    return convertWithTool(buf, tempDir, 'webp', 'png', externalTools.dwebpCommandCandidates(toolDirs, converterPaths),
+function webpToPng(buf, tempDir, converterPaths = null) {
+    return convertWithTool(buf, tempDir, 'webp', 'png', externalTools.dwebpCommandCandidates(converterPaths),
         (input, output) => [input, '-o', output], 'INPX_MISSING_DWEBP', externalTools.missingDwebpMessage());
 }
 
-async function normalizeForFb2(buf, tempDir, toolDirs = [], converterPaths = null) {
+async function normalizeForFb2(buf, tempDir, converterPaths = null) {
     const type = contentType(buf);
     if (type === 'image/jxl')
-        return {data: await jxlToImage(buf, tempDir, toolDirs, converterPaths), contentType: 'image/png'};
+        return {data: await jxlToImage(buf, tempDir, converterPaths), contentType: 'image/png'};
     if (type === 'image/webp')
-        return {data: await webpToPng(buf, tempDir, toolDirs, converterPaths), contentType: 'image/png'};
+        return {data: await webpToPng(buf, tempDir, converterPaths), contentType: 'image/png'};
 
     return {data: buf, contentType: type};
 }

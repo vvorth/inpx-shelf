@@ -2163,8 +2163,8 @@ async function testConfiguredConverterPathsHavePriority() {
         mutool: '/opt/tools/mutool-custom',
     };
 
-    assert.strictEqual(externalTools.djxlCommandCandidates([], configured)[0], configured.djxl);
-    assert.strictEqual(externalTools.dwebpCommandCandidates([], configured)[0], configured.dwebp);
+    assert.strictEqual(externalTools.djxlCommandCandidates(configured)[0], configured.djxl);
+    assert.strictEqual(externalTools.dwebpCommandCandidates(configured)[0], configured.dwebp);
     assert.strictEqual(bookConverter.fb2cngCommandCandidates(configured)[0], configured.fb2cng);
     assert.strictEqual(bookConverter.mutoolCommandCandidates(configured)[0], configured.mutool);
 }

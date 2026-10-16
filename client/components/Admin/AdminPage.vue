@@ -565,7 +565,6 @@ class AdminPage {
             hasCovers: source.hasCovers === true,
             hasEtc: source.hasEtc === true,
             hasImages: source.hasImages === true,
-            hasBin: source.hasBin === true,
             diagnosticsLoading: false,
         }));
     }
@@ -730,7 +729,6 @@ class AdminPage {
             hasCovers: false,
             hasEtc: false,
             hasImages: false,
-            hasBin: false,
             diagnosticsLoading: false,
         });
     }

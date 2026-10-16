@@ -189,7 +189,6 @@ module.exports = {
             hasCovers: await exists('covers'),
             hasEtc: await exists('etc'),
             hasImages: await exists('images'),
-            hasBin: await exists('bin'),
         };
     },
 

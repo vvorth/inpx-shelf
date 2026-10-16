@@ -209,14 +209,6 @@ module.exports = {
         return result;
     },
 
-    libraryToolDirs(sourceLibDir = '') {
-        const libDir = String(sourceLibDir || this.config.libDir || '').replace(/\\/g, '/').replace(/\/+$/g, '');
-        return Array.from(new Set([
-            `${libDir}/bin`,
-            `${path.dirname(libDir)}/bin`,
-        ]));
-    },
-
     async ensureFblibraryArchives(subDir, sourceLibDir = '') {
         if (!this.fblibraryArchives)
             this.fblibraryArchives = {};
@@ -293,7 +285,7 @@ module.exports = {
 
                     try {
                         const data = await zipReader.extractToBuf(entryName);
-                        result.push(Object.assign({id}, await imageUtils.normalizeForFb2(data, this.config.tempDir, this.libraryToolDirs(sourceLibDir), this.config.converterPaths)));
+                        result.push(Object.assign({id}, await imageUtils.normalizeForFb2(data, this.config.tempDir, this.config.converterPaths)));
                     } catch(e) {
                         log(LM_ERR, `image ${entryName}: ${e.message}`);
                     }
@@ -318,7 +310,7 @@ module.exports = {
 
             try {
                 const data = await zipReader.extractToBuf(String(libid));
-                return Object.assign({id: '0'}, await imageUtils.normalizeForFb2(data, this.config.tempDir, this.libraryToolDirs(sourceLibDir), this.config.converterPaths));
+                return Object.assign({id: '0'}, await imageUtils.normalizeForFb2(data, this.config.tempDir, this.config.converterPaths));
             } catch(e) {
                 if (externalTools.isMissingToolError(e))
                     throw e;
@@ -373,8 +365,7 @@ module.exports = {
         const file = await this.extractBook(book.folder, `${book.file}.${book.ext}`, book.sourceLibDir);
         try {
             const {cover: embedded} = await this.fb2Helper.getDescAndCover(file);
-            return embedded ? await imageUtils.normalizeForFb2(embedded, this.config.tempDir,
-                this.libraryToolDirs(book.sourceLibDir), this.config.converterPaths) : null;
+            return embedded ? await imageUtils.normalizeForFb2(embedded, this.config.tempDir, this.config.converterPaths) : null;
         } finally {
             await fs.remove(file);
         }
@@ -404,8 +395,7 @@ module.exports = {
                     await reader.close();
             }
             if (data && data.length)
-                return await imageUtils.normalizeForEpub(data, fileName, this.config.tempDir,
-                    this.libraryToolDirs(sourceLibDir), this.config.converterPaths);
+                return await imageUtils.normalizeForEpub(data, fileName, this.config.tempDir, this.config.converterPaths);
         }
         return null;
     },
@@ -551,7 +541,7 @@ module.exports = {
                 for (const entryName of entryNames) {
                     try {
                         const data = await zipReader.extractToBuf(entryName);
-                        const image = await imageUtils.normalizeForFb2(data, this.config.tempDir, this.libraryToolDirs(archive.sourceLibDir), this.config.converterPaths);
+                        const image = await imageUtils.normalizeForFb2(data, this.config.tempDir, this.config.converterPaths);
                         return `data:${image.contentType};base64,${image.data.toString('base64')}`;
                     } catch(e) {
                         log(LM_WARN, `author picture ${entryName}: ${e.message}`);
@@ -698,7 +688,7 @@ module.exports = {
         ];
         const state = await libraryReviews.snapshot(dirs);
         // Include the source even when no review directories exist.
-        state.signature = utils.getBufHash(`${path.resolve(libDir)}:${state.signature}`, 'sha256', 'hex');
+        state.signature = utils.getBufHash(`${libDir}:${state.signature}`, 'sha256', 'hex');
         if (!this.reviewArchiveStates)
             this.reviewArchiveStates = new Map();
         const cached = this.reviewArchiveStates.get(libDir);
