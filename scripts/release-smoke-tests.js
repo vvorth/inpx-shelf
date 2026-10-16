@@ -2508,19 +2508,19 @@ async function testCachesMoveToCacheDir() {
     try {
         const dataDir = path.join(dir, 'data');
         const cacheDir = path.join(dataDir, 'cache');
-        await fs.outputFile(path.join(dataDir, 'library.sqlite'), 'db');
+        await fs.outputFile(path.join(dataDir, 'cache.bin'), 'cache');
         await fs.outputFile(path.join(dataDir, 'public-files/book/abc'), 'book');
         await fs.outputFile(path.join(dataDir, 'state.sqlite'), 'users');
-        await utils.moveIntoDir(dataDir, cacheDir, ['library.sqlite', 'public-files']);
-        assert.strictEqual(await fs.readFile(path.join(cacheDir, 'library.sqlite'), 'utf8'), 'db');
+        await utils.moveIntoDir(dataDir, cacheDir, ['cache.bin', 'public-files']);
+        assert.strictEqual(await fs.readFile(path.join(cacheDir, 'cache.bin'), 'utf8'), 'cache');
         assert.strictEqual(await fs.readFile(path.join(cacheDir, 'public-files/book/abc'), 'utf8'), 'book');
-        assert.strictEqual(await fs.pathExists(path.join(dataDir, 'library.sqlite')), false);
+        assert.strictEqual(await fs.pathExists(path.join(dataDir, 'cache.bin')), false);
         assert.strictEqual(await fs.readFile(path.join(dataDir, 'state.sqlite'), 'utf8'), 'users');
 
-        await fs.outputFile(path.join(dataDir, 'library.sqlite'), 'stale');
-        await utils.moveIntoDir(dataDir, cacheDir, ['library.sqlite']);
-        assert.strictEqual(await fs.readFile(path.join(cacheDir, 'library.sqlite'), 'utf8'), 'db');
-        assert.strictEqual(await fs.pathExists(path.join(dataDir, 'library.sqlite')), false);
+        await fs.outputFile(path.join(dataDir, 'cache.bin'), 'stale');
+        await utils.moveIntoDir(dataDir, cacheDir, ['cache.bin']);
+        assert.strictEqual(await fs.readFile(path.join(cacheDir, 'cache.bin'), 'utf8'), 'cache');
+        assert.strictEqual(await fs.pathExists(path.join(dataDir, 'cache.bin')), false);
 
         await utils.moveIntoDir(dataDir, dataDir, ['state.sqlite']);
         assert.strictEqual(await fs.readFile(path.join(dataDir, 'state.sqlite'), 'utf8'), 'users');

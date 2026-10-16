@@ -16,7 +16,7 @@ class CatalogSearch {
     constructor(config, worker) {
         this.config = config;
         this.worker = worker;
-        this.file = `${config.cacheDir || config.dataDir}/library.sqlite`;
+        this.file = `${config.dataDir}/library.sqlite`;
         this.enabled = true;
         this.thread = null;
         this.ready = false;
