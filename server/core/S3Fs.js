@@ -72,7 +72,7 @@ class S3Fs {
                 throw fsError('ENOENT', `ENOENT: not found in S3: ${uri}`);
             if (status === 403 || (e && e.name === 'AccessDenied'))
                 throw fsError('EACCES', `EACCES: access denied in S3: ${uri}`);
-            throw new Error(`S3: ${uri}: ${(e && (e.name || e.message)) || e}`);
+            throw Object.assign(new Error(`S3: ${uri}: ${(e && (e.name || e.message)) || e}`), {status});
         }
     }
 
@@ -166,7 +166,7 @@ class S3Fs {
             const res = await this.send('GetObjectCommand', {Bucket: bucket, Key: key, Range: `bytes=${offset}-${offset + length - 1}`}, uri);
             return Buffer.from(await res.Body.transformToByteArray());
         } catch (e) {
-            if (/InvalidRange/.test(e.message))//offset за концом объекта
+            if (e.status === 416)//offset за концом объекта
                 return Buffer.alloc(0);
             throw e;
         }

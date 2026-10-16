@@ -50,7 +50,7 @@ function libraryAssetDirCandidates(subDir = '', libDir = '') {
     const parent = path.dirname(normalizedLibDir);
     return [
         `${normalizedLibDir}/${normalizedSubDir}`,
-        //у библиотеки в корне бакета (s3://bucket) родителя нет: dirname даёт "s3:"
+        //у библиотеки в корне бакета (s3://bucket) родителя нет: dirname даёт "s3:/"
         ...(libraryFs.isS3(normalizedLibDir) && !libraryFs.isS3(parent) ? [] : [`${parent}/${normalizedSubDir}`]),
     ];
 }

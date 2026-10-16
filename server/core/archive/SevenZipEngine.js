@@ -75,7 +75,7 @@ function withArchive(sz, file, task) {
     if (isS3(file)) {
         const point = `/s3${++mountId}`;
         sz.FS.mkdir(point);
-        const name = path.posix.basename(String(file).replace(/\\/g, '/'));
+        const name = path.posix.basename(file);
         const s3File = createNode(sz, point, name, file);
         try {
             return task(`${point}/${name}`);
