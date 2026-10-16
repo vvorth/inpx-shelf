@@ -32,16 +32,6 @@ function Get-GitHubHeaders {
   return $headers
 }
 
-function Reset-Directory {
-  param([string] $Path)
-
-  if (Test-Path $Path) {
-    Remove-Item $Path -Recurse -Force
-  }
-
-  New-Item -ItemType Directory -Force -Path $Path | Out-Null
-}
-
 function Download-File {
   param(
     [string] $Uri,
@@ -49,6 +39,21 @@ function Download-File {
   )
 
   Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+}
+
+# Expand-Archive cannot read Deflate64 (used by the libjxl 0.12 zip): extract with the bundled 7-Zip WebAssembly build.
+# Only the program the app runs is copied; it needs no DLLs beyond Windows system ones.
+function Extract-ZipFile {
+  param(
+    [string] $Archive,
+    [string] $FileName,
+    [string] $OutDir
+  )
+
+  & node (Join-Path $repoRoot 'build/extract-zip-file.js') $Archive $FileName $OutDir
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to extract $FileName from $Archive"
+  }
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -61,33 +66,19 @@ $binDir = Join-Path $targetDir 'bin'
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
 $headers = Get-GitHubHeaders
-$windowsJxlUrl = Get-EnvOrDefault 'WINDOWS_JXL_URL' 'https://github.com/libjxl/libjxl/releases/latest/download/jxl-x64-windows-static.zip'
+$windowsJxlUrl = Get-EnvOrDefault 'WINDOWS_JXL_URL' 'https://github.com/libjxl/libjxl/releases/download/v0.12.0/jxl-x64-windows-static.zip'
 $windowsWebpUrl = Get-EnvOrDefault 'WINDOWS_WEBP_URL' 'https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0-windows-x64.zip'
 $fb2cngReleaseApi = Get-EnvOrDefault 'FB2CNG_RELEASE_API' 'https://api.github.com/repos/rupor-github/fb2cng/releases/latest'
 
 Write-Host "Bundling Windows tools into $binDir"
 
 $jxlArchive = Join-Path $env:TEMP 'jxl-x64-windows-static.zip'
-$jxlExtract = Join-Path $env:TEMP 'inpx-shelf-jxl-x64-windows-static'
-Reset-Directory $jxlExtract
 Download-File $windowsJxlUrl $jxlArchive
-Expand-Archive -Path $jxlArchive -DestinationPath $jxlExtract -Force
-Get-ChildItem -Path $jxlExtract -Recurse -File |
-  Where-Object { $_.Extension -in @('.exe', '.dll') } |
-  ForEach-Object {
-    Copy-Item $_.FullName -Destination (Join-Path $binDir $_.Name) -Force
-  }
+Extract-ZipFile $jxlArchive 'djxl.exe' $binDir
 
 $webpArchive = Join-Path $env:TEMP 'libwebp-windows-x64.zip'
-$webpExtract = Join-Path $env:TEMP 'inpx-shelf-libwebp-windows-x64'
-Reset-Directory $webpExtract
 Download-File $windowsWebpUrl $webpArchive
-Expand-Archive -Path $webpArchive -DestinationPath $webpExtract -Force
-Get-ChildItem -Path $webpExtract -Recurse -File |
-  Where-Object { $_.Extension -in @('.exe', '.dll') } |
-  ForEach-Object {
-    Copy-Item $_.FullName -Destination (Join-Path $binDir $_.Name) -Force
-  }
+Extract-ZipFile $webpArchive 'dwebp.exe' $binDir
 
 $fb2cngRelease = Invoke-RestMethod -Uri $fb2cngReleaseApi -Headers $headers
 $fb2cngAsset = $fb2cngRelease.assets |
@@ -98,16 +89,7 @@ if (-not $fb2cngAsset) {
 }
 
 $fbcArchive = Join-Path $env:TEMP $fb2cngAsset.name
-$fbcExtract = Join-Path $env:TEMP 'inpx-shelf-fb2cng-win'
-Reset-Directory $fbcExtract
 Download-File $fb2cngAsset.browser_download_url $fbcArchive
-Expand-Archive -Path $fbcArchive -DestinationPath $fbcExtract -Force
-$fbcSource = Get-ChildItem -Path $fbcExtract -Recurse -File |
-  Where-Object { $_.Name -eq 'fbc.exe' } |
-  Select-Object -First 1
-if (-not $fbcSource) {
-  throw 'Unable to find fbc.exe in fbc-windows-amd64.zip'
-}
-Copy-Item $fbcSource.FullName -Destination (Join-Path $binDir 'fbc.exe') -Force
+Extract-ZipFile $fbcArchive 'fbc.exe' $binDir
 
 Write-Host 'Windows tool bundle complete.'
