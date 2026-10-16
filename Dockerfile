@@ -4,7 +4,7 @@ ARG NODE_IMAGE=node:24-bookworm-slim
 ARG RUNTIME_IMAGE=debian:bookworm-slim
 ARG FB2CNG_VERSION=v1.9.1
 ARG FB2CNG_ARCH=linux-amd64
-# SHA-256 of fbc-${FB2CNG_ARCH}.zip: update with FB2CNG_VERSION/FB2CNG_ARCH and in release.yml.
+# SHA-256 of fbc-${FB2CNG_ARCH}.zip: update with FB2CNG_VERSION/FB2CNG_ARCH, in release.yml and in scripts/bundle-windows-tools.ps1.
 ARG FB2CNG_SHA256=51ae29f268994374fdbf9e7244f37510b46aa9a0439bd57eb89c7c0924359174
 
 FROM ${NODE_IMAGE} AS build-deps

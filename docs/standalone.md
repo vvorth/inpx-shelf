@@ -51,6 +51,8 @@ npm run build:win-installer
 
 Готовый файл будет создан как `dist\release\inpx-shelf-<version>-win-setup.exe`.
 
+`npm run build:win-tools` кладёт в `dist\win\bin` утилиты `djxl.exe`, `dwebp.exe` и `fbc.exe`. Их версии и SHA-256 архивов закреплены в `scripts/bundle-windows-tools.ps1`; скачанные архивы хранятся в `dist\tools-cache` и повторно не скачиваются.
+
 <a id="native_run" />
 
 ## Локальный запуск через Node.js без Docker

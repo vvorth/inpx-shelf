@@ -41,3 +41,12 @@ jobs:
       - run: npm run test:release
       - run: npm run build:${{ inputs.target }}
       - run: node scripts/binary-smoke-test.js dist/${{ inputs.target }}/inpx-shelf${{ inputs.target == 'win' && '.exe' || '' }}
+      # The release bundles djxl, dwebp and fbc into the Windows archive: the same pinned downloads, checked on
+      # every run so a broken download or archive shows up before a release. The archives come from the cache.
+      - if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: dist/tools-cache
+          key: windows-tools-${{ hashFiles('scripts/bundle-windows-tools.ps1') }}
+      - if: runner.os == 'Windows'
+        run: npm run build:win-tools
