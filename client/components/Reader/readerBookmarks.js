@@ -118,6 +118,11 @@ export default class ReaderBookmarks {
         this.$nextTick(() => {
             const scroller = this.$refs.scroller;
             const percent = Math.max(0, Math.min(1, Number(bookmark.percent || 0) || 0));
+            // Доля книги считается по всем страницам: пока остальные размечаются в фоне, переход ждёт
+            if (this.isPagedMode && this.pagedPagesPartial && (percent > 0 || !String(bookmark.sectionId || '').trim())) {
+                this.pendingPagedNavigation = () => this.jumpToBookmark(bookmark);
+                return;
+            }
 
             if (percent > 0) {
                 if (this.isPagedMode) {

@@ -68,6 +68,7 @@ export default class ReaderReflow {
         this.stableReaderReflowAnchor = null;
         this.reflowPageStartOverride = null;
         this.pendingReaderAnchorJump = null;
+        this.pendingPagedNavigation = null;
         this.restorePending = false;
         this.restoreFromSavedProgress = false;
         if (this.restoreProgressFrame && typeof cancelAnimationFrame === 'function')

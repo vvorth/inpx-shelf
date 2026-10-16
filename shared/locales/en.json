@@ -1309,7 +1309,6 @@
         "loadingPagedPage": "Preparing page",
         "loadingPages": "Laying out pages...",
         "loadingPagesCompact": "Counting pages...",
-        "loadingPagesCompacting": "Removing empty space...",
         "loadingPagesFinalizing": "Preparing page...",
         "loadingParse": "Preparing text...",
         "mouseWheelAlsoTurns": "The mouse wheel also turns pages.",

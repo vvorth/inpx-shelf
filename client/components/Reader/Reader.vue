@@ -388,6 +388,11 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
     viewportResumeNeedsCalibration = false;
     viewportResumeGuardUntil = 0;
     pagedBuildInProgress = false;
+    // Показаны готовые страницы, остальные размечаются в фоне; их общее число пока оценка
+    pagedPagesPartial = false;
+    pagedPagesEstimatedTotal = 0;
+    // Переход по оглавлению или закладке, который ждёт конца фоновой разметки
+    pendingPagedNavigation = null;
     pagedBuildNeedsRefresh = false;
     pagedBuildOwnerJobId = 0;
     pagedBuildSignature = '';
@@ -1047,7 +1052,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             loadingParse: t('reader.loadingParse'),
             loadingPages: t('reader.loadingPages'),
             loadingPagesCompact: t('reader.loadingPagesCompact'),
-            loadingPagesCompacting: t('reader.loadingPagesCompacting'),
             loadingPagesFinalizing: t('reader.loadingPagesFinalizing'),
             loadingPagedPage: t('reader.loadingPagedPage'),
             restoringPage: t('reader.restoringPage'),
@@ -1193,6 +1197,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         this.pagedBuildJobId += 1;
         this.pagedLayoutCache.clear();
         this.pagedPages = [];
+        this.pagedPagesPartial = false;
         this.readerHtml = '';
         this.readerAnnotationHtml = '';
         this.readerSearchText = '';
@@ -1326,6 +1331,8 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             this.bookPreparing = true;
             this.loadingMessage = this.uiText.loadingPages;
             this.pagedPages = [];
+            this.pagedPagesPartial = false;
+            this.pendingPagedNavigation = null;
             {
                 const savedPageIndex = Number(this.progress && this.progress.pageIndex);
                 this.currentPageIndex = (Number.isFinite(savedPageIndex) && savedPageIndex > 0)
@@ -1339,6 +1346,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
                 return;
             if (this.isPagedMode) {
                 let initialBuildCommitted = false;
+                let initialPagesShown = false;
                 const readScrollerViewport = () => {
                     this.scrollerViewportWidth = ((this.$refs && this.$refs.scroller && this.$refs.scroller.clientWidth) || 0);
                     this.scrollerViewportHeight = ((this.$refs && this.$refs.scroller && this.$refs.scroller.clientHeight) || 0);
@@ -1357,21 +1365,38 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
                     )
                         return;
                     readScrollerViewport();
-                    initialBuildCommitted = await this.buildPagedPagesChunked(initialBuildJobId);
+                    // Книга открывается, как только готова её страница (она уже и восстановлена):
+                    // остальные страницы размечаются в фоне, а их окончание доделывает то, что ниже
+                    let showFirstPages = null;
+                    const firstPagesShown = new Promise(resolve => {
+                        showFirstPages = resolve;
+                    });
+                    const initialBuild = this.buildPagedPagesChunked(initialBuildJobId, {onFirstPages: () => showFirstPages(true)});
+                    initialBuildCommitted = await Promise.race([initialBuild, firstPagesShown]);
                     if (
                         loadJobId !== this.readerLoadJobId
                         || initialBuildJobId !== this.pagedBuildJobId
                     )
                         return;
+                    if (this.pagedPagesPartial) {
+                        initialPagesShown = true;
+                        initialBuild.then((committed) => {
+                            if (!committed || loadJobId !== this.readerLoadJobId)
+                                return;
+                            this.captureStableReaderStatus(true);
+                            if (this.bottomClipCalibrationPending)
+                                this.scheduleBottomClipCalibration();
+                        }, () => {});
+                    }
                     if (!initialBuildCommitted)
                         await this.waitForAnimationFrames(2);
                 }
                 if (!initialBuildCommitted)
                     throw new Error(t('reader.pageGeometryDidNot'));
-                if (this.hasReaderProgressPlace(this.progress))
+                if (!initialPagesShown && this.hasReaderProgressPlace(this.progress))
                     this.restorePending = true;
                 this.restoreFromSavedProgress = this.restorePending;
-                if (!this.restorePending)
+                if (!initialPagesShown && !this.restorePending)
                     this.syncPagedProgress(false);
                 if (this.bottomClipCalibrationPending)
                     this.scheduleBottomClipCalibration();

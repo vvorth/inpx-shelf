@@ -201,8 +201,41 @@ async function testReaderFindLastFitMatchesBinarySearch() {
     }
 }
 
+//Книга открывается на готовых страницах, только если оставшиеся страницы не дадут другой ответ поиска
+async function testReaderPartialPagesRestoreOnlyFinalMatch() {
+    const {isSnippetMatchFinal} = require('../client/share/readerPaging');
+    //все совпадения фрагмента в книге из 10 страниц и место, сохранённое на странице preferred
+    const search = (matches, preferred, count) => {
+        let best = -1;
+        let bestDistance = Infinity;
+        for (const index of matches.filter(item => item < count)) {
+            const distance = (preferred >= 0 ? Math.abs(index - preferred) : 0);
+            if (best < 0 || distance < bestDistance) {
+                best = index;
+                bestDistance = distance;
+            }
+        }
+        return {best, bestDistance};
+    };
+    const cases = [[[3], 5], [[1, 6], 5], [[1, 9], 5], [[4, 6], 5], [[2, 8], -1], [[0, 7], 3], [[], 2]];
+    for (const [matches, preferred] of cases) {
+        const final = search(matches, preferred, 10).best;
+        for (let count = 1; count <= 10; count += 1) {
+            const partial = search(matches, preferred, count);
+            if (isSnippetMatchFinal(count, preferred, partial.best, partial.bestDistance))
+                assert.strictEqual(partial.best, final, `matches ${matches} preferred ${preferred} count ${count}`);
+        }
+        if (final >= 0)
+            assert.ok(isSnippetMatchFinal(10, preferred, final, search(matches, preferred, 10).bestDistance));
+    }
+    //место на 5-й странице, фрагмент найден на 1-й: ждём, пока не станет ясно, что на 6-9 его нет ближе
+    assert.strictEqual(isSnippetMatchFinal(6, 5, 1, 4), false);
+    assert.strictEqual(isSnippetMatchFinal(9, 5, 1, 4), true);
+}
+
 module.exports = [
     testReaderFindLastFitMatchesBinarySearch,
+    testReaderPartialPagesRestoreOnlyFinalMatch,
     testReaderOpeningProgress,
     testReaderPagedStageMustMatchSignature,
     testReaderProgressMapIsCapped,

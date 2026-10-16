@@ -527,6 +527,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     navigationRestore.stableReaderReflowAnchor = {textSnippet: 'notes'};
     navigationRestore.reflowPageStartOverride = {pageIndex: 72};
     navigationRestore.pendingReaderAnchorJump = {id: 'reader-book-notes'};
+    navigationRestore.pendingPagedNavigation = () => {};
     navigationRestore.restorePending = true;
     navigationRestore.restoreFromSavedProgress = true;
     navigationRestore.restoreProgressFrame = 0;
@@ -538,6 +539,7 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.strictEqual(navigationRestore.stableReaderReflowAnchor, null);
     assert.strictEqual(navigationRestore.reflowPageStartOverride, null);
     assert.strictEqual(navigationRestore.pendingReaderAnchorJump, null);
+    assert.strictEqual(navigationRestore.pendingPagedNavigation, null);
     assert.strictEqual(navigationRestore.restorePending, false);
     assert.strictEqual(navigationRestore.restoreFromSavedProgress, false);
     assert.strictEqual(navigationRestore.restoreProgressFrame, 0);

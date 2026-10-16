@@ -129,6 +129,11 @@ export default class ReaderNavigation {
             this.currentSectionId = id;
             if (this.isPagedMode) {
                 const pageIndex = this.getPageIndexForSection(id);
+                // Раздел ещё не размечен (остальные страницы размечаются в фоне): переход - после разметки
+                if (pageIndex < 0 && this.pagedPagesPartial) {
+                    this.pendingPagedNavigation = () => this.jumpToContent(id);
+                    return;
+                }
                 this.setCurrentPagedPage((pageIndex >= 0 ? pageIndex : 0), true);
                 return;
             }
@@ -286,6 +291,11 @@ export default class ReaderNavigation {
     }
 
     flushPendingReaderAnchorJump() {
+        if (this.pendingPagedNavigation && !this.pagedPagesPartial && !this.shouldDeferPagedAnchorJump()) {
+            const navigate = this.pendingPagedNavigation;
+            this.pendingPagedNavigation = null;
+            navigate();
+        }
         const pending = this.pendingReaderAnchorJump;
         if (!pending || this.shouldDeferPagedAnchorJump())
             return;

@@ -49,7 +49,19 @@ function findLastFit(fits, low, high, guess = NaN) {
     return best;
 }
 
+//Страница с фрагментом найдена среди первых count готовых страниц и останется ответом, когда разбивка
+//дойдёт до конца: ищется ближайшая к preferredIndex, при равенстве - первая, а любая следующая страница
+//не ближе count - preferredIndex
+function isSnippetMatchFinal(count = 0, preferredIndex = -1, bestIndex = -1, bestDistance = Infinity) {
+    if (!(bestIndex >= 0) || bestIndex >= count)
+        return false;
+    if (!(preferredIndex >= 0) || bestDistance === 0)
+        return true;
+    return count - preferredIndex >= bestDistance;
+}
+
 module.exports = {
     isPagedStageCurrent,
     findLastFit,
+    isSnippetMatchFinal,
 };

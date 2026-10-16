@@ -262,7 +262,7 @@ export default class ReaderProgressSync {
     //Доля прочитанного по тому, что сейчас на экране: место, где читатель был до отметки «прочитано»
     currentViewPercent() {
         if (this.isPagedMode)
-            return (this.totalPagedLogicalPages > 1 ? this.currentPagedPageIndex / (this.totalPagedLogicalPages - 1) : 0);
+            return (this.pagedProgressTotalPages > 1 ? this.currentPagedPageIndex / (this.pagedProgressTotalPages - 1) : 0);
 
         const scroller = this.$refs.scroller;
         const maxScroll = (scroller ? Math.max(0, scroller.scrollHeight - scroller.clientHeight) : 0);

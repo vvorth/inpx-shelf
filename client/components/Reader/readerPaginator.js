@@ -90,6 +90,13 @@ export default class ReaderPaginator {
         return Math.max(1, this.pagedPages.length);
     }
 
+    // Число страниц для доли прочитанного: пока остальные страницы размечаются в фоне - оценка
+    get pagedProgressTotalPages() {
+        if (!this.pagedPagesPartial)
+            return this.totalPagedLogicalPages;
+        return Math.max(this.totalPagedLogicalPages, Math.round(Number(this.pagedPagesEstimatedTotal || 0) || 0));
+    }
+
     getPagedLayoutSignature() {
         if (!this.isPagedMode)
             return '';
@@ -408,7 +415,8 @@ export default class ReaderPaginator {
         const currentPage = this.pagedPages[safeIndex] || null;
         const sectionId = String((currentPage && currentPage.sectionId) || '').trim()
             || (this.contents[0] ? this.contents[0].id : '');
-        const percent = (this.totalPagedLogicalPages > 1 ? safeIndex / (this.totalPagedLogicalPages - 1) : 0);
+        const totalPages = this.pagedProgressTotalPages;
+        const percent = (totalPages > 1 ? safeIndex / (totalPages - 1) : 0);
         const anchor = this.capturePagedReflowAnchor() || {};
         this.rememberStableReaderReflowAnchor(anchor);
         const textSnippet = String(anchor.textSnippet || '').trim();
@@ -552,89 +560,44 @@ export default class ReaderPaginator {
             .filter((item) => String(item || '').trim());
     }
 
-    async compactMobilePagedPagesChunked(pages = [], measureHost = null, measureHtml = null, jobId = 0) {
-        if (!this.isCompactLayout || !this.isPagedMode || !measureHost || !measureHtml || !Array.isArray(pages) || pages.length < 2)
-            return pages;
+    // Уплотнение страниц телефона: в страницу index перетягиваются первые блоки следующей, пока помещаются.
+    // Страница становится окончательной сразу после своего шага, поэтому шаги идут вслед за разбивкой
+    // и готовые страницы можно показать, не дожидаясь конца книги
+    compactPagedPagePair(page, next, measureHost, measureHtml) {
+        if (!page || !next || !Array.isArray(page.units) || !Array.isArray(next.units))
+            return;
 
-        const compacted = pages.map((page) => Object.assign({}, page, {
-            units: this.extractPagedContentUnits(page.html),
-        }));
-        const totalIndexes = Math.max(1, compacted.length - 1);
-        let operationsSinceYield = 0;
-        let compactSliceStartedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
-        const finalizeCompactedPages = () => {
-            this.renderPagedMeasureUnits(measureHtml, []);
-            return compacted
-                .filter((page) => page.units && page.units.length && !this.isBlankPagedPageUnits(page.units))
-                .map((page) => ({
-                    html: this.wrapPagedMeasureHtml(page.units),
-                    sectionId: page.sectionId || '',
-                    anchorIds: this.collectPagedAnchorIdsFromUnits(page.units, page.sectionId || ''),
-                }));
-        };
-
-        const maybeYield = async(index = 0, force = false) => {
-            if (this.pagedBuildNeedsRefresh || (jobId && jobId !== this.pagedBuildJobId))
-                return 'cancelled';
-
-            operationsSinceYield += 1;
-            const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-            const sliceElapsedMs = Math.max(0, now - compactSliceStartedAt);
-            if (!force && operationsSinceYield < 48 && sliceElapsedMs < 12)
-                return '';
-
-            operationsSinceYield = 0;
-            const indexRatio = Math.max(0, index) / totalIndexes;
-            const compactProgress = Math.min(98, Math.max(93, Math.round(93 + indexRatio * 5)));
-            this.pagedBuildStage = 'compacting';
-            this.pagedBuildProgressPercent = compactProgress;
-            this.loadingMessage = `${this.uiText.loadingPagesCompacting.replace('...', '')} ${compactProgress}%`;
-            await this.waitForAnimationFrames(1);
-            compactSliceStartedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-            return (this.pagedBuildNeedsRefresh || (jobId && jobId !== this.pagedBuildJobId)) ? 'cancelled' : '';
-        };
-
-        if (await maybeYield(0, true) === 'cancelled')
-            return null;
-        for (let index = 0; index < compacted.length - 1; index += 1) {
-            const yieldResult = await maybeYield(index);
-            if (yieldResult === 'cancelled')
-                return null;
-
-            const page = compacted[index];
-            const next = compacted[index + 1];
-            if (!page || !next || !Array.isArray(page.units) || !Array.isArray(next.units))
-                continue;
-
-            while (next.units.length) {
-                const candidateUnits = page.units.concat(next.units[0]);
-                this.renderPagedMeasureUnits(measureHtml, candidateUnits);
-                if (this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
-                    const splitUnits = this.splitUnitToFitCurrentPage({html: next.units[0]}, page.units);
-                    if (splitUnits.length > 1) {
-                        const firstSplitUnit = splitUnits[0];
-                        const remainingSplitUnits = splitUnits.slice(1).map((unit) => unit.html).filter(Boolean);
-                        const splitCandidateUnits = page.units.concat(firstSplitUnit.html);
-                        this.renderPagedMeasureUnits(measureHtml, splitCandidateUnits);
-                        if (firstSplitUnit.html && remainingSplitUnits.length && !this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
-                            page.units.push(firstSplitUnit.html);
-                            next.units.splice(0, 1, ...remainingSplitUnits);
-                        }
+        while (next.units.length) {
+            const candidateUnits = page.units.concat(next.units[0]);
+            this.renderPagedMeasureUnits(measureHtml, candidateUnits);
+            if (this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
+                const splitUnits = this.splitUnitToFitCurrentPage({html: next.units[0]}, page.units);
+                if (splitUnits.length > 1) {
+                    const firstSplitUnit = splitUnits[0];
+                    const remainingSplitUnits = splitUnits.slice(1).map((unit) => unit.html).filter(Boolean);
+                    const splitCandidateUnits = page.units.concat(firstSplitUnit.html);
+                    this.renderPagedMeasureUnits(measureHtml, splitCandidateUnits);
+                    if (firstSplitUnit.html && remainingSplitUnits.length && !this.doesPagedMeasureOverflow(measureHost, measureHtml)) {
+                        page.units.push(firstSplitUnit.html);
+                        next.units.splice(0, 1, ...remainingSplitUnits);
                     }
-                    break;
                 }
-
-                page.units.push(next.units.shift());
-                const innerYieldResult = await maybeYield(index);
-                if (innerYieldResult === 'cancelled')
-                    return null;
+                break;
             }
-        }
 
-        if (await maybeYield(totalIndexes, true) === 'cancelled')
+            page.units.push(next.units.shift());
+        }
+    }
+
+    finalizeCompactedPagedPage(page) {
+        if (!page || !page.units || !page.units.length || this.isBlankPagedPageUnits(page.units))
             return null;
-        return finalizeCompactedPages();
+
+        return {
+            html: this.wrapPagedMeasureHtml(page.units),
+            sectionId: page.sectionId || '',
+            anchorIds: this.collectPagedAnchorIdsFromUnits(page.units, page.sectionId || ''),
+        };
     }
 
     collectPagedAnchorIdsFromUnits(units = [], sectionId = '') {
@@ -1504,7 +1467,10 @@ export default class ReaderPaginator {
         return units;
     }
 
-    async buildPagedPagesChunked(jobId = 0) {
+    // options.onFirstPages: разбивку не ждать целиком - как только готова страница, на которой откроется книга,
+    // готовые страницы показываются (pagedPagesPartial), колбэк вызывается, остальное размечается в фоне
+    async buildPagedPagesChunked(jobId = 0, options = {}) {
+        const onFirstPages = (typeof options.onFirstPages === 'function' ? options.onFirstPages : null);
         if (!this.isPagedMode) {
             this.pagedPages = [];
             return false;
@@ -1540,6 +1506,7 @@ export default class ReaderPaginator {
         if (cachedLayout && cachedLayout.type === 'complete' && Array.isArray(cachedLayout.pages) && cachedLayout.pages.length) {
             this.pagedPages = markRaw(cachedLayout.pages);
             this.currentPageIndex = Math.max(0, Math.min(this.pagedPages.length - 1, this.currentPageIndex));
+            this.pagedPagesPartial = false;
             this.pagedLayoutSignature = buildLayoutSignature;
             this.pagedCommittedCalibrationKey = buildCalibrationKey;
             this.pagedCommittedCalibrationGeneration = buildOwnerJobId;
@@ -1568,6 +1535,11 @@ export default class ReaderPaginator {
         const queue = checkpoint ? checkpoint.queue : this.buildPagedUnits().slice();
         const totalUnits = Math.max(1, (checkpoint && checkpoint.totalUnits) || queue.length || 1);
         const pages = checkpoint ? checkpoint.pages : [];
+        // Телефон: страницы разбивки уплотняются по парам, страница index готова после своего шага
+        const compactPages = this.isCompactLayout;
+        const compacted = (checkpoint && checkpoint.compacted) || [];
+        let compactIndex = (checkpoint && checkpoint.compactIndex) || 0;
+        const compactedPages = (checkpoint && checkpoint.compactedPages) || [];
         let currentUnits = checkpoint ? checkpoint.currentUnits : [];
         let activeSectionId = checkpoint ? checkpoint.activeSectionId : '';
         let currentPageSectionId = checkpoint ? checkpoint.currentPageSectionId : '';
@@ -1627,9 +1599,54 @@ export default class ReaderPaginator {
             currentUnits = [];
             currentPageSectionId = activeSectionId || '';
             currentEstimatedLines = 0;
+            advanceCompactedPages(false);
             applyUnits([]);
         };
-        // Кадр отдаём по времени (12 мс работы), как и при уплотнении страниц: раньше - каждые 18 блоков,
+        const advanceCompactedPages = (done = false) => {
+            if (!compactPages)
+                return;
+            while (compacted.length < pages.length) {
+                const page = pages[compacted.length];
+                compacted.push(Object.assign({}, page, {units: this.extractPagedContentUnits(page.html)}));
+            }
+            for (; compactIndex < compacted.length - (done ? 0 : 1); compactIndex += 1) {
+                if (compactIndex < compacted.length - 1)
+                    this.compactPagedPagePair(compacted[compactIndex], compacted[compactIndex + 1], measureHost, measureHtml);
+                const page = this.finalizeCompactedPagedPage(compacted[compactIndex]);
+                if (page)
+                    compactedPages.push(page);
+                // Блоки готовой страницы больше не нужны: в памяти остаётся её html
+                compacted[compactIndex] = null;
+            }
+        };
+        // Показ готовых страниц до конца разбивки: первый раз - когда среди них есть страница открытия,
+        // дальше - не чаще раза в 300 мс. Общее число страниц пока оценка по доле разметки книги в готовых
+        const readyPages = () => (compactPages ? compactedPages : pages);
+        const restoreScan = {};
+        const pageWrapperLength = this.wrapPagedMeasureHtml([]).length;
+        const totalUnitsLength = (onFirstPages ? queue.reduce((sum, unit) => sum + String(unit.html || '').length, 0) : 0);
+        let readyLength = 0;
+        let readyLengthCount = 0;
+        let shownPagesCount = 0;
+        let shownPagesAt = 0;
+        const showReadyPages = () => {
+            const ready = readyPages();
+            if (ready.length <= shownPagesCount || now() - shownPagesAt < 300)
+                return;
+            shownPagesAt = now();
+            for (; readyLengthCount < ready.length; readyLengthCount += 1)
+                readyLength += Math.max(0, String(ready[readyLengthCount].html || '').length - pageWrapperLength);
+            this.pagedPagesEstimatedTotal = Math.max(ready.length, Math.round(ready.length * totalUnitsLength / Math.max(1, readyLength)));
+            if (!shownPagesCount) {
+                if (!this.showFirstPartialPagedPages(ready, restoreScan))
+                    return;
+                onFirstPages();
+            } else {
+                this.pagedPages = markRaw(ready.slice());
+            }
+            shownPagesCount = ready.length;
+        };
+        // Кадр отдаём по времени (12 мс работы): раньше - каждые 18 блоков,
         // и на быстрых блоках ожидание кадров занимало две трети разбивки
         const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
         let sliceStartedAt = now();
@@ -1639,11 +1656,21 @@ export default class ReaderPaginator {
             if (jobId && jobId !== this.pagedBuildJobId)
                 return;
             const dynamicTotalUnits = Math.max(totalUnits, queue.length || 1, index + 1);
+            if (onFirstPages)
+                showReadyPages();
             const percent = Math.min(92, Math.max(1, Math.round((index / dynamicTotalUnits) * 92)));
             buildProgressPercent = Math.max(buildProgressPercent, percent);
             this.pagedBuildProgressPercent = buildProgressPercent;
             this.loadingMessage = `${this.uiText.loadingPages} ${buildProgressPercent}%`;
             await this.waitForAnimationFrames(1);
+            // Читалку увели с экрана (keep-alive): лист вне документа и замеры нулевые - ждём возвращения,
+            // иначе вся остальная книга легла бы на одну страницу
+            while (
+                !readerPaging.isPagedStageCurrent(this.getPagedStageRect().height, this.pageMinHeight)
+                && !this.pagedBuildNeedsRefresh
+                && !(jobId && jobId !== this.pagedBuildJobId)
+            )
+                await this.waitForAnimationFrames(1);
             sliceStartedAt = now();
         };
         const storePartialLayout = (nextIndex = 0) => {
@@ -1660,6 +1687,9 @@ export default class ReaderPaginator {
                 currentEstimatedLines,
                 buildProgressPercent,
                 nextIndex: Math.max(0, Math.min(queue.length, nextIndex)),
+                compacted,
+                compactIndex,
+                compactedPages,
                 fallbackRoots: Array.from(fallbackRoots.entries()),
                 stats: Object.assign({}, stats, {status: 'paused'}),
             });
@@ -1802,23 +1832,18 @@ export default class ReaderPaginator {
                 return false;
             }
             finalizePage();
-            let finalPages = (pages.length ? pages : [{
+            advanceCompactedPages(true);
+            applyUnits([]);
+            // Одна страница не уплотняется, книга без страниц - одна страница с исходным текстом
+            const finalPages = (compactPages && pages.length >= 2) ? compactedPages : (pages.length ? pages : [{
                 html: this.readerHtml || '',
                 sectionId: '',
                 anchorIds: this.collectPagedAnchorIdsFromUnits([this.readerHtml || ''], ''),
             }]);
-            if (this.isCompactLayout) {
-                finalPages = await this.compactMobilePagedPagesChunked(finalPages, measureHost, measureHtml, jobId);
-                if (!finalPages) {
-                    storePartialLayout(queue.length);
-                    return false;
-                }
-            } else {
-                this.pagedBuildStage = 'finalizing';
-                this.pagedBuildProgressPercent = 98;
-                this.loadingMessage = `${this.uiText.loadingPagesFinalizing.replace('...', '')} 98%`;
-                await this.waitForAnimationFrames(1);
-            }
+            this.pagedBuildStage = 'finalizing';
+            this.pagedBuildProgressPercent = 98;
+            this.loadingMessage = `${this.uiText.loadingPagesFinalizing.replace('...', '')} 98%`;
+            await this.waitForAnimationFrames(1);
             if (jobId && jobId !== this.pagedBuildJobId) {
                 storePartialLayout(queue.length);
                 return false;
@@ -1850,6 +1875,11 @@ export default class ReaderPaginator {
             }
             this.pagedPages = markRaw(finalPages);
             this.currentPageIndex = Math.max(0, Math.min(this.pagedPages.length - 1, this.currentPageIndex));
+            if (this.pagedPagesPartial) {
+                // Номера готовых страниц не менялись: пересчитываем только долю прочитанного по точному числу
+                this.pagedPagesPartial = false;
+                this.syncPagedProgress(false);
+            }
             this.pagedLayoutSignature = buildLayoutSignature;
             this.pagedCommittedCalibrationKey = buildCalibrationKey;
             this.pagedCommittedCalibrationGeneration = buildOwnerJobId;
@@ -1876,7 +1906,6 @@ export default class ReaderPaginator {
                 this.pagedBuildStage = 'idle';
                 if (
                     String(this.loadingMessage || '').startsWith(this.uiText.loadingPages.replace('...', ''))
-                    || String(this.loadingMessage || '').startsWith(this.uiText.loadingPagesCompacting.replace('...', ''))
                     || String(this.loadingMessage || '').startsWith(this.uiText.loadingPagesFinalizing.replace('...', ''))
                 )
                     this.loadingMessage = '';
@@ -1976,40 +2005,85 @@ export default class ReaderPaginator {
     }
 
     findPagedPageIndexByTextSnippet(textSnippet = '', preferredIndex = -1) {
-        const safeSnippet = readerTextAnchors.normalizeReaderSearchText(textSnippet).toLowerCase();
-        if (!safeSnippet || !this.pagedPages.length)
+        if (!this.pagedPages.length)
             return -1;
+        return this.scanPagedPagesForSnippet(this.pagedPages, textSnippet, preferredIndex).bestIndex;
+    }
 
-        const needles = [
-            safeSnippet.slice(0, 180),
-            safeSnippet.slice(0, 120),
-            safeSnippet.slice(0, 80),
-            safeSnippet.slice(0, 48),
-            safeSnippet.slice(0, 24),
-        ].filter((value) => value.length >= 12);
-        if (!needles.length)
-            return -1;
+    // Страница с фрагментом, ближайшая к preferredIndex (при равенстве - первая). scan хранит, докуда
+    // просмотрено: при разбивке по частям новые страницы досматриваются, а не ищутся заново
+    scanPagedPagesForSnippet(pages = [], textSnippet = '', preferredIndex = -1, scan = {}) {
+        if (scan.bestIndex === undefined) {
+            const safeSnippet = readerTextAnchors.normalizeReaderSearchText(textSnippet).toLowerCase();
+            scan.needles = (safeSnippet ? [
+                safeSnippet.slice(0, 180),
+                safeSnippet.slice(0, 120),
+                safeSnippet.slice(0, 80),
+                safeSnippet.slice(0, 48),
+                safeSnippet.slice(0, 24),
+            ] : []).filter((value) => value.length >= 12);
+            scan.next = 0;
+            scan.bestIndex = -1;
+            scan.bestDistance = Infinity;
+            scan.done = !scan.needles.length;
+        }
 
-        let bestIndex = -1;
-        let bestDistance = Infinity;
-        for (let index = 0; index < this.pagedPages.length; index += 1) {
-            const page = this.pagedPages[index] || {};
+        for (let index = scan.next; !scan.done && index < pages.length; index += 1) {
+            scan.next = index + 1;
+            const page = pages[index] || {};
             const pageText = readerTextAnchors.getHtmlReaderSearchText(page.html || '');
             if (!pageText)
                 continue;
-            if (!needles.some((needle) => pageText.includes(needle)))
+            if (!scan.needles.some((needle) => pageText.includes(needle)))
                 continue;
 
             const distance = (preferredIndex >= 0 ? Math.abs(index - preferredIndex) : 0);
-            if (bestIndex < 0 || distance < bestDistance) {
-                bestIndex = index;
-                bestDistance = distance;
+            if (scan.bestIndex < 0 || distance < scan.bestDistance) {
+                scan.bestIndex = index;
+                scan.bestDistance = distance;
                 if (!distance)
-                    break;
+                    scan.done = true;
             }
         }
 
-        return bestIndex;
+        return scan;
+    }
+
+    // Первый показ готовых страниц: страница открытия должна быть среди них и не измениться от остальных.
+    // Открытие по фрагменту текста или с начала книги; остальные способы (доля, раздел) ждут конца разбивки
+    showFirstPartialPagedPages(pages = [], scan = {}) {
+        const progress = this.progress || {};
+        const textSnippet = String(progress.textSnippet || '').trim();
+        const textOffset = Number(progress.textOffset);
+        let pageIndex = -1;
+        if (!this.hasReaderProgressPlace(progress)) {
+            pageIndex = (this.currentPageIndex < pages.length - 1 ? this.currentPageIndex : -1);
+        } else if (textSnippet && !textSnippet.startsWith('image:')) {
+            const preferredIndex = Number(progress.pageIndex);
+            const preferred = (Number.isFinite(preferredIndex) ? preferredIndex : -1);
+            this.scanPagedPagesForSnippet(pages, textSnippet, preferred, scan);
+            pageIndex = (readerPaging.isSnippetMatchFinal(pages.length, preferred, scan.bestIndex, scan.bestDistance) ? scan.bestIndex : -1);
+        } else if (!textSnippet && Number.isFinite(textOffset) && textOffset >= 0) {
+            const documentText = this.getReaderDocumentSearchText();
+            this.scanPagedPagesForSnippet(pages, documentText.slice(textOffset, textOffset + 80), -1, scan);
+            pageIndex = scan.bestIndex;
+        }
+        if (pageIndex < 0)
+            return false;
+
+        // Это и есть восстановление места (restoreProgress): после разбивки повторять его не нужно
+        this.pagedPages = markRaw(pages.slice());
+        this.pagedPagesPartial = true;
+        this.restorePending = false;
+        this.restoreFromSavedProgress = false;
+        if (this.hasReaderProgressPlace(progress)) {
+            this.pendingReflowAnchor = null;
+            this.setCurrentPagedRestorePage(pageIndex, {textSnippet, textOffset});
+        } else {
+            this.currentPageIndex = pageIndex;
+            this.syncPagedProgress(false);
+        }
+        return true;
     }
 
     findPagedPageIndexByReaderTextAnchor(textSnippet = '', textOffset = -1, preferredIndex = -1) {
