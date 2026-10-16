@@ -1,6 +1,6 @@
 # Plan: library on S3 (optional backend)
 
-Written 2026-10-16. Status: not started.
+Written 2026-10-16. Status: step 0 (spike) done, step 1 next.
 
 **Goal.** A library source whose path is an S3 URI (`s3://bucket/prefix`) is read straight from S3:
 the INPX, the book archives, and the library's asset folders (covers, illustrations, author info, reviews).
@@ -134,6 +134,53 @@ service to `minimumHealthyPercent: 0`, `maximumPercent: 100`: never two tasks at
 | 7 | Integration test against MinIO in Docker + a measurement on the real Flibusta library (rebuild time, cold book latency) | 0.5 day | Numbers recorded in `docs/research/` |
 
 Total: about 4–5 days. Delete this plan once it is implemented (`docs/AGENTS.md`).
+
+## Step 0 results (2026-10-16)
+
+The bridge works. 7-Zip lists and extracts zip, solid 7z and INPX from S3, and the bytes match the
+local files. Test server: SeaweedFS S3 gateway in Docker, because Docker Hub no longer serves the MinIO
+image and quay.io requires a login:
+
+```bash
+docker run -d --name s3spike -p 8333:8333 chrislusf/seaweedfs:3.80 server -s3 -dir=/data
+# client: endpoint http://localhost:8333, forcePathStyle: true, region us-east-1, any key/secret
+```
+
+Measured with 1 MiB blocks, local server, so latency is not representative:
+
+| Operation | GETs | Bytes |
+|---|---|---|
+| zip (43 MB, 2000 entries): list, cold | 3 (start, tail, central directory) | 2.1 MiB |
+| zip: extract one book after the listing | 1 | 1 MiB |
+| zip: a second book in a cached block | 0 | 0 |
+| solid 7z (12 MB, one solid block): list | 2 | 1 MiB |
+| solid 7z: extract one book | 11 | 11 MiB (the whole block, as expected) |
+| INPX (38 MB): list + extract one `.inp` | 2 | 1.2 MiB |
+
+How it is built (port this into `SevenZipEngine` in step 2):
+
+- **Node:** `FS.createFile(dir, name, {}, true, false)`, then set `node.contents = new Uint8Array(0)`
+  so MEMFS doesn't choke, define a `usedBytes` getter that returns the object size (MEMFS `getattr`
+  and `llseek` read it), and replace `stream_ops.read`. `write` throws `EROFS(63)` and `mmap` throws
+  `ENODEV(43)`.
+- **Buffer type:** the `buffer` that `read` receives is `HEAP8` (an `Int8Array`). Copy through
+  `new Uint8Array(buffer.buffer, buffer.byteOffset)` so the bytes go across unchanged and fast.
+- **Bridge:**
+  1. Use a `MessageChannel` plus a 4-byte `SharedArrayBuffer`.
+  2. The archive thread posts the request, then calls `Atomics.wait(sig, 0, 0, 60000)`.
+  3. The fetcher replies with `port.postMessage` (the byte array is transferred), then calls
+     `Atomics.store` + `Atomics.notify`.
+  4. The archive thread takes the reply with `receiveMessageOnPort`, which needs no event loop.
+  5. The fetcher worker is created once per archive thread and `unref()`'d.
+- **First request:** HEAD returns size + ETag. The ETag goes into the block-cache key.
+
+Findings for step 2:
+
+- **Block size:** with 1 MiB blocks, every cold book costs at least 1 MiB of transfer. Try 256 KiB:
+  more GETs, less transfer. Measure on real S3, where each GET costs about 20–50 ms.
+- **Errors:** a HEAD error has no body, so the SDK reports `NotFound: UnknownError`. Map
+  `$metadata.httpStatusCode` 404/403 to `not found` / `access denied` + the URI.
+- **Path form:** `s3:/bucket/key` (after `path.join`) and `s3://bucket/key` both parse.
 
 ## Decisions (2026-10-16)
 
