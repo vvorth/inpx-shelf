@@ -2515,6 +2515,7 @@ const tests = [
     ...require('./kobo-sync-tests'),
     ...require('./kosync-tests'),
     ...require('./inpx-parser-tests'),
+    ...require('./library-fs-tests'),
     ...require('./xml-parser-tests'),
     ...require('./client-tests'),
     ...require('./web-worker-tests'),

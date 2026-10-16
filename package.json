@@ -62,6 +62,7 @@
     "webpack-merge": "^5.10.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
     "@quasar/extras": "^1.16.9",
     "7z-wasm": "^1.2.0",
     "axios": "^1.20.0",

@@ -1,6 +1,6 @@
 # Plan: library on S3 (optional backend)
 
-Written 2026-10-16. Status: step 0 (spike) done, step 1 next.
+Written 2026-10-16. Status: steps 0–1 done, step 2 next.
 
 **Goal.** A library source whose path is an S3 URI (`s3://bucket/prefix`) is read straight from S3:
 the INPX, the book archives, and the library's asset folders (covers, illustrations, author info, reviews).
@@ -16,28 +16,29 @@ are out. `dataDir` sits on EFS; caches sit on ephemeral storage.
 
 ## Design
 
-### 1. Backend selection: `server/core/LibraryFs.js`
+### 1. Backend selection: `server/core/LibraryFs.js` + `server/core/S3Fs.js` (done)
 
 One module with the file operations the library code uses today. A path that starts with `s3:/` goes
 to S3; any other path goes to `fs-extra`, unchanged.
 
 | Function | Local | S3 |
 |---|---|---|
-| `pathExists(p)` | `fs.pathExists` | `HeadObject`, falling back to `ListObjectsV2(prefix=p/, MaxKeys=1)` for a "directory" |
+| `pathExists(p)` | `fs.pathExists` | `stat` succeeds |
 | `readdir(p, {withFileTypes})` | `fs.readdir` | `ListObjectsV2(prefix=p/, delimiter=/)`, paginated; `CommonPrefixes` → dirs |
-| `stat(p)` | `fs.stat` | `HeadObject` → `{size, mtimeMs, etag, isDirectory()}` |
+| `stat(p)` | `fs.stat` | entry in the parent's cached listing → `{size, mtimeMs, etag, isDirectory()}`: one LIST per folder, no HEAD per file |
 | `readFile(p)` | `fs.readFile` | `GetObject` (small files only: reviews, author info) |
 | `readRange(p, offset, length)` | `fs.promises.open` + `read` | `GetObject` with `Range` |
 | `copyToLocal(p, out)` | `fs.copy` | stream `GetObject` to `out` (loose book files not in an archive) |
-| `contentHash(p)` | sha256 of the file (today's behaviour) | `etag + ':' + size` from `HeadObject` |
+| `contentHash(p)` | sha256 of the file (today's behaviour) | `etag + ':' + size` from the listing |
 
 - Listings and HEAD results are cached in memory. The library is read-only, so the cache is dropped
-  only by the periodic INPX check (`WebWorker.periodicCheckInpx`) or by a restart.
+  only by the periodic INPX check (`WebWorker.periodicCheckInpx` → `libraryFs.clearCache()`, step 3) or by a restart.
 - **Path pitfall:** `path.join('s3://b/x', 'y')` returns `s3:/b/x/y`. `LibraryFs` must accept both
-  `s3://` and `s3:/`. `path.resolve` on an S3 path is wrong: guard `LibraryAssets.js:701`.
+  `s3://` and `s3:/`. Library paths must be joined as strings, never with `path.join`/`path.resolve`.
 - **Client:** `@aws-sdk/client-s3`, using the default credential chain (Fargate task role).
   Endpoint and region come from the standard env vars (`AWS_REGION`, `AWS_ENDPOINT_URL_S3`).
-  One config flag, `s3.forcePathStyle`, covers MinIO and R2.
+  Path-style addressing (`endpoint/bucket/key`) turns on by itself when a custom endpoint is set
+  (`AWS_ENDPOINT_URL_S3` / `AWS_ENDPOINT_URL`): self-hosted servers need it, AWS doesn't. No setting.
 - Check that `pkg` bundles the SDK (`npm run build:linux`). The SDK is loaded lazily, only when an S3
   path is configured.
 
@@ -83,19 +84,19 @@ Each item is a file to change:
 2. `LibraryAssets.js`: `extractBook`, `resolveLibraryArchivePath` (folder probing → many LIST calls,
    cached), `resolveArchiveNameInDir`, `resolveExistingPath`, `resolveLibraryAssetDir(s)`,
    `getBookAssetArchives`, `buildAuthorInfoIndex`.
-3. `LibraryAssets.libraryToolDirs`: `bin/` inside the library holds executables. These can't run from
-   S3, so skip this lookup for S3 sources. Tools come from the container image.
-4. `LibraryReviews.js`: `snapshot` (`readdir` + `stat` mtime for the signature).
-5. `InpxHashCreator.js`, `InpxParser.js`, `ZipReader.js`, `archive/SevenZipEngine.js`.
-6. `AdminService.js`: library check (`findFilesByExt`, `countArchives`, `walkFiles`, `pathExists`).
-7. `static.js:322` `reader-lab-source`: a debug route; return 404 for S3.
+3. `LibraryReviews.js`: `snapshot` (`readdir` + `stat` mtime for the signature).
+4. `InpxHashCreator.js`, `InpxParser.js`, `ZipReader.js`, `archive/SevenZipEngine.js`.
+5. `AdminService.js`: library check (`findFilesByExt`, `countArchives`, `walkFiles`, `pathExists`).
+6. `static.js` `reader-lab-source`: `pathExists` + `sendFile` → `libraryFs.readFile` + `res.send`, so the sample works on both backends.
 
 Find any others with `grep -rn "libDir\|sourceLibDir" server/core server/static.js`.
 
 ### 5. Storage split: EFS vs ephemeral
 
-Add one config option, `cacheDir` (default: `dataDir`, so existing installs don't change). Move these
-under it:
+Make the existing `CACHE_DIR` work. README and `DOCKERHUB.md` document it ("prepared book/conversion
+cache path"), but the server never reads it: `docker-entrypoint.sh` only derives the data dir from it
+and sets its owner. Wire it to a `cacheDir` config value (default: `dataDir`, so existing installs don't
+change) and move these under it:
 
 | Item | Today | Where on Fargate | Why |
 |---|---|---|---|
@@ -129,7 +130,7 @@ service to `minimumHealthyPercent: 0`, `maximumPercent: 100`: never two tasks at
 | 2 | Archive engine on S3 (from the spike), block cache, `ZipReader.open` | 1 day | A book opens from an S3 library |
 | 3 | INPX: `contentHash`, parse via S3, `get-inpx-file` | 2–3 h | A rebuild runs from S3; the periodic check costs one HEAD |
 | 4 | Switch the callers in §4 | 0.5–1 day | Covers, illustrations, author info, reviews and the admin library check work on S3 |
-| 5 | `cacheDir` option | 0.5 day | `library.sqlite`, `public-files` and `tmp` follow `cacheDir` |
+| 5 | `CACHE_DIR` / `cacheDir` actually used | 0.5 day | `library.sqlite`, `public-files` and `tmp` follow `cacheDir` |
 | 6 | Docs: `docs/config.md` (S3 paths, `cacheDir`), `docs/docker.md` Fargate section (IAM `s3:GetObject` + `s3:ListBucket`, EFS for `dataDir`, deployment percentages), both READMEs if a new doc appears | 2–3 h | — |
 | 7 | Integration test against MinIO in Docker + a measurement on the real Flibusta library (rebuild time, cold book latency) | 0.5 day | Numbers recorded in `docs/research/` |
 
@@ -184,6 +185,10 @@ Findings for step 2:
 
 ## Decisions (2026-10-16)
 
+- **Library `bin/` tool lookup removed** on `dev` (`403918a`). The Docker image ships `djxl` and `dwebp`.
+  The same commit dropped `path.resolve` from the reviews cache signature. Neither needs an S3 case now.
+- **One S3 reader:** `S3Fs` holds all S3 code. `LibraryFs` calls it directly; the archive fetcher worker
+  calls the same `S3Fs.head`/`readRange`, and `S3File` only adapts the bytes for 7-Zip.
 - **Logs:** CloudWatch collects stdout, which is enough. `logDir` is already configurable; point it at
   ephemeral storage on Fargate. `cacheDir` does not include logs.
 - **Bucket layout:** each path is resolved on its own. Every source's `libDir` and every source's
