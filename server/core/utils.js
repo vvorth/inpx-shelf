@@ -35,6 +35,23 @@ async function findFiles(callback, dir, recursive = true) {
     }
 }
 
+//Переносит names из fromDir в toDir; если в toDir уже есть такой - старый удаляется (для кешей)
+async function moveIntoDir(fromDir, toDir, names) {
+    if (path.resolve(fromDir) === path.resolve(toDir))
+        return;
+    await fs.ensureDir(toDir);
+    for (const name of names) {
+        const from = path.join(fromDir, name);
+        if (!await fs.pathExists(from))
+            continue;
+        const to = path.join(toDir, name);
+        if (await fs.pathExists(to))
+            await fs.remove(from);
+        else
+            await fs.move(from, to);
+    }
+}
+
 async function touchFile(filename) {
     await fs.utimes(filename, Date.now()/1000, Date.now()/1000);
 }
@@ -205,6 +222,7 @@ module.exports = {
     processLoop,
     versionText,
     findFiles,
+    moveIntoDir,
     touchFile,
     hasProp,
     freeMemory,

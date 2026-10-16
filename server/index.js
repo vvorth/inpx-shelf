@@ -114,13 +114,17 @@ async function init() {
     // Node 24's fs.watch can abort the process for paths containing RUNNER~1 etc.
     if (process.platform === 'win32')
         config.dataDir = await require('util').promisify(require('fs').realpath.native)(config.dataDir);
-    config.tempDir = config.tempDir || `${config.dataDir}/tmp`;
+    //кеши (поисковая БД, книги, обложки, tmp) можно держать отдельно от данных пользователей, например на временном диске
+    config.cacheDir = process.env.CACHE_DIR || config.cacheDir || config.dataDir;
+    //прежние версии хранили кеши в каталоге данных: переносим, чтобы не пересобирать БД и не оставлять гигабайты мусора
+    await utils.moveIntoDir(config.dataDir, config.cacheDir, ['library.sqlite', 'public-files']);
+    config.tempDir = config.tempDir || `${config.cacheDir}/tmp`;
     if (config.tempDir === '${OS}')
         config.tempDir = `${os.tmpdir()}/${config.name}`
 
     config.logDir = config.logDir || `${config.dataDir}/log`;    
     config.publicDir = `${config.dataDir}/public`;
-    config.publicFilesDir = `${config.dataDir}/public-files`;
+    config.publicFilesDir = `${config.cacheDir}/public-files`;
     config.rootPathStatic = config.server.root || '';
     config.bookPathStatic = `${config.rootPathStatic}/book`;
     config.bookDir = `${config.publicFilesDir}/book`;

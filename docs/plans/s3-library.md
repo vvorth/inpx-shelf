@@ -1,6 +1,6 @@
 # Plan: library on S3 (optional backend)
 
-Written 2026-10-16. Status: steps 0–4 done, step 5 next.
+Written 2026-10-16. Status: steps 0–5 done, step 6 next.
 
 **Goal.** A library source whose path is an S3 URI (`s3://bucket/prefix`) is read straight from S3:
 the INPX, the book archives, and the library's asset folders (covers, illustrations, author info, reviews).
@@ -223,6 +223,15 @@ process and uses an in-process HTTP server as S3, with the real SDK.
 - `s3-archive-tests.js` now serves ListObjectsV2 and covers: a book whose INPX folder says `.zip` but the
   archive is `books/*.7z`, a cover from `covers/`, reviews from `etc/reviews`, the admin source check.
   Author info (`etc/authors`) uses the same calls but has no S3 test.
+
+## Step 5 results (2026-10-16)
+
+- `CACHE_DIR` (env only) → `config.cacheDir`, default `dataDir`. Under it: `library.sqlite`, `public-files`
+  (book + cover cache) and the default `tmp`. Not in `propsToSave`.
+- On start, `utils.moveIntoDir` moves `library.sqlite` and `public-files` from `dataDir` into `cacheDir`
+  (removes the old copy if the new one exists): every Docker user already had `CACHE_DIR` set from the
+  README/compose example, so without the move they would rebuild the DB and leave GBs of orphaned cache.
+- Checked with a real start: caches land in `CACHE_DIR`, user data stays in `dataDir`.
 
 ## Decisions (2026-10-16)
 
