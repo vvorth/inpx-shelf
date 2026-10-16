@@ -632,8 +632,6 @@ async function testReaderHomeFieldsIgnoreGlobalDarkTheme() {
         readerSource,
         /\.reader-page \.reader-home-search :deep\(\.q-field__control\),\s*\.reader-page \.reader-home-sort :deep\(\.q-field__control\) \{[\s\S]{0,180}background: var\(--reader-surface\);/
     );
-    assert.match(readerSource, /\.reader-toolbar \{\s*text-shadow: none !important;/);
-    assert.match(readerSource, /\.reader-home \{\s*text-shadow: none !important;/);
 }
 
 async function testReaderImageDataUrlsAreValidated() {

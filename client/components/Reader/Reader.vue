@@ -2394,10 +2394,6 @@ export default vueComponent(Reader);
     box-shadow: 0 24px 56px rgba(0, 0, 0, 0.26);
 }
 
-.reader-home {
-    text-shadow: none !important;
-}
-
 .reader-dialog--contents {
     overflow: hidden;
 }

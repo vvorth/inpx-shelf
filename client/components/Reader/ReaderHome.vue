@@ -578,11 +578,6 @@ export default vueComponent(ReaderHome);
     color: var(--reader-accent);
 }
 
-.reader-toolbar,
-.reader-home {
-    text-shadow: none !important;
-}
-
 .reader-dialog-link.is-active {
     background: var(--reader-accent-soft);
     color: var(--reader-accent);

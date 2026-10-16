@@ -339,10 +339,6 @@ export default vueComponent(ReaderToolbar);
     color: var(--reader-muted);
 }
 
-.reader-toolbar {
-    text-shadow: none !important;
-}
-
 @media (max-width: 1023.98px) {
     .reader-back-btn--note-return {
         min-width: 42px;
