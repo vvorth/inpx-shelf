@@ -18,6 +18,7 @@ const asyncExit = new (require('./AsyncExit'))();
 const appLogger = new (require('./AppLogger'))();//singleton
 const log = appLogger.log;
 const utils = require('./utils');
+const libraryFs = require('./LibraryFs');
 const genreTree = require('./genres');
 const Fb2Helper = require('./fb2/Fb2Helper');
 const i18n = require('./i18n');
@@ -1596,7 +1597,7 @@ class WebWorker {
         }
 
         if (data === null)
-            data = await fs.readFile(this.config.inpxFile, 'base64');
+            data = await libraryFs.readFile(this.config.inpxFile, 'base64');
 
         return {data};
     }
@@ -1639,6 +1640,8 @@ class WebWorker {
                         await this.remoteLib.downloadInpxFile();
                     }
 
+                    //библиотеку в S3 могли обновить: листинги с ETag перечитываются
+                    libraryFs.clearCache();
                     const newInpxHash = await this.inpxHashCreator.getHash();
 
                     const dbConfig = await this.dbConfig();

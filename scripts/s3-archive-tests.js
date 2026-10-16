@@ -112,6 +112,15 @@ function randomText(seed, size) {
         //ошибка S3 посреди чтения доходит до вызывающего, а не «архив повреждён»
         await assert.rejects(new ZipReader().open('s3://lib/flibusta/broken.zip'), /S3: s3:\/\/lib\/flibusta\/broken\.zip: InternalError/);
 
+        //импорт INPX прямо из S3
+        const row = ['Булгаков,Михаил,Афанасьевич:', 'prose_classic:', 'Мастер и Маргарита', '', '', '7', '1000', '7', '0', 'fb2', '2020-01-01', 'ru', '', ''].join('\x04');
+        await fs.ensureDir(path.join(dir, 'lib/inpx'));
+        await writeZip(path.join(dir, 'lib/inpx/lib.inpx'), {'collection.info': 'Test', 'fb2-000001.inp': `${row}\r\n`});
+        const InpxParser = require('../server/core/InpxParser');
+        const parsed = [];
+        await new InpxParser().parse('s3://lib/inpx/lib.inpx', null, async(chunk) => { parsed.push(...chunk); });
+        assert.deepStrictEqual(parsed.map(book => [book.title, book.folder]), [['Мастер и Маргарита', 'fb2-000001.zip']]);
+
         console.log('s3-archive-tests: ok');
     } finally {
         server.close();

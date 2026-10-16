@@ -185,4 +185,49 @@ async function testLocalAndS3PathsMix() {
     }
 }
 
-module.exports = [testS3PathForms, testS3ListingStatAndCache, testS3ReadsAndContentHash, testLocalAndS3PathsMix];
+function testLibraryFsJoin() {
+    assert.strictEqual(libraryFs.join('s3://lib/flibusta/', 'covers', '1.zip'), 's3://lib/flibusta/covers/1.zip');
+    assert.strictEqual(libraryFs.join('/library', 'covers'), path.join('/library', 'covers'));
+}
+
+//Источники и хеш INPX в S3: пути не портятся path.resolve, единственный INPX находится, замена INPX видна после clearCache
+async function testLibrarySourcesAndInpxHashOnS3() {
+    const objects = library();
+    useFakeS3(objects);
+    const {resolveLibrarySources} = require('../server/core/LibrarySources');
+    const InpxHashCreator = require('../server/core/InpxHashCreator');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'library-fs-'));
+    try {
+        const config = {
+            dbVersion: 'test',
+            inpxFilterFile: path.join(dir, 'filter.json'),
+            librarySources: [
+                {name: 'Flibusta', inpx: 's3://other/inpx/lib.inpx', libDir: 's3://lib/flibusta'},
+                {name: 'Found', libDir: 's3://other/inpx/'},
+                {name: 'Local', inpx: path.join(dir, 'local.inpx'), libDir: 's3://lib/flibusta'},
+            ],
+        };
+        await fs.writeFile(path.join(dir, 'local.inpx'), 'local');
+        const sources = await resolveLibrarySources(config);
+        assert.deepStrictEqual(sources.map(s => [s.inpx, s.libDir]), [
+            ['s3://other/inpx/lib.inpx', 's3://lib/flibusta'],
+            ['s3://other/inpx/lib.inpx', 's3://other/inpx'],
+            [path.join(dir, 'local.inpx'), 's3://lib/flibusta'],
+        ]);
+        assert.strictEqual(config.inpxFile, 's3://other/inpx/lib.inpx');
+        await assert.rejects(resolveLibrarySources({librarySources: [{libDir: 's3://lib/missing'}]}), /not exists/);
+
+        const hasher = new InpxHashCreator(config);
+        const hash = await hasher.getHash();
+        assert.strictEqual(await hasher.getInpxFileHash(), crypto.createHash('sha256').update('inpx-data').digest('hex'));
+        objects.other['inpx/lib.inpx'] = Buffer.from('changed');
+        assert.strictEqual(await hasher.getHash(), hash, 'cached until clearCache');
+        libraryFs.clearCache();
+        assert.notStrictEqual(await hasher.getHash(), hash);
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
+module.exports = [testS3PathForms, testS3ListingStatAndCache, testS3ReadsAndContentHash, testLocalAndS3PathsMix,
+    testLibraryFsJoin, testLibrarySourcesAndInpxHashOnS3];

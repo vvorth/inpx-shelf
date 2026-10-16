@@ -1,6 +1,6 @@
 # Plan: library on S3 (optional backend)
 
-Written 2026-10-16. Status: steps 0–2 done, step 3 next.
+Written 2026-10-16. Status: steps 0–3 done, step 4 next.
 
 **Goal.** A library source whose path is an S3 URI (`s3://bucket/prefix`) is read straight from S3:
 the INPX, the book archives, and the library's asset folders (covers, illustrations, author info, reviews).
@@ -198,6 +198,18 @@ process and uses an in-process HTTP server as S3, with the real SDK.
   the thread boundary and `WebWorker.getBookLink` maps `ENOENT` in the message to 404. An S3 error inside
   7-Zip is surfaced as the original error, not "archive damaged".
 - **Fetcher worker:** eval'd code string like `ArchiveChild`, so it works inside `pkg`.
+
+## Step 3 results (2026-10-16)
+
+- `LibrarySources`: `resolvePath` keeps `s3://` paths as they are (no `path.resolve`, trailing `/` stripped);
+  `findSingleInpx` lists the folder through `LibraryFs`; existence checks go through `LibraryFs`. Done here
+  rather than in step 4 because nothing imports without it.
+- `LibraryFs.join`: joins library paths without `path.join` collapsing `s3://`. Use it in step 4.
+- `InpxHashCreator.getHash` → `contentHash` (one LIST per INPX folder). `getInpxFileHash` stays SHA-256
+  of the content even for S3: remote libraries compare it with SHA-256 of their own copy. Cost: one INPX
+  download per DB load, only when an S3 INPX is configured.
+- `periodicCheckInpx` calls `libraryFs.clearCache()` before hashing; `get-inpx-file` reads through `LibraryFs`.
+- `InpxParser` needed no change; `s3-archive-tests.js` imports an INPX from S3.
 
 ## Decisions (2026-10-16)
 

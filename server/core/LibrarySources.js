@@ -1,7 +1,6 @@
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs-extra');
-const utils = require('./utils');
+const libraryFs = require('./LibraryFs');
 
 function stableId(value, fallback = 'source') {
     const base = String(value || fallback)
@@ -61,12 +60,15 @@ function sourcesFromEnv() {
     return parseSourcesFromString(process.env.INPX_LIBRARY_SOURCES || process.env.LIBRARY_SOURCES || '');
 }
 
+//s3://... - не путь на диске: path.resolve превратил бы его в <cwd>/s3:/...
+function resolvePath(p) {
+    return (libraryFs.isS3(p) ? p.replace(/[\\/]+$/, '') : path.resolve(p));
+}
+
 async function findSingleInpx(libDir) {
-    const inpxFiles = [];
-    await utils.findFiles((file) => {
-        if (path.extname(file).toLowerCase() === '.inpx')
-            inpxFiles.push(file);
-    }, libDir, false);
+    const inpxFiles = (await libraryFs.readdir(libDir, {withFileTypes: true}))
+        .filter(entry => !entry.isDirectory() && path.extname(entry.name).toLowerCase() === '.inpx')
+        .map(entry => libraryFs.join(libDir, entry.name));
 
     if (inpxFiles.length === 1)
         return inpxFiles[0];
@@ -92,17 +94,17 @@ async function normalizeSource(source, index, options = {}) {
     const requireExists = options.requireExists !== false;
     const rawInpx = String(source.inpx || source.inpxFile || '').trim();
     const rawLibDir = String(source.libDir || source.libraryDir || '').trim();
-    const inpx = rawInpx ? path.resolve(rawInpx) : '';
-    const libDir = rawLibDir ? path.resolve(rawLibDir) : (inpx ? path.dirname(inpx) : '');
+    const inpx = rawInpx ? resolvePath(rawInpx) : '';
+    const libDir = rawLibDir ? resolvePath(rawLibDir) : (inpx ? path.dirname(inpx) : '');
 
     if (!libDir)
         throw new Error(`Library source #${index + 1}: libDir is empty`);
 
-    if (requireExists && !await fs.pathExists(libDir))
+    if (requireExists && !await libraryFs.pathExists(libDir))
         throw new Error(`Library source #${index + 1}: directory "${libDir}" not exists`);
 
     const resolvedInpx = inpx || await findSingleInpx(libDir);
-    if (requireExists && !await fs.pathExists(resolvedInpx))
+    if (requireExists && !await libraryFs.pathExists(resolvedInpx))
         throw new Error(`Library source #${index + 1}: file "${resolvedInpx}" not found`);
 
     const id = stableId(source.id || source.name || path.basename(resolvedInpx, path.extname(resolvedInpx)), `source-${index + 1}`);
@@ -135,10 +137,10 @@ async function resolveLibrarySources(config, argv = {}) {
     let sources = getConfiguredSources(config);
     if (!sources.length) {
         let libDir = argv['lib-dir'] || config.libDir || config.execDir;
-        if (!await fs.pathExists(libDir))
+        if (!await libraryFs.pathExists(libDir))
             throw new Error(`Directory "${libDir}" not exists`);
 
-        libDir = path.resolve(libDir);
+        libDir = resolvePath(libDir);
         const inpx = argv.inpx || config.inpx || await findSingleInpx(libDir);
         sources = [{
             id: 'main',
@@ -222,7 +224,7 @@ async function getIndexedLibrarySources(config = {}) {
     const result = [];
     for (const source of getAllLibrarySources(config)) {
         const inpx = source.inpxFile || source.inpx;
-        if (source.enabled !== false || (inpx && await fs.pathExists(inpx)))
+        if (source.enabled !== false || (inpx && await libraryFs.pathExists(inpx)))
             result.push(source);
     }
     return result;
