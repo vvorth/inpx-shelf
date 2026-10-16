@@ -77,4 +77,4 @@ npm run test:release
 npm run build:client
 ```
 
-`test:release` запускает `scripts/release-smoke-tests.js`: авторизация HTTP/WebSocket/OPDS и SSO, пароли и секреты, бэкапы и их восстановление, БД библиотеки и поиск, OPDS, ограничения ресурсов и очереди конвертации, EPUB с изображениями и кодировки FB2, кэш книг, Kobo, синхронизация KOReader, Audiobookshelf, читалка и витрины. Проверки используют тестовые библиотеки и не требуют реальной коллекции. GitHub Actions запускает их перед сборкой релизных архивов для Linux x64, Linux ARM64, Windows x64 и macOS Intel; Windows-релиз также включает установщик.
+`test:release` запускает `scripts/release-smoke-tests.js`: авторизация HTTP/WebSocket/OPDS и SSO, пароли и секреты, бэкапы и их восстановление, БД библиотеки и поиск, OPDS, ограничения ресурсов и очереди конвертации, EPUB с изображениями и кодировки FB2, кэш книг, Kobo, синхронизация KOReader, читалка и витрины. Проверки используют тестовые библиотеки и не требуют реальной коллекции. GitHub Actions запускает их перед сборкой релизных архивов для Linux x64, Linux ARM64, Windows x64 и macOS Intel; Windows-релиз также включает установщик.

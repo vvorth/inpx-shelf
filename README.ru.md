@@ -28,7 +28,7 @@ inpx-shelf — веб-каталог для self-hosted INPX-библиотек 
 * настройки шрифта в читалке, Wake Lock API для мобильного чтения и отдельный PWA-манифест для ярлыка читалки
 * отправка и конвертация книг в `epub`, `epub3`, `kepub`, `kfx`, `azw8` и `pdf`, а также отправка через Telegram и email
 * многопользовательские профили, личные списки чтения и статистика чтения, `Telegram chat id`, email и публикация через OPDS
-* синхронизация с Kobo и синхронизация прогресса KOReader, провайдер метаданных Audiobookshelf
+* синхронизация с Kobo и синхронизация прогресса KOReader
 * админский дашборд, журнал событий, управление источниками из UI, health-checks и Prometheus-метрики
 
 ## Какой сценарий выбрать
@@ -79,7 +79,6 @@ docker run -d \
 * [Пользователи, личные списки и OPDS](./docs/users-opds.md)
 * [Синхронизация с Kobo](./docs/kobo.md)
 * [Синхронизация прогресса KOReader](./docs/koreader.md)
-* [Провайдер метаданных Audiobookshelf](./docs/audiobookshelf.md)
 * [Читалка и отладка FB2](./docs/reader.md)
 * [Витрины и внешние источники](./docs/discovery.md)
 * [Standalone, сборка, запуск через Node.js, параметры командной строки](./docs/standalone.md)

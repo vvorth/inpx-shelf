@@ -26,7 +26,7 @@ Key features:
 * reader font settings, the Wake Lock API for reading on phones and a separate PWA manifest for a reader shortcut
 * sending and converting books to `epub`, `epub3`, `kepub`, `kfx`, `azw8` and `pdf`, and sending them via Telegram and email
 * multi-user profiles, personal reading lists and reading statistics, `Telegram chat id`, email and OPDS publishing
-* Kobo sync and KOReader progress sync, Audiobookshelf metadata provider
+* Kobo sync and KOReader progress sync
 * admin dashboard, event log, managing sources from the UI, health checks and Prometheus metrics
 
 ## Which setup to choose
@@ -82,7 +82,6 @@ The detailed documentation is in Russian.
 * [Users, reading lists and OPDS](./docs/users-opds.md)
 * [Kobo sync](./docs/kobo.md)
 * [KOReader progress sync](./docs/koreader.md)
-* [Audiobookshelf metadata provider](./docs/audiobookshelf.md)
 * [Reader and FB2 debugging](./docs/reader.md)
 * [Discovery shelves and external sources](./docs/discovery.md)
 * [Standalone, building, running with Node.js, command-line options](./docs/standalone.md)

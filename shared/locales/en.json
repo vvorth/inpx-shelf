@@ -1,15 +1,4 @@
 {
-    "abs": {
-        "description": "Audiobookshelf metadata provider. Enter this base address in the custom provider settings; ABS appends /search itself.",
-        "help400": "Check query and author: strings up to 200 characters, at least one not empty.",
-        "help401": "Pass INPX_ABS_TOKEN in the Authorization header. A browser usually does not send it.",
-        "help403": "Check the inpx-shelf authorization and the reverse proxy rules.",
-        "help404": "Enable the provider: INPX_ABS_ENABLED=true.",
-        "help429": "Wait for active searches to finish and retry.",
-        "help503": "Check INPX_ABS_TOKEN, index readiness and library availability.",
-        "paramAuthor": "Author name; optional. Either the title or the author must be filled in.",
-        "paramQuery": "Book title; the parameter is required but may be empty when searching by author."
-    },
     "addToListDialog": {
         "addSeriesToA": "Add series to a list",
         "addTheWholeSeries": "Add the whole “{name}” series",

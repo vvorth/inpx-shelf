@@ -414,10 +414,6 @@ class Security {
     }
 
     verifyRequiredAuth(req) {
-        // A dedicated read-only service token/signed cover grants access only
-        // to ABS routes, never the web catalog, OPDS or book downloads.
-        if (require('./AudiobookshelfProvider').isAuthorizedRequest(req, this.config))
-            return {ok: true};
         // A Kobo device token grants access only to that device's /kobo/<token>/ routes.
         if (require('./kobo').isAuthorizedRequest(req, this.config))
             return {ok: true};

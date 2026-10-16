@@ -306,7 +306,7 @@ class WebWorker {
     }
 
     //Поиск книг по полям с пометками прежнего поиска («=» точно, «*» подстрока, «~» RegExp...):
-    //Audiobookshelf, сопоставление внешней витрины. Ответ: {found: записи с правками, totalFound}
+    //сопоставление внешней витрины. Ответ: {found: записи с правками, totalFound}
     async bookSearch(query) {
         this.checkMyState();
 

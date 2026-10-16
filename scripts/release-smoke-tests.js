@@ -2503,7 +2503,6 @@ function testOpdsIndexQueries() {
 
 const tests = [
     ...require('./fb2-encoding-tests'),
-    ...require('./audiobookshelf-tests'),
     ...require('./catalog-regression-tests'),
     ...require('./library-metadata-tests'),
     ...require('./epub-archive-tests'),

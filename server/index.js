@@ -269,7 +269,6 @@ async function main() {
     await webSocketController.webWorker.readingListStore.warnIfDefaultAdminPassword()
         .catch(e => log(LM_WARN, `Cannot check the admin password: ${e.message}`));
 
-    require('./core/AudiobookshelfProvider').init(app, config, webSocketController.webWorker, security);
     const koboService = kobo.init(app, config, webSocketController.webWorker, security);
     if (koboService)
         await koboService.ready;
