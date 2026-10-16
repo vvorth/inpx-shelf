@@ -214,7 +214,6 @@ export default class ReaderViewport {
             this.schedulePagedViewportBuild();
             return;
         }
-        this.applyVerticalSectionAlignment();
         // ширина колонки зависит от scrollerViewportWidth: место возвращаем после обновления разметки
         this.$nextTick(() => this.restoreStableScrollReflowAnchor());
     }
@@ -672,37 +671,5 @@ export default class ReaderViewport {
         if (!img || img.tagName !== 'IMG' || img.closest('.reader-annotation-html, .reader-page-sheet--measure'))
             return;
         this.scheduleImageLayoutRefresh();
-    }
-
-    applyVerticalSectionAlignment() {
-        const readerBody = (this.$refs ? this.$refs.readerBody : null);
-        if (!readerBody)
-            return;
-
-        if (this.isPagedMode)
-            return;
-
-        const sections = Array.from(readerBody.querySelectorAll('.reader-section-block'));
-        if (!sections.length)
-            return;
-
-        for (const section of sections)
-            section.style.marginTop = '';
-
-        if (!this.isVerticalPaged)
-            return;
-
-        const pageSize = Math.max(1, this.scrollerViewportHeight || this.pageMinHeight || 1);
-        if (pageSize <= 1)
-            return;
-
-        const baseSpacing = 18;
-        for (let index = 1; index < sections.length; index += 1) {
-            const section = sections[index];
-            const offsetTop = section.offsetTop;
-            const remainder = offsetTop % pageSize;
-            const extraSpacing = (remainder <= 2 ? 0 : (pageSize - remainder));
-            section.style.marginTop = `${baseSpacing + extraSpacing}px`;
-        }
     }
 }
