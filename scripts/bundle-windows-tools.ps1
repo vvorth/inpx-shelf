@@ -26,10 +26,19 @@ $tools = @(
   }
 )
 
+# .NET instead of Get-FileHash: started from pwsh (CI, npm), Windows PowerShell 5.1 inherits the PowerShell 7
+# module path and loses Get-FileHash, which 5.1 defines in the script part of Microsoft.PowerShell.Utility.
 function Get-Sha256 {
   param([string] $Path)
 
-  return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+  $sha256 = [Security.Cryptography.SHA256]::Create()
+  $stream = [IO.File]::OpenRead($Path)
+  try {
+    return ([BitConverter]::ToString($sha256.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+  } finally {
+    $stream.Dispose()
+    $sha256.Dispose()
+  }
 }
 
 # Archives are kept in the cache directory (CI restores it with actions/cache): a cached file is used
