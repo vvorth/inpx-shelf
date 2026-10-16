@@ -109,6 +109,9 @@ class AdminAuthorNames {
         try {
             this.status = await this.api.adminAuthorNamesStatus(this.table);
         } catch (e) {
+            //разовый сбой связи (телефон уснул) не останавливает опрос идущего задания
+            if (wasRunning && !this.closed)
+                this.timer = setTimeout(() => this.refresh(), 2000);
             return;
         }
         if (this.closed)
