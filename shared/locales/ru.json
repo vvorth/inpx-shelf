@@ -1461,17 +1461,12 @@
     "readerLab": {
         "anotherFb2": "Другой FB2",
         "couldNotDecodeLocal": "Не удалось декодировать локальный FB2.",
-        "couldNotDecodeSample": "Не удалось декодировать sample-книгу.",
         "couldNotReadLocal": "Не удалось прочитать локальный FB2.",
-        "loadingSampleBook": "Загрузка sample-книги...",
         "localFb2Reader": "Локальная FB2-читалка",
         "modeBypassesBookApi": "Этот режим обходит API книги и нужен именно для отладки рендера и пагинации.",
         "openFb2": "Открыть FB2",
-        "openLocalFb2File": "Откройте локальный `.fb2` с компьютера или загрузите sample-файл из подключённой библиотеки.",
-        "openSample": "Открыть sample",
-        "readingLocalFb2": "Чтение локального FB2...",
-        "sampleLoadFailed": "Не удалось загрузить sample-книгу.",
-        "sampleLoadFailedStatus": "Не удалось загрузить sample: {status}"
+        "openLocalFb2File": "Откройте локальный `.fb2` с компьютера.",
+        "readingLocalFb2": "Чтение локального FB2..."
     },
     "readingLists": {
         "backup": "Бэкап в «Моих данных»",

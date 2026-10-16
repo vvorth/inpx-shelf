@@ -27,7 +27,6 @@
 Что можно делать в этом режиме:
 
 * открыть локальный `.fb2` прямо с компьютера
-* загрузить sample-FB2 из подключённой библиотеки
 * использовать ту же `Reader.vue`, что и основной маршрут `/#/reader?bookUid=...`
 * проверять paged-режим и рендер без поиска книги в библиотеке
 
@@ -36,10 +35,9 @@
 * `debugReader=1` — включить debug-панель читалки
 * `debugReadMode=paged` — сразу открыть режим страниц
 * `debugReadMode=scroll` — сразу открыть режим ленты
-* `sample=night-watch.fb2` — автоматически загрузить sample-файл из каталога библиотеки (недоступно, если задан пароль доступа `accessPassword`)
 
 Пример:
 
 ```text
-http://127.0.0.1:12380/#/reader-lab?sample=night-watch.fb2&debugReader=1&debugReadMode=paged
+http://127.0.0.1:12380/#/reader-lab?debugReader=1&debugReadMode=paged
 ```

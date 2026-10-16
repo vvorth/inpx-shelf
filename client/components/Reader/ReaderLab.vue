@@ -18,13 +18,6 @@
                         :label="$t('readerLab.openFb2')"
                         @click="openFilePicker"
                     />
-                    <q-btn
-                        flat
-                        no-caps
-                        icon="la la-flask"
-                        :label="$t('readerLab.openSample')"
-                        @click="loadSample()"
-                    />
                 </div>
 
                 <input
@@ -69,14 +62,6 @@ const componentOptions = {
     components: {
         Reader,
     },
-    watch: {
-        '$route.query.sample': {
-            immediate: true,
-            handler() {
-                this.maybeLoadSampleFromRoute();// no await
-            },
-        },
-    },
 };
 
 class ReaderLab {
@@ -86,10 +71,6 @@ class ReaderLab {
     loadingSource = false;
     loadingMessage = '';
     sourceError = '';
-
-    get sampleFileName() {
-        return String(this.$route.query.sample || 'night-watch.fb2').trim() || 'night-watch.fb2';
-    }
 
     openFilePicker() {
         const input = (this.$refs && (this.$refs.floatingFileInput || this.$refs.fileInput));
@@ -179,13 +160,6 @@ class ReaderLab {
         return fallbackText || new TextDecoder('utf-8').decode(bytes);
     }
 
-    async maybeLoadSampleFromRoute() {
-        if (!this.$route || !Object.prototype.hasOwnProperty.call(this.$route.query || {}, 'sample'))
-            return;
-
-        await this.loadSample(this.sampleFileName);
-    }
-
     async handleFileSelected(event) {
         const input = (event && event.target ? event.target : null);
         const file = (input && input.files && input.files[0] ? input.files[0] : null);
@@ -216,35 +190,6 @@ class ReaderLab {
             this.loadingMessage = '';
             if (input)
                 input.value = '';
-        }
-    }
-
-    async loadSample(fileName = 'night-watch.fb2') {
-        this.loadingSource = true;
-        this.loadingMessage = t('readerLab.loadingSampleBook');
-        this.sourceError = '';
-        try {
-            const response = await fetch(`/reader-lab-source/${encodeURIComponent(fileName)}`);
-            if (!response.ok)
-                throw new Error(t('readerLab.sampleLoadFailedStatus', {status: response.status}));
-
-            const buffer = await response.arrayBuffer();
-            const fb2 = this.decodeFb2Bytes(buffer);
-            if (!fb2)
-                throw new Error(t('readerLab.couldNotDecodeSample'));
-            this.standaloneSource = {
-                sourceKey: `sample:${fileName}:${fb2.length}`,
-                fileName,
-                book: {
-                    title: fileName.replace(/\.fb2$/i, ''),
-                },
-                fb2,
-            };
-        } catch (e) {
-            this.sourceError = e.message || t('readerLab.sampleLoadFailed');
-        } finally {
-            this.loadingSource = false;
-            this.loadingMessage = '';
         }
     }
 }

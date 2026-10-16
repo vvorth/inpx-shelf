@@ -299,7 +299,7 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
     const webAppRoutePrefix = (webAppBasePath === '/' ? '' : webAppBasePath.slice(0, -1));
     if (webWorker && security) {
         const guard = new (require('./core/ProfileAccess'))(config, webWorker, security).httpGuard();
-        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`, `${webAppRoutePrefix}/reader-lab-source`, `${webAppRoutePrefix}/admin-backups`], guard);
+        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`, `${webAppRoutePrefix}/admin-backups`], guard);
         const profileAccess = new (require('./core/ProfileAccess'))(config, webWorker, security);
         app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`], accessGuard(config, webAccess, security, profileAccess));
     }
@@ -308,29 +308,6 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
         res.type('html').send(appResetPage(config.rootPathStatic));
-    });
-
-    app.get(`${config.rootPathStatic || ''}/reader-lab-source/:fileName`, async(req, res) => {
-        try {
-            //пароль доступа проверяется только в WebSocket, а имя файла угадывается: с паролем отладочный маршрут закрыт
-            const safeFileName = path.basename(String(req.params.fileName || '').trim());
-            if (config.accessPassword || !safeFileName || path.extname(safeFileName).toLowerCase() !== '.fb2') {
-                res.sendStatus(404);
-                return;
-            }
-
-            const sourceFile = path.join(config.libDir, safeFileName);
-            if (!await fs.pathExists(sourceFile)) {
-                res.sendStatus(404);
-                return;
-            }
-
-            res.set('Cache-Control', 'no-store');
-            res.type('application/xml; charset=utf-8');
-            res.sendFile(sourceFile);
-        } catch (e) {
-            res.sendStatus(404);
-        }
     });
 
     app.get(`${config.rootPathStatic || ''}/cover/by-uid`, async(req, res) => {

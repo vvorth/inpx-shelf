@@ -1450,17 +1450,12 @@
     "readerLab": {
         "anotherFb2": "Another FB2",
         "couldNotDecodeLocal": "Could not decode the local FB2.",
-        "couldNotDecodeSample": "Could not decode the sample book.",
         "couldNotReadLocal": "Could not read the local FB2.",
-        "loadingSampleBook": "Loading sample book...",
         "localFb2Reader": "Local FB2 reader",
         "modeBypassesBookApi": "This mode bypasses the book API and is meant for debugging rendering and pagination.",
         "openFb2": "Open FB2",
-        "openLocalFb2File": "Open a local `.fb2` file from your computer or load a sample file from the connected library.",
-        "openSample": "Open sample",
-        "readingLocalFb2": "Reading local FB2...",
-        "sampleLoadFailed": "Could not load the sample book.",
-        "sampleLoadFailedStatus": "Could not load sample: {status}"
+        "openLocalFb2File": "Open a local `.fb2` file from your computer.",
+        "readingLocalFb2": "Reading local FB2..."
     },
     "readingLists": {
         "backup": "Back up in My data",

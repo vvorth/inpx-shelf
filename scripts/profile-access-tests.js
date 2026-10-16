@@ -135,7 +135,7 @@ async function testProxyHeaderRequiredWithOldCookie() {
 async function testAnonymousAccessDisabledHttpAndWebSocket() {
     await fixture({allowAnonymousAccess: false}, async({worker, alice, bob, request, session, connect, rotate}) => {
         assert.strictEqual((await request('/')).status, 200, 'Login shell stays reachable');
-        for (const url of ['/book/fixture.txt', '/cover/by-uid?uid=x', '/reader-lab-source/example.fb2', '/opds'])
+        for (const url of ['/book/fixture.txt', '/cover/by-uid?uid=x', '/opds'])
             assert.strictEqual((await request(url)).status, 401, url);
         const browser = session();
         const call = await connect({cookie: browser.cookie});
