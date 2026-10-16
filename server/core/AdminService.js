@@ -6,6 +6,7 @@ const bookAssets = require('./BookAssets');
 const runtimeMetrics = require('./RuntimeMetrics');
 const log = new (require('./AppLogger'))().log;//singleton
 const utils = require('./utils');
+const libraryFs = require('./LibraryFs');
 const ConfigManager = require('../config');
 const {withFileTransaction} = require('./FilePersistence');
 const {getEnabledLibrarySources} = require('./LibrarySources');
@@ -13,20 +14,20 @@ const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
 
-//Файлы каталога и его подкаталогов; каталоги, которые не прочитать, пропускаются
+//Файлы каталога и его подкаталогов (на диске или в S3); каталоги, которые не прочитать, пропускаются
 async function* walkFiles(dir) {
     const stack = [dir];
     while (stack.length) {
         const current = stack.pop();
         let list = [];
         try {
-            list = await fs.readdir(current, {withFileTypes: true});
+            list = await libraryFs.readdir(current, {withFileTypes: true});
         } catch (e) {
             continue;
         }
 
         for (const entry of list) {
-            const filePath = path.join(current, entry.name);
+            const filePath = libraryFs.join(current, entry.name);
             if (entry.isDirectory())
                 stack.push(filePath);
             else
@@ -143,7 +144,7 @@ module.exports = {
     async findFilesByExt(dir = '', exts = [], maxFiles = 200) {
         const result = [];
         const normalizedExts = new Set(exts.map(ext => String(ext || '').toLowerCase()));
-        if (!dir || !await fs.pathExists(dir))
+        if (!dir || !await libraryFs.pathExists(dir))
             return result;
 
         for await (const filePath of walkFiles(dir)) {
@@ -158,7 +159,7 @@ module.exports = {
 
     async countArchives(dir = '', maxFiles = 20000) {
         const result = {count: 0, truncated: false};
-        if (!dir || !await fs.pathExists(dir))
+        if (!dir || !await libraryFs.pathExists(dir))
             return result;
 
         for await (const filePath of walkFiles(dir)) {
@@ -178,11 +179,11 @@ module.exports = {
         const inpx = String(source.inpx || source.inpxFile || '').trim();
         const foundInpx = libDir ? await this.findFilesByExt(libDir, ['.inpx'], 20) : [];
         const archiveInfo = libDir ? await this.countArchives(libDir) : {count: 0, truncated: false};
-        const exists = async(name) => !!(libDir && await fs.pathExists(path.join(libDir, name)));
+        const exists = async(name) => !!(libDir && await libraryFs.pathExists(libraryFs.join(libDir, name)));
 
         return {
-            inpxExists: !!inpx && await fs.pathExists(inpx),
-            libDirExists: !!libDir && await fs.pathExists(libDir),
+            inpxExists: !!inpx && await libraryFs.pathExists(inpx),
+            libDirExists: !!libDir && await libraryFs.pathExists(libDir),
             foundInpx,
             archiveCount: archiveInfo.count,
             archiveCountTruncated: archiveInfo.truncated,

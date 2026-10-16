@@ -1,6 +1,6 @@
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs-extra');
+const libraryFs = require('./LibraryFs');
 
 function entryKey(folder, file) {
     // INPX can name a ZIP archive whose actual file has been repacked as 7z.
@@ -18,18 +18,18 @@ async function snapshot(dirs) {
     for (const dir of dirs) {
         let names;
         try {
-            names = await fs.readdir(dir);
+            names = await libraryFs.readdir(dir);
         } catch (error) {
             if (error.code === 'ENOENT') continue;
             throw error;
         }
         for (const name of names.sort()) {
             if (!/\.(zip|7z)$/i.test(name)) continue;
-            const file = path.resolve(dir, name);
+            const file = libraryFs.join(dir, name);
             if (seen.has(file)) continue;
             let stat;
             try {
-                stat = await fs.stat(file);
+                stat = await libraryFs.stat(file);
             } catch (error) {
                 if (error.code === 'ENOENT') continue;
                 throw error;

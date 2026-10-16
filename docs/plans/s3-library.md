@@ -1,6 +1,6 @@
 # Plan: library on S3 (optional backend)
 
-Written 2026-10-16. Status: steps 0–3 done, step 4 next.
+Written 2026-10-16. Status: steps 0–4 done, step 5 next.
 
 **Goal.** A library source whose path is an S3 URI (`s3://bucket/prefix`) is read straight from S3:
 the INPX, the book archives, and the library's asset folders (covers, illustrations, author info, reviews).
@@ -210,6 +210,19 @@ process and uses an in-process HTTP server as S3, with the real SDK.
   download per DB load, only when an S3 INPX is configured.
 - `periodicCheckInpx` calls `libraryFs.clearCache()` before hashing; `get-inpx-file` reads through `LibraryFs`.
 - `InpxParser` needed no change; `s3-archive-tests.js` imports an INPX from S3.
+
+## Step 4 results (2026-10-16)
+
+- `LibraryAssets`, `LibraryReviews`, `AdminService` (`walkFiles`, source diagnostics) and the
+  `reader-lab-source` route read library paths through `LibraryFs`; joins use `LibraryFs.join`.
+  `path.resolve` is left only as a dedupe key, where `s3://` mangling is harmless.
+- `libraryAssetDirCandidates` skips the "next to the library" folder for a library at a bucket root
+  (`path.dirname('s3://bucket')` is `s3:`).
+- `S3Fs.pathExists` returns false on access denied too, like `fs.pathExists`: one unreadable bucket must
+  not break the admin sources list.
+- `s3-archive-tests.js` now serves ListObjectsV2 and covers: a book whose INPX folder says `.zip` but the
+  archive is `books/*.7z`, a cover from `covers/`, reviews from `etc/reviews`, the admin source check.
+  Author info (`etc/authors`) uses the same calls but has no S3 test.
 
 ## Decisions (2026-10-16)
 

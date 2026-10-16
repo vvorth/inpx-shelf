@@ -9,6 +9,7 @@ const externalTools = require('./ExternalTools');
 const libraryReviews = require('./LibraryReviews');
 const log = new (require('./AppLogger'))().log;//singleton
 const utils = require('./utils');
+const libraryFs = require('./LibraryFs');
 const {getEnabledLibrarySources} = require('./LibrarySources');
 const {stripHtml, normalizeAuthorText} = require('./HtmlText');
 
@@ -46,9 +47,11 @@ function archiveNameCandidates(file = '') {
 function libraryAssetDirCandidates(subDir = '', libDir = '') {
     const normalizedSubDir = String(subDir || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     const normalizedLibDir = String(libDir || '').replace(/\\/g, '/').replace(/\/+$/g, '');
+    const parent = path.dirname(normalizedLibDir);
     return [
         `${normalizedLibDir}/${normalizedSubDir}`,
-        `${path.dirname(normalizedLibDir)}/${normalizedSubDir}`,
+        //у библиотеки в корне бакета (s3://bucket) родителя нет: dirname даёт "s3:"
+        ...(libraryFs.isS3(normalizedLibDir) && !libraryFs.isS3(parent) ? [] : [`${parent}/${normalizedSubDir}`]),
     ];
 }
 
@@ -72,12 +75,12 @@ module.exports = {
         
         const fullPath = `${folder}/${file}`;
 
-        if (!file || await fs.pathExists(fullPath)) {// файл есть на диске
+        if (!file || await libraryFs.pathExists(fullPath)) {// файл есть на диске
             
-            await fs.copy(fullPath, outFile);
+            await libraryFs.copyToLocal(fullPath, outFile);
             return outFile;
         } else {// файл в zip-архиве
-            if (!await fs.pathExists(folder))
+            if (!await libraryFs.pathExists(folder))
                 throw new Error(`archive not found: ${folder}`);
 
             const zipReader = new ZipReader();
@@ -125,13 +128,13 @@ module.exports = {
 
         const scanned = new Set(directRoots.map(item => path.resolve(item)));
         try {
-            if (libDir && await fs.pathExists(libDir)) {
-                const entries = await fs.readdir(libDir, {withFileTypes: true});
+            if (libDir && await libraryFs.pathExists(libDir)) {
+                const entries = await libraryFs.readdir(libDir, {withFileTypes: true});
                 for (const entry of entries) {
                     if (!entry.isDirectory())
                         continue;
 
-                    const dir = path.join(libDir, entry.name);
+                    const dir = libraryFs.join(libDir, entry.name);
                     const key = path.resolve(dir);
                     if (scanned.has(key))
                         continue;
@@ -150,7 +153,7 @@ module.exports = {
     },
 
     async resolveArchiveNameInDir(dir = '', name = '') {
-        for (const item of archiveNameCandidates(path.join(dir, name))) {
+        for (const item of archiveNameCandidates(libraryFs.join(dir, name))) {
             const resolved = await this.resolveExistingPath(item);
             if (resolved)
                 return resolved;
@@ -162,18 +165,18 @@ module.exports = {
     async resolveExistingPath(filePath = '') {
         if (!filePath)
             return '';
-        if (await fs.pathExists(filePath))
+        if (await libraryFs.pathExists(filePath))
             return filePath;
 
         const dir = path.dirname(filePath);
         const baseName = path.basename(filePath).toLowerCase();
-        if (!dir || !baseName || !await fs.pathExists(dir))
+        if (!dir || !baseName || !await libraryFs.pathExists(dir))
             return '';
 
         try {
-            const entries = await fs.readdir(dir);
+            const entries = await libraryFs.readdir(dir);
             const match = entries.find(item => item.toLowerCase() === baseName);
-            return match ? path.join(dir, match) : '';
+            return match ? libraryFs.join(dir, match) : '';
         } catch(e) {
             return '';
         }
@@ -183,7 +186,7 @@ module.exports = {
         const candidates = libraryAssetDirCandidates(subDir, sourceLibDir || this.config.libDir);
 
         for (const dir of Array.from(new Set(candidates))) {
-            if (await fs.pathExists(dir))
+            if (await libraryFs.pathExists(dir))
                 return dir;
         }
 
@@ -202,7 +205,7 @@ module.exports = {
                 continue;
 
             seen.add(key);
-            if (await fs.pathExists(dir))
+            if (await libraryFs.pathExists(dir))
                 result.push(dir);
         }
 
@@ -221,8 +224,8 @@ module.exports = {
             const result = [];
             const dir = await this.resolveLibraryAssetDir(subDir, libDir);
 
-            if (await fs.pathExists(dir)) {
-                const files = await fs.readdir(dir);
+            if (await libraryFs.pathExists(dir)) {
+                const files = await libraryFs.readdir(dir);
                 for (const file of files) {
                     const match = file.match(/(\d{4,})-(\d{4,})\.(zip|7z)$/i);
                     if (!match)
@@ -335,17 +338,17 @@ module.exports = {
         const bookArchive = await this.resolveLibraryArchivePath(`${libDir}/${libFolder}`, libDir);
         const baseName = path.basename(bookArchive, path.extname(bookArchive));
         const dirs = Array.from(new Set([
-            path.join(path.dirname(bookArchive), subDir),
+            libraryFs.join(path.dirname(bookArchive), subDir),
             ...await this.resolveLibraryAssetDirs(subDir, libDir),
         ]));
         const exact = [];
         for (const dir of dirs) {
-            if (!await fs.pathExists(dir))
+            if (!await libraryFs.pathExists(dir))
                 continue;
-            for (const name of await fs.readdir(dir)) {
+            for (const name of await libraryFs.readdir(dir)) {
                 if (['.zip', '.7z'].includes(path.extname(name).toLowerCase())
                     && path.basename(name, path.extname(name)).toLowerCase() === baseName.toLowerCase())
-                    exact.push({file: path.join(dir, name)});
+                    exact.push({file: libraryFs.join(dir, name)});
             }
         }
         const result = exact
@@ -434,7 +437,7 @@ module.exports = {
 
                 scannedAuthorDirs.add(dirKey);
 
-                const files = await fs.readdir(authorsDir);
+                const files = await libraryFs.readdir(authorsDir);
                 for (const file of files) {
                     if (!/^\d+\.(7z|zip)$/i.test(file))
                         continue;
@@ -449,10 +452,10 @@ module.exports = {
                 }
 
                 const picturesDir = `${authorsDir}/pictures`;
-                if (!await fs.pathExists(picturesDir))
+                if (!await libraryFs.pathExists(picturesDir))
                     continue;
 
-                const pictureFiles = await fs.readdir(picturesDir);
+                const pictureFiles = await libraryFs.readdir(picturesDir);
                 for (const file of pictureFiles) {
                     if (!/^\d+\.(zip|7z)$/i.test(file))
                         continue;

@@ -119,6 +119,7 @@ async function testS3ListingStatAndCache() {
     await assert.rejects(libraryFs.readdir(`${root}/images`), {code: 'ENOENT'});
     await assert.rejects(libraryFs.readdir(`${root}/a.fb2`), {code: 'ENOTDIR'});
     await assert.rejects(libraryFs.stat('s3://denied/x'), e => e.code === 'EACCES' && e.message.includes('s3://denied'));
+    assert.strictEqual(await libraryFs.pathExists('s3://denied/x'), false, 'like fs.pathExists');
 
     //один LIST на каталог: файлы того же каталога и сам каталог - из кеша
     const before = client.calls.length;

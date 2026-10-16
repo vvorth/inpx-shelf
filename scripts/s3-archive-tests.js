@@ -19,12 +19,39 @@ function writeZip(file, entries) {
     });
 }
 
+const xmlEscape = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+//ListObjectsV2 с Delimiter=/: одна страница, для тестовых каталогов хватает
+async function listXml(root, bucket, params) {
+    const prefix = params.get('prefix') || '';
+    const dir = path.join(root, bucket, prefix);
+    const items = (await fs.pathExists(dir) && prefix.endsWith('/')) || !prefix ? await fs.readdir(dir, {withFileTypes: true}) : [];
+    const contents = [];
+    const prefixes = [];
+    for (const item of items) {
+        if (item.isDirectory()) {
+            prefixes.push(`<CommonPrefixes><Prefix>${xmlEscape(prefix + item.name)}/</Prefix></CommonPrefixes>`);
+        } else {
+            const stat = await fs.stat(path.join(dir, item.name));
+            contents.push(`<Contents><Key>${xmlEscape(prefix + item.name)}</Key><Size>${stat.size}</Size>`
+                + `<LastModified>${stat.mtime.toISOString()}</LastModified><ETag>"${stat.size}-${stat.mtimeMs}"</ETag></Contents>`);
+        }
+    }
+    return `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>${xmlEscape(bucket)}</Name><Prefix>${xmlEscape(prefix)}</Prefix>`
+        + `<KeyCount>${contents.length + prefixes.length}</KeyCount><IsTruncated>false</IsTruncated>${contents.join('')}${prefixes.join('')}</ListBucketResult>`;
+}
+
 function startS3(root) {
     const requests = [];
     const server = http.createServer(async(req, res) => {
         const key = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\//, '');
         requests.push(`${req.method} ${key} ${req.headers.range || ''}`.trim());
         const file = path.join(root, key);
+        if (req.method === 'GET' && new URL(req.url, 'http://x').searchParams.get('list-type') === '2') {
+            res.writeHead(200, {'Content-Type': 'application/xml'});
+            res.end(await listXml(root, key, new URL(req.url, 'http://x').searchParams));
+            return;
+        }
         //подпись читается, а блоки внутри 7-Zip - нет
         if (key.endsWith('broken.zip') && req.method === 'GET' && req.headers.range !== 'bytes=0-5') {
             res.writeHead(500, {'Content-Type': 'application/xml'});
@@ -69,6 +96,8 @@ function randomText(seed, size) {
     process.env.AWS_ENDPOINT_URL_S3 = `http://127.0.0.1:${server.address().port}`;
     process.env.AWS_ACCESS_KEY_ID = 'test';
     process.env.AWS_SECRET_ACCESS_KEY = 'test';
+    require('../server/core/Logger');
+    await new (require('../server/core/AppLogger'))().init({loggingEnabled: false, name: 's3-archive-tests'});
     const ZipReader = require('../server/core/ZipReader');
     const {blockSize} = require('../server/core/archive/S3File');
     try {
@@ -120,6 +149,36 @@ function randomText(seed, size) {
         const parsed = [];
         await new InpxParser().parse('s3://lib/inpx/lib.inpx', null, async(chunk) => { parsed.push(...chunk); });
         assert.deepStrictEqual(parsed.map(book => [book.title, book.folder]), [['Мастер и Маргарита', 'fb2-000001.zip']]);
+
+        //Библиотека fLibrary в S3: книга в books/ под другим расширением, обложка в covers/, отзывы в etc/reviews,
+        //проверка источника в администрировании
+        const libDir = 's3://lib/flib';
+        const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+        await sevenZipArchive(path.join(dir, 'lib/flib/books/fb2-000010.7z'), {'10.fb2': books['10.fb2']});
+        await fs.ensureDir(path.join(dir, 'lib/flib/covers'));
+        await writeZip(path.join(dir, 'lib/flib/covers/fb2-000010.zip'), {'10': png});
+        await fs.ensureDir(path.join(dir, 'lib/flib/etc/reviews'));
+        await writeZip(path.join(dir, 'lib/flib/etc/reviews/2026.zip'),
+            {'fb2-000010.zip#10.fb2': JSON.stringify([{name: 'reader', time: '2026-01-01', text: 'good'}])});
+        await writeZip(path.join(dir, 'lib/flib/flib.inpx'), {'collection.info': 'Test'});
+
+        const tempDir = path.join(dir, 'tmp');
+        await fs.ensureDir(tempDir);
+        const worker = Object.assign({config: {libDir, tempDir, librarySources: []}},
+            require('../server/core/LibraryAssets'), require('../server/core/AdminService'));
+        const extracted = await worker.extractBook('fb2-000010.zip', '10.fb2', libDir);
+        assert.strictEqual(await fs.readFile(extracted, 'utf8'), books['10.fb2']);
+        await fs.remove(extracted);
+        const cover = await worker.getFblibraryCover(10, libDir, 'fb2-000010.zip');
+        assert.ok(cover && cover.data.equals(png), 'cover from covers/');
+        const book = {folder: 'fb2-000010.zip', file: '10', ext: 'fb2', sourceLibDir: libDir};
+        assert.deepStrictEqual(await worker.getBookReviews(book), [{name: 'reader', time: '2026-01-01', text: 'good'}]);
+        const diagnostics = await worker.getLibrarySourceDiagnostics({libDir, inpx: `${libDir}/flib.inpx`});
+        assert.deepStrictEqual(Object.assign({}, diagnostics, {foundInpx: diagnostics.foundInpx.length}), {
+            inpxExists: true, libDirExists: true, foundInpx: 1, archiveCount: 3, archiveCountTruncated: false,
+            hasCovers: true, hasEtc: true, hasImages: false,
+        });
+        await assert.rejects(worker.extractBook('fb2-999999.zip', '1.fb2', libDir), /ENOENT|archive not found/);
 
         console.log('s3-archive-tests: ok');
     } finally {

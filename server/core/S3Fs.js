@@ -128,7 +128,8 @@ class S3Fs {
             await this.stat(uri);
             return true;
         } catch (e) {
-            if (e.code === 'ENOENT')
+            //как fs.pathExists: нет доступа - значит, не существует
+            if (e.code === 'ENOENT' || e.code === 'EACCES')
                 return false;
             throw e;
         }
