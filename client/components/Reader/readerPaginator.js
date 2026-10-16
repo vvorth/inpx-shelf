@@ -625,67 +625,6 @@ export default class ReaderPaginator {
         return Array.from(ids);
     }
 
-    splitTextIntoReadableChunks(text = '', targetLength = 420, minChunkLength = 140) {
-        const source = String(text || '').replace(/\s+/g, ' ').trim();
-        if (!source)
-            return [];
-
-        const sentenceParts = source.match(/[^.!?…]+(?:[.!?…]+|$)/g) || [source];
-        const chunks = [];
-        let current = '';
-
-        const pushCurrent = () => {
-            const value = String(current || '').trim();
-            if (value)
-                chunks.push(value);
-            current = '';
-        };
-
-        const pushWords = (sentence = '') => {
-            const words = String(sentence || '').trim().split(/\s+/).filter(Boolean);
-            if (!words.length)
-                return;
-
-            let part = '';
-            for (const word of words) {
-                const candidate = (part ? `${part} ${word}` : word);
-                if (part && candidate.length > targetLength) {
-                    chunks.push(part);
-                    part = word;
-                } else {
-                    part = candidate;
-                }
-            }
-
-            if (part)
-                chunks.push(part);
-        };
-
-        for (const sentence of sentenceParts.map((item) => String(item || '').trim()).filter(Boolean)) {
-            const candidate = (current ? `${current} ${sentence}` : sentence);
-            if (!current || candidate.length <= targetLength) {
-                current = candidate;
-                continue;
-            }
-
-            if (current.length >= minChunkLength) {
-                pushCurrent();
-            }
-
-            if (sentence.length > targetLength) {
-                if (current)
-                    pushCurrent();
-                pushWords(sentence);
-            } else {
-                current = sentence;
-            }
-        }
-
-        if (current)
-            pushCurrent();
-
-        return chunks.filter(Boolean);
-    }
 
     splitOversizedTextElement(root, unit = {}, options = {}) {
         if (!root || root.nodeType !== Node.ELEMENT_NODE)
@@ -715,7 +654,7 @@ export default class ReaderPaginator {
         if (words.length <= 1)
             return [];
 
-        const fallbackChunks = this.splitTextIntoReadableChunks(sourceText, (this.isCompactLayout ? 220 : 420), (this.isCompactLayout ? 90 : 140));
+        const fallbackChunks = readerPaging.splitTextIntoReadableChunks(sourceText, (this.isCompactLayout ? 220 : 420), (this.isCompactLayout ? 90 : 140));
         const fastBudget = this.getFastPagedLineBudget(measureHost);
         if (!baseHtml.length) {
             const fastSplit = this.splitFastRootByLineBudget(root, unit, fastBudget);
@@ -1020,6 +959,8 @@ export default class ReaderPaginator {
             return [];
 
         const tokens = [];
+        //был ли пробел перед следующим словом: граница тега (<em>он</em>.) пробелом не считается
+        let gap = false;
         const walk = (node, state = {}) => {
             if (!node)
                 return;
@@ -1027,15 +968,19 @@ export default class ReaderPaginator {
             if (node.nodeType === Node.TEXT_NODE) {
                 const parts = String(node.textContent || '').split(/(\s+)/).filter((item) => item.length);
                 for (const part of parts) {
-                    if (!part.trim())
+                    if (!part.trim()) {
+                        gap = true;
                         continue;
+                    }
                     tokens.push({
                         text: part,
                         html: `${state.open || ''}${this.escapeHtml(part)}${state.close || ''}`,
                         bold: !!state.bold,
                         italic: !!state.italic,
                         breakLine: false,
+                        gap,
                     });
+                    gap = false;
                 }
                 return;
             }
@@ -1046,6 +991,7 @@ export default class ReaderPaginator {
             const tagName = String(node.tagName || '').toLowerCase();
             if (tagName === 'br') {
                 tokens.push({text: '', html: '<br>', breakLine: true});
+                gap = false;
                 return;
             }
 
@@ -1188,7 +1134,7 @@ export default class ReaderPaginator {
         const spaceWidth = Math.max(3, context.measureText(' ').width || 4);
 
         const pushCurrent = () => {
-            const value = current.map((token) => token.html || this.escapeHtml(token.text || '')).join(' ').trim();
+            const value = readerPaging.joinInlineTokens(current);
             if (value)
                 chunks.push(value);
             current = [];
@@ -1282,27 +1228,10 @@ export default class ReaderPaginator {
         return this.wrapSplitHtmlChunks(root, unit, chunks);
     }
 
-    splitOversizedUnit(unit = {}) {
-        const html = String(unit.html || '').trim();
-        if (!html || typeof(document) === 'undefined')
-            return [];
-
-        const host = document.createElement('div');
-        host.innerHTML = html;
-
-        if (host.childNodes.length !== 1 || !host.firstChild || host.firstChild.nodeType !== Node.ELEMENT_NODE)
-            return [];
-
-        const root = host.firstChild;
-        const childNodes = Array.from(root.childNodes || []).filter((child) => (
-            child.nodeType !== Node.TEXT_NODE || String(child.textContent || '').trim()
-        ));
-
-        if (childNodes.length <= 1)
-            return this.splitOversizedTextElement(root, unit);
-
+    //Дети элемента - отдельными блоками разбивки: текст между ними становится абзацем, id ребёнка - его разделом
+    splitChildUnits(childNodes = [], unit = {}) {
         let first = true;
-        const childSplit = childNodes.map((child) => {
+        return childNodes.map((child) => {
             let childHtml = '';
             if (child.nodeType === Node.TEXT_NODE) {
                 childHtml = `<p class="reader-paragraph">${this.escapeHtml(String(child.textContent || '').trim())}</p>`;
@@ -1322,6 +1251,28 @@ export default class ReaderPaginator {
             first = false;
             return result;
         }).filter((item) => String(item.html || '').trim());
+    }
+
+    splitOversizedUnit(unit = {}) {
+        const html = String(unit.html || '').trim();
+        if (!html || typeof(document) === 'undefined')
+            return [];
+
+        const host = document.createElement('div');
+        host.innerHTML = html;
+
+        if (host.childNodes.length !== 1 || !host.firstChild || host.firstChild.nodeType !== Node.ELEMENT_NODE)
+            return [];
+
+        const root = host.firstChild;
+        const childNodes = Array.from(root.childNodes || []).filter((child) => (
+            child.nodeType !== Node.TEXT_NODE || String(child.textContent || '').trim()
+        ));
+
+        if (childNodes.length <= 1)
+            return this.splitOversizedTextElement(root, unit);
+
+        const childSplit = this.splitChildUnits(childNodes, unit);
 
         return (childSplit.length ? childSplit : this.splitOversizedTextElement(root, unit));
     }
@@ -1349,27 +1300,7 @@ export default class ReaderPaginator {
             });
         }
 
-        let first = true;
-        const childSplit = childNodes.map((child) => {
-            let childHtml = '';
-            if (child.nodeType === Node.TEXT_NODE) {
-                childHtml = `<p class="reader-paragraph">${this.escapeHtml(String(child.textContent || '').trim())}</p>`;
-            } else if (child.nodeType === Node.ELEMENT_NODE) {
-                childHtml = child.outerHTML;
-            }
-
-            const childSectionId = (child.nodeType === Node.ELEMENT_NODE
-                ? (child.id || ((child.querySelector && child.querySelector('[id]')) || {}).id || '')
-                : '');
-
-            const result = {
-                html: childHtml,
-                breakBefore: (first ? !!unit.breakBefore : false),
-                sectionId: (childSectionId || (first ? String(unit.sectionId || '').trim() : '')),
-            };
-            first = false;
-            return result;
-        }).filter((item) => String(item.html || '').trim());
+        const childSplit = this.splitChildUnits(childNodes, unit);
 
         return childSplit;
     }

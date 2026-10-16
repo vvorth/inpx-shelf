@@ -60,8 +60,81 @@ function isSnippetMatchFinal(count = 0, preferredIndex = -1, bestIndex = -1, bes
     return count - preferredIndex >= bestDistance;
 }
 
+//Запасная разбивка абзаца без замеров: куски около targetLength по границам предложений, длинное предложение - по словам.
+//Склейка кусков через пробел даёт исходный текст (с нормализованными пробелами)
+function splitTextIntoReadableChunks(text = '', targetLength = 420, minChunkLength = 140) {
+    const source = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!source)
+        return [];
+
+    const sentenceParts = source.match(/[^.!?…]+(?:[.!?…]+|$)/g) || [source];
+    const chunks = [];
+    let current = '';
+
+    const pushCurrent = () => {
+        const value = String(current || '').trim();
+        if (value)
+            chunks.push(value);
+        current = '';
+    };
+
+    const pushWords = (sentence = '') => {
+        const words = String(sentence || '').trim().split(/\s+/).filter(Boolean);
+        if (!words.length)
+            return;
+
+        let part = '';
+        for (const word of words) {
+            const candidate = (part ? `${part} ${word}` : word);
+            if (part && candidate.length > targetLength) {
+                chunks.push(part);
+                part = word;
+            } else {
+                part = candidate;
+            }
+        }
+
+        if (part)
+            chunks.push(part);
+    };
+
+    for (const sentence of sentenceParts.map((item) => String(item || '').trim()).filter(Boolean)) {
+        const candidate = (current ? `${current} ${sentence}` : sentence);
+        if (!current || candidate.length <= targetLength) {
+            current = candidate;
+            continue;
+        }
+
+        if (current.length >= minChunkLength) {
+            pushCurrent();
+        }
+
+        if (sentence.length > targetLength) {
+            if (current)
+                pushCurrent();
+            pushWords(sentence);
+        } else {
+            //короткий кусок (меньше minChunkLength) не теряется: он идёт в начало следующего
+            current = (current ? `${current} ${sentence}` : sentence);
+        }
+    }
+
+    if (current)
+        pushCurrent();
+
+    return chunks.filter(Boolean);
+}
+
+//Слова абзаца с разметкой обратно в html: пробел только там, где он был в тексте (token.gap).
+//Иначе «сказал <em>он</em>.» после разреза на странице превращалось в «сказал он .»
+function joinInlineTokens(tokens = []) {
+    return tokens.map((token, index) => `${(index > 0 && token.gap !== false) ? ' ' : ''}${token.html}`).join('').trim();
+}
+
 module.exports = {
     isPagedStageCurrent,
     findLastFit,
     isSnippetMatchFinal,
+    splitTextIntoReadableChunks,
+    joinInlineTokens,
 };

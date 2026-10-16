@@ -152,6 +152,35 @@ async function testReaderScrollAnchor() {
     assert.strictEqual(readerScrollAnchor.keepsPlace({mode: 'scroll', scrollTop: 5000}, 5000), false, 'An anchor without text offset is not kept');
 }
 
+//Запасная разбивка абзаца не теряет текст: короткое начало перед длинным предложением раньше пропадало
+async function testReaderFallbackChunksKeepText() {
+    const {splitTextIntoReadableChunks} = require('../client/share/readerPaging');
+    const cases = [
+        'Да. ' + 'а'.repeat(417) + '. Конец.',
+        'Да. ' + 'б'.repeat(500) + '. Нет.',
+        'Раз. Два. Три. ' + 'в '.repeat(400),
+        Array.from({length: 40}, (_, i) => `Предложение номер ${i}.`).join(' '),
+    ];
+    for (const text of cases) {
+        for (const [target, min] of [[420, 140], [220, 90]]) {
+            const chunks = splitTextIntoReadableChunks(text, target, min);
+            assert.strictEqual(chunks.join(' '), text.replace(/\s+/g, ' ').trim(), `${text.slice(0, 20)} at ${target}`);
+        }
+    }
+}
+
+//Абзац, разрезанный на странице, склеивается с пробелами только там, где они были
+async function testReaderInlineTokensKeepSpacing() {
+    const {joinInlineTokens} = require('../client/share/readerPaging');
+    const tokens = [
+        {html: 'сказал', gap: false}, {html: '<em>он</em>', gap: true}, {html: '.', gap: false},
+        {html: '<strong>Г</strong>', gap: true}, {html: 'лава', gap: false},
+    ];
+    assert.strictEqual(joinInlineTokens(tokens), 'сказал <em>он</em>. <strong>Г</strong>лава');
+    //слова без разметки (gap не задан) разделяются пробелами, как раньше
+    assert.strictEqual(joinInlineTokens([{html: 'a'}, {html: 'b'}]), 'a b');
+}
+
 //Разбивка не идёт по листу, который ещё не перерисован под высоту страницы из подписи раскладки
 async function testReaderPagedStageMustMatchSignature() {
     const readerPaging = require('../client/share/readerPaging');
@@ -232,6 +261,8 @@ async function testReaderPartialPagesRestoreOnlyFinalMatch() {
 
 module.exports = [
     testReaderFindLastFitMatchesBinarySearch,
+    testReaderFallbackChunksKeepText,
+    testReaderInlineTokensKeepSpacing,
     testReaderPartialPagesRestoreOnlyFinalMatch,
     testReaderOpeningProgress,
     testReaderPagedStageMustMatchSignature,
