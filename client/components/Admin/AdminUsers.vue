@@ -139,7 +139,8 @@ import vueComponent from '../vueComponent.js';
 import {t, tm} from '../../share/i18n';
 import {currentProfile} from '../../share/session';
 
-const passwordWords = ['amber', 'birch', 'cedar', 'delta', 'ember', 'fjord', 'grove', 'heron', 'iris', 'juniper', 'koala', 'lumen', 'maple', 'nova', 'otter', 'plum', 'quartz', 'raven', 'sage', 'tulip'];
+//32 знака без похожих (l/1, o/0): 16 знаков - 80 бит, подбор через вход не успеет и с тысяч адресов
+const passwordAlphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
 
 function emptyDraft() {
     return {name: '', login: '', password: '', emailTo: '', telegramChatId: '', opdsEnabled: true, opdsAuthEnabled: false, isAdmin: false};
@@ -174,10 +175,8 @@ class AdminUsers {
     }
 
     generatePassword() {
-        const values = new Uint32Array(3);
-        window.crypto.getRandomValues(values);
-        const word = index => passwordWords[values[index] % passwordWords.length];
-        return `${word(0)}-${word(1)}-${values[2] % 90 + 10}`;
+        const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+        return Array.from(bytes, byte => passwordAlphabet[byte % passwordAlphabet.length]).join('').match(/.{4}/g).join('-');
     }
 
     toggleCreate() {
