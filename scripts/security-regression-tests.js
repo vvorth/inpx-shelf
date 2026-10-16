@@ -326,6 +326,25 @@ async function testConversionErrorHidesConverterOutput() {
     });
 }
 
+// The installer copies the repo with rsync --delete: it must refuse an app root that holds anything else.
+async function testProxmoxInstallerKeepsForeignAppRoot() {
+    if (process.platform === 'win32')
+        return;
+    await temporary(async(dir) => {
+        const script = path.join(dir, 'install.sh');
+        //без последней строки (main "$@"): только функции
+        const source = await fs.readFile(path.join(__dirname, 'proxmox-lxc-install.sh'), 'utf8');
+        await fs.writeFile(script, source.trimEnd().split('\n').slice(0, -1).join('\n'));
+        await fs.outputFile(path.join(dir, 'lib', 'a.inpx'), '');
+        await fs.outputFile(path.join(dir, 'other', 'keep'), '');
+        const check = root => execFile('bash', ['-c', `source "$0"; parse_args --library-dir "$1" --inpx-file a.inpx --app-root "$2" --data-dir "$3"; validate_paths`,
+            script, path.join(dir, 'lib'), path.join(dir, root), path.join(dir, 'data')]);
+        await assert.rejects(check('other'), /not an inpx-shelf install/);
+        assert.ok(await fs.pathExists(path.join(dir, 'other', 'keep')));
+        await check('fresh');
+    });
+}
+
 // A broken cache description (half-written, disk full) must not hand out the gzip cache file as the book.
 async function testBookCacheErrorIsNotServedRaw() {
     await temporary(async(dir) => {
@@ -855,7 +874,7 @@ module.exports = [
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testAccessPasswordLimitBlocksCorrectGuess, testUnusedAccessTokensAreCapped, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
-    testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
+    testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded, testRemoteLibVerifiesTlsCertificates];

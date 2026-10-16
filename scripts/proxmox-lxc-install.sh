@@ -238,6 +238,11 @@ validate_paths() {
 
     # sync_repo делает rsync --delete в APP_ROOT: всё, что лежит внутри, будет удалено
     [[ "${APP_ROOT}" != "/" ]] || fail "--app-root must not be /"
+    # пустая папка или прежняя установка (в том числе прерванная до записи compose-файла)
+    if [[ -n "$(ls -A "${APP_ROOT}")" && ! -f "${APP_ROOT}/docker-compose.proxmox.yml" \
+        && ! -f "${APP_ROOT}/scripts/proxmox-lxc-install.sh" ]]; then
+        fail "--app-root ${APP_ROOT} is not empty and is not an inpx-shelf install: its contents would be deleted on sync"
+    fi
     local dir
     for dir in "${DATA_DIR}" "${LIBRARY_DIR}" "${SOURCE_DIRS[@]}"; do
         [[ -n "${dir}" ]] || continue
