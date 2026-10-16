@@ -115,9 +115,7 @@ async function init() {
     if (process.platform === 'win32')
         config.dataDir = await require('util').promisify(require('fs').realpath.native)(config.dataDir);
     //кеши книг, обложек и tmp можно держать отдельно от данных пользователей, например на временном диске
-    config.cacheDir = process.env.CACHE_DIR || config.cacheDir || config.dataDir;
-    //прежние версии хранили кеши в каталоге данных: переносим, чтобы не оставлять гигабайты мусора
-    await utils.moveIntoDir(config.dataDir, config.cacheDir, ['public-files']);
+    config.cacheDir = process.env.CACHE_DIR || config.dataDir;
     config.tempDir = config.tempDir || `${config.cacheDir}/tmp`;
     if (config.tempDir === '${OS}')
         config.tempDir = `${os.tmpdir()}/${config.name}`
