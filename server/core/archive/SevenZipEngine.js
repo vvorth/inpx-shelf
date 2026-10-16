@@ -1,9 +1,11 @@
 //7-Zip, собранный в WebAssembly (7z-wasm): читает zip любого метода сжатия (Deflate, PPMd, LZMA, BZip2...), 7z, rar.
 //Работает внутри потока архивов (ArchiveChild): callMain синхронный и занимает поток на всё время распаковки.
-//Архив читается с диска через NODEFS, целиком в память не загружается.
+//Архив читается с диска через NODEFS или из S3 (S3File), целиком в память не загружается.
 const fs = require('fs');
 const path = require('path');
 const SevenZip = require('7z-wasm/7zz.umd.js');
+const {isS3} = require('../S3Fs');
+const {createNode} = require('./S3File');
 
 //7-Zip не рассчитан на повторный вызов main в одном процессе: его статическое состояние портится, и через
 //несколько десятков вызовов экземпляр падает (memory access out of bounds). Поэтому каждый вызов получает новый
@@ -70,6 +72,18 @@ function run(sz, args) {
 }
 
 function withArchive(sz, file, task) {
+    if (isS3(file)) {
+        const point = `/s3${++mountId}`;
+        sz.FS.mkdir(point);
+        const name = path.posix.basename(String(file).replace(/\\/g, '/'));
+        const s3File = createNode(sz, point, name, file);
+        try {
+            return task(`${point}/${name}`);
+        } catch (e) {
+            throw s3File.error || Object.assign(e, {message: e.message.split(`${point}/${name}`).join(file)});
+        }
+    }
+
     const dir = path.dirname(path.resolve(file));
     const point = mount(sz, dir);
     try {

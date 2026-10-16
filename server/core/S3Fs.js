@@ -68,9 +68,9 @@ class S3Fs {
             //у HEAD нет тела ответа, и SDK пишет NotFound: UnknownError - причина только в коде HTTP
             const status = e && e.$metadata && e.$metadata.httpStatusCode;
             if (status === 404 || (e && ['NoSuchKey', 'NoSuchBucket', 'NotFound'].includes(e.name)))
-                throw fsError('ENOENT', `S3: not found: ${uri}`);
+                throw fsError('ENOENT', `ENOENT: not found in S3: ${uri}`);
             if (status === 403 || (e && e.name === 'AccessDenied'))
-                throw fsError('EACCES', `S3: access denied: ${uri}`);
+                throw fsError('EACCES', `EACCES: access denied in S3: ${uri}`);
             throw new Error(`S3: ${uri}: ${(e && (e.name || e.message)) || e}`);
         }
     }
@@ -120,7 +120,7 @@ class S3Fs {
             return fileStat(listing.files.get(name));
         if (listing.dirs.has(name))
             return dirStat();
-        throw fsError('ENOENT', `S3: not found: ${uri}`);
+        throw fsError('ENOENT', `ENOENT: not found in S3: ${uri}`);
     }
 
     async pathExists(uri) {
@@ -136,7 +136,7 @@ class S3Fs {
 
     async readdir(uri, options = {}) {
         if (!(await this.stat(uri)).isDirectory())
-            throw fsError('ENOTDIR', `S3: not a directory: ${uri}`);
+            throw fsError('ENOTDIR', `ENOTDIR: not a directory in S3: ${uri}`);
         const {dirs, files} = await this.list(uri);
         const names = [...dirs, ...files.keys()].sort();
         if (!options.withFileTypes)

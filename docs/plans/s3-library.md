@@ -1,6 +1,6 @@
 # Plan: library on S3 (optional backend)
 
-Written 2026-10-16. Status: steps 0–1 done, step 2 next.
+Written 2026-10-16. Status: steps 0–2 done, step 3 next.
 
 **Goal.** A library source whose path is an S3 URI (`s3://bucket/prefix`) is read straight from S3:
 the INPX, the book archives, and the library's asset folders (covers, illustrations, author info, reviews).
@@ -182,6 +182,22 @@ Findings for step 2:
 - **Errors:** a HEAD error has no body, so the SDK reports `NotFound: UnknownError`. Map
   `$metadata.httpStatusCode` 404/403 to `not found` / `access denied` + the URI.
 - **Path form:** `s3:/bucket/key` (after `path.join`) and `s3://bucket/key` both parse.
+
+## Step 2 results (2026-10-16)
+
+`server/core/archive/S3File.js` + a branch in `SevenZipEngine.withArchive`; `ZipReader.open` reads the
+signature through `LibraryFs.readRange`. Test: `scripts/s3-archive-tests.js`, which runs as a separate
+process and uses an in-process HTTP server as S3, with the real SDK.
+
+- **Blocks:** 256 KiB. Missing blocks next to each other are fetched in one ranged GET, so a book larger
+  than a block, or a solid block, costs one request, not one per block. The LRU holds 32 MiB per archive
+  thread (2 threads).
+- **Requests per open:** one HEAD (size + ETag; the ETag is part of the block key, so a replaced archive
+  is never mixed with stale blocks) plus a 6-byte signature GET from `ZipReader.open`.
+- **Errors:** messages start with `ENOENT:` / `EACCES:` like `fs` errors, because codes are lost across
+  the thread boundary and `WebWorker.getBookLink` maps `ENOENT` in the message to 404. An S3 error inside
+  7-Zip is surfaced as the original error, not "archive damaged".
+- **Fetcher worker:** eval'd code string like `ArchiveChild`, so it works inside `pkg`.
 
 ## Decisions (2026-10-16)
 

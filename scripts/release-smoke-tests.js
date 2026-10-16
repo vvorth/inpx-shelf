@@ -2501,6 +2501,11 @@ function testOpdsIndexQueries() {
     require('child_process').execFileSync(process.execPath, [path.join(__dirname, 'opds-index-tests.js')], {stdio: 'pipe'});
 }
 
+//Архивы из S3: отдельный процесс, адрес S3 задаётся до запуска потоков архивов
+function testS3Archives() {
+    require('child_process').execFileSync(process.execPath, [path.join(__dirname, 's3-archive-tests.js')], {stdio: 'pipe'});
+}
+
 const tests = [
     ...require('./fb2-encoding-tests'),
     ...require('./catalog-regression-tests'),
@@ -2560,6 +2565,7 @@ const tests = [
     testConfiguredConverterPathsHavePriority,
     testDiscoveryShelvesBuildOnlyRequestedSection,
     testOpdsIndexQueries,
+    testS3Archives,
     testPersonalDiscoveryCacheAndSingleFlight,
     testUnfinishedSeriesSkipsDeletedBooks,
     testPersonalDiscoveryUsesColdStartTaste,

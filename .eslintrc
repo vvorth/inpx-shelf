@@ -9,7 +9,7 @@
     "plugin:vue/recommended"
   ],
   "env": {
-    "es6": true,
+    "es2017": true,
     "browser": true,
     "node": true
   },

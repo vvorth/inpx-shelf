@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const iconv = require('iconv-lite');
 const archivePool = require('./archive/ArchivePool');
+const libraryFs = require('./LibraryFs');
 
 //Архивы библиотеки читает 7-Zip (WebAssembly) в отдельных потоках: zip любого метода сжатия, 7z и др.
 class ZipReader {
@@ -22,13 +23,7 @@ class ZipReader {
 
         // FLibrary stores recompressed EPUB containers with an .epub name;
         // extracted books also have extensionless temporary names.
-        const handle = await fs.promises.open(zipFile, 'r');
-        const signature = Buffer.alloc(6);
-        try {
-            await handle.read(signature, 0, signature.length, 0);
-        } finally {
-            await handle.close();
-        }
+        const signature = await libraryFs.readRange(zipFile, 0, 6);
         const is7z = signature.equals(Buffer.from('377abcaf271c', 'hex')) || path.extname(zipFile).toLowerCase() === '.7z';
 
         if (zipEntries) {
