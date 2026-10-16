@@ -381,7 +381,37 @@ function findReaderNodeByTextSnippet(root = null, textSnippet = '') {
     return null;
 }
 
+//Нижний край видимого содержимого: самый низкий прямоугольник непустых текстовых узлов и элементов.
+//Одна мерка для разбивки страниц и для подстройки нижнего края, иначе они разойдутся. -Infinity, если мерить нечего
+function getReaderContentBottom(root) {
+    let maxBottom = -Infinity;
+    const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+        {acceptNode: node => (node.nodeType !== Node.TEXT_NODE || String(node.nodeValue || '').trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT)},
+    );
+    //один Range на все текстовые узлы: каждый живой Range браузер обновляет при правке документа
+    const range = document.createRange();
+    for (let current = walker.currentNode; current; current = walker.nextNode()) {
+        let rects = [];
+        if (current.nodeType === Node.TEXT_NODE) {
+            range.selectNodeContents(current);
+            rects = range.getClientRects();
+        } else if (typeof current.getClientRects === 'function') {
+            rects = current.getClientRects();
+        }
+        for (const rect of rects) {
+            if (rect && rect.height > 0)
+                maxBottom = Math.max(maxBottom, rect.bottom);
+        }
+    }
+    if (typeof range.detach === 'function')
+        range.detach();
+    return maxBottom;
+}
+
 module.exports = {
+    getReaderContentBottom,
     normalizeReaderSearchText,
     escapeRegExp,
     parseInertHtml,

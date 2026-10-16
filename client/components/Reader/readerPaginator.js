@@ -317,41 +317,7 @@ export default class ReaderPaginator {
             return this.measureElementContentInnerHeight(contentNode);
 
         const rootRect = contentNode.getBoundingClientRect();
-        let maxBottom = rootRect.top;
-
-        const walker = document.createTreeWalker(
-            contentNode,
-            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (node) => {
-                    if (node.nodeType === Node.TEXT_NODE)
-                        return (String(node.nodeValue || '').trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT);
-                    return NodeFilter.FILTER_ACCEPT;
-                },
-            },
-        );
-
-        let current = walker.currentNode;
-        while (current) {
-            let rects = [];
-            if (current.nodeType === Node.TEXT_NODE) {
-                const range = document.createRange();
-                range.selectNodeContents(current);
-                rects = Array.from(range.getClientRects());
-                if (typeof range.detach === 'function')
-                    range.detach();
-            } else if (typeof current.getClientRects === 'function') {
-                rects = Array.from(current.getClientRects());
-            }
-
-            for (const rect of rects) {
-                if (!rect || rect.height <= 0)
-                    continue;
-                maxBottom = Math.max(maxBottom, rect.bottom);
-            }
-
-            current = walker.nextNode();
-        }
+        let maxBottom = Math.max(rootRect.top, readerTextAnchors.getReaderContentBottom(contentNode));
 
         const lastElement = this.getDeepestLastElement(contentNode);
         if (lastElement && typeof lastElement.getBoundingClientRect === 'function') {

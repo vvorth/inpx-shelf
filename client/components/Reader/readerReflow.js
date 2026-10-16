@@ -364,7 +364,7 @@ export default class ReaderReflow {
                 };
             }
             let pageIndex = -1;
-            if (pageIndex < 0 && anchor.textSnippet)
+            if (anchor.textSnippet)
                 pageIndex = this.findPagedPageIndexByTextSnippet(anchor.textSnippet, anchor.pageIndex);
             if (pageIndex < 0 && Number(anchor.textOffset) >= 0)
                 pageIndex = this.findPagedPageIndexByTextOffset(anchor.textOffset);

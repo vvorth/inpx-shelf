@@ -2,6 +2,7 @@
 //и на этот запас (bottom clip compensation) уменьшается высота, под которую режутся страницы. Запас помнится
 //по геометрии экрана, подстройка ждёт затишья после смены размера и перелистывания.
 //Своего состояния нет: замеры и таймеры - поля Reader.
+const readerTextAnchors = require('./readerTextAnchors');
 
 export default class ReaderBottomClip {
     get currentDynamicBottomClipCompensation() {
@@ -189,42 +190,7 @@ export default class ReaderBottomClip {
         const paddingBottom = parseFloat(sheetStyle.paddingBottom || '0') || 0;
         const safeBottom = sheetRect.bottom - paddingBottom - 2;
 
-        let maxBottom = -Infinity;
-
-        const walker = document.createTreeWalker(
-            html,
-            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: (node) => {
-                    if (node.nodeType === Node.TEXT_NODE)
-                        return (String(node.nodeValue || '').trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT);
-                    return NodeFilter.FILTER_ACCEPT;
-                },
-            },
-        );
-
-        let current = walker.currentNode;
-        while (current) {
-            let rects = [];
-            if (current.nodeType === Node.TEXT_NODE) {
-                const range = document.createRange();
-                range.selectNodeContents(current);
-                rects = Array.from(range.getClientRects());
-                if (typeof range.detach === 'function')
-                    range.detach();
-            } else if (typeof current.getClientRects === 'function') {
-                rects = Array.from(current.getClientRects());
-            }
-
-            for (const rect of rects) {
-                if (!rect || rect.height <= 0)
-                    continue;
-                maxBottom = Math.max(maxBottom, rect.bottom);
-            }
-
-            current = walker.nextNode();
-        }
-
+        let maxBottom = readerTextAnchors.getReaderContentBottom(html);
         if (!Number.isFinite(maxBottom))
             maxBottom = sheetRect.top;
 
@@ -386,7 +352,7 @@ export default class ReaderBottomClip {
         const increaseTolerance = Math.max(6, Math.round(linePx * 0.22));
         const configuredMaxDynamicCompensation = Math.max(
             linePx * 2,
-            Math.round(linePx * (this.isCompactLayout ? 3.8 : 4.6)),
+            Math.round(linePx * 3.8),
         );
         const measuredAvailableHeight = this.pagedMeasureAvailableHeight;
         const appliedDynamicCompensation = this.pagedAppliedBottomClipCompensation;
