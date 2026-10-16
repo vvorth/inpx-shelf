@@ -127,10 +127,39 @@ async function testReaderOpeningProgress() {
     assert.deepStrictEqual([resetAt.progress.percent, resetAt.dropStored], [0.5, false], 'Only what was saved before the reset is dropped');
 }
 
+//Место в ленте: смещение в тексте книги, поиск фрагмента у той же доли книги, прежнее место без прокрутки
+async function testReaderScrollAnchor() {
+    const readerScrollAnchor = require('../client/share/readerScrollAnchor');
+    const lengths = [5, 0, 10, 3];
+    assert.strictEqual(readerScrollAnchor.textOffset(lengths, 2, 4), 9);
+    assert.deepStrictEqual(readerScrollAnchor.textPosition(lengths, 9), {index: 2, offset: 4});
+    assert.deepStrictEqual(readerScrollAnchor.textPosition(lengths, 5), {index: 2, offset: 0}, 'An empty node is skipped');
+    assert.strictEqual(readerScrollAnchor.textPosition(lengths, 18), null);
+    assert.strictEqual(readerScrollAnchor.textPosition(lengths, -1), null);
+    assert.strictEqual(readerScrollAnchor.textPercent(lengths, 9), 0.5);
+    assert.deepStrictEqual(readerScrollAnchor.percentPosition(lengths, 0.5), {index: 2, offset: 4});
+    assert.deepStrictEqual(readerScrollAnchor.percentPosition(lengths, 2), {index: 3, offset: 2});
+
+    //узлы стыкуются через пробел, пробелы и регистр не важны; из повторов - ближайший к подсказке
+    const texts = ['Глава первая. ', 'Он  шёл\nпо', 'дороге домой.', 'Пауза.', 'Он шёл по дороге домой.'];
+    assert.deepStrictEqual(readerScrollAnchor.findText(texts, 'он шёл по дороге домой', 0), {index: 1, offset: 0});
+    assert.deepStrictEqual(readerScrollAnchor.findText(texts, 'он шёл по дороге домой', 4), {index: 4, offset: 0});
+    assert.deepStrictEqual(readerScrollAnchor.findText(texts, 'шёл по дороге домой и дальше', 0), null, 'A prefix shorter than 24 chars is not trusted');
+    assert.deepStrictEqual(readerScrollAnchor.findText(texts, 'дороге домой. Пауза. Он шёл по дороге домой. И ещё', 0), {index: 2, offset: 0});
+
+    //после восстановления и смены размера место прежнее, пока читатель не прокрутил
+    const anchor = {mode: 'scroll', textOffset: 120, scrollTop: 5000};
+    assert.strictEqual(readerScrollAnchor.keepsPlace(anchor, 5000.4), true);
+    assert.strictEqual(readerScrollAnchor.keepsPlace(anchor, 4980), false);
+    assert.strictEqual(readerScrollAnchor.keepsPlace(Object.assign({}, anchor, {mode: 'paged'}), 5000), false);
+    assert.strictEqual(readerScrollAnchor.keepsPlace({mode: 'scroll', scrollTop: 5000}, 5000), false, 'An anchor without text offset is not kept');
+}
+
 module.exports = [
     testReaderOpeningProgress,
     testReaderProgressMapIsCapped,
     testReaderReadMarkKeepsPlace,
     testReaderRemoteProgressChoice,
+    testReaderScrollAnchor,
     testReaderStorageKeepsBackgroundOnceAndForwardProgress,
 ];

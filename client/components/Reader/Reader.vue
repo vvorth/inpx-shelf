@@ -549,6 +549,12 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         this.savePreferencesDebounced = debounce(() => {
             this.persistPreferences();// no await
         }, 500);
+
+        // Место в ленте запоминается, когда прокрутка остановилась: после смены размера окна прежней раскладки уже нет
+        this.rememberScrollReflowAnchorDebounced = debounce(() => {
+            if (!this.isPagedMode && !this.loading)
+                this.rememberStableReaderReflowAnchor(this.captureScrollReflowAnchor());
+        }, 200);
     }
 
     mounted() {
@@ -1259,6 +1265,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         this.restoreFromSavedProgress = false;
         this.restoredScrollTop = -1;
         this.pendingReflowAnchor = null;
+        this.stableReaderReflowAnchor = null;
         this.controlsOpen = false;
         this.contentsDialogOpen = false;
         this.contentsPanelView = 'contents';
@@ -1535,6 +1542,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         this.lastScrollTop = currentScroll;
         const percent = (maxScroll > 0 ? currentScroll / maxScroll : 0);
         this.updateCurrentSectionFromScroll();
+        this.rememberScrollReflowAnchorDebounced();
         // Прокрутка самой читалкой к месту (восстановление, отметка «прочитано») - ещё не чтение: прогресс
         // не перезаписывается, пока читатель сам не прокрутит текст (позиция другого устройства, отметка остаются)
         if (this.restoredScrollTop >= 0 && Math.abs(currentScroll - this.restoredScrollTop) < scroller.clientHeight / 2)
@@ -1696,6 +1704,8 @@ export default vueComponent(Reader);
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
+    /* место при перестройке держит сама читалка (readerReflow): сдвиг браузера пришёл бы как прокрутка читателем */
+    overflow-anchor: none;
 }
 
 .reader-scroll--paged {

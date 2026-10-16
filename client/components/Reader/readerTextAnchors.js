@@ -192,6 +192,58 @@ function findTopLeftReaderTextPosition(root = null) {
     return null;
 }
 
+//все текстовые узлы по порядку: смещения в тексте ленты считаются по ним
+function getReaderTextNodes(root = null) {
+    if (!root || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function')
+        return [];
+
+    const nodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode())
+        nodes.push(walker.currentNode);
+    return nodes;
+}
+
+//прямоугольник символа; свёрнутые пробелы пропускаем
+function getReaderTextRect(node = null, offset = 0) {
+    if (!node || node.nodeType !== Node.TEXT_NODE || typeof document === 'undefined')
+        return null;
+
+    const length = String(node.nodeValue || '').length;
+    const range = document.createRange();
+    for (let index = Math.max(0, offset); index < Math.min(length, offset + 8); index++) {
+        range.setStart(node, index);
+        range.setEnd(node, index + 1);
+        const rect = range.getClientRects()[0];
+        if (rect && rect.height > 0)
+            return rect;
+    }
+    return null;
+}
+
+//Первая строка текста ниже top: точка у левого края колонки даёт начало строки. Строку, видную меньше чем
+//наполовину, пропускаем
+function findReaderTextPositionBelow(root = null, left = 0, top = 0, bottom = 0) {
+    if (!root || typeof root.contains !== 'function')
+        return null;
+
+    for (let y = top + 1; y < bottom; y += 4) {
+        const position = getReaderTextPositionFromPoint(left, y);
+        if (!position || !position.node || position.node.nodeType !== Node.TEXT_NODE || !root.contains(position.node))
+            continue;
+
+        const rect = getReaderTextRect(position.node, position.offset);
+        if (!rect)
+            continue;
+        if (rect.top + (rect.height / 2) < top) {
+            y = Math.max(y, rect.bottom - 3);
+            continue;
+        }
+        return Object.assign(position, {top: rect.top});
+    }
+    return null;
+}
+
 function getReaderTextSnippetFromPosition(root = null, node = null, offset = 0) {
     if (!root || !node || node.nodeType !== Node.TEXT_NODE || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function')
         return '';
@@ -339,6 +391,9 @@ module.exports = {
     getHtmlReaderSearchText,
     getReaderTextPositionFromPoint,
     findTopLeftReaderTextPosition,
+    getReaderTextNodes,
+    getReaderTextRect,
+    findReaderTextPositionBelow,
     getReaderTextSnippetFromPosition,
     getReaderNodeAnchorId,
     getReaderNodeTextSnippet,

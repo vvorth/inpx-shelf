@@ -2,6 +2,7 @@
 //в левом верхнем углу экрана - запоминается до перестройки, после неё к нему возвращаемся и коротко подсвечиваем.
 //Своего состояния нет: якоря и таймеры - поля Reader.
 const readerTextAnchors = require('./readerTextAnchors');
+const readerScrollAnchor = require('../../share/readerScrollAnchor');
 
 export default class ReaderReflow {
     getPagedAnchorSheet(sheet = null) {
@@ -80,6 +81,9 @@ export default class ReaderReflow {
     capturePendingReflowAnchor(force = false, {preferStable = false} = {}) {
         if (!this.bookUid)
             return null;
+        //прежнее место ещё не вернули (идёт разбивка): на экране не оно, а якорь и есть место чтения
+        if (this.restorePending && this.pendingReflowAnchor)
+            return this.pendingReflowAnchor;
         if (!force && this.pendingReflowAnchor)
             return this.pendingReflowAnchor;
 
@@ -105,6 +109,10 @@ export default class ReaderReflow {
 
     capturePagedReflowAnchor() {
         const pageIndex = this.getPagedAnchorPageIndex();
+        //страница открыта по месту из ленты и её не листали: то же место, иначе возврат в ленту уводит к началу страницы
+        const stable = this.stableReaderReflowAnchor;
+        if (stable && stable.mode === 'scroll' && stable.pageIndex === pageIndex)
+            return this.cloneReaderReflowAnchor(stable);
         const page = this.pagedPages[pageIndex] || null;
         const sheet = this.getActiveLivePagedSheet();
         const anchorSheet = this.getPagedAnchorSheet(sheet);
@@ -124,6 +132,7 @@ export default class ReaderReflow {
         return {
             mode: 'paged',
             pageIndex,
+            percent: pageIndex / Math.max(1, this.totalPagedLogicalPages - 1),
             spreadMode: this.isDualPagedSpread ? 'dual' : 'single',
             sectionId: String((page && page.sectionId) || this.currentSectionId || '').trim(),
             id: focusId,
@@ -155,19 +164,103 @@ export default class ReaderReflow {
         const scroller = (this.$refs ? this.$refs.scroller : null);
         if (!scroller)
             return null;
+        if (readerScrollAnchor.keepsPlace(this.stableReaderReflowAnchor, scroller.scrollTop))
+            return this.cloneReaderReflowAnchor(this.stableReaderReflowAnchor);
 
+        //первая строка под панелью: узел с наименьшим top нашёлся бы выше экрана, вплоть до начала книги
         const contentRoot = scroller.querySelector('.reader-html');
-        const focusNode = this.findTopLeftReaderContentNode(contentRoot);
-        const focusId = readerTextAnchors.getReaderNodeAnchorId(focusNode);
-        const focusText = readerTextAnchors.getReaderNodeTextSnippet(focusNode);
+        const readingTop = this.getScrollReadingTop(scroller);
+        const rootRect = contentRoot ? contentRoot.getBoundingClientRect() : null;
+        const position = rootRect && readerTextAnchors.findReaderTextPositionBelow(contentRoot,
+            Math.max(rootRect.left, scroller.getBoundingClientRect().left) + 1, readingTop, scroller.getBoundingClientRect().bottom);
+        const textSnippet = position ? readerTextAnchors.getReaderTextSnippetFromPosition(contentRoot, position.node, position.offset) : '';
+        const sectionId = String(this.currentSectionId || '').trim();
+        //на экране нет текста (картинка во весь экран): хотя бы та же глава
+        if (!textSnippet)
+            return {mode: 'scroll', sectionId, id: '', textSnippet: '', scrollTop: Math.round(scroller.scrollTop)};
 
+        const nodes = readerTextAnchors.getReaderTextNodes(contentRoot);
+        const lengths = nodes.map(node => node.nodeValue.length);
+        const textOffset = readerScrollAnchor.textOffset(lengths, nodes.indexOf(position.node), position.offset);
         return {
             mode: 'scroll',
-            sectionId: String(this.currentSectionId || '').trim(),
-            id: focusId,
-            textSnippet: focusText,
-            scrollTop: Math.max(0, Number(scroller.scrollTop || 0) || 0),
+            sectionId,
+            id: readerTextAnchors.getReaderNodeAnchorId(position.node.parentElement),
+            textSnippet,
+            textOffset,
+            percent: readerScrollAnchor.textPercent(lengths, textOffset),
+            lineTop: Math.round(position.top - readingTop),
+            scrollTop: Math.round(scroller.scrollTop),
         };
+    }
+
+    getScrollReadingTop(scroller) {
+        return scroller.getBoundingClientRect().top + this.readerScrollTopInset;
+    }
+
+    //Символ якоря в разметке ленты: по смещению, если текст там тот же, иначе (якорь из режима страниц) по фрагменту
+    findScrollAnchorTextPosition(scroller, anchor = null) {
+        const contentRoot = scroller ? scroller.querySelector('.reader-html') : null;
+        const textSnippet = String((anchor && anchor.textSnippet) || '');
+        if (!contentRoot || !textSnippet || textSnippet.startsWith('image:'))
+            return null;
+
+        const nodes = readerTextAnchors.getReaderTextNodes(contentRoot);
+        const lengths = nodes.map(node => node.nodeValue.length);
+        let position = (anchor.mode === 'scroll' ? readerScrollAnchor.textPosition(lengths, anchor.textOffset) : null);
+        let text = (position ? readerTextAnchors.getReaderTextSnippetFromPosition(contentRoot, nodes[position.index], position.offset) : '');
+        if (!position || text.slice(0, 48) !== textSnippet.slice(0, 48)) {
+            //фрагмент ищем около той же доли книги: короткие фразы в книге повторяются
+            const near = readerScrollAnchor.percentPosition(lengths, anchor.percent);
+            const from = Math.max(0, (near ? near.index : 0) - 400);
+            const found = readerScrollAnchor.findText(nodes.slice(from, from + 800).map(node => node.nodeValue), textSnippet, (near ? near.index : 0) - from);
+            if (!found)
+                return null;
+            position = {index: from + found.index, offset: found.offset};
+            text = readerTextAnchors.getReaderTextSnippetFromPosition(contentRoot, nodes[position.index], found.offset);
+        }
+
+        const textOffset = readerScrollAnchor.textOffset(lengths, position.index, position.offset);
+        return {
+            node: nodes[position.index],
+            offset: position.offset,
+            textOffset,
+            percent: readerScrollAnchor.textPercent(lengths, textOffset),
+            textSnippet: text,
+        };
+    }
+
+    //Ставит символ якоря на ту же высоту под панелью. Прокрутка самой читалкой - не чтение (restoredScrollTop)
+    restoreScrollTextAnchor(scroller, anchor = null) {
+        const position = this.findScrollAnchorTextPosition(scroller, anchor);
+        const rect = position && readerTextAnchors.getReaderTextRect(position.node, position.offset);
+        if (!rect)
+            return false;
+
+        scroller.scrollTop += rect.top - (this.getScrollReadingTop(scroller) + (Number(anchor.lineTop) || 0));
+        this.restoredScrollTop = scroller.scrollTop;
+        this.rememberStableReaderReflowAnchor({
+            mode: 'scroll',
+            sectionId: anchor.sectionId,
+            id: anchor.id,
+            textSnippet: position.textSnippet,
+            textOffset: position.textOffset,
+            percent: position.percent,
+            lineTop: Number(anchor.lineTop) || 0,
+            scrollTop: Math.round(scroller.scrollTop),
+        });
+        return true;
+    }
+
+    //Лента после смены размера окна, панели или картинки: место не сдвигается, если читатель не прокручивал
+    restoreStableScrollReflowAnchor() {
+        const scroller = (this.$refs ? this.$refs.scroller : null);
+        if (this.isPagedMode || this.loading || !scroller || !scroller.clientHeight
+            || !readerScrollAnchor.keepsPlace(this.stableReaderReflowAnchor, scroller.scrollTop))
+            return;
+
+        if (this.restoreScrollTextAnchor(scroller, this.stableReaderReflowAnchor))
+            this.updateCurrentSectionFromScroll();
     }
 
     findTopLeftReaderContentNode(root = null) {
@@ -257,7 +350,18 @@ export default class ReaderReflow {
         if (!anchor)
             return false;
 
-        if (anchor.mode === 'paged') {
+        if (this.isPagedMode) {
+            const scrollAnchor = (anchor.mode !== 'paged' ? anchor : null);
+            //якорь из ленты (сменился режим, у e-ink он свой): смещения ленты к страницам не подходят, ищем по тексту
+            if (scrollAnchor) {
+                anchor = {
+                    mode: 'paged',
+                    pageIndex: Math.round((Number(anchor.percent) || 0) * Math.max(0, this.totalPagedLogicalPages - 1)),
+                    sectionId: anchor.sectionId,
+                    id: anchor.id,
+                    textSnippet: anchor.textSnippet,
+                };
+            }
             let pageIndex = -1;
             if (pageIndex < 0 && anchor.textSnippet)
                 pageIndex = this.findPagedPageIndexByTextSnippet(anchor.textSnippet, anchor.pageIndex);
@@ -287,12 +391,18 @@ export default class ReaderReflow {
                 this.setReflowPageStartOverride(pageIndex, anchor);
                 this.setCurrentPagedPage(pageIndex, false);
             }
+            if (scrollAnchor && scrollAnchor.textSnippet)
+                this.stableReaderReflowAnchor = Object.assign({}, scrollAnchor, {pageIndex: this.getPagedAnchorPageIndex()});
             return true;
         }
 
         const scroller = (this.$refs ? this.$refs.scroller : null);
         if (!scroller)
             return false;
+        if (this.restoreScrollTextAnchor(scroller, anchor)) {
+            this.updateCurrentSectionFromScroll();
+            return true;
+        }
 
         let target = null;
         if (anchor.id)
@@ -342,13 +452,16 @@ export default class ReaderReflow {
             return false;
 
         let target = null;
-        if (anchor.mode === 'paged') {
+        if (this.isPagedMode) {
             const sheet = this.getActiveLivePagedSheet();
             const anchorSheet = this.getPagedAnchorSheet(sheet);
             target = this.findReaderReflowHighlightTarget(anchorSheet, anchor);
         } else {
             const scroller = (this.$refs ? this.$refs.scroller : null);
-            target = this.findReaderReflowHighlightTarget(scroller, anchor);
+            const position = this.findScrollAnchorTextPosition(scroller, anchor);
+            target = (position
+                ? (position.node.parentElement.closest('p') || position.node.parentElement)
+                : this.findReaderReflowHighlightTarget(scroller, anchor));
         }
 
         if (!target || !target.classList)
@@ -425,7 +538,8 @@ export default class ReaderReflow {
             return;
         }
 
-        if (immediate || !this.controlsOpen) {
+        //в ленте нечего перестраивать: место возвращаем сразу, а не после закрытия панели
+        if (immediate || !this.controlsOpen || !this.isPagedMode) {
             this.reflowReaderLayout();
             return;
         }

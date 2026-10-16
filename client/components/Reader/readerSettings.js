@@ -110,6 +110,8 @@ export default class ReaderSettings {
         if (this.activePreferences.readMode === nextMode)
             return;
 
+        //место берём, пока на экране прежний режим
+        this.capturePendingReflowAnchor(true);
         this.updateActivePreferences({
             readMode: nextMode,
         });
@@ -548,9 +550,12 @@ export default class ReaderSettings {
         const previousSignature = this.layoutSignatureForPreferences(this.activePreferences);
         this.beginLayoutRefresh();
         await this.afterLayoutRefreshPaint();
+        const nextSignature = this.layoutSignatureForPreferences(this.getActivePreferencesForTheme(theme, this.preferences));
+        //место берём до смены темы: у e-ink свои шрифт и режим чтения
+        if (previousSignature !== nextSignature)
+            this.capturePendingReflowAnchor(true);
         this.preferences = Object.assign({}, this.preferences, {theme});
         this.savePreferencesDebounced();
-        const nextSignature = this.layoutSignatureForPreferences(this.getActivePreferencesForTheme(theme, this.preferences));
         if (previousSignature !== nextSignature) {
             this.reflowReaderLayout();
         } else {

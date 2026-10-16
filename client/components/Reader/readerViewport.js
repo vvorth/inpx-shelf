@@ -214,6 +214,8 @@ export default class ReaderViewport {
             return;
         }
         this.applyVerticalSectionAlignment();
+        // ширина колонки зависит от scrollerViewportWidth: место возвращаем после обновления разметки
+        this.$nextTick(() => this.restoreStableScrollReflowAnchor());
     }
 
     schedulePagedViewportBuild() {
