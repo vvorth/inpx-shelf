@@ -10,7 +10,7 @@ const InpxHashCreator = require('./InpxHashCreator');
 const RemoteLib = require('./RemoteLib');//singleton
 const FileDownloader = require('./FileDownloader');
 const ReadingListStore = require('./ReadingListStore');
-const {withFileTransaction} = require('./FilePersistence');
+const {withFileTransaction, writeFileAtomic} = require('./FilePersistence');
 const epubRestorer = require('./EpubRestorer');
 const bookConverter = require('./BookConverter');
 
@@ -1166,7 +1166,8 @@ class WebWorker {
         }
 
         const assetVersion = assetVersionFor(path.extname(libFile).slice(1));
-        await fs.writeFile(bookFileDesc, JSON.stringify({libFolder, libFile, sourceLibDir, downFileName, size, assetVersion}));
+        //описание читают параллельные загрузки (static.js): только целиком записанный файл
+        await writeFileAtomic(bookFileDesc, JSON.stringify({libFolder, libFile, sourceLibDir, downFileName, size, assetVersion}));
         this.scheduleCacheClean(msg('admin.cleanReasonAfterBook'));
 
         this.stateStore.putBookFile({id: bookUid, hash, size, assetVersion});

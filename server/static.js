@@ -298,9 +298,8 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
     const webAppBasePath = normalizeWebAppBasePath(config.rootPathStatic);
     const webAppRoutePrefix = (webAppBasePath === '/' ? '' : webAppBasePath.slice(0, -1));
     if (webWorker && security) {
-        const guard = new (require('./core/ProfileAccess'))(config, webWorker, security).httpGuard();
-        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`, `${webAppRoutePrefix}/admin-backups`], guard);
         const profileAccess = new (require('./core/ProfileAccess'))(config, webWorker, security);
+        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`, `${webAppRoutePrefix}/admin-backups`], profileAccess.httpGuard());
         app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`], accessGuard(config, webAccess, security, profileAccess));
     }
     app.get(`${webAppRoutePrefix}/app-reset`, (req, res) => {
@@ -507,6 +506,9 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
                 res.status(500).send(known ? e.message : t('errors.conversionFailed'));
                 return;
             }
+            //express.static ниже отдал бы сжатый кеш как книгу
+            if (/^[0-9a-f]+$/i.test(req.params.fileName))
+                return res.sendStatus(500);
         }
 
         return next();

@@ -326,6 +326,29 @@ async function testConversionErrorHidesConverterOutput() {
     });
 }
 
+// A broken cache description (half-written, disk full) must not hand out the gzip cache file as the book.
+async function testBookCacheErrorIsNotServedRaw() {
+    await temporary(async(dir) => {
+        const config = {dataDir: path.join(dir, 'data'), rootPathStatic: '', bookPathStatic: '/book',
+            publicDir: path.join(dir, 'data', 'public'), bookDir: path.join(dir, 'data', 'public-files', 'book')};
+        const hash = 'abcdef0123';
+        await fs.ensureDir(config.bookDir);
+        await fs.writeFile(path.join(config.bookDir, hash), require('zlib').gzipSync('<FictionBook/>'));
+        await fs.writeFile(path.join(config.bookDir, `${hash}.d.json`), '');
+        const app = require('express')();
+        require('../server/static')(app, config);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const res = await fetch(`http://127.0.0.1:${server.address().port}/book/${hash}`);
+            await res.arrayBuffer();
+            assert.strictEqual(res.status, 500);
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+}
+
 // The web app is rewritten for rootPath once at extraction: requests never modify files that are being served.
 async function testRootPathRewriteAtExtraction() {
     await temporary(async(dir) => {
@@ -810,7 +833,7 @@ module.exports = [
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testAccessPasswordLimitBlocksCorrectGuess, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
-    testConversionErrorHidesConverterOutput, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
+    testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded, testRemoteLibVerifiesTlsCertificates];
