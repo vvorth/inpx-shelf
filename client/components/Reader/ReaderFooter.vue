@@ -337,27 +337,6 @@ export default vueComponent(ReaderFooter);
         );
 }
 
-.reader-page--transparent-status .reader-mobile-footer,
-.reader-page--transparent-status .reader-desktop-footer {
-    background: transparent !important;
-    box-shadow: none;
-}
-
-.reader-page--transparent-status .reader-status-bar {
-    border-color: color-mix(in srgb, var(--reader-border) 48%, transparent) !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    color: var(--reader-text);
-}
-
-.reader-page--text-shadow.reader-page--transparent-status .reader-status-bar {
-    text-shadow: 0 1px 2px color-mix(in srgb, var(--reader-bg) 42%, transparent);
-}
-
-.reader-page:not(.reader-page--text-shadow) .reader-status-bar {
-    text-shadow: none !important;
-}
-
 @media (max-width: 640px) {
 
     .reader-mobile-footer--settings {

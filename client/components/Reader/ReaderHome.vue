@@ -653,8 +653,7 @@ export default vueComponent(ReaderHome);
 
     .reader-theme-switch,
     .reader-stepper,
-    .reader-font-select,
-    .reader-background-control {
+    .reader-font-select {
         width: 100%;
         max-width: none;
         justify-content: center;

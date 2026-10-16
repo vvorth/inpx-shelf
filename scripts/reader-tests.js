@@ -17,8 +17,8 @@ async function testReaderProgressMapIsCapped() {
     assert.deepStrictEqual(Object.keys(trimmed).sort(), ['middle', 'newest']);
 }
 
-//Копия в браузере: фон хранится один раз, позицию дальше по книге не затирает недостроенная разбивка
-async function testReaderStorageKeepsBackgroundOnceAndForwardProgress() {
+//Копия в браузере: позицию дальше по книге не затирает недостроенная разбивка
+async function testReaderStorageKeepsForwardProgress() {
     const readerStorage = require('../client/share/readerStorage');
     const items = new Map();
     global.localStorage = {
@@ -26,10 +26,7 @@ async function testReaderStorageKeepsBackgroundOnceAndForwardProgress() {
         setItem: (key, value) => items.set(key, String(value)),
     };
     try {
-        readerStorage.writePreferences('u1', {theme: 'sepia', backgroundImage: 'data:image/png;base64,AAAA'});
-        const stored = JSON.parse(items.get('inpx.reader.preferences.v1'));
-        assert.strictEqual(stored.byUser.u1.backgroundImage, 'data:image/png;base64,AAAA');
-        assert.strictEqual(stored.preferences.backgroundImage, undefined);
+        readerStorage.writePreferences('u1', {theme: 'sepia'});
         assert.strictEqual(readerStorage.readPreferences('u1').theme, 'sepia');
 
         const at = seconds => new Date(Date.UTC(2026, 0, 1, 12, 0, seconds)).toISOString();
@@ -242,5 +239,5 @@ module.exports = [
     testReaderReadMarkKeepsPlace,
     testReaderRemoteProgressChoice,
     testReaderScrollAnchor,
-    testReaderStorageKeepsBackgroundOnceAndForwardProgress,
+    testReaderStorageKeepsForwardProgress,
 ];

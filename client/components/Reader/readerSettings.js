@@ -2,7 +2,6 @@
 //настроек, слияние с настройками с сервера и сохранение. Своего состояния нет: настройки - поле Reader.preferences.
 import cloneDeep from 'lodash/cloneDeep';
 import isEqual from 'lodash/isEqual';
-import omit from 'lodash/omit';
 const readerStorage = require('../../share/readerStorage');
 
 const {migrateReaderPreferences} = require('../../../shared/readerPreferences');
@@ -305,7 +304,7 @@ export default class ReaderSettings {
     }
 
     setReaderControlsTab(tab = 'text') {
-        const next = ['text', 'page', 'background', 'status'].includes(tab) ? tab : 'text';
+        const next = ['text', 'page', 'status'].includes(tab) ? tab : 'text';
         if (this.readerControlsTab === next)
             return;
 
@@ -340,17 +339,6 @@ export default class ReaderSettings {
 
         if (this.$root && this.$root.notify)
             this.$root.notify.success(this.uiText.resetReaderAppearanceSuccess, '', this.readerNotifyOptions);
-    }
-
-    setBackgroundTransparency(key = '', enabled = false) {
-        const allowed = ['backgroundTransparentPages', 'backgroundTransparentStatus'];
-        if (!allowed.includes(key))
-            return;
-
-        this.updateActivePreferences({
-            [key]: !!enabled,
-        });
-        this.savePreferencesDebounced();
     }
 
     changeEinkContrast(delta = 0) {
@@ -429,14 +417,8 @@ export default class ReaderSettings {
         if (!api)
             return;
 
-        const preferences = this.preferences;
-        const backgroundImage = String(preferences.backgroundImage || '');
-        const patch = (backgroundImage === this.serverBackgroundImage
-            ? omit(preferences, ['backgroundImage', 'backgroundImageName'])
-            : preferences);
         try {
-            await api.updateReaderPreferences(patch, {suppressProfileLogin: true});
-            this.serverBackgroundImage = backgroundImage;
+            await api.updateReaderPreferences(this.preferences, {suppressProfileLogin: true});
         } catch (e) {
             if ((e && e.message) !== 'need_profile_login')
                 throw e;
@@ -563,56 +545,6 @@ export default class ReaderSettings {
         }
     }
 
-    openReaderBackgroundPicker() {
-        const input = this.childRef('settingsPanel', 'readerBackgroundInput');
-        if (input && typeof input.click === 'function')
-            input.click();
-    }
-
-    handleReaderBackgroundUpload(event) {
-        const input = event && event.target;
-        const file = input && input.files && input.files[0];
-        if (!file)
-            return;
-
-        if (!String(file.type || '').startsWith('image/')) {
-            this.$root.stdDialog.alert(this.uiText.backgroundInvalid, this.uiText.error);
-            input.value = '';
-            return;
-        }
-
-        if (file.size > this.readerBackgroundMaxBytes) {
-            this.$root.stdDialog.alert(this.uiText.backgroundTooLarge, this.uiText.error);
-            input.value = '';
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = () => {
-            this.preferences = Object.assign({}, this.preferences, {
-                backgroundImage: String(reader.result || ''),
-                backgroundImageName: String(file.name || '').slice(0, 120),
-            });
-            this.savePreferencesDebounced();
-        };
-        reader.onerror = () => {
-            this.$root.stdDialog.alert(this.uiText.backgroundInvalid, this.uiText.error);
-        };
-        reader.readAsDataURL(file);
-        input.value = '';
-    }
-
-    clearReaderBackground() {
-        if (!this.preferences.backgroundImage && !this.preferences.backgroundImageName)
-            return;
-
-        this.preferences = Object.assign({}, this.preferences, {
-            backgroundImage: '',
-            backgroundImageName: '',
-        });
-        this.savePreferencesDebounced();
-    }
-
     changeFontSize(delta) {
         this.capturePendingReflowAnchor(true);
         this.updateActivePreferences({
@@ -650,12 +582,5 @@ export default class ReaderSettings {
         });
         this.savePreferencesDebounced();
         this.requestReaderSettingsReflow();
-    }
-
-    setTextShadow(enabled = true) {
-        this.updateActivePreferences({
-            textShadow: !!enabled,
-        });
-        this.savePreferencesDebounced();
     }
 }

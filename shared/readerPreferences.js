@@ -18,13 +18,8 @@ const readerDefaults = {
     fontFamily: 'serif',
     fontSize: 18,
     lineHeight: 1.7,
-    textShadow: false,
     contentWidth: 1040,
     contentWidthMode: 'viewport',
-    backgroundImage: '',
-    backgroundImageName: '',
-    backgroundTransparentPages: false,
-    backgroundTransparentStatus: false,
     pagedSpreadMode: 'single',
     dualPageGap: 28,
     pageVerticalPadding: 18,
@@ -50,9 +45,8 @@ const einkReaderDefaults = Object.assign({}, readerDefaults, {
     contentWidth: 920,
     contentWidthMode: 'fixed',
 });
-// The e-ink profile keeps the regular background image: it has no image of its own.
-delete einkReaderDefaults.backgroundImage;
-delete einkReaderDefaults.backgroundImageName;
+
+const removedKeys = ['backgroundImage', 'backgroundImageName', 'backgroundTransparentPages', 'backgroundTransparentStatus', 'textShadow'];
 
 function migrateReaderPreferences(preferences = {}) {
     if (!preferences || typeof preferences !== 'object')
@@ -61,9 +55,10 @@ function migrateReaderPreferences(preferences = {}) {
     // Vue's reactive proxies cannot be structuredClone'd; the settings are plain JSON
     const next = JSON.parse(JSON.stringify(preferences));
     const version = Math.max(0, parseInt(next.readerPreferencesVersion, 10) || 0);
-    if (version < 2) {
-        next.textShadow = false;
-        next.einkProfile = Object.assign({}, next.einkProfile || {}, {textShadow: false});
+    // The background image and text shadow were removed: drop what older versions saved (the image took up to 4 MB)
+    for (const target of [next, next.einkProfile]) {
+        for (const key of removedKeys)
+            delete (target || {})[key];
     }
     if (
         version < 3

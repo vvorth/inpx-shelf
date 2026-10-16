@@ -7,19 +7,10 @@
             'reader-toolbar-actions--mobile-sheet': reader.isCompactLayout,
         }"
     >
-        <input
-            ref="readerBackgroundInput"
-            class="reader-background-input"
-            type="file"
-            accept="image/*"
-            @change="reader.handleReaderBackgroundUpload"
-        />
-
         <div class="reader-controls-header">
             <div class="tabs reader-controls-tabs">
                 <button type="button" class="tab" :class="{'is-active': reader.readerControlsTab === 'text'}" @click="reader.setReaderControlsTab('text')">{{ reader.uiText.controlsText }}</button>
                 <button type="button" class="tab" :class="{'is-active': reader.readerControlsTab === 'page'}" @click="reader.setReaderControlsTab('page')">{{ reader.uiText.controlsPage }}</button>
-                <button type="button" class="tab" :class="{'is-active': reader.readerControlsTab === 'background'}" @click="reader.setReaderControlsTab('background')">{{ reader.uiText.controlsBackground }}</button>
                 <button type="button" class="tab" :class="{'is-active': reader.readerControlsTab === 'status'}" @click="reader.setReaderControlsTab('status')">{{ reader.uiText.controlsStatus }}</button>
             </div>
 
@@ -96,14 +87,6 @@
                             <q-btn flat dense round icon="la la-minus" @click="reader.changeLineHeight(-0.05)" />
                             <div class="reader-stepper-value">{{ reader.activePreferences.lineHeight.toFixed(2) }}</div>
                             <q-btn flat dense round icon="la la-plus" @click="reader.changeLineHeight(0.05)" />
-                        </div>
-                    </div>
-
-                    <div class="reader-control-field">
-                        <div class="reader-control-label">{{ reader.uiText.controlsTextShadow }}</div>
-                        <div class="reader-theme-switch">
-                            <q-btn flat dense no-caps :class="{'is-active': reader.activePreferences.textShadow}" @click="reader.setTextShadow(true)">{{ reader.uiText.textShadowOn }}</q-btn>
-                            <q-btn flat dense no-caps :class="{'is-active': !reader.activePreferences.textShadow}" @click="reader.setTextShadow(false)">{{ reader.uiText.textShadowOff }}</q-btn>
                         </div>
                     </div>
                 </section>
@@ -325,36 +308,6 @@
                 </section>
             </template>
 
-            <template v-else-if="reader.readerControlsTab === 'background'">
-                <section class="reader-controls-group">
-                    <div class="reader-controls-group-title">{{ reader.uiText.controlsBackgroundImage }}</div>
-                    <div class="reader-background-control">
-                        <q-btn flat dense no-caps icon="la la-image" @click="reader.openReaderBackgroundPicker">{{ reader.uiText.backgroundUpload }}</q-btn>
-                        <q-btn v-if="reader.preferences.backgroundImage" flat dense no-caps icon="la la-times" @click="reader.clearReaderBackground">{{ reader.uiText.backgroundClear }}</q-btn>
-                    </div>
-                </section>
-
-                <section v-if="reader.preferences.backgroundImage" class="reader-controls-group">
-                    <div class="reader-controls-group-title">{{ reader.uiText.controlsBackgroundLayers }}</div>
-
-                    <div class="reader-control-field">
-                        <div class="reader-control-label">{{ reader.uiText.controlsPages }}</div>
-                        <div class="reader-theme-switch">
-                            <q-btn flat dense no-caps :class="{'is-active': !reader.activePreferences.backgroundTransparentPages}" @click="reader.setBackgroundTransparency('backgroundTransparentPages', false)">{{ reader.uiText.backgroundPagesSolid }}</q-btn>
-                            <q-btn flat dense no-caps :class="{'is-active': reader.activePreferences.backgroundTransparentPages}" @click="reader.setBackgroundTransparency('backgroundTransparentPages', true)">{{ reader.uiText.backgroundPagesTransparent }}</q-btn>
-                        </div>
-                    </div>
-
-                    <div class="reader-control-field">
-                        <div class="reader-control-label">{{ reader.uiText.controlsStatusBar }}</div>
-                        <div class="reader-theme-switch">
-                            <q-btn flat dense no-caps :class="{'is-active': !reader.activePreferences.backgroundTransparentStatus}" @click="reader.setBackgroundTransparency('backgroundTransparentStatus', false)">{{ reader.uiText.backgroundStatusSolid }}</q-btn>
-                            <q-btn flat dense no-caps :class="{'is-active': reader.activePreferences.backgroundTransparentStatus}" @click="reader.setBackgroundTransparency('backgroundTransparentStatus', true)">{{ reader.uiText.backgroundStatusTransparent }}</q-btn>
-                        </div>
-                    </div>
-                </section>
-            </template>
-
             <template v-else-if="reader.readerControlsTab === 'status'">
                 <section class="reader-controls-group">
                     <div class="reader-controls-group-title">{{ reader.uiText.controlsStatusField }}</div>
@@ -474,10 +427,6 @@ export default vueComponent(ReaderSettingsPanel);
     scrollbar-width: thin;
 }
 
-.reader-background-input {
-    display: none;
-}
-
 .reader-controls-header {
     display: flex;
     align-items: center;
@@ -547,24 +496,6 @@ export default vueComponent(ReaderSettingsPanel);
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
-}
-
-.reader-background-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    min-height: 34px;
-    padding: 1px;
-    border: 1px solid var(--reader-border);
-    border-radius: var(--reader-radius);
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-}
-
-.reader-background-control :deep(.q-btn) {
-    flex: 1 1 0;
-    min-height: 30px;
 }
 
 .reader-reset-control {
@@ -886,8 +817,7 @@ export default vueComponent(ReaderSettingsPanel);
 
     .reader-theme-switch,
     .reader-stepper,
-    .reader-font-select,
-    .reader-background-control {
+    .reader-font-select {
         width: 100%;
         max-width: none;
         justify-content: center;

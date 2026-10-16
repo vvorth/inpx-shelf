@@ -839,17 +839,6 @@ export default vueComponent(ReaderDialogs);
     box-shadow: none;
 }
 
-.reader-page--text-shadow.reader-page--transparent-pages .reader-body:not(.reader-body--paged),
-.reader-page--text-shadow.reader-page--transparent-pages .reader-page-sheet:not(.reader-page-sheet--measure) .reader-html {
-    text-shadow: 0 1px 2px color-mix(in srgb, var(--reader-bg) 36%, transparent);
-}
-
-.reader-page:not(.reader-page--text-shadow) .reader-body,
-.reader-page:not(.reader-page--text-shadow) .reader-page-sheet .reader-html,
-.reader-page:not(.reader-page--text-shadow) .reader-status-bar {
-    text-shadow: none !important;
-}
-
 @media (max-width: 640px) {
 
     .reader-mobile-spacing-target.is-active {

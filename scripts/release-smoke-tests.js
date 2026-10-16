@@ -554,30 +554,23 @@ async function testReaderBookNotesMenuAndReturnLayout() {
     assert.match(readerSource, /returnFromReaderNote\(\) \{\s*const point = this\.readerNoteReturnPoint;\s*this\.clearPendingReaderNavigationRestore\(\{clearNoteReturn: true\}\);/);
 }
 
-async function testReaderTextShadowDefaultsOff() {
+async function testReaderPreferencesMigrate() {
     const readerSource = await readReaderSources();
     const ReadingListStore = require('../server/core/ReadingListStore');
     await withTempDir(async dir => {
         const store = new ReadingListStore({dataDir: dir});
         const defaults = store.normalizeReaderPreferences();
-        const legacy = store.normalizeReaderPreferences({
-            textShadow: true,
-            einkProfile: {textShadow: true},
-        });
-        const explicit = store.normalizeReaderPreferences({
-            readerPreferencesVersion: 2,
-            textShadow: true,
-            einkProfile: {textShadow: true},
-        });
-
         const shared = require('../shared/readerPreferences');
         assert.strictEqual(defaults.readerPreferencesVersion, shared.readerPreferencesVersion);
-        assert.strictEqual(defaults.textShadow, false);
-        assert.strictEqual(defaults.einkProfile.textShadow, false);
-        assert.strictEqual(legacy.textShadow, false);
-        assert.strictEqual(legacy.einkProfile.textShadow, false);
-        assert.strictEqual(explicit.textShadow, true);
-        assert.strictEqual(explicit.einkProfile.textShadow, true);
+        // The removed background image (up to 4 MB) and text shadow are dropped from saved settings, on the server and in the reader.
+        const removed = {backgroundImage: 'data:image/png;base64,AAAA', backgroundImageName: 'a.png',
+            backgroundTransparentPages: true, backgroundTransparentStatus: true, textShadow: true};
+        const old = Object.assign({theme: 'sepia', einkProfile: Object.assign({}, removed)}, removed);
+        for (const result of [store.normalizeReaderPreferences(old), shared.migrateReaderPreferences(old)]) {
+            assert.strictEqual(result.theme, 'sepia');
+            for (const key of Object.keys(removed))
+                assert.ok(!Object.hasOwn(result, key) && !Object.hasOwn(result.einkProfile, key), key);
+        }
         // The untouched old 1040px default becomes viewport-wide; an explicit choice saved at the current version stays.
         assert.strictEqual(store.normalizeReaderPreferences({contentWidthMode: 'fixed', contentWidth: 1040}).contentWidthMode, 'viewport');
         const current = store.normalizeReaderPreferences({readerPreferencesVersion: shared.readerPreferencesVersion, contentWidthMode: 'fixed', contentWidth: 1040});
@@ -2530,7 +2523,7 @@ const tests = [
     testFb2ContentsExcludeNotesBodies,
     testReaderAnnotationStaysOutsideReadingFlow,
     testReaderBookNotesMenuAndReturnLayout,
-    testReaderTextShadowDefaultsOff,
+    testReaderPreferencesMigrate,
     testReaderPaginationResumesAcrossViewportGeometry,
     testReaderDefersViewportRefreshAcrossScreenUnlock,
     testReaderChromeToggleKeepsLayout,

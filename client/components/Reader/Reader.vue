@@ -2,7 +2,7 @@
     <div
         ref="page"
         class="reader-page"
-        :class="[readerThemeClass, readerBackgroundClass, {'reader-page--immersive': readerChromeHidden}]"
+        :class="[readerThemeClass, {'reader-page--immersive': readerChromeHidden}]"
         :style="readerPageStyle"
     >
         <ReaderToolbar ref="readerToolbar" :reader="readerContext">
@@ -243,8 +243,6 @@ const componentOptions = {
         currentProfileReaderPreferences: {
             immediate: true,
             handler(newValue) {
-                // Фон (data URL до 4 МБ) отправляем на сервер только при изменении
-                this.serverBackgroundImage = (newValue ? String(newValue.backgroundImage || '') : null);
                 if (newValue) {
                     this.profileReaderPreferencesApplied = true;
                     this.applyReaderPreferences(newValue, {persistLocal: true});
@@ -366,7 +364,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
     readerProgressGeneration = 0;
     readerLoadJobId = 0;
     readerHomeJobId = 0;
-    readerBackgroundMaxBytes = 4 * 1024 * 1024;
     statusClockText = '';
     profileReaderPreferencesApplied = false;
     pageTurnTimer = null;
@@ -412,7 +409,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
     compactChromeViewportRefreshSuppressedUntil = 0;
     readerToolbarHeight = 0;
     toolbarResizeObserver = null;
-    serverBackgroundImage = null;
     profileWarningNotifiedKey = '';
     fontFamilyOptions = [
         {label: 'Serif', value: 'serif'},
@@ -714,16 +710,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         return `reader-theme-${this.preferences.theme || 'dark'}`;
     }
 
-    get readerBackgroundClass() {
-        const hasBackground = !!String(this.preferences.backgroundImage || '').trim();
-        return {
-            'reader-page--background-image': hasBackground,
-            'reader-page--transparent-pages': hasBackground && !!this.activePreferences.backgroundTransparentPages,
-            'reader-page--transparent-status': hasBackground && !!this.activePreferences.backgroundTransparentStatus,
-            'reader-page--text-shadow': !!this.activePreferences.textShadow,
-        };
-    }
-
     get readerFontFamilyCss() {
         switch (this.selectedFontFamily) {
             case 'sans':
@@ -739,9 +725,8 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
     }
 
     get readerThemeStyle() {
-        const backgroundStyle = this.readerBackgroundStyle;
         if (this.preferences.theme !== 'eink')
-            return backgroundStyle;
+            return {};
 
         const contrast = Math.max(72, Math.min(100, Number(this.activePreferences.einkContrast || 92) || 92));
         const paperTone = Math.max(84, Math.min(99, Number(this.activePreferences.einkPaperTone || 94) || 94));
@@ -750,7 +735,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         const borderAlpha = Math.max(0.1, Math.min(0.28, (contrast - 60) / 160));
         const mutedTone = Math.max(28, Math.min(48, inkTone + 24));
 
-        return Object.assign({}, {
+        return {
             '--reader-eink-bg': `hsl(48 18% ${Math.max(80, paperTone - 4)}%)`,
             '--reader-eink-surface': `hsl(48 20% ${paperTone}%)`,
             '--reader-eink-surface-2': `hsl(48 16% ${Math.max(82, paperTone - 5)}%)`,
@@ -758,22 +743,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             '--reader-eink-muted': `hsl(40 8% ${mutedTone}%)`,
             '--reader-eink-border': `rgba(20, 20, 20, ${borderAlpha.toFixed(3)})`,
             '--reader-eink-accent-soft': `rgba(20, 20, 20, ${accentSoftAlpha.toFixed(3)})`,
-        }, backgroundStyle);
-    }
-
-    get readerBackgroundStyle() {
-        const image = String(this.preferences.backgroundImage || '').trim();
-        if (!image)
-            return {};
-
-        const theme = String(this.preferences.theme || 'dark');
-        const overlay = (theme === 'dark')
-            ? 'rgba(18, 23, 21, 0.58)'
-            : 'rgba(248, 241, 229, 0.46)';
-
-        return {
-            '--reader-background-image': `url(${JSON.stringify(image)})`,
-            '--reader-background-overlay': overlay,
         };
     }
 
@@ -958,8 +927,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             readModePages: t('reader.readModePages'),
             widthFixed: t('reader.widthFixed'),
             widthViewport: t('reader.widthViewport'),
-            textShadowOn: t('reader.textShadowOn'),
-            textShadowOff: t('reader.textShadowOff'),
             spreadSingle: t('reader.spreadSingle'),
             spreadDual: t('reader.spreadDual'),
             pageGap: t('reader.pageGap'),
@@ -976,7 +943,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             pageOuterGapRight: t('reader.pageOuterGapRight'),
             controlsText: t('reader.controlsText'),
             controlsPage: t('reader.controlsPage'),
-            controlsBackground: t('reader.controlsBackground'),
             controlsStatus: t('reader.controlsStatus'),
             controlsReset: t('reader.controlsReset'),
             controlsView: t('reader.controlsView'),
@@ -985,7 +951,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             controlsTypography: t('reader.controlsTypography'),
             controlsFontSize: t('reader.controlsFontSize'),
             controlsLineHeight: t('reader.controlsLineHeight'),
-            controlsTextShadow: t('reader.controlsTextShadow'),
             controlsWidth: t('reader.controlsWidth'),
             controlsTextWidth: t('reader.controlsTextWidth'),
             controlsTextWidthMode: t('reader.controlsTextWidthMode'),
@@ -998,8 +963,6 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             controlsAnimation: t('reader.controlsAnimation'),
             controlsAnimationType: t('reader.controlsAnimationType'),
             controlsAnimationSpeed: t('reader.controlsAnimationSpeed'),
-            controlsBackgroundImage: t('reader.controlsBackgroundImage'),
-            controlsBackgroundLayers: t('reader.controlsBackgroundLayers'),
             controlsPages: t('reader.controlsPages'),
             controlsStatusBar: t('reader.controlsStatusBar'),
             controlsStatusField: t('reader.controlsStatusField'),
@@ -1032,18 +995,10 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
             statusAlignCenter: t('reader.statusAlignCenter'),
             statusAlignEdge: t('reader.statusAlignEdge'),
             statusSize: t('reader.statusSize'),
-            backgroundUpload: t('reader.backgroundUpload'),
-            backgroundClear: t('reader.backgroundClear'),
-            backgroundPagesSolid: t('reader.backgroundPagesSolid'),
-            backgroundPagesTransparent: t('reader.backgroundPagesTransparent'),
-            backgroundStatusSolid: t('reader.backgroundStatusSolid'),
-            backgroundStatusTransparent: t('reader.backgroundStatusTransparent'),
             resetReaderAppearance: t('reader.resetReaderAppearance'),
             resetReaderAppearanceHint: t('reader.resetReaderAppearanceHint'),
             resetReaderAppearanceConfirm: t('reader.resetReaderAppearanceConfirm'),
             resetReaderAppearanceSuccess: t('reader.resetReaderAppearanceSuccess'),
-            backgroundTooLarge: t('reader.backgroundTooLarge'),
-            backgroundInvalid: t('reader.backgroundInvalid'),
             einkContrast: t('reader.einkContrast'),
             einkPaper: t('reader.einkPaper'),
             einkInk: t('reader.einkInk'),
@@ -1613,14 +1568,7 @@ export default vueComponent(Reader);
     height: 100%;
     min-height: 100%;
     overflow: hidden;
-    background:
-        linear-gradient(var(--reader-background-overlay, transparent), var(--reader-background-overlay, transparent)),
-        var(--reader-background-image, none),
-        var(--reader-bg);
-    background-attachment: fixed;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: cover;
+    background: var(--reader-bg);
     color: var(--reader-text);
 }
 
@@ -2522,24 +2470,6 @@ export default vueComponent(Reader);
     box-shadow: none;
 }
 
-.reader-page--transparent-pages .reader-page-sheet:not(.reader-page-sheet--measure):not(.reader-page-sheet--dual),
-.reader-page--transparent-pages .reader-page-column-sheet {
-    border-color: color-mix(in srgb, var(--reader-border) 52%, transparent);
-    background: transparent !important;
-    box-shadow: none;
-    backdrop-filter: none;
-}
-
-.reader-page--text-shadow.reader-page--transparent-pages .reader-body:not(.reader-body--paged),
-.reader-page--text-shadow.reader-page--transparent-pages .reader-page-sheet:not(.reader-page-sheet--measure) .reader-html {
-    text-shadow: 0 1px 2px color-mix(in srgb, var(--reader-bg) 36%, transparent);
-}
-
-.reader-page:not(.reader-page--text-shadow) .reader-body,
-.reader-page:not(.reader-page--text-shadow) .reader-page-sheet .reader-html {
-    text-shadow: none !important;
-}
-
 .reader-theme-eink .reader-page-slide-x-forward-enter-active,
 .reader-theme-eink .reader-page-slide-x-forward-leave-active,
 .reader-theme-eink .reader-page-slide-x-back-enter-active,
@@ -2571,8 +2501,7 @@ export default vueComponent(Reader);
 
     .reader-theme-switch,
     .reader-stepper,
-    .reader-font-select,
-    .reader-background-control {
+    .reader-font-select {
         width: 100%;
         max-width: none;
         justify-content: center;

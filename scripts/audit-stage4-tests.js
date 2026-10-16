@@ -109,8 +109,8 @@ async function testWebSocketBoundsAndRecovery() {
     await Promise.all(busy);
     assert.strictEqual(controller.activeRequests, 0);
     assert.strictEqual(fake.activeRequests, 0);
-    requestLimits.checkRequest({action: 'update-reader-preferences'}, 6*1024*1024, controller.config);
-    assert.throws(() => requestLimits.checkRequest({action: 'update-reader-preferences'}, 6*1024*1024 + 1, controller.config), /размер/);
+    requestLimits.checkRequest({action: 'update-reader-preferences'}, 1024*1024, controller.config);
+    assert.throws(() => requestLimits.checkRequest({action: 'update-reader-preferences'}, 1024*1024 + 1, controller.config), /размер/);
     assert.throws(() => requestLimits.checkImport({lists: Array.from({length: 1001}, () => ({}))}), /1000/);
     assert.throws(() => requestLimits.checkImport({lists: [{books: Array(100001).fill('book')}]}), /100000/);
 }

@@ -46,13 +46,7 @@ function writePreferences(userId = '', preferences = {}) {
         if (userId)
             byUser[userId] = copy;
 
-        // Фон (data URL до 4 МБ) хранится один раз: в копии пользователя, а не ещё и в общей
-        const shared = Object.assign({}, copy);
-        if (userId) {
-            delete shared.backgroundImage;
-            delete shared.backgroundImageName;
-        }
-        storage().setItem(preferencesKey, JSON.stringify({preferences: shared, byUser}));
+        storage().setItem(preferencesKey, JSON.stringify({preferences: copy, byUser}));
     } catch (e) {
         // ignore storage failures
     }

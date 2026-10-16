@@ -1,7 +1,7 @@
 const {t} = require('./i18n');
 const MiB = 1024*1024;
-// The reader already accepts a 4 MiB background image, encoded as base64.
-const preferencesLimit = 6*MiB;
+// A message over the request limit but under this one gets an error reply; a larger one closes the socket.
+const transportCap = 6*MiB;
 function bounded(value, fallback, max) {
     const number = Number(value);
     return Number.isFinite(number) && number >= 1 ? Math.min(max, Math.floor(number)) : fallback;
@@ -21,16 +21,12 @@ function uploadLimit(action, config) {
     return {'import-admin-backup': value.backup, 'import-reading-lists': value.import, 'import-admin-settings': value.import}[action] || 0;
 }
 function transportLimit(config) {
-    return Math.max(preferencesLimit, limits(config).message);
+    return Math.max(transportCap, limits(config).message);
 }
 function checkRequest(req, bytes, config) {
     if (!req || typeof req !== 'object' || Array.isArray(req) || typeof req.action !== 'string')
         throw new Error(t('errors.wsInvalidRequest'));
-    const value = limits(config);
-    let maximum = value.message;
-    if (req.action === 'update-reader-preferences' || req.action === 'update-user-profile')
-        maximum = Math.max(maximum, preferencesLimit);
-    if (bytes > maximum)
+    if (bytes > limits(config).message)
         throw new Error(t('errors.requestTooLarge'));
 }
 function checkImport(payload, config) {
