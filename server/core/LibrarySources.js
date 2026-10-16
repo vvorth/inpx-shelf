@@ -62,7 +62,7 @@ function sourcesFromEnv() {
 
 //s3://... - не путь на диске: path.resolve превратил бы его в <cwd>/s3:/...
 function resolvePath(p) {
-    return (libraryFs.isS3(p) ? p.replace(/[\\/]+$/, '') : path.resolve(p));
+    return (libraryFs.isS3(p) ? p.replace(/\/+$/, '') : path.resolve(p));
 }
 
 async function findSingleInpx(libDir) {

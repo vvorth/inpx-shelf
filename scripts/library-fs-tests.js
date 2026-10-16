@@ -84,13 +84,10 @@ const library = () => ({
 
 function testS3PathForms() {
     assert.deepStrictEqual(parse('s3://lib/flibusta/a.zip'), {bucket: 'lib', key: 'flibusta/a.zip'});
-    //path.join сворачивает //, в Windows меняет разделители
-    assert.deepStrictEqual(parse(path.join('s3://lib/flibusta', 'a.zip')), {bucket: 'lib', key: 'flibusta/a.zip'});
-    assert.deepStrictEqual(parse('s3:\\lib\\flibusta\\a.zip'), {bucket: 'lib', key: 'flibusta/a.zip'});
     assert.deepStrictEqual(parse('s3://lib/flibusta/'), {bucket: 'lib', key: 'flibusta'});
     assert.deepStrictEqual(parse('s3://lib'), {bucket: 'lib', key: ''});
     assert.strictEqual(isS3('S3://lib/x'), true);
-    for (const local of ['/library', 'C:\\library', 's3', 's3data/x', 'ss3://lib/x', '', null])
+    for (const local of ['/library', 'C:\\library', 's3', 's3data/x', 'ss3://lib/x', 's3:/lib/x', 's3:\\lib\\x', '', null])
         assert.strictEqual(isS3(local), false, String(local));
     assert.throws(() => parse('s3://'), /Bad S3 path/);
 }
@@ -103,9 +100,9 @@ async function testS3ListingStatAndCache() {
     const typed = await libraryFs.readdir(`${root}/`, {withFileTypes: true});
     assert.deepStrictEqual(typed.filter(e => e.isDirectory()).map(e => e.name), ['covers', 'etc']);
     assert.deepStrictEqual(typed.filter(e => e.isFile()).map(e => e.name), ['a.fb2', 'fb2-000001.zip', 'fb2-000002.zip']);
-    assert.deepStrictEqual(await libraryFs.readdir(path.join(root, 'etc', 'reviews')), ['2026.zip']);
+    assert.deepStrictEqual(await libraryFs.readdir(libraryFs.join(root, 'etc', 'reviews')), ['2026.zip']);
 
-    const stat = await libraryFs.stat(path.join(root, 'fb2-000001.zip'));
+    const stat = await libraryFs.stat(libraryFs.join(root, 'fb2-000001.zip'));
     assert.strictEqual(stat.isFile(), true);
     assert.strictEqual(stat.size, 10);
     assert.strictEqual(stat.mtimeMs, Date.parse('2026-01-02T03:04:05Z'));

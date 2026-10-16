@@ -8,15 +8,15 @@ const {pipeline} = require('stream/promises');
 //shortcut: бакеты разных провайдеров или с разными ключами не поддерживаются; при необходимости - настройки на URI.
 
 function isS3(p) {
-    return /^s3:[\\/]/i.test(String(p || ''));
+    return /^s3:\/\//i.test(String(p || ''));
 }
 
-//path.join сворачивает s3:// в s3:/, в Windows ещё и меняет / на \: принимаем все варианты
+//Только s3://bucket/key: пути S3 собираются через libraryFs.join, path.join их портит
 function parse(uri) {
-    const m = /^s3:[\\/]{1,2}([^\\/]+)(?:[\\/](.*))?$/i.exec(String(uri || ''));
+    const m = /^s3:\/\/([^/]+)(?:\/(.*))?$/i.exec(String(uri || ''));
     if (!m)
         throw new Error(`Bad S3 path: ${uri}`);
-    const key = String(m[2] || '').replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+    const key = String(m[2] || '').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
     return {bucket: m[1], key};
 }
 

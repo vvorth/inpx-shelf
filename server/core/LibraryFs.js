@@ -22,7 +22,7 @@ module.exports = {
     isS3,
     s3,
     //path.join свернул бы s3:// в s3:/ (а в Windows заменил бы / на \): S3Fs поймёт, но в настройках и журнале некрасиво
-    join: (dir, ...names) => (isS3(dir) ? [String(dir).replace(/[\\/]+$/, ''), ...names].join('/') : path.join(dir, ...names)),
+    join: (dir, ...names) => (isS3(dir) ? [String(dir).replace(/\/+$/, ''), ...names].join('/') : path.join(dir, ...names)),
     pathExists: p => (isS3(p) ? s3.pathExists(p) : fs.pathExists(p)),
     stat: p => (isS3(p) ? s3.stat(p) : fs.stat(p)),
     readdir: (p, options = {}) => (isS3(p) ? s3.readdir(p, options) : fs.readdir(p, options)),

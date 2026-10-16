@@ -129,9 +129,9 @@ function randomText(seed, size) {
         await assert.rejects(zip.extractToBuf('nope.fb2'), /Entry not found/);
         await zip.close();
 
-        //solid 7z и путь после path.join (s3:/)
+        //solid 7z
         const solid = new ZipReader();
-        await solid.open(path.join('s3://lib/solid', 'fb2-000002.7z'));
+        await solid.open('s3://lib/solid/fb2-000002.7z');
         assert.strictEqual(solid.archiveType, '7z');
         assert.strictEqual((await solid.extractToBuf('33.fb2')).toString(), books['33.fb2']);
         await solid.close();
