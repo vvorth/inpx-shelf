@@ -350,6 +350,8 @@ class WebSocketController {
                     await this.refreshKoboDevice(req, ws); break;
                 case 'delete-kobo-device':
                     await this.deleteKoboDevice(req, ws); break;
+                case 'set-opds-password':
+                    await this.setOpdsPassword(req, ws); break;
                 case 'create-kosync-password':
                     await this.createKosyncPassword(req, ws); break;
                 case 'send-book-telegram':
@@ -1314,6 +1316,18 @@ class WebSocketController {
     async deleteKoboDevice(req, ws) {
         const {kobo, user} = await this.koboUser(req);
         this.send(await kobo.store.deleteDevice(user.id, String(req.deviceId || '')), req, ws);
+    }
+
+    // OPDS password: generated and shown once, or chosen by the user (10+ characters). A new one replaces the old.
+    async setOpdsPassword(req, ws) {
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        if (user.opdsEnabled === false)
+            throw new Error(i18n.t('errors.opdsOffForProfile'));
+        await this.requireProtectedProfile(user, req);
+        const chosen = String(req.password || '');
+        const password = chosen || require('crypto').randomBytes(12).toString('base64url');
+        await this.webWorker.readingListStore.setOpdsPassword(user.id, await this.webWorker.hashProfilePassword(user.login, password));
+        this.send({username: user.login, password: (chosen ? '' : password)}, req, ws);
     }
 
     // The KOReader password is shown once; a new one replaces the old.

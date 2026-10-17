@@ -113,9 +113,11 @@ class ProfileAccess {
         } else {
             const data = await this.worker.readingListStore.load();
             const login = this.worker.readingListStore.normalizeLogin(credentials.user);
-            const user = data.users.find(item => item.login === login && item.opdsEnabled !== false && item.opdsAuthEnabled === true);
-            if (await this.worker.readingListStore.verifyUserPassword(user ? user.id : '', credentials.password) && user)
+            const user = data.users.find(item => item.login === login && item.opdsEnabled !== false && item.opdsPasswordHash);
+            if (await this.worker.readingListStore.verifyUserPassword(user ? user.id : '', credentials.password, 'opdsPasswordHash') && user)
                 identity = {user, opds: true, bound: true};
+            //пока шла проверка, параллельные запросы могли исчерпать лимит: ответа на эту попытку они не получают
+            this.security.checkLoginRate(req, 'opds');
         }
         this.security.recordLoginAttempt(req, !!identity, 'opds');
         this.security.recordAccountAttempt('opds', credentials.user, !!identity);

@@ -25,7 +25,8 @@ async function fixture(options, test) {
     worker.getSharedDiscoveryConfig = async() => ({});
     worker.buildUserReadingSummary = async() => ({count: 0, items: []});
     const alice = await worker.readingListStore.createUser({name: 'Alice', login: 'alice', emailTo: 'alice@example.test',
-        opdsAuthEnabled: true, passwordHash: await worker.hashProfilePassword('alice', 'alice-fixture')});
+        passwordHash: await worker.hashProfilePassword('alice', 'alice-fixture')});
+    await worker.readingListStore.setOpdsPassword(alice.id, await worker.hashProfilePassword('alice', 'alice-opds-pass'));
     const bob = await worker.readingListStore.createUser({name: 'Bob', login: 'bob', emailTo: 'bob@example.test'});
     const security = new Security(config);
     await security.init();
@@ -42,8 +43,7 @@ async function fixture(options, test) {
     app.post('/upload', controller.uploadHandler());
     app.post('/session/rotate', security.sessionRotateHandler());
     require('../server/static')(app, config, worker, security);
-    app.use('/opds', access.httpGuard(true), require('../server/core/opds/Auth')(config,
-        (...args) => worker.verifyOpdsPassword(...args), security));
+    app.use('/opds', access.httpGuard(true));
     app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
     app.get('/opds', (req, res) => res.json({user: req.query.user || ''}));
     for (const [url, name] of [['/opds/reading-profiles', 'ReadingProfilesPage'], ['/opds/reading-lists/list', 'ReadingListPage']]) {
@@ -168,7 +168,7 @@ async function testAnonymousAccessDisabledHttpAndWebSocket() {
         browser.value.profileAccessToken = worker.createProfileSession(alice.id);
         worker.revokeUserSessions(alice.id);
         assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401);
-        const basic = {authorization: 'Basic ' + Buffer.from('alice:alice-fixture').toString('base64')};
+        const basic = {authorization: 'Basic ' + Buffer.from('alice:alice-opds-pass').toString('base64')};
         assert.strictEqual((await request('/book/fixture.txt', basic)).status, 200);
         assert.strictEqual((await (await request('/opds', basic)).json()).user, alice.id);
         assert.strictEqual((await request('/opds?user=bob', basic)).status, 403);
@@ -274,13 +274,15 @@ async function testOpdsHidesPasswordProfiles() {
         const asBob = await (await request('/opds/reading-profiles', {cookie: session(bob.id).cookie})).text();
         assert.ok(asBob.includes('Bob') && !asBob.includes('Alice') && !asBob.includes('Carol'), asBob);
 
-        const aliceBasic = {authorization: 'Basic ' + Buffer.from('alice:alice-fixture').toString('base64')};
+        const aliceBasic = {authorization: 'Basic ' + Buffer.from('alice:alice-opds-pass').toString('base64')};
+        const profilePassword = {authorization: 'Basic ' + Buffer.from('alice:alice-fixture').toString('base64')};
+        assert.strictEqual((await list(alice, profilePassword)).status, 401, 'The profile password does not open OPDS');
         assert.strictEqual((await list(alice, aliceBasic)).status, 200);
         assert.strictEqual((await list(carol, aliceBasic)).status, 403, 'Another profile');
         const asAlice = await (await request('/opds/reading-profiles?user=alice', aliceBasic)).text();
         assert.ok(asAlice.includes('Alice') && !asAlice.includes('Carol'), asAlice);
         const carolBasic = {authorization: 'Basic ' + Buffer.from('carol:carol-fixture').toString('base64')};
-        assert.strictEqual((await list(carol, carolBasic)).status, 401, 'Basic login needs opdsAuthEnabled');
+        assert.strictEqual((await list(carol, carolBasic)).status, 401, 'Basic login needs an OPDS password');
 
         assert.strictEqual((await list(carol, {cookie: session(alice.id).cookie})).status, 401, 'Another reader');
         assert.strictEqual((await list(carol, {cookie: session(carol.id).cookie})).status, 200, 'Own web session');
@@ -452,6 +454,56 @@ async function testPasswordLengthAndPerLoginThrottle() {
     });
 }
 
+// OPDS Basic: a request without credentials costs nothing; failures run into the per-IP limit, a parallel burst included.
+async function testOpdsAuthenticationRateLimit() {
+    await fixture({loginRateLimitMaxAttempts: 2}, async({config, security, request}) => {
+        const auth = password => ({authorization: 'Basic ' + Buffer.from(`alice:${password}`).toString('base64')});
+        for (let i = 0; i < 4; i++)
+            assert.strictEqual((await request('/opds')).status, 401);
+        assert.strictEqual(security.loginAttempts.size, 0);
+        assert.strictEqual((await request('/opds', auth('alice-opds-pass'))).status, 200);
+        assert.strictEqual((await request('/opds', auth('wrong'))).status, 401);
+        assert.strictEqual((await request('/opds', auth('wrong'))).status, 401);
+        const blocked = await request('/opds', auth('wrong'));
+        assert.strictEqual(blocked.status, 429);
+        assert.ok(Number(blocked.headers.get('retry-after')) > 0);
+
+        config.loginRateLimitEnabled = false;
+        for (let i = 0; i < 3; i++)
+            assert.strictEqual((await request('/opds', auth('wrong'))).status, 401);
+        assert.ok(security.getLoginMetrics().attempts.some(row => row.labels.kind === 'opds' && row.labels.result === 'blocked' && row.value >= 1));
+        config.loginRateLimitEnabled = true;
+        security.loginAttempts.clear();
+        security.accountFailures.clear();
+        const burst = await Promise.all(Array.from({length: 12}, () => request('/opds', auth('wrong'))));
+        assert.strictEqual(burst.filter(response => response.status === 401).length, 2, burst.map(response => response.status).join());
+        assert.strictEqual(burst.filter(response => response.status === 429).length, 10);
+    });
+}
+
+// The OPDS password: generated and shown once, or the user's own of 10+ characters; a new one replaces the old.
+async function testSetOpdsPassword() {
+    await fixture({}, async({bob, request, session, connect}) => {
+        const call = await connect({cookie: session().cookie});
+        const {csrfToken} = await call({action: 'get-config'});
+        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
+        const as = {profileAccessToken: login.profileAccessToken, csrfToken};
+        const basic = password => ({authorization: 'Basic ' + Buffer.from(`alice:${password}`).toString('base64')});
+        const generated = await call({action: 'set-opds-password', ...as});
+        assert.strictEqual(generated.username, 'alice');
+        assert.strictEqual(generated.password.length, 16);
+        assert.strictEqual((await request('/opds', basic(generated.password))).status, 200);
+        assert.strictEqual((await request('/opds', basic('alice-opds-pass'))).status, 401, 'The old one stops working');
+        assert.match((await call({action: 'set-opds-password', password: 'short', ...as})).error, /10/);
+        const own = await call({action: 'set-opds-password', password: 'my-own-opds-pass', ...as});
+        assert.strictEqual(own.password, '', 'A chosen password is not sent back');
+        assert.strictEqual((await request('/opds', basic('my-own-opds-pass'))).status, 200);
+        const bobCall = await connect({cookie: session(bob.id).cookie});
+        const bobConfig = await bobCall({action: 'get-config'});
+        assert.match((await bobCall({action: 'set-opds-password', csrfToken: bobConfig.csrfToken})).error, /.+/, 'A profile without a password');
+    });
+}
+
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
     await fixture({}, async({worker, alice, bob, connect, session}) => {
@@ -521,6 +573,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testUnknownLoginTakesAsLong, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedOnUpgrade, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedOnUpgrade, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

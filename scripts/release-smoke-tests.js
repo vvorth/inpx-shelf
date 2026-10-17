@@ -1359,11 +1359,11 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(restored.user.readerBookmarks['source:book:1'][0].note, 'Note');
         assert.deepStrictEqual(restored.user.discoveryPreferences.taste.genres, ['sf']);
 
-        // OPDS login needs the profile's own login and password: Reader B has none.
+        // A backup never brings an OPDS password.
         const withOpds = JSON.parse(JSON.stringify(exported));
-        withOpds.user.opdsAuthEnabled = true;
+        withOpds.user.opdsPasswordHash = 'scrypt:v1:00:00';
         await store.importData('reader-b', withOpds);
-        assert.strictEqual((await store.getUser('reader-b')).opdsAuthEnabled, false);
+        assert.strictEqual((await store.getUser('reader-b')).opdsPasswordHash, '');
         await store.updateUser('reader-b', {emailTo: 'b@example.test'});
 
         // An older backup must not roll back a position saved after it.

@@ -719,11 +719,6 @@ class WebWorker {
         return await this.getUserReadingLibrary(user, options);
     }
 
-    async verifyOpdsPassword(publicId = '', login = '', password = '') {
-        this.checkMyState();
-        return await this.readingListStore.verifyOpdsPassword(publicId, login, password);
-    }
-
     async getReaderState(userId = '', bookUid = '') {
         this.checkMyState();
         return await this.readingListStore.getReaderState(userId, bookUid);

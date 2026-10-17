@@ -44,15 +44,15 @@ async function testScryptMigrationAndOpds() {
     await temporary(async(dataDir) => {
         const store = new ReadingListStore({dataDir});
         const user = await store.createUser({name: 'Legacy OPDS', login: 'legacy', opdsEnabled: true,
-            opdsAuthEnabled: true, passwordHash: passwords.legacy('legacy', 'secret')});
-        assert.strictEqual((await store.verifyOpdsPassword(user.id, 'legacy', 'wrong')).authorized, false);
+            passwordHash: passwords.legacy('legacy', 'secret')});
+        assert.strictEqual(await store.verifyUserPassword(user.id, 'wrong'), false);
         assert.strictEqual((await store.getUser(user.id)).passwordHash, user.passwordHash);
-        assert.strictEqual((await store.verifyOpdsPassword(user.id, 'legacy', 'secret')).authorized, true);
+        assert.strictEqual(await store.verifyUserPassword(user.id, 'secret'), true);
         const migrated = await store.getUser(user.id);
         assert.match(migrated.passwordHash, /^scrypt:v1:/);
         await store.updateUser(user.id, {login: 'renamed'});
         const restarted = new ReadingListStore({dataDir});
-        assert.strictEqual((await restarted.verifyOpdsPassword(user.id, 'renamed', 'secret')).authorized, true);
+        assert.strictEqual(await restarted.verifyUserPassword(user.id, 'secret'), true);
         assert.strictEqual((await restarted.getUser(user.id)).passwordHash, migrated.passwordHash);
         assert.match((await restarted.getUser('admin')).passwordHash, /^scrypt:v1:/);
     });

@@ -30,7 +30,6 @@
                     <q-input v-model="draft.telegramChatId" outlined dense :label="$t('profiles.personalTelegramChatId')" />
                 </div>
                 <q-toggle v-model="draft.opdsEnabled" :label="$t('profiles.showProfileInOpds')" />
-                <q-toggle v-model="draft.opdsAuthEnabled" :disable="!draft.login || !draft.password" :label="$t('profiles.requireOpdsAuth')" />
                 <q-toggle v-model="draft.isAdmin" :disable="!draft.login || !draft.password" :label="$t('profiles.defaultAdminName')">
                     <q-tooltip>{{ $t('adminUsers.adminHint') }}</q-tooltip>
                 </q-toggle>
@@ -106,7 +105,6 @@
                                     </div>
                                     <template v-if="!user.isAdmin">
                                         <q-toggle v-model="edit.opdsEnabled" :label="$t('profiles.showProfileInOpds')" />
-                                        <q-toggle v-model="edit.opdsAuthEnabled" :disable="!edit.login || !user.requiresLogin" :label="$t('profiles.requireOpdsAuth')" />
                                     </template>
                                     <q-toggle v-model="edit.isAdmin" :disable="user.mainAdmin || !edit.login || !user.requiresLogin" :label="$t('profiles.defaultAdminName')">
                                         <q-tooltip>{{ $t('adminUsers.adminHint') }}</q-tooltip>
@@ -140,7 +138,7 @@ import {currentProfile} from '../../share/session';
 const passwordAlphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
 
 function emptyDraft() {
-    return {name: '', login: '', password: '', emailTo: '', telegramChatId: '', opdsEnabled: true, opdsAuthEnabled: false, isAdmin: false};
+    return {name: '', login: '', password: '', emailTo: '', telegramChatId: '', opdsEnabled: true, isAdmin: false};
 }
 
 class AdminUsers {
@@ -209,7 +207,6 @@ class AdminUsers {
             name: tm(user.name) || '',
             login: user.login || '',
             opdsEnabled: user.opdsEnabled !== false,
-            opdsAuthEnabled: user.opdsAuthEnabled === true,
             isAdmin: user.isAdmin === true,
         };
     }
@@ -219,7 +216,6 @@ class AdminUsers {
         const patch = {name: this.edit.name, login: this.edit.login, isAdmin: this.edit.isAdmin};
         if (!user.isAdmin) {
             patch.opdsEnabled = this.edit.opdsEnabled;
-            patch.opdsAuthEnabled = this.edit.opdsAuthEnabled;
         }
 
         try {

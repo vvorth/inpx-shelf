@@ -114,7 +114,7 @@ class ReadingListStore {
             emailTo: '',
             telegramChatId: '',
             opdsEnabled: false,
-            opdsAuthEnabled: false,
+            opdsPasswordHash: '',
             isAdmin: true,
             readerProgressGeneration: 0,
             readerProgressResetAt: '',
@@ -179,7 +179,7 @@ class ReadingListStore {
             emailTo: '',
             telegramChatId: '',
             opdsEnabled: true,
-            opdsAuthEnabled: false,
+            opdsPasswordHash: '',
             readerPreferences: this.normalizeReaderPreferences(),
             readerProgress: {},
             readerProgressGeneration: 0,
@@ -231,7 +231,9 @@ class ReadingListStore {
         normalized.emailTo = String(normalized.emailTo || '').trim();
         normalized.telegramChatId = String(normalized.telegramChatId || '').trim();
         normalized.opdsEnabled = (normalized.opdsEnabled !== false);
-        normalized.opdsAuthEnabled = (normalized.opdsAuthEnabled === true);
+        //вход OPDS - отдельным паролем; прежний флаг входа OPDS паролем профиля отброшен
+        normalized.opdsPasswordHash = String(normalized.opdsPasswordHash || '').trim();
+        delete normalized.opdsAuthEnabled;
         normalized.readerPreferences = this.normalizeReaderPreferences(normalized.readerPreferences);
         normalized.readerProgress = this.normalizeReaderProgress(normalized.readerProgress);
         normalized.readerProgressGeneration = Math.max(0, parseInt(normalized.readerProgressGeneration, 10) || 0);
@@ -363,8 +365,8 @@ class ReadingListStore {
                 changed = true;
             }
 
-            if (admin.opdsAuthEnabled !== false) {
-                admin.opdsAuthEnabled = false;
+            if (admin.opdsPasswordHash) {
+                admin.opdsPasswordHash = '';
                 changed = true;
             }
         }
@@ -643,7 +645,7 @@ Object.assign(ReadingListStore.prototype,
 // load can bootstrap it). Keep its entire call tree in one reentrant transaction.
 // Password checks only take the lock for their reads and writes; metadata overrides are read
 // without it while the file is unchanged.
-const unlocked = new Set(['verifyUserPassword', 'verifyOpdsPassword', 'getMetadataOverrides']);
+const unlocked = new Set(['verifyUserPassword', 'getMetadataOverrides']);
 for (const name of Object.getOwnPropertyNames(ReadingListStore.prototype)) {
     const method = ReadingListStore.prototype[name];
     if (method.constructor.name === 'AsyncFunction' && !unlocked.has(name)) {

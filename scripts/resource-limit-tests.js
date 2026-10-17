@@ -70,50 +70,6 @@ async function testProcessStdoutCapture() {
     }
 }
 
-async function testOpdsAuthenticationRateLimit() {
-    const express = require('express');
-    const app = express();
-    const config = {loginRateLimitMaxAttempts: 2, opds: {user: 'global', password: 'secret'}};
-    const security = new Security(config);
-    const scopedConfig = {opds: {}};
-    const verify = async(user, login, password) => ({user: {id: user, opdsAuthEnabled: true}, authorized: login === 'reader' && password === 'secret'});
-    const middleware = require('../server/core/opds/Auth');
-    app.use('/global', middleware(config, verify, security));
-    app.use('/scoped', middleware(scopedConfig, verify, security));
-    app.use((_req, res) => res.send('ok'));
-    const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
-    const url = `http://127.0.0.1:${server.address().port}`;
-    const auth = (user, password) => ({authorization: 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64')});
-    const request = (route, headers = {}) => fetch(url + route, {headers});
-    try {
-        for (let i = 0; i < 4; i++)
-            assert.strictEqual((await request('/global')).status, 401);
-        assert.strictEqual(security.loginAttempts.size, 0);
-        assert.strictEqual((await request('/global', auth('global', 'secret'))).status, 200);
-        assert.strictEqual((await request('/global', auth('global', 'wrong'))).status, 401);
-        assert.strictEqual((await request('/scoped?user=reader', auth('reader', 'secret'))).status, 200);
-        assert.strictEqual((await request('/scoped?user=reader', auth('reader', 'wrong'))).status, 401);
-        const blocked = await request('/global', auth('global', 'wrong'));
-        assert.strictEqual(blocked.status, 429);
-        assert.ok(Number(blocked.headers.get('retry-after')) > 0);
-        assert.doesNotThrow(() => security.checkLoginRate({headers: {}, socket: {remoteAddress: '127.0.0.1'}}, 'profile'));
-        for (const rec of security.loginAttempts.values()) rec.resetAt = Date.now() - 1;
-        assert.strictEqual((await request('/scoped?user=reader', auth('reader', 'secret'))).status, 200);
-        config.loginRateLimitEnabled = false;
-        for (let i = 0; i < 3; i++)
-            assert.strictEqual((await request('/global', auth('global', 'wrong'))).status, 401);
-        assert.ok(security.getLoginMetrics().attempts.some(row => row.labels.kind === 'opds' && row.labels.result === 'blocked' && row.value === 1));
-        config.loginRateLimitEnabled = true;
-        security.loginAttempts.clear();
-        const burst = await Promise.all(Array.from({length: 12}, () => request('/scoped?user=reader', auth('reader', 'wrong'))));
-        assert.strictEqual(burst.filter(response => response.status === 401).length, 2);
-        assert.strictEqual(burst.filter(response => response.status === 429).length, 10);
-    } finally {
-        server.closeAllConnections();
-        await new Promise(resolve => server.close(resolve));
-    }
-}
-
 async function testConversionPublishesOnlyCompletedFiles() {
     const Module = require('module');
     const filename = require.resolve('../server/core/BookConverter');
@@ -189,5 +145,5 @@ async function testClientIpIgnoresSpoofedForwardedFor() {
 }
 
 module.exports = [testClientIpIgnoresSpoofedForwardedFor, testConversionQueueLimitsAndRecovery, testConverterProcessTimeoutAndBoundedErrors,
-    testProcessStdoutCapture, testOpdsAuthenticationRateLimit, testProfileLoginRateLimitSurvivesOtherSuccesses,
+    testProcessStdoutCapture, testProfileLoginRateLimitSurvivesOtherSuccesses,
     testConversionPublishesOnlyCompletedFiles];

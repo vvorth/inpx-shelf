@@ -41,7 +41,7 @@ module.exports = {
                     //главный администратор - первый профиль, его восстанавливает adminLogin из конфига
                     mainAdmin: index === 0 && !!item.isAdmin,
                     opdsEnabled: item.opdsEnabled !== false,
-                    opdsAuthEnabled: item.opdsAuthEnabled === true,
+                    opdsAuthEnabled: !!item.opdsPasswordHash,
                     currentReadingCount: Object.values(item.readerProgress || {}).filter(isReadingInProgress).length,
                     createdAt: item.createdAt,
                     updatedAt: item.updatedAt,
@@ -149,7 +149,7 @@ module.exports = {
                 emailTo: (profileAuthorized ? user.emailTo || '' : ''),
                 telegramChatId: (profileAuthorized ? user.telegramChatId || '' : ''),
                 opdsEnabled: user.opdsEnabled !== false,
-                opdsAuthEnabled: user.opdsAuthEnabled === true,
+                opdsAuthEnabled: !!user.opdsPasswordHash,
                 kosyncPasswordSet: !!user.kosyncKeyHash,
                 readerPreferences: (profileAuthorized ? this.readingListStore.normalizeReaderPreferences(user.readerPreferences) : null),
                 currentReading: readingSummary.items,

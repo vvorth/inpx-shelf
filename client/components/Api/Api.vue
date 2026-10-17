@@ -646,6 +646,10 @@ class Api {
         return await this.request({action: 'delete-kobo-device', deviceId}, 60);
     }
 
+    async setOpdsPassword(password = '') {
+        return await this.request({action: 'set-opds-password', password}, 60);
+    }
+
     async createKosyncPassword() {
         return await this.request({action: 'create-kosync-password'}, 60);
     }

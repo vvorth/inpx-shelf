@@ -92,7 +92,7 @@ module.exports = {
                 publicId: item.login || item.id,
                 name: item.name,
                 hasPassword: !!item.passwordHash,
-                opdsAuthEnabled: item.opdsAuthEnabled === true,
+                opdsAuthEnabled: !!item.opdsPasswordHash,
                 opdsListCount: stats.get(item.id) || 0,
                 opdsProgressCount: progressCounts.get(item.id) || 0,
             }))
@@ -112,34 +112,20 @@ module.exports = {
         return user;
     },
 
-    async verifyOpdsPassword(publicId = '', login = '', password = '') {
-        const user = await this.getOpdsUser(publicId);
-        if (!user || user.opdsAuthEnabled !== true)
-            return {user, authorized: true};
-
-        if (!user.login || !user.passwordHash)
-            return {user, authorized: false};
-
-        const normalizedLogin = this.normalizeLogin(login);
-        return {
-            user,
-            authorized: normalizedLogin === user.login && await this.verifyUserPassword(user.id, password),
-        };
-    },
-
     // Runs outside the store lock (see the loop at the end of ReadingListStore.js): scrypt takes ~0.3 s and must not hold up other requests.
-    async verifyUserPassword(userId, password) {
+    //field: passwordHash - пароль профиля, opdsPasswordHash - пароль входа OPDS
+    async verifyUserPassword(userId, password, field = 'passwordHash') {
         const user = await this.getPasswordRecord(userId);
-        if (!await profilePassword.verify((user && user.passwordHash) || '', (user && user.login) || '', password))
+        if (!await profilePassword.verify((user && user[field]) || '', (user && user.login) || '', password))
             return false;
-        if (profilePassword.isLegacy(user.passwordHash))
+        if (field === 'passwordHash' && profilePassword.isLegacy(user.passwordHash))
             await this.upgradePasswordHash(userId, user.passwordHash, await profilePassword.hash(password));
         return true;
     },
 
     async getPasswordRecord(userId) {
         const user = (await this.load()).users.find(item => item.id === userId);
-        return (user ? {login: user.login, passwordHash: user.passwordHash} : null);
+        return (user ? {login: user.login, passwordHash: user.passwordHash, opdsPasswordHash: user.opdsPasswordHash} : null);
     },
 
     // Unless the password changed while it was being checked.
@@ -166,11 +152,8 @@ module.exports = {
             emailTo: this.validateEmailTo(profile.emailTo),
             telegramChatId: profile.telegramChatId,
             opdsEnabled: profile.opdsEnabled,
-            opdsAuthEnabled: profile.opdsAuthEnabled,
             isAdmin: profile.isAdmin === true,
         });
-        if (user.opdsAuthEnabled && (!user.login || !user.passwordHash))
-            throw new Error(t('errors.opdsCredentialsRequired'));
         //без пароля requireAdmin пропустил бы любого, кто выбрал этот профиль
         if (user.isAdmin && (!user.login || !user.passwordHash))
             throw new Error(t('errors.adminCredentialsRequired'));
@@ -178,6 +161,16 @@ module.exports = {
         data.users.push(user);
         await this.save(data);
         return user;
+    },
+
+    //Пароль входа OPDS (Basic): отдельный от пароля профиля, его хранят читалки. Логин - логин профиля
+    async setOpdsPassword(userId, opdsPasswordHash) {
+        const {data, user} = await this.resolveUser(userId);
+        if (!user.login)
+            throw new Error(t('errors.opdsCredentialsRequired'));
+        user.opdsPasswordHash = String(opdsPasswordHash || '');
+        user.updatedAt = this.nowIso();
+        await this.save(data);
     },
 
     async updateUser(userId, patch = {}) {
@@ -201,8 +194,6 @@ module.exports = {
             target.telegramChatId = String(patch.telegramChatId || '').trim();
         if (utilsHasProp(patch, 'opdsEnabled'))
             target.opdsEnabled = (patch.opdsEnabled !== false);
-        if (utilsHasProp(patch, 'opdsAuthEnabled'))
-            target.opdsAuthEnabled = (patch.opdsAuthEnabled === true);
         if (utilsHasProp(patch, 'readerPreferences'))
             target.readerPreferences = this.normalizeReaderPreferences(patch.readerPreferences);
         if (utilsHasProp(patch, 'isAdmin')) {
@@ -211,8 +202,6 @@ module.exports = {
                 throw new Error(t('errors.cannotRemoveMainAdmin'));
             target.isAdmin = (patch.isAdmin === true);
         }
-        if (target.opdsAuthEnabled && (!target.login || !target.passwordHash))
-            throw new Error(t('errors.opdsCredentialsRequired'));
         if (target.isAdmin && (!target.login || !target.passwordHash))
             throw new Error(t('errors.adminCredentialsRequired'));
         target.updatedAt = this.nowIso();

@@ -26,12 +26,30 @@
                         {{ $t('meDevices.copy') }}
                     </q-btn>
                 </div>
-                <q-toggle
-                    :model-value="opdsAuthEnabled"
-                    :disable="!opdsEnabled || !profile.login || !profile.hasPassword || opdsSaving"
-                    :label="$t('meDevices.requireMyLoginAnd')"
-                    @update:model-value="saveOpds({opdsAuthEnabled: $event})"
-                />
+                <div v-if="opdsLogin" class="notice">
+                    <b>{{ $t('meDevices.opdsLogin') }}</b>
+                    <div class="card-hint">
+                        {{ $t('meDevices.koreaderPasswordShownOnce') }}
+                    </div>
+                    <div>{{ $t('meDevices.koreaderUsername') }}: <code>{{ opdsLogin.username }}</code></div>
+                    <div class="copy-row">
+                        {{ $t('meDevices.koreaderPassword') }}: <code class="copy-value">{{ opdsLogin.password }}</code>
+                        <q-btn flat dense no-caps @click="opdsLogin = null">
+                            {{ $t('common.hide') }}
+                        </q-btn>
+                    </div>
+                </div>
+                <div v-else class="card-hint">
+                    {{ opdsAuthEnabled ? $t('meDevices.opdsPasswordSet') : $t('meDevices.opdsPasswordNone') }}
+                </div>
+                <div v-if="opdsEnabled && canAddDevices && profile.login" class="card-actions">
+                    <q-btn color="primary" unelevated dense no-caps icon="la la-key" @click="setOpdsPassword(false)">
+                        {{ opdsAuthEnabled ? $t('meDevices.newPassword') : $t('meDevices.createPassword') }}
+                    </q-btn>
+                    <q-btn flat dense no-caps color="primary" @click="setOpdsPassword(true)">
+                        {{ $t('meDevices.setOwnPassword') }}
+                    </q-btn>
+                </div>
                 <div class="card-hint">
                     {{ $t('meDevices.chooseWhichListsAppear') }}
                     <router-link to="/lists">
@@ -202,6 +220,7 @@ class MeDevices {
     koboEndpoint = '';
     newKoboDeviceName = 'Kobo';
     kosyncLogin = null;
+    opdsLogin = null;
     readingLists = [];
 
     created() {
@@ -357,6 +376,28 @@ class MeDevices {
         try {
             const result = await this.api.regenerateKoboDeviceToken(device.id);
             this.koboEndpoint = result.endpoint;
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('common.error'));
+        }
+    }
+
+    //пароль OPDS: сгенерированный показывается один раз, свой - не короче 10 знаков
+    async setOpdsPassword(own) {
+        let password = '';
+        if (own) {
+            const result = await this.$root.stdDialog.password(t('meDevices.enterOpdsPassword'), 'OPDS', {
+                inputValidator: value => (String(value || '').length >= 10 ? true : t('errors.passwordTooShort', {min: 10})),
+            });
+            if (!result || !result.value)
+                return;
+            password = result.value;
+        } else if (this.opdsAuthEnabled && !await this.$root.stdDialog.confirm(t('meDevices.createANewOpdsPassword'), 'OPDS')) {
+            return;
+        }
+        try {
+            const login = await this.api.setOpdsPassword(password);
+            this.opdsLogin = (login.password ? login : null);
+            await this.api.updateConfig();
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         }
