@@ -309,14 +309,14 @@ async function testOpenProfileCredentialsAdminOnly() {
         const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
         const asAlice = {userId: alice.id, profileAccessToken: aliceLogin.profileAccessToken, csrfToken};
         assert.ok((await call({action: 'create-kosync-password', ...asAlice})).password, 'A protected profile makes its own');
-        assert.match((await update({password: 'new-pass'}, asAlice, alice.id)).error, /current password|текущий пароль/);
-        assert.match((await update({password: 'new-pass', currentPassword: 'wrong'}, asAlice, alice.id)).error, /current password|текущий пароль/);
-        assert.ok(!(await update({password: 'new-pass', currentPassword: 'alice-fixture'}, asAlice, alice.id)).error);
-        assert.ok(await worker.readingListStore.verifyUserPassword(alice.id, 'new-pass'));
+        assert.match((await update({password: 'new-password'}, asAlice, alice.id)).error, /current password|текущий пароль/);
+        assert.match((await update({password: 'new-password', currentPassword: 'wrong'}, asAlice, alice.id)).error, /current password|текущий пароль/);
+        assert.ok(!(await update({password: 'new-password', currentPassword: 'alice-fixture'}, asAlice, alice.id)).error);
+        assert.ok(await worker.readingListStore.verifyUserPassword(alice.id, 'new-password'));
 
         const adminLogin = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
         const asAdmin = {userId: adminLogin.userId, profileAccessToken: adminLogin.profileAccessToken, csrfToken};
-        assert.strictEqual((await update({login: 'bobby', password: 'bob-pass'}, asAdmin)).user.login, 'bobby', 'The admin sets credentials');
+        assert.strictEqual((await update({login: 'bobby', password: 'bob-password'}, asAdmin)).user.login, 'bobby', 'The admin sets credentials');
         assert.ok(!(await update({password: 'alice-reset'}, asAdmin, alice.id)).error, 'The admin needs no current password of others');
     });
 }
@@ -456,6 +456,27 @@ async function testUnknownLoginTakesAsLong() {
     });
 }
 
+// Passwords people set are at least 10 characters. One login is slowed down after 5 failures from any address, never locked.
+async function testPasswordLengthAndPerLoginThrottle() {
+    await fixture({}, async({worker, security}) => {
+        await assert.rejects(worker.hashProfilePassword('alice', 'short-pwd'), /10/);
+        assert.match(await worker.hashProfilePassword('alice', 'long-enough'), /^scrypt:/);
+        const now = Date.now();
+        for (let i = 0; i < 5; i++) {
+            security.checkAccountRate('profile', 'Alice', now);
+            security.recordAccountAttempt('profile', 'alice', false, now);
+        }
+        security.checkAccountRate('profile', 'alice', now);
+        security.recordAccountAttempt('profile', 'alice', false, now);
+        assert.throws(() => security.checkAccountRate('profile', 'alice', now), error => error.retryAfter === 2);
+        security.checkAccountRate('profile', 'bob', now);
+        security.checkAccountRate('opds', 'alice', now);
+        security.checkAccountRate('profile', 'alice', now + 2000);
+        security.recordAccountAttempt('profile', 'alice', true, now + 2000);
+        security.checkAccountRate('profile', 'alice', now + 2000);
+    });
+}
+
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
     await fixture({}, async({worker, alice, bob, connect, session}) => {
@@ -517,13 +538,13 @@ async function testAdminRoleToggle() {
         assert.match((await update('admin', {isAdmin: false}, asAlice)).error, /main administrator|главного администратора/);
         const profiles = (await worker.getUserProfiles()).users;
         assert.deepStrictEqual(profiles.filter(item => item.mainAdmin).map(item => item.id), ['admin']);
-        const created = await call({action: 'create-user-profile', profile: {name: 'Dora', login: 'dora', password: 'dora-pass', isAdmin: true}, ...asAlice});
+        const created = await call({action: 'create-user-profile', profile: {name: 'Dora', login: 'dora', password: 'dora-password', isAdmin: true}, ...asAlice});
         assert.strictEqual(created.user.isAdmin, true);
         assert.match((await call({action: 'create-user-profile', profile: {name: 'Eve', isAdmin: true}, ...asAlice})).error, /.+/);
         assert.ok(config);
     });
 }
 
-module.exports = [testUnknownLoginTakesAsLong, testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testUnknownLoginTakesAsLong, testPasswordLengthAndPerLoginThrottle, testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

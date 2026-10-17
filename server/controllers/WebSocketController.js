@@ -1019,8 +1019,10 @@ class WebSocketController {
     }
 
     async loginUserProfile(req, ws) {
-        if (this.security)
+        if (this.security) {
             this.security.checkLoginRate(ws.req, 'profile');
+            this.security.checkAccountRate('profile', req.login);
+        }
 
         try {
             const result = await this.webWorker.loginUserProfile(req.login, req.password);
@@ -1029,12 +1031,16 @@ class WebSocketController {
             this.rotateSession(req, ws);
             ws.userId = String(result.userId || '').trim();
             ws.userLastActivity = Date.now();
-            if (this.security)
+            if (this.security) {
                 this.security.recordLoginAttempt(ws.req, true, 'profile');
+                this.security.recordAccountAttempt('profile', req.login, true);
+            }
             this.send(result, req, ws);
         } catch (e) {
-            if (this.security)
+            if (this.security) {
                 this.security.recordLoginAttempt(ws.req, false, 'profile');
+                this.security.recordAccountAttempt('profile', req.login, false);
+            }
             throw e;
         }
     }

@@ -10,6 +10,10 @@ const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
 const maxWebSocketsPerIp = 50;
 const maxLoginAttemptKeys = 10000;
+//per-login throttle: after accountFreeFailures failures each next attempt waits twice as long, up to accountMaxDelayMs
+const accountFreeFailures = 5;
+const accountMaxDelayMs = 5*60*1000;
+const accountFailureWindowMs = 60*60*1000;
 const bookLinkLifetimeMs = 7*24*60*60*1000;
 const sessionRotateLifetimeMs = 60*1000;
 const maxSessionRotations = 1000;
@@ -86,6 +90,7 @@ class Security {
         this.loginAttempts = new Map();
         this.lastLoginAttemptSweep = 0;
         this.loginAttemptTotals = new Map();
+        this.accountFailures = new Map();
         this.secret = '';
         this.trustedProxyRanges = (config.trustedProxyCidrs || [])
             .map(parseCidr)
@@ -614,6 +619,42 @@ class Security {
         //порядок в Map - по последней неудаче: вытесняются давно не ошибавшиеся адреса
         this.loginAttempts.delete(ip);
         this.loginAttempts.set(ip, rec);
+    }
+
+    //Перебор пароля одного логина с многих адресов: лимит по IP его не видит. Логин не блокируется,
+    //а замедляется: после accountFreeFailures неудач каждая следующая попытка ждёт вдвое дольше, до 5 минут
+    accountKey(kind, login) {
+        return `${this.normalizeLoginKind(kind)}\t${String(login || '').trim().toLowerCase()}`;
+    }
+
+    checkAccountRate(kind, login, now = Date.now()) {
+        if (this.config.loginRateLimitEnabled === false)
+            return;
+        const rec = this.accountFailures.get(this.accountKey(kind, login));
+        if (rec && rec.nextAt > now) {
+            this.incrementLoginMetric(kind, 'blocked');
+            throw Object.assign(new Error('Too many login attempts. Try again later.'), {
+                code: 'INPX_LOGIN_RATE_LIMIT', retryAfter: Math.max(1, Math.ceil((rec.nextAt - now)/1000)),
+            });
+        }
+    }
+
+    recordAccountAttempt(kind, login, success, now = Date.now()) {
+        if (this.config.loginRateLimitEnabled === false)
+            return;
+        const key = this.accountKey(kind, login);
+        if (success) {
+            this.accountFailures.delete(key);
+            return;
+        }
+        const previous = this.accountFailures.get(key);
+        const count = (previous && now - previous.lastAt < accountFailureWindowMs ? previous.count : 0) + 1;
+        const delay = (count > accountFreeFailures ? Math.min(accountMaxDelayMs, 1000*2**(count - accountFreeFailures)) : 0);
+        //порядок в Map - по последней неудаче: при переполнении уходят давно не ошибавшиеся логины
+        this.accountFailures.delete(key);
+        if (this.accountFailures.size >= maxLoginAttemptKeys)
+            this.accountFailures.delete(this.accountFailures.keys().next().value);
+        this.accountFailures.set(key, {count, lastAt: now, nextAt: now + delay});
     }
 
     getLoginMetrics() {

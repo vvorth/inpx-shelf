@@ -5,6 +5,8 @@ const i18n = require('./i18n');
 const {t} = i18n;
 const {isReadingInProgress} = require('./ReaderProgress');
 
+const minPasswordLength = 10;
+
 function getUserDisplayName(user = {}) {
     const name = String(user.name || '').trim();
     if (isAnonymousDefaultUser(user))
@@ -49,7 +51,10 @@ module.exports = {
         };
     },
 
-    hashProfilePassword(login, password) {
+    //пароли, которые задают люди; сгенерированные (админ, KOReader) длиннее
+    async hashProfilePassword(login, password) {
+        if (String(password || '').length < minPasswordLength)
+            throw new Error(t('errors.passwordTooShort', {min: minPasswordLength}));
         return require('./ProfilePassword').hash(password);
     },
 

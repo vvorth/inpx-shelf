@@ -498,6 +498,7 @@
         "passwordCheckBusy": "Password checking is busy, try again later",
         "passwordNeedsLogin": "A login is required to set a password",
         "passwordTooLong": "Password is too long",
+        "passwordTooShort": "Password must be at least {min} characters",
         "preparedFileInvalid": "The prepared cache file is empty or has an invalid size",
         "profileBoundToProxy": "The profile is bound to the proxy user",
         "profileLoginBoundToProxy": "The profile login is bound to the proxy user",

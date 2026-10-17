@@ -506,6 +506,7 @@
         "passwordCheckBusy": "Проверка паролей занята, повторите позже",
         "passwordNeedsLogin": "Для пароля нужно указать логин",
         "passwordTooLong": "Пароль слишком длинный",
+        "passwordTooShort": "Пароль должен быть не короче {min} символов",
         "preparedFileInvalid": "Подготовленный файл кэша пуст или имеет неверный размер",
         "profileBoundToProxy": "Профиль закреплён за пользователем proxy",
         "profileLoginBoundToProxy": "Логин профиля закреплён за пользователем proxy",

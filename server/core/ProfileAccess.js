@@ -105,6 +105,7 @@ class ProfileAccess {
         if (!credentials || !this.config.opds || !this.config.opds.enabled)
             return null;
         this.security.checkLoginRate(req, 'opds');
+        this.security.checkAccountRate('opds', credentials.user);
         let identity = null;
         if (this.config.opds.password) {
             if (this.config.opds.user && equal(credentials.user, this.config.opds.user) && equal(credentials.password, this.config.opds.password))
@@ -117,6 +118,7 @@ class ProfileAccess {
                 identity = {user, opds: true, bound: true};
         }
         this.security.recordLoginAttempt(req, !!identity, 'opds');
+        this.security.recordAccountAttempt('opds', credentials.user, !!identity);
         return identity;
     }
 
