@@ -29,7 +29,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 ## Docs
 
 - `README.md`, `README.ru.md`, `docs/` and `AGENTS.md` files describe the current state only: short, on point. No history, no "since version X", no stories of how it came to be.
-- Change history goes only to `CHANGELOG.md`: user-facing, in Russian, under the current unreleased version at the top.
+- Change history goes only to `CHANGELOG.md`: user-facing, in Russian, under the `Не выпущено` heading at the top (add the heading if it is missing). The release workflow renames it to the version.
 - Research goes to `docs/research/`, multi-step plans to `docs/plans/`. Project docs never link to them. See [docs/AGENTS.md](docs/AGENTS.md).
 - When behavior changes, update the doc that describes it in the same commit.
 

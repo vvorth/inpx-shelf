@@ -1,83 +1,69 @@
 name: Release
 
-# A v* tag (or a manual run for an existing tag): check the version, test once, then build and
-# publish the binaries to GitHub Releases and the images to Docker Hub.
+# Rolling release: Actions -> Release -> Run workflow publishes the current head of dev as
+# version YY.M.N (26.10.0, 26.10.1, ...: N counts the releases of the month). After the checks
+# pass it turns the "Не выпущено" section of CHANGELOG.md into the release notes, sets the version
+# in package.json, commits to dev, fast-forwards main to that commit and tags it, then publishes
+# the binaries to GitHub Releases and the images to Docker Hub as <version> and latest.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Git tag to build and publish
-        required: true
-        default: v1.0.0
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: release
   cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
   # Same version as FB2CNG_VERSION in the Dockerfile and in scripts/bundle-windows-tools.ps1 (Windows); update fbc_sha256 below with it.
   FB2CNG_RELEASE_API: https://api.github.com/repos/rupor-github/fb2cng/releases/tags/v1.9.1
 
 jobs:
   version:
-    name: Verify release version
+    name: Pick the release version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      date: ${{ steps.version.outputs.date }}
+      sha: ${{ steps.version.outputs.sha }}
       image: ${{ steps.version.outputs.image }}
-      channel_image: ${{ steps.version.outputs.channel_image }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
-          # All release tags are needed to tell whether this is the newest release.
+          ref: dev
+          # All tags are needed to number the release within its month.
           fetch-depth: 0
       - id: version
         run: |
           node <<'NODE'
           const fs = require('fs');
           const {execFileSync} = require('child_process');
-          const versionPattern = /^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/;
-          const version = require('./package.json').version;
-          if (process.env.RELEASE_TAG !== `v${version}` || !versionPattern.test(version)) {
-            throw new Error('Tag and package version must match');
-          }
+          const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
 
-          // SemVer order: 1.0.0-beta.2 < 1.0.0-rc.1 < 1.0.0 < 1.0.1.
-          const parse = value => {
-            const [main, pre] = value.split('-');
-            return {main: main.split('.').map(Number), pre: pre ? pre.split('.') : null};
+          const lines = fs.readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n').split('\n');
+          const end = lines.findIndex((line, index) => index > 0 && /^\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\//.test(line));
+          if (lines[0].trim() !== 'Не выпущено' || !lines.slice(1, end < 0 ? lines.length : end).some(line => line.startsWith('- ')))
+            throw new Error('CHANGELOG.md does not start with a "Не выпущено" section listing the changes: nothing to release');
+
+          // SemVer forbids leading zeros, so the month is 9, not 09.
+          const now = new Date();
+          const month = `${now.getUTCFullYear() % 100}.${now.getUTCMonth() + 1}`;
+          const numbers = git('tag', '--list', `v${month}.*`).split('\n')
+            .map(tag => tag.match(/^v\d+\.\d+\.(\d+)$/)).filter(Boolean).map(match => Number(match[1]));
+          const version = `${month}.${numbers.length ? Math.max(...numbers) + 1 : 0}`;
+
+          const output = {
+            version,
+            tag: `v${version}`,
+            date: now.toISOString().slice(0, 10),
+            sha: git('rev-parse', 'HEAD'),
+            image: `vvorth/inpx-shelf:${version}`,
           };
-          const compare = (left, right) => {
-            const a = parse(left), b = parse(right);
-            for (let i = 0; i < 3; i++)
-              if (a.main[i] !== b.main[i]) return a.main[i] - b.main[i];
-            if (!a.pre || !b.pre) return (a.pre ? -1 : 0) + (b.pre ? 1 : 0);
-            if (a.pre[0] !== b.pre[0]) return a.pre[0] < b.pre[0] ? -1 : 1;
-            return Number(a.pre[1]) - Number(b.pre[1]);
-          };
-
-          // latest follows the newest stable release, beta the newest pre-release. Rebuilding
-          // an older tag by hand only refreshes its own version tag.
-          const prerelease = version.includes('-');
-          const newest = execFileSync('git', ['tag', '--list', 'v*'], {encoding: 'utf8'})
-            .split('\n').map(tag => tag.trim().replace(/^v/, ''))
-            .filter(tag => versionPattern.test(tag) && tag.includes('-') === prerelease)
-            .every(tag => compare(tag, version) <= 0);
-          const channel = newest ? (prerelease ? 'beta' : 'latest') : '';
-
-          const image = 'vvorth/inpx-shelf';
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=${image}:${version}\n`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `channel_image=${channel ? `${image}:${channel}` : ''}\n`);
-          console.log(channel ? `Also publishing ${image}:${channel}` : `${version} is not the newest release; channel tags stay as they are`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(output).map(([key, value]) => `${key}=${value}\n`).join(''));
+          console.log(`Releasing ${output.sha} as ${version}`);
           NODE
 
   check-linux:
@@ -85,18 +71,53 @@ jobs:
     uses: ./.github/workflows/check.yml
     with:
       target: linux
-      ref: ${{ inputs.tag || github.ref_name }}
+      ref: ${{ needs.version.outputs.sha }}
 
   check-windows:
     needs: version
     uses: ./.github/workflows/check.yml
     with:
       target: win
-      ref: ${{ inputs.tag || github.ref_name }}
+      ref: ${{ needs.version.outputs.sha }}
+
+  tag:
+    name: Commit and tag the release
+    needs: [version, check-linux, check-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      RELEASE_DATE: ${{ needs.version.outputs.date }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Set the version
+        run: |
+          npm version "$VERSION" --no-git-tag-version --ignore-scripts
+          node <<'NODE'
+          const fs = require('fs');
+          const text = fs.readFileSync('CHANGELOG.md', 'utf8');
+          fs.writeFileSync('CHANGELOG.md', text.replace(/^Не выпущено(?=\r?\n)/, `${process.env.VERSION} / ${process.env.RELEASE_DATE}`));
+          NODE
+      # One atomic push: if dev got new commits during the run or main is not an ancestor of
+      # the release commit, nothing is pushed and nothing is published.
+      - name: Push to dev and main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -q -am "Release $VERSION"
+          git tag "$TAG"
+          git push --atomic origin HEAD:refs/heads/dev HEAD:refs/heads/main "refs/tags/$TAG"
 
   binaries:
     name: Build ${{ matrix.label }}
-    needs: [version, check-linux, check-windows]
+    needs: [version, tag]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -128,7 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.version.outputs.tag }}
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -230,15 +251,17 @@ jobs:
 
   github-release:
     name: Upload release assets
-    needs: binaries
+    needs: [version, binaries]
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.version.outputs.tag }}
       - name: Download artifacts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -271,7 +294,7 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          make_latest: true
           body_path: release-notes.md
           files: |
             release-assets/**/*.zip
@@ -280,16 +303,15 @@ jobs:
 
   docker:
     name: Docker images
-    needs: [version, check-linux, check-windows]
+    needs: [version, tag]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
       IMAGE: ${{ needs.version.outputs.image }}
-      CHANNEL_IMAGE: ${{ needs.version.outputs.channel_image }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.version.outputs.tag }}
       # Two images: the default one (fb2cng) and IMAGE-pdf with MuPDF for PDF output.
       - name: Build images
         run: |
@@ -313,10 +335,9 @@ jobs:
         run: |
           docker push "$IMAGE"
           docker push "$IMAGE-pdf"
-      - name: Publish latest or beta tag
-        if: env.CHANNEL_IMAGE != ''
+      - name: Publish latest tag
         run: |
           for suffix in "" -pdf; do
-            docker tag "$IMAGE$suffix" "$CHANNEL_IMAGE$suffix"
-            docker push "$CHANNEL_IMAGE$suffix"
+            docker tag "$IMAGE$suffix" "vvorth/inpx-shelf:latest$suffix"
+            docker push "vvorth/inpx-shelf:latest$suffix"
           done

@@ -1,7 +1,7 @@
 name: Check
 
 # The one test run every event goes through: ci.yml (pull requests, dev, main) and
-# release.yml (tags) call it once per platform and publish only after it passes.
+# release.yml (the dev commit being released) call it once per platform and publish only after it passes.
 on:
   workflow_call:
     inputs:
