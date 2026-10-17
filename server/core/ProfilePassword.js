@@ -7,6 +7,7 @@ const scrypt = promisify(crypto.scrypt);
 const prefix = 'scrypt:v1:';
 const options = {N: 16384, r: 8, p: 5, maxmem: 32*1024*1024};
 const maxPasswordBytes = 4096;
+const dummySalt = crypto.randomBytes(16);
 let active = 0;
 
 // OPDS clients send the password with every request, and scrypt takes ~0.3 s inside the
@@ -54,8 +55,11 @@ async function verify(stored, login, password) {
     if (isLegacy(stored))
         return crypto.timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(legacy(login, password), 'hex'));
     const match = /^scrypt:v1:([a-f0-9]{32}):([a-f0-9]{64})$/.exec(stored);
-    if (!match)
+    //нет пароля (неизвестный логин) - scrypt всё равно считается: по времени ответа не узнать, есть ли такой логин
+    if (!match) {
+        await derive(password, dummySalt);
         return false;
+    }
     const id = verifiedId(stored, String(password || ''));
     if (verified.get(id) > Date.now())
         return true;

@@ -130,7 +130,7 @@ module.exports = {
     // Runs outside the store lock (see the loop at the end of ReadingListStore.js): scrypt takes ~0.3 s and must not hold up other requests.
     async verifyUserPassword(userId, password) {
         const user = await this.getPasswordRecord(userId);
-        if (!user || !user.passwordHash || !await profilePassword.verify(user.passwordHash, user.login, password))
+        if (!await profilePassword.verify((user && user.passwordHash) || '', (user && user.login) || '', password))
             return false;
         if (profilePassword.isLegacy(user.passwordHash))
             await this.upgradePasswordHash(userId, user.passwordHash, await profilePassword.hash(password));

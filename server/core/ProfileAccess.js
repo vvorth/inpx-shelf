@@ -113,7 +113,7 @@ class ProfileAccess {
             const data = await this.worker.readingListStore.load();
             const login = this.worker.readingListStore.normalizeLogin(credentials.user);
             const user = data.users.find(item => item.login === login && item.opdsEnabled !== false && item.opdsAuthEnabled === true);
-            if (user && await this.worker.readingListStore.verifyUserPassword(user.id, credentials.password))
+            if (await this.worker.readingListStore.verifyUserPassword(user ? user.id : '', credentials.password) && user)
                 identity = {user, opds: true, bound: true};
         }
         this.security.recordLoginAttempt(req, !!identity, 'opds');

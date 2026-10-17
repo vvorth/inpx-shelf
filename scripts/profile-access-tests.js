@@ -441,6 +441,21 @@ async function testLoginRotatesSession() {
     });
 }
 
+// An unknown login costs the same scrypt run as a wrong password: the answer time does not tell which logins exist.
+async function testUnknownLoginTakesAsLong() {
+    await fixture({}, async({worker}) => {
+        const time = async(login) => {
+            const start = process.hrtime.bigint();
+            await assert.rejects(worker.loginUserProfile(login, 'wrong-password'));
+            return Number(process.hrtime.bigint() - start);
+        };
+        await time('alice');
+        const known = await time('alice');
+        const unknown = await time('nobody-here');
+        assert.ok(unknown > known/3, `unknown ${unknown}ns, known ${known}ns`);
+    });
+}
+
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
     await fixture({}, async({worker, alice, bob, connect, session}) => {
@@ -509,6 +524,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testUnknownLoginTakesAsLong, testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

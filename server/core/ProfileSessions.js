@@ -159,10 +159,10 @@ module.exports = {
     //у профиля сменили пароль или логин или удалили его (сессии отозваны), вход не состоится.
     async loginUserProfile(login = '', password = '') {
         const user = await this.readingListStore.findUserByLogin(login);
-        if (!user || !user.passwordHash)
-            throw new Error(t('errors.invalidLogin'));
-        const revocation = this.sessionRevocation(user.id);
-        if (!await this.readingListStore.verifyUserPassword(user.id, password) || this.sessionRevocation(user.id) !== revocation)
+        const userId = (user ? user.id : '');
+        const revocation = this.sessionRevocation(userId);
+        //неизвестный логин проверяется так же долго, как известный (verifyUserPassword)
+        if (!await this.readingListStore.verifyUserPassword(userId, password) || !user || this.sessionRevocation(userId) !== revocation)
             throw new Error(t('errors.invalidLogin'));
         return {
             userId: user.id,
