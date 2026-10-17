@@ -27,7 +27,7 @@ async function createFixture(dir) {
     await complete;
     await fs.writeJson(path.join(dir, 'config.json'), {
         loggingEnabled: false,
-        opds: {enabled: true, auth: false},
+        opds: {enabled: true},
         adminPassword: 'local-smoke-fixture',
     });
 }
@@ -121,9 +121,10 @@ async function main() {
         const home = await fetch(url);
         assert.strictEqual(home.status, 200);
         assert.match(await home.text(), /<html/i);
+        // login is always required: OPDS answers with a Basic challenge
         const opds = await fetch(`${url}/opds`);
-        assert.strictEqual(opds.status, 200);
-        assert.match(await opds.text(), /<feed/);
+        assert.strictEqual(opds.status, 401);
+        assert.match(String(opds.headers.get('www-authenticate')), /^Basic/);
         await checkWebSocket(url);
         console.log(`ok packaged application: indexing, health, web UI, OPDS, WebSocket (${target === '--image' ? imageName : target})`);
     } finally {
