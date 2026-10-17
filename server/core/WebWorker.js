@@ -7,7 +7,8 @@ const WorkerState = require('./WorkerState');//singleton
 const CatalogSearch = require('./search/CatalogSearch');
 const StateStore = require('./StateStore');
 const InpxHashCreator = require('./InpxHashCreator');
-const RemoteLib = require('./RemoteLib');//singleton
+const RemoteLib = require('./RemoteLib');
+const {getEnabledLibrarySources} = require('./LibrarySources');
 const FileDownloader = require('./FileDownloader');
 const ReadingListStore = require('./ReadingListStore');
 const {withFileTransaction, writeFileAtomic} = require('./FilePersistence');
@@ -66,16 +67,11 @@ class WebWorker {
             this.catalogSearch = new CatalogSearch(config, this);
             this.stateStore = new StateStore(config);
 
-            this.remoteLib = null;
-            if (config.remoteLib) {
-                this.remoteLib = new RemoteLib(config);
-            }
-            
+            this.remoteLib = new RemoteLib(config);
             this.inpxHashCreator = new InpxHashCreator(config);
             this.readingListStore = new ReadingListStore(config);
             this.fb2Helper = new Fb2Helper();
             this.profileSessions = new Map();
-            this.inpxFileHash = '';
             this.discoveryCache = new Map();
             this.sharedDiscoveryConfig = null;
             this.resetLibraryAssetCaches();
@@ -129,7 +125,6 @@ class WebWorker {
             jobStepCount: workerState.jobStepCount || 0,
             progress: workerState.progress || 0,
             recsLoaded: workerState.recsLoaded || 0,
-            inpxFileHash: this.inpxFileHash || '',
             dbLoaded: this.catalogSearch.ready,
             searchReady: this.catalogSearch.ready,
             version: this.config.version,
@@ -202,7 +197,6 @@ class WebWorker {
 
         let progressTimer = null;
         try {
-            this.inpxFileHash = await this.inpxHashCreator.getInpxFileHash();
             const inpxHash = await this.inpxHashCreator.getHash();
 
             if (firstLoad) {
@@ -410,6 +404,12 @@ class WebWorker {
             states[bookUid] = {percent, read: percent >= READ_PERCENT, hidden: !!progress && progress.hidden === true, inList};
         }
         return {states};
+    }
+
+    //настройки удалённой библиотеки, из которой книга, или null
+    remoteSourceOf(book) {
+        const source = (this.config.librarySources || []).find(item => item && book && item.id === book.sourceId);
+        return (source && source.remote) || null;
     }
 
     async getBookRecordByUid(bookUid) {
@@ -1063,11 +1063,14 @@ class WebWorker {
         };
     }
 
-    async restoreBook(bookUid, libFolder, libFile, downFileName, sourceLibDir = '') {
+    //remote - книга удалённой библиотеки: её файл уже подготовлен там
+    async restoreBook(bookUid, libFolder, libFile, downFileName, sourceLibDir = '', remote = null) {
         let extractedFile = '';
         let hash = '';
 
-        if (!this.remoteLib) {
+        if (remote) {
+            extractedFile = await this.remoteLib.downloadBook(remote, bookUid);
+        } else {
             extractedFile = await this.extractBook(libFolder, libFile, sourceLibDir);
             if (path.extname(libFile).toLowerCase() === '.fb2') {
                 try {
@@ -1096,10 +1099,8 @@ class WebWorker {
                     await Promise.all([...readerCache.values()].map(reader => reader.close()));
                 }
             }
-            hash = await utils.getFileHash(extractedFile, 'sha256', 'hex');
-        } else {
-            hash = await this.remoteLib.downloadBook(bookUid);
         }
+        hash = await utils.getFileHash(extractedFile, 'sha256', 'hex');
 
         const link = `${this.config.bookPathStatic}/${hash}`;
         const bookFile = `${this.config.bookDir}/${hash}`;
@@ -1135,7 +1136,9 @@ class WebWorker {
         return link;
     }
 
-    async getBookLink(bookUid) {
+    //sourceId - для API удалённой библиотеки: книга, чья строка INPX есть и в более ранней библиотеке,
+    //берётся из файлов запрошенной и хранится в кеше отдельно
+    async getBookLink(bookUid, sourceId = '') {
         this.checkMyState();
         const notFound = () => Object.assign(new Error(t('errors.fileNotFound')), {status: 404});
 
@@ -1144,9 +1147,19 @@ class WebWorker {
             let size = 0;
 
             //найдем downFileName, libFolder, libFile
-            const book = await this.getBookRecordByUid(bookUid);
+            let book = (sourceId ? (await this.getBookRecordsByUids([bookUid], true)).get(bookUid) : await this.getBookRecordByUid(bookUid));
             if (!book)
                 throw notFound();
+            let cacheId = bookUid;
+            if (sourceId && book.sourceId !== sourceId) {
+                const source = getEnabledLibrarySources(this.config).find(item => item.id === sourceId);
+                if (!source)
+                    throw notFound();
+                book = Object.assign({}, book, {sourceId, sourceLibDir: source.libDir});
+                cacheId = `${sourceId}:${bookUid}`;
+            } else if (book.hiddenSource) {
+                throw notFound();
+            }
 
             let downFileName = book.file;
             const authors = book.author.split(',');
@@ -1174,7 +1187,7 @@ class WebWorker {
             const sourceLibDir = book.sourceLibDir || this.config.libDir;
 
             //найдем хеш
-            const rows = this.stateStore.getBookFiles([bookUid]);
+            const rows = this.stateStore.getBookFiles([cacheId]);
             if (rows.length) {//хеш найден по bookUid
                 const hash = rows[0].hash;
                 const bookFile = `${this.config.bookDir}/${hash}`;
@@ -1197,9 +1210,9 @@ class WebWorker {
                 if (!this.pendingBookRestores)
                     this.pendingBookRestores = new Map();
                 const pending = this.pendingBookRestores;
-                const key = JSON.stringify([bookUid, libFolder, libFile, sourceLibDir, this.libraryAssetGeneration]);
+                const key = JSON.stringify([cacheId, libFolder, libFile, sourceLibDir, this.libraryAssetGeneration]);
                 if (!pending.has(key)) {
-                    pending.set(key, this.restoreBook(bookUid, libFolder, libFile, downFileName, sourceLibDir)
+                    pending.set(key, this.restoreBook(cacheId, libFolder, libFile, downFileName, sourceLibDir, this.remoteSourceOf(book))
                         .finally(() => pending.delete(key)));
                 }
                 link = await pending.get(key);
@@ -1217,6 +1230,11 @@ class WebWorker {
                 throw notFound();
             throw e;
         }
+    }
+
+    async hasCachedBook(bookUid) {
+        const rows = this.stateStore.getBookFiles([bookUid]);
+        return !!(rows.length && await fs.pathExists(`${this.config.bookDir}/${rows[0].hash}`));
     }
 
     async getPreparedBookFile(bookUid, format = '') {
@@ -1456,10 +1474,20 @@ class WebWorker {
         return result;
     }
 
-    async getBookInfo(bookUid) {
+    //Книга удалённой библиотеки скачивается для описания только по просьбе читателя (fetchRemote,
+    //кнопка «Получить метаданные»); скачанная остаётся в кеше, и описание дальше показывается сразу
+    async getBookInfo(bookUid, {fetchRemote = false} = {}) {
         this.checkMyState();
 
         try {
+            if (!fetchRemote) {
+                const found = await this.getBookRecordByUid(bookUid);
+                if (found && this.remoteSourceOf(found) && !await this.hasCachedBook(bookUid)) {
+                    const book = Object.assign({}, found);
+                    this.applyMetadataOverrideToBook(book, await this.readingListStore.getMetadataOverrides());
+                    return {bookInfo: {book, remote: true, notFetched: true}};
+                }
+            }
             let bookInfo = await this.getBookLink(bookUid);
             const hash = path.basename(bookInfo.link);
             const bookFile = `${this.config.bookDir}/${hash}`;
@@ -1551,18 +1579,6 @@ class WebWorker {
         }
     }
 
-    async getInpxFile(params) {
-        let data = null;
-        if (params.inpxFileHash && this.inpxFileHash && params.inpxFileHash === this.inpxFileHash) {
-            data = false;
-        }
-
-        if (data === null)
-            data = await libraryFs.readFile(this.config.inpxFile, 'base64');
-
-        return {data};
-    }
-
     logServerStats() {
         try {
             const memUsage = process.memoryUsage().rss/(1024*1024);//Mb
@@ -1597,9 +1613,7 @@ class WebWorker {
 
                 //пока идёт пересборка, БД ещё со старым хешем: проверим в следующий раз
                 if (!this.dbLoad) {
-                    if (this.remoteLib) {
-                        await this.remoteLib.downloadInpxFile();
-                    }
+                    await this.remoteLib.syncAll();
 
                     //библиотеку в S3 могли обновить: листинги с ETag перечитываются
                     libraryFs.clearCache();

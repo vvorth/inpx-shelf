@@ -83,16 +83,8 @@ module.exports = {
 
     webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled', 'kosyncEnabled'],
 
-    allowRemoteLib: false,
-    remoteLib: false,
-    /*
-    allowRemoteLib: true, // на сервере
-    remoteLib: { // на клиенте
-        accessPassword: '',
-        url: 'wss://remoteInpxWeb.ru',
-        ignoreCertErrors: false, // true: не проверять TLS-сертификат сервера (самоподписанный)
-    },
-    */
+    //токены API удалённой библиотеки (/remote/): [{id, name, hash, sources, createdAt}], хранится только SHA-256 токена
+    remoteAccess: [],
 
     server: {
         host: '0.0.0.0',

@@ -76,7 +76,7 @@ const readOnlyActions = new Set([
     'export-admin-settings', 'get-book-link', 'get-author-aliases', 'admin-author-names-status', 'catalog-names',
     'catalog-search', 'catalog-suggest', 'get-book', 'get-book-states', 'get-book-info', 'get-reader-state',
     'get-user-reading-library', 'get-reading-stats', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'get-reading-now', 'export-reading-lists',
-    'get-kobo-devices', 'get-inpx-file',
+    'get-kobo-devices', 'get-remote-access',
 ]);
 
 class WebSocketController {
@@ -236,6 +236,16 @@ class WebSocketController {
                     await this.updateAdminLibrarySources(req, ws); break;
                 case 'admin-diagnose-library-source':
                     await this.adminDiagnoseLibrarySource(req, ws); break;
+                case 'get-remote-access':
+                    this.send(await this.webWorker.getRemoteAccess(req.userId, req.profileAccessToken), req, ws); break;
+                case 'create-remote-access':
+                    this.send(await this.webWorker.createRemoteAccess(req.userId, req.profileAccessToken, req.access || {}), req, ws); break;
+                case 'update-remote-access':
+                    this.send(await this.webWorker.updateRemoteAccess(req.userId, req.profileAccessToken, req.access || {}), req, ws); break;
+                case 'delete-remote-access':
+                    this.send(await this.webWorker.deleteRemoteAccess(req.userId, req.profileAccessToken, req.id), req, ws); break;
+                case 'admin-remote-library-sources':
+                    this.send(await this.webWorker.listRemoteLibrarySources(req.userId, req.profileAccessToken, req.remote || {}), req, ws); break;
                 case 'update-admin-cache':
                     await this.updateAdminCache(req, ws); break;
                 case 'admin-clean-cache':
@@ -361,8 +371,6 @@ class WebSocketController {
                 case 'send-book-email':
                     await this.sendBookEmail(req, ws); break;
 
-                case 'get-inpx-file':
-                    await this.getInpxFile(req, ws); break;
 
                 default:
                     throw new Error(`Action not found: ${req.action}`);
@@ -564,6 +572,7 @@ class WebSocketController {
             id: source.id || '',
             name: source.name || source.id || '',
             enabled: source.enabled !== false,
+            remote: !!source.remote,
         }));
         if (this.security)
             config.csrfToken = this.security.getCsrfToken(ws.req);
@@ -887,7 +896,7 @@ class WebSocketController {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
-        const result = await this.webWorker.getBookInfo(req.bookUid);
+        const result = await this.webWorker.getBookInfo(req.bookUid, {fetchRemote: req.fetchRemote === true});
 
         this.send(result, req, ws);
     }
@@ -1364,15 +1373,6 @@ class WebSocketController {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         await this.requireProtectedProfile(user, req, 'errors.deliveryNeedsPassword');
         const result = await this.webWorker.sendBookToEmail(req.bookUid, req.format, user.id);
-        this.send(result, req, ws);
-    }
-
-    async getInpxFile(req, ws) {
-        if (!this.config.allowRemoteLib)
-            throw new Error('Remote lib access disabled');
-
-        const result = await this.webWorker.getInpxFile(req);
-
         this.send(result, req, ws);
     }
 

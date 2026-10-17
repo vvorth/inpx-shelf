@@ -1074,7 +1074,6 @@ async function testAdminBackupArchiveAndDownload() {
             allowUnsafeFilter: true,
             inpxFilterFile: '/elsewhere/filter.json',
             converterPaths: {fb2cng: '/elsewhere/tool'},
-            allowRemoteLib: true,
         });
         await fs.writeJson(path.join(dataDir, 'reading-lists.json'), {
             version: 5,
@@ -1258,7 +1257,7 @@ async function testAdminBackupArchiveAndDownload() {
         const restoredSecrets = await new (require('../server/core/SecretStore'))({dataDir: restoreDataDir})
             .unprotectConfig(await fs.readJson(restoreConfigFile));
         assert.strictEqual(restoredSecrets.config.opds.password, 'full-backup-secret');
-        for (const key of ['allowUnsafeFilter', 'inpxFilterFile', 'converterPaths', 'allowRemoteLib']) {
+        for (const key of ['allowUnsafeFilter', 'inpxFilterFile', 'converterPaths']) {
             assert.strictEqual(restoredSecrets.config[key], undefined, key);
             assert.strictEqual(restoreWorker.config[key], undefined, key);
         }
@@ -2530,6 +2529,7 @@ const tests = [
     ...require('./security-regression-tests'),
     ...require('./kobo-sync-tests'),
     ...require('./kosync-tests'),
+    ...require('./remote-library-tests'),
     ...require('./inpx-parser-tests'),
     ...require('./library-fs-tests'),
     ...require('./xml-parser-tests'),

@@ -100,6 +100,31 @@ async function writeCachedCover(cacheDir, cacheKey, cover) {
     await utils.prepareCachedFile(`${cacheDir}/${cacheKey}${ext}`, file => fs.writeFile(file, cover.data));
 }
 
+//Обложка из кеша или из файлов библиотеки; её же отдаёт API удалённой библиотеки (RemoteAccess)
+async function sendBookCover(res, config, webWorker, book) {
+    try {
+        const cacheDir = config.coverDir || `${config.publicFilesDir}/cover`;
+        const cacheKey = require('./core/BookAssets').coverCacheKey(book);
+        if (await sendCachedCover(res, cacheDir, cacheKey))
+            return;
+        const cover = await webWorker.getBookCover(book);
+        if (!cover) {
+            res.sendStatus(404);
+            return;
+        }
+        await writeCachedCover(cacheDir, cacheKey, cover);
+        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+        res.type(cover.contentType).send(cover.data);
+    } catch (error) {
+        if (externalTools.isMissingToolError(error)) {
+            logRuntimeWarningOnce(error.message);
+            res.status(503).type('text/plain; charset=utf-8').send(error.message);
+        } else {
+            res.sendStatus(404);
+        }
+    }
+}
+
 //Статика приложения сжата заранее (createWebApp): готовый .br или .gz рядом с файлом отдаётся, если браузер его принимает.
 //Книги и обложки идут другими маршрутами
 const {compressibleFile} = require('./createWebApp');
@@ -286,25 +311,9 @@ module.exports = (app, config, webWorker = null, security = null) => {
                 res.sendStatus(404);
                 return;
             }
-            const cacheDir = config.coverDir || `${config.publicFilesDir}/cover`;
-            const cacheKey = require('./core/BookAssets').coverCacheKey(book);
-            if (await sendCachedCover(res, cacheDir, cacheKey))
-                return;
-            const cover = await webWorker.getBookCover(book);
-            if (!cover) {
-                res.sendStatus(404);
-                return;
-            }
-            await writeCachedCover(cacheDir, cacheKey, cover);
-            res.set('Cache-Control', 'public, max-age=2592000, immutable');
-            res.type(cover.contentType).send(cover.data);
+            await sendBookCover(res, config, webWorker, book);
         } catch (error) {
-            if (externalTools.isMissingToolError(error)) {
-                logRuntimeWarningOnce(error.message);
-                res.status(503).type('text/plain; charset=utf-8').send(error.message);
-            } else {
-                res.sendStatus(404);
-            }
+            res.sendStatus(404);
         }
     });
 
@@ -506,3 +515,4 @@ module.exports = (app, config, webWorker = null, security = null) => {
 
 module.exports.sendCachedCover = sendCachedCover;
 module.exports.writeCachedCover = writeCachedCover;
+module.exports.sendBookCover = sendBookCover;

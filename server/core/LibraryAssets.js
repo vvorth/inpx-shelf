@@ -358,6 +358,9 @@ module.exports = {
     },
 
     async getBookCover(book) {
+        const remote = this.remoteSourceOf(book);
+        if (remote)
+            return await this.remoteLib.getCover(remote, book._uid);
         const fileId = path.basename(String(book.file || ''), path.extname(String(book.file || '')));
         const cover = book.folder ? await this.getFblibraryCover(fileId, book.sourceLibDir, book.folder) : null;
         if (cover || String(book.ext).toLowerCase() !== 'fb2')

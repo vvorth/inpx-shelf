@@ -29,7 +29,6 @@ module.exports = {
     readFile: async(p, encoding) => (isS3(p) ? (encoding ? (await s3.readFile(p)).toString(encoding) : s3.readFile(p)) : fs.readFile(p, encoding)),
     readRange: (p, offset, length) => (isS3(p) ? s3.readRange(p, offset, length) : readLocalRange(p, offset, length)),
     copyToLocal: (p, outFile) => (isS3(p) ? s3.copyToLocal(p, outFile) : fs.copy(p, outFile)),
-    sha256: p => (isS3(p) ? s3.sha256(p) : utils.getFileHash(p, 'sha256', 'hex')),
     //признак изменения файла: ETag и размер для S3, SHA-256 содержимого для диска
     contentHash: p => (isS3(p) ? s3.contentHash(p) : utils.getFileHash(p, 'sha256', 'hex')),
     //листинги S3 перечитываются после проверки INPX: библиотеку могли обновить

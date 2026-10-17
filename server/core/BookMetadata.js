@@ -118,7 +118,7 @@ class BookMetadata {
                 let file;
                 let value = {};
                 try {
-                    if (!['fb2', 'epub'].includes(String(book.ext).toLowerCase()) || this.worker.remoteLib)
+                    if (!['fb2', 'epub'].includes(String(book.ext).toLowerCase()) || this.worker.remoteSourceOf(book))
                         return value;
                     file = await this.worker.extractBook(book.folder, `${book.file}.${book.ext}`, book.sourceLibDir);
                     if (String(book.ext).toLowerCase() === 'fb2') {

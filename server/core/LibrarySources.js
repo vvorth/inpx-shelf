@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs-extra');
 const crypto = require('crypto');
 const libraryFs = require('./LibraryFs');
 
@@ -90,7 +91,26 @@ function getConfiguredSources(config = {}) {
     return [];
 }
 
+// A remote library has no folder of its own: an empty one keeps local file lookups
+// (reviews, author info, covers archives) from falling back to another library.
+function normalizeRemoteSource(source, index, dataDir) {
+    const remote = source.remote;
+    const id = stableId(source.id || source.name || remote.source, `source-${index + 1}`);
+    const inpx = path.join(dataDir, 'remote', `${id}.inpx`);
+    return {
+        id,
+        name: String(source.name || '').trim() || String(remote.source || '') || id,
+        inpx,
+        inpxFile: inpx,
+        libDir: path.join(dataDir, 'remote', id),
+        enabled: source.enabled !== false,
+        remote: {url: String(remote.url || '').trim(), source: String(remote.source || '').trim(), token: String(remote.token || '')},
+    };
+}
+
 async function normalizeSource(source, index, options = {}) {
+    if (source.remote && typeof(source.remote) === 'object')
+        return normalizeRemoteSource(source, index, options.dataDir);
     const requireExists = options.requireExists !== false;
     const rawInpx = String(source.inpx || source.inpxFile || '').trim();
     const rawLibDir = String(source.libDir || source.libraryDir || '').trim();
@@ -121,19 +141,6 @@ async function normalizeSource(source, index, options = {}) {
 }
 
 async function resolveLibrarySources(config, argv = {}) {
-    if (config.remoteLib) {
-        config.librarySources = [{
-            id: 'remote',
-            name: 'Remote library',
-            inpx: config.inpxFile,
-            inpxFile: config.inpxFile,
-            libDir: config.libDir || config.dataDir,
-            enabled: true,
-            remote: true,
-        }];
-        return config.librarySources;
-    }
-
     let sources = getConfiguredSources(config);
     if (!sources.length) {
         let libDir = argv['lib-dir'] || config.libDir || config.execDir;
@@ -161,7 +168,7 @@ async function resolveLibrarySources(config, argv = {}) {
         if (source.enabled === false) {
             let normalized;
             try {
-                normalized = await normalizeSource(source, i, {requireExists: false});
+                normalized = await normalizeSource(source, i, {requireExists: false, dataDir: config.dataDir});
             } catch (e) {
                 const inpx = String(source.inpx || source.inpxFile || '').trim();
                 normalized = {
@@ -176,7 +183,7 @@ async function resolveLibrarySources(config, argv = {}) {
             continue;
         }
 
-        result.push(await normalizeSource(source, i));
+        result.push(await normalizeSource(source, i, {dataDir: config.dataDir}));
     }
 
     const enabled = result.filter(source => source.enabled !== false);
@@ -184,9 +191,13 @@ async function resolveLibrarySources(config, argv = {}) {
         throw new Error('No enabled INPX library sources configured');
 
     config.librarySources = result;
-    config.libDir = enabled[0].libDir;
-    config.inpx = enabled[0].inpx;
-    config.inpxFile = enabled[0].inpxFile;
+    for (const source of result.filter(item => item.remote))
+        await fs.ensureDir(source.libDir);
+    //папка по умолчанию - локальной библиотеки
+    const first = enabled.find(source => !source.remote) || enabled[0];
+    config.libDir = first.libDir;
+    config.inpx = first.inpx;
+    config.inpxFile = first.inpxFile;
 
     return enabled;
 }
@@ -202,7 +213,7 @@ function getAllLibrarySources(config = {}) {
             inpxFile: source.inpxFile || source.inpx,
             libDir: source.libDir || config.libDir,
             enabled: source.enabled !== false,
-            remote: !!source.remote,
+            remote: source.remote || null,
         }));
 
     return [{
@@ -224,13 +235,15 @@ async function getIndexedLibrarySources(config = {}) {
     const result = [];
     for (const source of getAllLibrarySources(config)) {
         const inpx = source.inpxFile || source.inpx;
-        if (source.enabled !== false || (inpx && await libraryFs.pathExists(inpx)))
+        //удалённая библиотека, чей INPX ещё не скачан, в индекс пока не входит
+        if ((source.enabled !== false && !source.remote) || (inpx && await libraryFs.pathExists(inpx)))
             result.push(source);
     }
     return result;
 }
 
 module.exports = {
+    normalizeRemoteSource,
     parseSourcesFromString,
     resolveLibrarySources,
     getEnabledLibrarySources,

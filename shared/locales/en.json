@@ -55,7 +55,9 @@
         "taskIndexing": "Indexing",
         "telegramBotAvailable": "Telegram bot is available: {name}",
         "theTelegramBotAnd": "The Telegram bot and mail server used to send books to readers. Each reader sets their own recipient in their profile.",
-        "users": "Users"
+        "users": "Users",
+        "remoteAccessCreated": "Remote library access created: {name}",
+        "remoteAccessDeleted": "Remote library access deleted: {name}"
     },
     "adminAuthorNames": {
         "export": "Export",
@@ -195,7 +197,9 @@
         "useInstead": "Use instead",
         "view": "View",
         "markAsRead": "Mark as read",
-        "markAsUnread": "Mark as unread"
+        "markAsUnread": "Mark as unread",
+        "remoteNotFetched": "The book is in a remote library. Its description, contents and cover are in the book file, which has not been downloaded yet.",
+        "getMetadata": "Get metadata"
     },
     "bookCard": {
         "notInTheLibrary": "Not in the library",
@@ -531,7 +535,11 @@
         "wsInvalidRequest": "Invalid WebSocket request",
         "wsNoResponse": "The server is not responding. Check your network and try again.",
         "wsRequestRejected": "The request was not accepted by the server",
-        "wsTimeout": "Response timed out"
+        "wsTimeout": "Response timed out",
+        "remoteLibraryUnavailable": "Remote library is unavailable: {error}",
+        "remoteLibraryUrl": "Remote library address must start with http:// or https://",
+        "remoteAccessName": "Enter a name for the remote access",
+        "remoteAccessNotFound": "Remote access not found"
     },
     "fb2": {
         "city": "City",
@@ -1716,5 +1724,25 @@
     },
     "tastePanel": {
         "genresAndAuthorsRefine": "Genres and authors refine your recommendations. Book languages are set with the “Book languages” button next to search."
+    },
+    "adminRemote": {
+        "title": "Access for other servers",
+        "hint": "Another inpx-shelf server can show the selected libraries of this one as its own: it downloads their INPX and fetches books and covers over {path}/ with a token. Manual metadata edits stay here.",
+        "name": "Name",
+        "newName": "New access: name of the server",
+        "disabledSource": "{name} (disabled)",
+        "create": "Create token",
+        "tokenShownOnce": "Token for “{name}”. It is shown only once: copy it into the library settings of that server.",
+        "opens": "Libraries: {n}",
+        "opensNothing": "No libraries: the token opens nothing",
+        "deleteConfirm": "Delete access “{name}”? That server will lose these libraries.",
+        "addRemoteSource": "Add remote library",
+        "serverUrl": "Server address",
+        "token": "Token",
+        "tokenSaved": "saved",
+        "sourceId": "Library id on that server",
+        "checkRemote": "Check the connection and list the libraries the token opens",
+        "sourceFound": "library found",
+        "sourceNotFound": "library not found"
     }
 }

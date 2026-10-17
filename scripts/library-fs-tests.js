@@ -217,7 +217,8 @@ async function testLibrarySourcesAndInpxHashOnS3() {
 
         const hasher = new InpxHashCreator(config);
         const hash = await hasher.getHash();
-        assert.strictEqual(await hasher.getInpxFileHash(), crypto.createHash('sha256').update('inpx-data').digest('hex'));
+        // the per-library hashes are the INPX ETags of the remote library API
+        assert.deepStrictEqual([...hasher.sourceHashes.keys()], sources.map(s => s.id));
         objects.other['inpx/lib.inpx'] = Buffer.from('changed');
         assert.strictEqual(await hasher.getHash(), hash, 'cached until clearCache');
         libraryFs.clearCache();

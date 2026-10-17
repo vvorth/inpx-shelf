@@ -170,14 +170,8 @@ async function init() {
         config.librarySources = parseSourcesFromString(argv['library-sources']);
     }
 
-    if (config.remoteLib) {
-        config.inpxFile = `${config.dataDir}/remote.inpx`;
-        const RemoteLib = require('./core/RemoteLib');//singleton
-        const remoteLib = new RemoteLib(config);
-        await remoteLib.downloadInpxFile();
-    }
-
     await resolveLibrarySources(config, argv);
+    await new (require('./core/RemoteLib'))(config).syncAll();
 
     config.recreateDb = argv.recreate || false;
     config.inpxFilterFile = config.inpxFilterFile || `${path.dirname(config.configFile)}/filter.json`;
@@ -269,6 +263,7 @@ async function main() {
     if (koboService)
         await koboService.ready;
     require('./core/Kosync').init(app, config, webSocketController.webWorker, security);
+    require('./core/RemoteAccess').init(app, config, webSocketController.webWorker, security);
 
     const initHealthRoutes = require('./core/HealthRoutes');
     initHealthRoutes(app, config, webSocketController.webWorker, security, webSocketController);

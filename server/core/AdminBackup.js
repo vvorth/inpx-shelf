@@ -41,7 +41,10 @@ module.exports = {
         delete opdsSettings.password;
         delete data.adminPassword;
         delete data.webConfigParams;
-        delete data.inpxFileHash;
+        //токен удалённой библиотеки - секрет, как пароль OPDS: в файл настроек не попадает
+        if (Array.isArray(data.librarySources))
+            data.librarySources = data.librarySources.map(source => (source && source.remote
+                ? Object.assign({}, source, {remote: Object.assign(_.omit(source.remote, 'token'), {tokenSet: !!source.remote.token})}) : source));
 
         const result = {
             exportedAt: new Date().toISOString(),
@@ -122,6 +125,15 @@ module.exports = {
 
         if (utils.hasProp(patch, 'librarySources') && !Array.isArray(patch.librarySources))
             throw new Error(t('errors.librarySourcesArray'));
+        if (Array.isArray(patch.librarySources)) {
+            //токен прежней удалённой библиотеки с тем же id остаётся
+            const current = new Map((this.config.librarySources || []).filter(item => item && item.remote).map(item => [item.id, item.remote.token]));
+            for (const item of patch.librarySources.filter(item => item && item.remote && typeof(item.remote) === 'object')) {
+                delete item.remote.tokenSet;
+                if (!item.remote.token)
+                    item.remote.token = current.get(item.id) || '';
+            }
+        }
 
         return this.dropSmtpPassOnNewServer(patch);
     },
@@ -254,10 +266,10 @@ module.exports = {
                     const {config: decoded} = await secretStore.unprotectConfig(archive['config.json']);
                     this.normalizeImportedAdminSettings(decoded);
                     // Keep machine-local settings: storage paths (including the recovery journal location),
-                    // programs the server runs and file filters, the remote library. Release links stay too:
+                    // programs the server runs and file filters. Release links stay too:
                     // an upstream inpx-web backup would point update checks at upstream.
                     const localKeys = ['dataDir', 'tempDir', 'logDir', 'converterPaths', 'allowUnsafeFilter', 'inpxFilterFile',
-                        'remoteLib', 'allowRemoteLib', 'latestReleaseLink', 'checkReleaseLink'];
+                        'latestReleaseLink', 'checkReleaseLink'];
                     runtimePatch = Object.assign(_.omit(_.pick(decoded, ConfigManager.propsToSave), localKeys), _.pick(this.config, localKeys));
                     const protectedConfig = await secretStore.protectConfig(runtimePatch);
                     if (await fs.pathExists(path.join(folder, 'secret.key')))

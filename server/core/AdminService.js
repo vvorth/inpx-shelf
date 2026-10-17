@@ -9,7 +9,8 @@ const utils = require('./utils');
 const libraryFs = require('./LibraryFs');
 const ConfigManager = require('../config');
 const {withFileTransaction} = require('./FilePersistence');
-const {getEnabledLibrarySources} = require('./LibrarySources');
+const {getEnabledLibrarySources, getAllLibrarySources, normalizeRemoteSource} = require('./LibrarySources');
+const remoteAccess = require('./RemoteAccess');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
@@ -304,13 +305,20 @@ module.exports = {
         const metrics = await this.buildAdminDashboardMetrics(index, dbConfig);
         //все источники, включая выключенные: иначе выключенный пропадает из списка в админке
         const configured = (Array.isArray(this.config.librarySources) && this.config.librarySources.length ? this.config.librarySources : getEnabledLibrarySources(this.config));
-        const sources = await Promise.all(configured.map(async(source) => Object.assign({
+        //удалённая библиотека: токен в админку не уходит, только признак, что он задан
+        const sources = await Promise.all(configured.map(async(source) => (source.remote ? {
+            id: source.id || '',
+            name: source.name || '',
+            enabled: source.enabled !== false,
+            remote: {url: source.remote.url || '', source: source.remote.source || '', tokenSet: !!source.remote.token},
+            inpxExists: !!source.inpxFile && await fs.pathExists(source.inpxFile),
+        } : Object.assign({
             id: source.id || '',
             name: source.name || '',
             enabled: source.enabled !== false,
             inpx: source.inpx || source.inpxFile || '',
             libDir: source.libDir || '',
-        }, await this.getLibrarySourceDiagnostics(source))));
+        }, await this.getLibrarySourceDiagnostics(source)))));
         const coverErrors = (this.config.adminEventLogEnabled === false ? [] : this.adminEvents.slice().reverse())
             .filter(event => {
                 if (event.level !== 'error')
@@ -411,9 +419,23 @@ module.exports = {
         };
     },
 
+    //токен удалённой библиотеки: пустой или __KEEP__ - прежний токен источника с тем же id
+    remoteTokenFor(id, token = '') {
+        const value = String(token || '').trim();
+        if (value && value !== '__KEEP__')
+            return value;
+        const current = (this.config.librarySources || []).find(item => item && item.remote && item.id === id);
+        return (current ? current.remote.token : '');
+    },
+
     normalizeAdminLibrarySources(sources = []) {
         return (Array.isArray(sources) ? sources : [])
             .map((source, index) => {
+                if (source.remote && typeof(source.remote) === 'object') {
+                    const normalized = normalizeRemoteSource(source, index, this.config.dataDir);
+                    normalized.remote.token = this.remoteTokenFor(normalized.id, source.remote.token);
+                    return (normalized.remote.url && normalized.remote.source ? normalized : null);
+                }
                 const inpx = String(source.inpx || source.inpxFile || '').trim();
                 const libDir = String(source.libDir || '').trim();
                 const name = String(source.name || '').trim() || path.basename(inpx, path.extname(inpx)) || `Library ${index + 1}`;
@@ -432,7 +454,7 @@ module.exports = {
                     enabled: source.enabled !== false,
                 };
             })
-            .filter(source => source.inpx || source.libDir);
+            .filter(source => source && (source.remote || source.inpx || source.libDir));
     },
 
     async updateAdminLibrarySources(userId = '', profileAccessToken = '', sources = []) {
@@ -445,6 +467,11 @@ module.exports = {
             throw new Error(t('errors.sourcesEnabledRequired'));
 
         await this.saveRuntimeConfigPatch({librarySources: normalized});
+        for (const source of normalized.filter(item => item.remote))
+            await fs.ensureDir(source.libDir);
+        //новый INPX удалённой библиотеки нужен до сравнения хешей ниже
+        if (normalized.some(item => item.remote))
+            await this.remoteLib.syncAll();
         //пересборка нужна, только если изменился набор библиотек или содержимое INPX (тот же хеш, что у индекса),
         //или включена библиотека, которой нет в индексе; включение, название и папка применяются сразу
         let reindexNeeded = true;
@@ -461,7 +488,75 @@ module.exports = {
 
     async diagnoseLibrarySource(userId = '', profileAccessToken = '', source = {}) {
         await this.requireAdmin(userId, profileAccessToken);
+        if (source.remote && typeof(source.remote) === 'object') {
+            const {sources} = await this.listRemoteLibrarySources(userId, profileAccessToken, Object.assign({id: source.id}, source.remote));
+            return {remoteSources: sources, remoteSourceFound: sources.some(item => item.id === String(source.remote.source || '').trim())};
+        }
         return await this.getLibrarySourceDiagnostics(source);
+    },
+
+    //Библиотеки, которые токен открывает на сервере remote.url; id - источник, чей сохранённый токен взять
+    async listRemoteLibrarySources(userId = '', profileAccessToken = '', remote = {}) {
+        await this.requireAdmin(userId, profileAccessToken);
+        const url = String(remote.url || '').trim();
+        if (!/^https?:\/\/[^/]/i.test(url))
+            throw new Error(t('errors.remoteLibraryUrl'));
+        const token = this.remoteTokenFor(String(remote.id || ''), remote.token);
+        return {sources: await this.remoteLib.listSources({url, token})};
+    },
+
+    //---------- доступ других серверов к библиотекам этого (/remote/) ----------
+    remoteAccessView(item) {
+        return {id: item.id, name: item.name, sources: item.sources || [], createdAt: item.createdAt || ''};
+    },
+
+    async getRemoteAccess(userId = '', profileAccessToken = '') {
+        await this.requireAdmin(userId, profileAccessToken);
+        return {
+            items: (this.config.remoteAccess || []).map(item => this.remoteAccessView(item)),
+            sources: getAllLibrarySources(this.config).filter(source => !source.remote).map(source => ({id: source.id, name: source.name, enabled: source.enabled})),
+            path: remoteAccess.rootPath(this.config),
+        };
+    },
+
+    normalizeRemoteAccess(access = {}) {
+        const local = new Set(getAllLibrarySources(this.config).filter(source => !source.remote).map(source => source.id));
+        const name = String(access.name || '').trim().slice(0, 100);
+        if (!name)
+            throw new Error(t('errors.remoteAccessName'));
+        return {name, sources: [...new Set((Array.isArray(access.sources) ? access.sources : []).map(String))].filter(id => local.has(id))};
+    },
+
+    async createRemoteAccess(userId = '', profileAccessToken = '', access = {}) {
+        await this.requireAdmin(userId, profileAccessToken);
+        const token = remoteAccess.newToken();
+        const item = Object.assign({id: utils.randomHexString(8)}, this.normalizeRemoteAccess(access),
+            {hash: remoteAccess.hashToken(token), createdAt: new Date().toISOString()});
+        await this.saveRuntimeConfigPatch({remoteAccess: [...(this.config.remoteAccess || []), item]});
+        this.addAdminEvent('info', 'settings', msg('admin.remoteAccessCreated', {name: item.name}));
+        //токен показывается один раз: хранится только его хеш
+        return Object.assign(await this.getRemoteAccess(userId, profileAccessToken), {token, created: this.remoteAccessView(item)});
+    },
+
+    async updateRemoteAccess(userId = '', profileAccessToken = '', access = {}) {
+        await this.requireAdmin(userId, profileAccessToken);
+        const list = this.config.remoteAccess || [];
+        if (!list.some(item => item.id === access.id))
+            throw new Error(t('errors.remoteAccessNotFound'));
+        const patch = this.normalizeRemoteAccess(access);
+        await this.saveRuntimeConfigPatch({remoteAccess: list.map(item => (item.id === access.id ? Object.assign({}, item, patch) : item))});
+        return await this.getRemoteAccess(userId, profileAccessToken);
+    },
+
+    async deleteRemoteAccess(userId = '', profileAccessToken = '', id = '') {
+        await this.requireAdmin(userId, profileAccessToken);
+        const list = this.config.remoteAccess || [];
+        const item = list.find(entry => entry.id === id);
+        if (item) {
+            await this.saveRuntimeConfigPatch({remoteAccess: list.filter(entry => entry.id !== id)});
+            this.addAdminEvent('info', 'settings', msg('admin.remoteAccessDeleted', {name: item.name}));
+        }
+        return await this.getRemoteAccess(userId, profileAccessToken);
     },
 
     async cleanBrokenCoverCache(userId = '', profileAccessToken = '') {

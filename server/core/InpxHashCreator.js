@@ -7,6 +7,7 @@ const {getIndexedLibrarySources} = require('./LibrarySources');
 class InpxHashCreator {
     constructor(config) {
         this.config = config;
+        this.sourceHashes = new Map();
     }
 
     async getHash() {
@@ -18,26 +19,19 @@ class InpxHashCreator {
 
         //в хеш входят только ключ библиотеки и содержимое INPX (в S3 - его ETag и размер): включение, название и папка пересборки не требуют
         const sourceHashes = [];
+        const byId = new Map();
         for (const source of await getIndexedLibrarySources(config)) {
             const inpxFile = source.inpxFile || source.inpx;
-            sourceHashes.push([
-                source.id,
-                await libraryFs.contentHash(inpxFile),
-            ].join(':'));
+            const hash = await libraryFs.contentHash(inpxFile);
+            byId.set(source.id, hash);
+            sourceHashes.push([source.id, hash].join(':'));
         }
+        //ETag INPX для API удалённой библиотеки: считается вместе с хешем БД, а не на каждый запрос
+        this.sourceHashes = byId;
 
         const joinedHash = this.config.dbVersion + inpxFilterHash + sourceHashes.join('|');
 
         return utils.getBufHash(joinedHash, 'sha256', 'hex');
-    }
-
-    //SHA-256 содержимого и для S3: с ним сравнивает свой файл удалённая библиотека (RemoteLib)
-    async getInpxFileHash() {
-        return (
-            await libraryFs.pathExists(this.config.inpxFile) ?
-            await libraryFs.sha256(this.config.inpxFile) :
-            ''
-        );
     }
 }
 

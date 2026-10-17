@@ -8,7 +8,19 @@ const secretFields = [
     'smtpPass',
     'opds.password',
     'metricsToken',
+    'librarySources.*.remote.token',
 ];
+
+//'list.*.field' - поле каждого элемента массива list
+function expandFields(obj = {}) {
+    return secretFields.flatMap(field => {
+        const [list, rest] = field.split('.*.');
+        if (!rest)
+            return [field];
+        const items = getPath(obj, list);
+        return (Array.isArray(items) ? items.map((item, index) => `${list}.${index}.${rest}`) : []);
+    });
+}
 
 function getPath(obj = {}, field = '') {
     return String(field || '').split('.').reduce((acc, key) => (
@@ -126,7 +138,7 @@ class SecretStore {
         const result = clonePlain(config);
         let needsSave = false;
 
-        for (const field of secretFields) {
+        for (const field of expandFields(result)) {
             const valueRaw = getPath(result, field);
             if (valueRaw === undefined)
                 continue;
@@ -145,7 +157,7 @@ class SecretStore {
     async protectConfig(config = {}) {
         const result = clonePlain(config);
 
-        for (const field of secretFields) {
+        for (const field of expandFields(result)) {
             const value = getPath(result, field);
             if (value !== undefined)
                 setPath(result, field, await this.encrypt(value));

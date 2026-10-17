@@ -435,6 +435,9 @@ class Security {
         // KOReader progress sync checks the profile's KOReader key itself, on its own routes only.
         if (require('./Kosync').isKosyncRequest(req, this.config))
             return {ok: true};
+        // The remote library API checks its bearer token itself.
+        if (require('./RemoteAccess').isRemoteRequest(req, this.config))
+            return {ok: true};
         const mode = String(this.config.authMode || 'local').trim().toLowerCase();
         if (!this.config.requireAuth && !(mode === 'proxy' && this.config.proxyBindProfile))
             return {ok: true};
@@ -557,7 +560,7 @@ class Security {
 
     normalizeLoginKind(kind = 'profile') {
         const normalized = String(kind || 'profile').trim().toLowerCase();
-        return ['profile', 'opds', 'kobo', 'kosync'].includes(normalized) ? normalized : 'profile';
+        return ['profile', 'opds', 'kobo', 'kosync', 'remote'].includes(normalized) ? normalized : 'profile';
     }
 
     loginAttemptKey(req, kind) {
@@ -685,7 +688,7 @@ class Security {
         }
 
         const attempts = [];
-        for (const kind of ['profile', 'opds', 'kobo', 'kosync']) {
+        for (const kind of ['profile', 'opds', 'kobo', 'kosync', 'remote']) {
             for (const result of ['success', 'failure', 'blocked']) {
                 attempts.push({
                     labels: {kind, result},
