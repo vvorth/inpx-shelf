@@ -39,6 +39,10 @@ jobs:
       PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
     steps:
       - uses: actions/checkout@v5
+      # package.json holds the last release; dev images add the commit (26.10.0+dev.b95beaa)
+      # so they are not taken for that release. Build metadata does not count as a newer version.
+      - name: Mark the version as a dev build
+        run: npm pkg set version="$(node -p "require('./package.json').version")+dev.${GITHUB_SHA::7}"
       # The three targets share the build and base stages, so the second and third builds
       # reuse their layers.
       - name: Build images
@@ -108,7 +112,7 @@ jobs:
               url = page.next;
             }
 
-            // Only per-commit dev tags: dev, beta, latest and version tags are never removed.
+            // Only per-commit dev tags: dev, latest and version tags are never removed.
             // Each variant (plain and -pdf) keeps its own newest tags.
             const pushedAt = tag => Date.parse(tag.tag_last_pushed || tag.last_updated);
             const old = ['', '-pdf'].flatMap(suffix => tags

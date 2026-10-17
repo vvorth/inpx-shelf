@@ -177,9 +177,6 @@
     // пустая строка - отключить проверку выхода новых версий
     "checkReleaseLink": "https://api.github.com/repos/vvorth/inpx-shelf/releases/latest",
 
-    // канал обновлений: auto, stable или rc
-    "updateChannel": "auto",
-
     // режим установки: auto/native/docker
     "installMode": "",
 

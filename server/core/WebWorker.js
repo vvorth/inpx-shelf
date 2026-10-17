@@ -23,7 +23,7 @@ const genreTree = require('./genres');
 const Fb2Helper = require('./fb2/Fb2Helper');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
-const {normalizeVersionTag, compareReleaseVersions} = require('../../shared/release');
+const {compareReleaseVersions} = require('../../shared/release');
 const {READ_PERCENT, isReadingInProgress, readerProgressOf} = require('./ReaderProgress');
 const {bookNote, rankReplacements, normalizeTitle} = require('./search/bookMatch');
 
@@ -47,46 +47,11 @@ function assetVersionFor(ext) {
     return String(ext || '').toLowerCase() === 'fb2' ? fb2AssetVersion : bookAssetVersion;
 }
 
-function isRcReleaseTag(value = '') {
-    return /-(?:alpha|beta|rc)(?:[.-]?\d+)?$/i.test(normalizeVersionTag(value));
-}
-
-function resolveReleaseChannel(config = {}) {
-    const raw = String(config.updateChannel || '').trim().toLowerCase();
-    if (raw === 'rc' || raw === 'stable')
-        return raw;
-
-    return (isRcReleaseTag(config.version) ? 'rc' : 'stable');
-}
-
 const externalWarmInterval = 60*60*1000;
 
-function buildReleaseCheckRequest(checkReleaseLink = '', channel = 'stable') {
-    const baseLink = String(checkReleaseLink || '').trim();
-    if (!baseLink)
-        return null;
-
-    if (channel === 'rc') {
-        const rcLink = baseLink.replace(/\/latest\/?$/i, '');
-        const separator = (rcLink.includes('?') ? '&' : '?');
-        return {url: `${rcLink}${separator}per_page=20`};
-    }
-
-    return {url: baseLink};
-}
-
-function pickReleaseFromPayload(payload, channel = 'stable') {
-    const list = (Array.isArray(payload) ? payload : [payload])
-        .filter(item => item && item.tag_name && !item.draft);
-
-    if (channel === 'rc') {
-        return list
-            .filter(item => item.prerelease || isRcReleaseTag(item.tag_name))
-            .sort((a, b) => compareReleaseVersions(b.tag_name, a.tag_name))[0] || null;
-    }
-
-    return list
-        .filter(item => !item.prerelease)
+function pickReleaseFromPayload(payload) {
+    return (Array.isArray(payload) ? payload : [payload])
+        .filter(item => item && item.tag_name && !item.draft && !item.prerelease)
         .sort((a, b) => compareReleaseVersions(b.tag_name, a.tag_name))[0] || null;
 }
 
@@ -1672,20 +1637,16 @@ class WebWorker {
     }
 
     async periodicCheckNewRelease() {
-        const checkReleaseLink = this.config.checkReleaseLink;
+        const checkReleaseLink = String(this.config.checkReleaseLink || '').trim();
         if (!checkReleaseLink)
             return;
         const down = new FileDownloader(1024*1024);
-        const channel = resolveReleaseChannel(this.config);
-        const request = buildReleaseCheckRequest(checkReleaseLink, channel);
-        if (!request)
-            return;
 
         while (1) {// eslint-disable-line no-constant-condition
             try {
-                let release = await down.load(request.url);
+                let release = await down.load(checkReleaseLink);
                 release = JSON.parse(release.toString());
-                const latestRelease = pickReleaseFromPayload(release, channel);
+                const latestRelease = pickReleaseFromPayload(release);
 
                 if (latestRelease && compareReleaseVersions(latestRelease.tag_name, this.config.version) > 0) {
                     this.config.latestVersion = latestRelease.tag_name;

@@ -88,22 +88,6 @@ const propsToSave = [
     'uiDefaults',
 ];
 
-function normalizeVersion(value = '') {
-    return String(value || '').trim().replace(/^v/i, '');
-}
-
-function isRcVersion(value = '') {
-    return /-(?:alpha|beta|rc)(?:[.-]?\d+)?$/i.test(normalizeVersion(value));
-}
-
-function resolveUpdateChannel(config = {}) {
-    const raw = String(config.updateChannel || '').trim().toLowerCase();
-    if (raw === 'rc' || raw === 'stable')
-        return raw;
-
-    return (isRcVersion(config.version) ? 'rc' : 'stable');
-}
-
 async function resolveInstallMode(config = {}) {
     const raw = String(config.installMode || '').trim().toLowerCase();
     if (raw)
@@ -259,7 +243,6 @@ class ConfigManager {
 
                 this.config = config;
                 this._config.discovery = discovery;
-                this._config.updateChannel = resolveUpdateChannel(this._config);
                 this._config.installMode = await resolveInstallMode(this._config);
 
                 //сохраним конфиг, если не все атрибуты присутствуют в файле конфига
@@ -274,7 +257,6 @@ class ConfigManager {
                     }
                 }
             } else {
-                this._config.updateChannel = resolveUpdateChannel(this._config);
                 this._config.installMode = await resolveInstallMode(this._config);
                 await this.save();
             }

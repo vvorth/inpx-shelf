@@ -236,6 +236,19 @@ async function testClientLoadsOnlySelectedLocale() {
     assert.doesNotMatch(client, /shared\/i18n(\.js)?'/);
 }
 
+// Значок обновления: CalVer-версии сравниваются по числам, dev-сборка (метка после "+")
+// не видит свой же релиз новым, а установки 1.x видят CalVer-релиз новее.
+async function testReleaseVersionsCompareCalVer() {
+    const {compareReleaseVersions} = require('../shared/release');
+    assert.strictEqual(compareReleaseVersions('v26.10.10', '26.10.9'), 1);
+    assert.strictEqual(compareReleaseVersions('v26.9.3', '26.10.0'), -1);
+    assert.strictEqual(compareReleaseVersions('v26.10.0', '26.10.0+dev.b95beaa'), 0);
+    assert.strictEqual(compareReleaseVersions('v26.10.1', '26.10.0+dev.b95beaa'), 1);
+    assert.strictEqual(compareReleaseVersions('v26.10.0', '1.1.0-beta.1'), 1);
+    assert.strictEqual(compareReleaseVersions('v26.10.0', '1.1.1-dev'), 1);
+}
+
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
     testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
-    testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale];
+    testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
+    testReleaseVersionsCompareCalVer];

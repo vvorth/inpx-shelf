@@ -85,7 +85,7 @@ module.exports = {
     adminEventLogSize: 300,
     inpxCheckInterval: 60,//minutes
 
-    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'updateChannel', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled', 'kosyncEnabled'],
+    webConfigParams: ['name', 'version', 'latestVersion', 'branch', 'bookReadLink', 'dbVersion', 'latestReleaseLink', 'rootPathStatic', 'conversionEnabled', 'conversionFormats', 'telegramShareEnabled', 'emailShareEnabled', 'onlineReaderEnabled', 'installMode', 'uiDefaults', 'discovery', 'librarySources', 'koboEnabled', 'kosyncEnabled'],
 
     allowRemoteLib: false,
     remoteLib: false,
@@ -115,7 +115,6 @@ module.exports = {
 
     latestReleaseLink: 'https://github.com/vvorth/inpx-shelf/releases/latest',
     checkReleaseLink: 'https://api.github.com/repos/vvorth/inpx-shelf/releases/latest',
-    updateChannel: process.env.INPX_UPDATE_CHANNEL || 'auto',
     installMode: process.env.INPX_INSTALL_MODE || '',
     adminLogin: process.env.INPX_ADMIN_LOGIN || 'admin',
     adminPassword: process.env.INPX_ADMIN_PASSWORD || '',
