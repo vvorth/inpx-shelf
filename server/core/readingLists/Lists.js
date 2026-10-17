@@ -401,6 +401,10 @@ module.exports = {
                 emailTo: user.emailTo,
                 telegramChatId: user.telegramChatId,
                 opdsEnabled: user.opdsEnabled,
+                //только хеши паролей, как токены Kobo в разделе kobo
+                opdsPasswordHash: user.opdsPasswordHash || '',
+                kosyncKeyHash: user.kosyncKeyHash || '',
+                kosyncProgress: user.kosyncProgress || {},
                 readerPreferences: this.normalizeReaderPreferences(user.readerPreferences),
                 readerProgress: this.normalizeReaderProgress(user.readerProgress),
                 readerBookmarks: this.normalizeReaderBookmarks(user.readerBookmarks),
@@ -448,7 +452,15 @@ module.exports = {
                 target.telegramChatId = String(incomingUser.telegramChatId || '').trim();
             if (utilsHasProp(incomingUser, 'opdsEnabled'))
                 target.opdsEnabled = (incomingUser.opdsEnabled !== false);
-            //вход в OPDS по паролю профиля - только если у профиля есть логин и пароль, как в updateUser
+            //пароль OPDS - только профилю с логином, как в setOpdsPassword
+            if (/^scrypt:v1:[a-f0-9]{32}:[a-f0-9]{64}$/.test(incomingUser.opdsPasswordHash) && target.login)
+                target.opdsPasswordHash = incomingUser.opdsPasswordHash;
+            //ключ KOReader ищется по хешу: чужой профиль с тем же ключом его не получает
+            if (/^[a-f0-9]{64}$/.test(incomingUser.kosyncKeyHash)
+                && !data.users.some(item => item.id !== target.id && item.kosyncKeyHash === incomingUser.kosyncKeyHash))
+                target.kosyncKeyHash = incomingUser.kosyncKeyHash;
+            if (incomingUser.kosyncProgress && typeof(incomingUser.kosyncProgress) === 'object')
+                target.kosyncProgress = this.mergeKosyncProgress(target.kosyncProgress, incomingUser.kosyncProgress);
             if (utilsHasProp(incomingUser, 'readerPreferences'))
                 target.readerPreferences = this.normalizeReaderPreferences(incomingUser.readerPreferences);
             if (utilsHasProp(incomingUser, 'discoveryPreferences'))

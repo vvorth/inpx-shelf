@@ -1359,11 +1359,30 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(restored.user.readerBookmarks['source:book:1'][0].note, 'Note');
         assert.deepStrictEqual(restored.user.discoveryPreferences.taste.genres, ['sf']);
 
-        // A backup never brings an OPDS password.
-        const withOpds = JSON.parse(JSON.stringify(exported));
-        withOpds.user.opdsPasswordHash = 'scrypt:v1:00:00';
-        await store.importData('reader-b', withOpds);
-        assert.strictEqual((await store.getUser('reader-b')).opdsPasswordHash, '');
+        // OPDS and KOReader credentials travel as hashes, like Kobo device tokens.
+        const opdsHash = `scrypt:v1:${'a'.repeat(32)}:${'b'.repeat(64)}`;
+        const withCredentials = JSON.parse(JSON.stringify(exported));
+        Object.assign(withCredentials.user, {opdsPasswordHash: opdsHash, kosyncKeyHash: 'c'.repeat(64), kosyncProgress: {
+            ['d'.repeat(32)]: {progress: '/body/p[3]', percentage: 0.4, device: 'kr', device_id: 'X', timestamp: 100},
+            bad: {progress: 'x', percentage: 1, timestamp: 1},
+        }});
+        await store.importData('reader-b', withCredentials);
+        let readerB = await store.getUser('reader-b');
+        assert.strictEqual(readerB.opdsPasswordHash, '', 'no login, no OPDS password');
+        assert.strictEqual(readerB.kosyncKeyHash, 'c'.repeat(64));
+        assert.deepStrictEqual(Object.keys(readerB.kosyncProgress), ['d'.repeat(32)]);
+        await store.updateUser('reader-b', {login: 'reader-b'});
+        withCredentials.user.kosyncProgress['d'.repeat(32)].timestamp = 50;
+        await store.importData('reader-b', withCredentials);
+        readerB = await store.getUser('reader-b');
+        assert.strictEqual(readerB.opdsPasswordHash, opdsHash);
+        assert.strictEqual(readerB.kosyncProgress['d'.repeat(32)].timestamp, 100, 'an older row does not replace a newer one');
+        const exportedB = await store.exportData('reader-b');
+        assert.strictEqual(exportedB.user.opdsPasswordHash, opdsHash);
+        assert.strictEqual(exportedB.user.kosyncKeyHash, 'c'.repeat(64));
+        // another profile cannot take a KOReader key already in use
+        await store.importData('reader-a', exportedB);
+        assert.strictEqual((await store.getUser('reader-a')).kosyncKeyHash || '', '');
         await store.updateUser('reader-b', {emailTo: 'b@example.test'});
 
         // An older backup must not roll back a position saved after it.

@@ -33,6 +33,27 @@ module.exports = {
         return (Object.hasOwn(rows, document) ? rows[document] : null);
     },
 
+    // Backup rows in the shape putKosyncProgress stores; the newer timestamp of a document wins.
+    mergeKosyncProgress(current, incoming) {
+        const rows = Object.assign({}, (current && typeof(current) === 'object' ? current : {}));
+        for (const [document, row] of Object.entries(incoming).slice(0, documentLimit)) {
+            const percentage = Number(row && row.percentage);
+            if (!/^[0-9a-f]{32}$/.test(document) || typeof(row.progress) !== 'string' || !Number.isFinite(percentage)
+                || !Number.isInteger(row.timestamp) || (Object.hasOwn(rows, document) && rows[document].timestamp >= row.timestamp))
+                continue;
+            rows[document] = {
+                progress: row.progress.slice(0, 1024), percentage: Math.max(0, Math.min(1, percentage)),
+                device: String(row.device || '').slice(0, 128), device_id: String(row.device_id || '').slice(0, 128),
+                timestamp: row.timestamp, bookUid: String(row.bookUid || '').slice(0, 256),
+            };
+        }
+        const keys = Object.keys(rows);
+        keys.sort((a, b) => (rows[a].timestamp || 0) - (rows[b].timestamp || 0));
+        for (const key of keys.slice(0, Math.max(0, keys.length - documentLimit)))
+            delete rows[key];
+        return rows;
+    },
+
     async putKosyncProgress(userId = '', document = '', row = {}) {
         const {data, user} = await this.resolveUser(userId);
         const rows = user.kosyncProgress = (user.kosyncProgress && typeof(user.kosyncProgress) === 'object' ? user.kosyncProgress : {});
