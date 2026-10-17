@@ -2,7 +2,7 @@ name: Release
 
 # Rolling release: Actions -> Release -> Run workflow publishes the current head of dev as
 # version YY.M.N (26.10.0, 26.10.1, ...: N counts the releases of the month). After the checks
-# pass it turns the "Не выпущено" section of CHANGELOG.md into the release notes, sets the version
+# pass it turns the "Unreleased" section of CHANGELOG.md into the release notes, sets the version
 # in package.json, commits to dev, fast-forwards main to that commit and tags it, then publishes
 # the binaries to GitHub Releases and the images to Docker Hub as <version> and latest.
 on:
@@ -44,9 +44,10 @@ jobs:
           const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
 
           const lines = fs.readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n').split('\n');
-          const end = lines.findIndex((line, index) => index > 0 && /^\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\//.test(line));
-          if (lines[0].trim() !== 'Не выпущено' || !lines.slice(1, end < 0 ? lines.length : end).some(line => line.startsWith('- ')))
-            throw new Error('CHANGELOG.md does not start with a "Не выпущено" section listing the changes: nothing to release');
+          // a section starts with "<version> / <date>" or, before CalVer, with the date alone
+          const end = lines.findIndex((line, index) => index > 0 && /^(\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\/|\d{4}-\d{2}-\d{2}\s*$)/.test(line));
+          if (lines[0].trim() !== 'Unreleased' || !lines.slice(1, end < 0 ? lines.length : end).some(line => line.startsWith('- ')))
+            throw new Error('CHANGELOG.md does not start with an "Unreleased" section listing the changes: nothing to release');
 
           // SemVer forbids leading zeros, so the month is 9, not 09.
           const now = new Date();
@@ -103,7 +104,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const text = fs.readFileSync('CHANGELOG.md', 'utf8');
-          fs.writeFileSync('CHANGELOG.md', text.replace(/^Не выпущено(?=\r?\n)/, `${process.env.VERSION} / ${process.env.RELEASE_DATE}`));
+          fs.writeFileSync('CHANGELOG.md', text.replace(/^Unreleased(?=\r?\n)/, `${process.env.VERSION} / ${process.env.RELEASE_DATE}`));
           NODE
       # One atomic push: if dev got new commits during the run or main is not an ancestor of
       # the release commit, nothing is pushed and nothing is published.
@@ -281,7 +282,7 @@ jobs:
           if (start >= 0) {
             let end = lines.length;
             for (let i = start + 1; i < lines.length; i++) {
-              if (/^\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\//.test(lines[i])) {
+              if (/^(\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\/|\d{4}-\d{2}-\d{2}\s*$)/.test(lines[i])) {
                 end = i;
                 break;
               }

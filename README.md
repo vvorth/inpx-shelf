@@ -5,7 +5,7 @@ inpx-shelf
 
 > Based on [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (a fork of [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). See [NOTICE.md](./NOTICE.md).
 
-Current version: **1.0.0**, [changelog](./CHANGELOG.md) (in Russian). inpx-shelf versions start over from 1.0.0 and follow SemVer: the major version changes only when an update needs action from the user (config, data, OPDS, Kobo, environment variables).
+Current version: **1.0.0**, [changelog](./CHANGELOG.md). inpx-shelf versions start over from 1.0.0 and follow SemVer: the major version changes only when an update needs action from the user (config, data, OPDS, Kobo, environment variables).
 
 ## What it is
 
