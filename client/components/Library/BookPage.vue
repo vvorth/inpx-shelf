@@ -229,6 +229,12 @@
                             {{ paragraph }}
                         </p>
                     </div>
+                    <div v-else-if="bookInfo && bookInfo.notFetched" class="card-hint">
+                        <div>{{ $t('book.remoteNotFetched') }}</div>
+                        <q-btn class="book-get-metadata" outline dense no-caps color="primary" icon="la la-download" @click="loadInfo(true)">
+                            {{ $t('book.getMetadata') }}
+                        </q-btn>
+                    </div>
                     <div v-else class="card-hint">
                         {{ infoError || $t('book.noAnnotation') }}
                     </div>
@@ -561,11 +567,13 @@ class BookPage {
         }
     }
 
-    async loadInfo() {
+    //книга удалённой библиотеки скачивается только кнопкой «Получить метаданные» (fetchRemote)
+    async loadInfo(fetchRemote = false) {
         const book = this.book;
         this.infoLoading = true;
+        this.infoError = '';
         try {
-            const response = await this.api.getBookInfo(bookUid(book));
+            const response = await this.api.getBookInfo(bookUid(book), {fetchRemote});
             if (book !== this.book)
                 return;
             const bookInfo = response.bookInfo;
@@ -770,6 +778,10 @@ export default vueComponent(BookPage);
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.book-get-metadata {
+    margin-top: 8px;
 }
 
 .book-annotation {

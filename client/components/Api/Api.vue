@@ -450,6 +450,22 @@ class Api {
         return await this.request({action: 'admin-diagnose-library-source', source}, 300);
     }
 
+    async getRemoteAccess() {
+        return await this.request({action: 'get-remote-access'});
+    }
+
+    async createRemoteAccess(access) {
+        return await this.request({action: 'create-remote-access', access});
+    }
+
+    async updateRemoteAccess(access) {
+        return await this.request({action: 'update-remote-access', access});
+    }
+
+    async deleteRemoteAccess(id) {
+        return await this.request({action: 'delete-remote-access', id});
+    }
+
     async updateAdminCache(cache = {}) {
         return await this.request({action: 'update-admin-cache', cache}, 120);
     }
@@ -528,8 +544,9 @@ class Api {
         return await this.request({action: 'get-book-states', bookUids}, 60);
     }
 
-    async getBookInfo(bookUid) {
-        return await this.request({action: 'get-book-info', bookUid}, 120);
+    //fetchRemote - скачать книгу удалённой библиотеки ради описания
+    async getBookInfo(bookUid, {fetchRemote = false} = {}) {
+        return await this.request({action: 'get-book-info', bookUid, fetchRemote}, 120);
     }
 
     async getReaderState(bookUid, options = {}) {

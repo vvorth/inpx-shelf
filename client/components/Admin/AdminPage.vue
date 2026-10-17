@@ -533,8 +533,8 @@ class AdminPage {
     //включение, название и папка библиотеки применяются без переиндексации; нужна она при смене набора библиотек или INPX
     get adminSourcesNeedReindex() {
         const shape = list => JSON.stringify(list.map(source => {
-            const {id, inpx} = this.normalizeAdminSourceForCompare(source);
-            return [id, inpx];
+            const {id, inpx, remote} = this.normalizeAdminSourceForCompare(source);
+            return [id, inpx, remote && remote.url, remote && remote.source];
         }));
         return shape((this.adminDashboard && this.adminDashboard.sources) || []) !== shape(this.adminSources || []);
     }
@@ -546,6 +546,9 @@ class AdminPage {
             inpx: String(source.inpx || '').trim(),
             libDir: String(source.libDir || '').trim(),
             enabled: source.enabled !== false,
+            //введённый токен - тоже изменение
+            remote: (source.remote ? {url: String(source.remote.url || '').trim(), source: String(source.remote.source || '').trim(),
+                token: String(source.remote.token || '')} : null),
         };
     }
 
@@ -565,6 +568,7 @@ class AdminPage {
             hasCovers: source.hasCovers === true,
             hasEtc: source.hasEtc === true,
             hasImages: source.hasImages === true,
+            remote: (source.remote ? Object.assign({}, source.remote, {token: ''}) : null),
             diagnosticsLoading: false,
         }));
     }
@@ -714,7 +718,8 @@ class AdminPage {
         }
     }
 
-    addAdminSource() {
+    //remote - библиотека другого сервера inpx-shelf (API /remote/)
+    addAdminSource(remote = false) {
         this.adminSources.push({
             id: '',
             name: '',
@@ -729,6 +734,7 @@ class AdminPage {
             hasCovers: false,
             hasEtc: false,
             hasImages: false,
+            remote: (remote ? {url: '', source: '', token: '', tokenSet: false} : null),
             diagnosticsLoading: false,
         });
     }

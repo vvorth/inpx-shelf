@@ -1262,7 +1262,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
                 });
             } else {
                 const [bookResponse, stateResponseRaw] = await Promise.all([
-                    api.getBookInfo(this.bookUid),
+                    api.getBookInfo(this.bookUid, {fetchRemote: true}),
                     api.getReaderState(this.bookUid, {suppressProfileLogin: true}).catch(() => ({preferences: {}, progress: {}})),
                 ]);
                 const stateResponse = (stateResponseRaw || {preferences: {}, progress: {}});
