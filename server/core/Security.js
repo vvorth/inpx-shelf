@@ -400,13 +400,10 @@ class Security {
         return match ? match[1].trim() : '';
     }
 
-    metricsRequestToken(req) {
-        return this.bearerToken(req) || String((req.query && req.query.token) || '').trim();
-    }
-
+    //только заголовок: токен в ?token= оседает в журналах прокси и истории браузера
     hasValidMetricsToken(req) {
         const expected = String(this.config.metricsToken || '').trim();
-        const supplied = this.metricsRequestToken(req);
+        const supplied = this.bearerToken(req);
         return !!(expected && supplied && timingSafeStringEqual(supplied, expected));
     }
 

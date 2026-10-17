@@ -73,7 +73,7 @@ OPDS-клиенты и скачивание книг поддерживают Ba
 -e INPX_METRICS_TOKEN=strong-random-token
 ```
 
-После этого метрики доступны на `/metrics` в формате Prometheus text exposition. Без `INPX_METRICS_TOKEN` `/metrics` закрыт. Prometheus должен передавать токен как `Authorization: Bearer strong-random-token` или query-параметр `?token=strong-random-token`. Путь можно изменить через `INPX_METRICS_PATH=/internal/metrics`.
+После этого метрики доступны на `/metrics` в формате Prometheus text exposition. Без `INPX_METRICS_TOKEN` `/metrics` закрыт. Prometheus должен передавать токен в заголовке `Authorization: Bearer strong-random-token`; query-параметр `?token=` не принимается. Путь можно изменить через `INPX_METRICS_PATH=/internal/metrics`.
 
 Если включён `INPX_REQUIRE_AUTH=true`, `/metrics` подчиняется общей proxy-auth защите. Валидный `INPX_METRICS_TOKEN` разрешает scrape без `Remote-User`, что удобно для отдельного контейнера Prometheus.
 

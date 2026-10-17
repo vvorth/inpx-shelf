@@ -450,6 +450,7 @@ async function testMetricsReuseDirectorySizes() {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     try {
         assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/metrics`)).status, 401, 'No anonymous scrape');
+        assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/metrics?token=metrics-fixture`)).status, 401, 'Header only');
         for (let i = 0; i < 3; i++) {
             const res = await fetch(`http://127.0.0.1:${server.address().port}/metrics`, {headers: {authorization: 'Bearer metrics-fixture'}});
             assert.match(await res.text(), /inpx_web_cover_cache_files 1/);
