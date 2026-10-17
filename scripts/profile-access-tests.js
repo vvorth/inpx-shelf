@@ -541,6 +541,7 @@ async function testAdminRoleToggle() {
         const created = await call({action: 'create-user-profile', profile: {name: 'Dora', login: 'dora', password: 'dora-password', isAdmin: true}, ...asAlice});
         assert.strictEqual(created.user.isAdmin, true);
         assert.match((await call({action: 'create-user-profile', profile: {name: 'Eve', isAdmin: true}, ...asAlice})).error, /.+/);
+        assert.match((await call({action: 'create-user-profile', profile: {name: 'Fay', login: 'fay'}, ...asAlice})).error, /login and password|логин и пароль/, 'No password without SSO');
         assert.ok(config);
     });
 }

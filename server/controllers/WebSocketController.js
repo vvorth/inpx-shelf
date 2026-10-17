@@ -1060,6 +1060,9 @@ class WebSocketController {
         delete profile.passwordHash;
         if (profile.password && !String(profile.login || '').trim())
             throw new Error(i18n.t('errors.passwordNeedsLogin'));
+        //без пароля профиль открывается только через SSO-привязку
+        if (!(this.profileAccess && this.profileAccess.bindingEnabled) && !(profile.password && String(profile.login || '').trim()))
+            throw new Error(i18n.t('errors.profileCredentialsRequired'));
         if (profile.password)
             profile.passwordHash = await this.webWorker.hashProfilePassword(profile.login, profile.password);
         delete profile.password;
