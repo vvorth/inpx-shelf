@@ -81,6 +81,16 @@ module.exports = {
             password: hasPassword ? '__KEEP__' : '',
             passwordSet: hasPassword,
             lang: String(opds.lang || ''),
+            guestAccess: opds.guestAccess === true,
+            //переменная окружения задаёт значение при каждом запуске: переключатель в админке закрыт
+            guestAccessFromEnv: utils.hasProp(process.env, 'INPX_OPDS_GUEST_ACCESS'),
+        };
+    },
+
+    getAdminGuestAccess() {
+        return {
+            guestAccess: this.config.guestAccess === true,
+            guestAccessFromEnv: utils.hasProp(process.env, 'INPX_GUEST_ACCESS'),
         };
     },
 
@@ -690,6 +700,8 @@ module.exports = {
         }
         if (utils.hasProp(patch, 'user'))
             normalized.user = String(patch.user || '').trim();
+        if (utils.hasProp(patch, 'guestAccess') && !utils.hasProp(process.env, 'INPX_OPDS_GUEST_ACCESS'))
+            normalized.guestAccess = (patch.guestAccess === true);
         if (utils.hasProp(patch, 'lang')) {
             const lang = String(patch.lang || '').trim().toLowerCase();
             normalized.lang = (['ru', 'en'].includes(lang) ? lang : '');
@@ -726,5 +738,17 @@ module.exports = {
         this.addAdminEvent('info', 'settings', msg('admin.opdsSettingsUpdated'));
 
         return {opds: this.getAdminOpdsConfig()};
+    },
+
+    async updateAdminGuestAccess(userId = '', profileAccessToken = '', guestAccess = false) {
+        this.checkMyState();
+        await this.requireAdmin(userId, profileAccessToken);
+
+        if (utils.hasProp(process.env, 'INPX_GUEST_ACCESS'))
+            throw new Error(t('errors.guestAccessSetByEnv'));
+        await this.saveRuntimeConfigPatch({guestAccess: guestAccess === true});
+        this.addAdminEvent('info', 'settings', msg(guestAccess === true ? 'admin.guestAccessOn' : 'admin.guestAccessOff'));
+
+        return this.getAdminGuestAccess();
     },
 };

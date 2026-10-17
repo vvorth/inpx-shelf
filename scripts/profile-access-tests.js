@@ -43,7 +43,7 @@ async function fixture(options, test) {
     app.post('/upload', controller.uploadHandler());
     app.post('/session/rotate', security.sessionRotateHandler());
     require('../server/static')(app, config, worker, security);
-    app.use('/opds', access.httpGuard(true));
+    app.use('/opds', access.httpGuard({opds: true, guest: true}));
     app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
     app.get('/opds', (req, res) => res.json({user: req.query.user || ''}));
     for (const [url, name] of [['/opds/reading-profiles', 'ReadingProfilesPage'], ['/opds/reading-lists/list', 'ReadingListPage']]) {
@@ -575,6 +575,97 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedOnUpgrade, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+// Guest access (web): the catalog without a profile. A guest never acts as a profile, not even a passwordless one,
+// and gets nothing of a profile: lists, progress, admin, the profile list.
+async function testGuestAccessWeb() {
+    await fixture({guestAccess: true}, async({config, worker, bob, request, session, connect}) => {
+        const calls = [];
+        worker.catalogSearch = {status: () => ({enabled: true, ready: true}), authorNames: {info: async() => ({ready: true})},
+            search: async(options) => { calls.push(['search', options]); return {rows: ['ROW']}; }};
+        worker.getDiscoveryShelvesV2 = async(options) => { calls.push(['shelves', options]); return {shelves: []}; };
+        worker.recordDiscoveryEvents = async() => { calls.push(['events']); return {}; };
+        await worker.readingListStore.createList(bob.id, 'Bob private list', 'private');
+
+        const call = await connect({cookie: session().cookie});
+        const guestConfig = await call({action: 'get-config', userId: bob.id});
+        assert.deepStrictEqual([guestConfig.profileLoginRequired, guestConfig.guest, guestConfig.profileAuthorized], [false, true, false]);
+        assert.deepStrictEqual([guestConfig.userProfiles, guestConfig.currentUserId, guestConfig.currentUserProfile], [[], '', null]);
+        assert.strictEqual(guestConfig.adminGuestAccess, undefined);
+        const asBob = {userId: bob.id, csrfToken: guestConfig.csrfToken};
+
+        assert.deepStrictEqual((await call({action: 'catalog-search', q: 'x', ...asBob})).rows, ['ROW']);
+        assert.deepStrictEqual((await call({action: 'get-reading-lists', ...asBob})).lists, [], 'Not the lists of the passwordless profile');
+        assert.ok(!(await call({action: 'get-book-states', bookUids: ['a'], ...asBob})).error);
+        assert.ok(!(await call({action: 'record-discovery-events', events: [{bookUid: 'a', type: 'open'}], ...asBob})).error);
+        await call({action: 'get-discovery-shelves', section: 'personal', forceRefresh: true, externalSource: 'none', ...asBob});
+        const shelves = calls.find(item => item[0] === 'shelves')[1];
+        assert.deepStrictEqual([shelves.section, shelves.userId, shelves.forceRefresh, shelves.externalSource], ['external', undefined, false, undefined]);
+        assert.ok(!calls.some(item => item[0] === 'events'), 'Guest events are not stored');
+        for (const action of ['get-user-profiles', 'get-reading-list', 'create-reading-list', 'get-reader-state', 'update-reader-progress',
+            'get-reading-now', 'update-discovery-preferences', 'get-admin-dashboard', 'update-admin-guest-access', 'search'])
+            assert.strictEqual((await call({action, listId: 'x', bookUid: 'a', name: 'n', ...asBob})).error, 'need_profile_login', action);
+
+        assert.strictEqual((await request('/book/fixture.txt')).status, 200);
+        assert.notStrictEqual((await request('/cover/by-uid?uid=x')).status, 401);
+        assert.strictEqual((await request('/book/fixture.txt?user=bob')).status, 401, 'A guest names no profile');
+        const wrong = {authorization: 'Basic ' + Buffer.from('alice:wrong').toString('base64')};
+        assert.strictEqual((await request('/book/fixture.txt', wrong)).status, 401, 'Wrong credentials are not a guest');
+        assert.strictEqual((await request('/admin-backups/fixture.zip')).status, 401);
+        assert.strictEqual((await request('/opds')).status, 401, 'OPDS has its own switch');
+
+        config.guestAccess = false;
+        assert.strictEqual((await call({action: 'get-config'})).profileLoginRequired, true);
+        assert.strictEqual((await call({action: 'catalog-search', q: 'x', ...asBob})).error, 'need_profile_login');
+        assert.strictEqual((await request('/book/fixture.txt')).status, 401);
+    });
+}
+
+// Guest access (OPDS): the catalog and downloads without credentials; profiles, lists and progress keep the Basic challenge.
+async function testGuestAccessOpds() {
+    await fixture({opds: {enabled: true, guestAccess: true}}, async({alice, request, session, connect}) => {
+        assert.deepStrictEqual(await (await request('/opds')).json(), {user: ''});
+        assert.strictEqual((await request('/book/fixture.txt')).status, 200);
+        for (const url of ['/opds?user=bob', '/opds/reading-profiles', '/opds/reading-lists/list?id=x', '/opds/reading-lists/list/?id=x']) {
+            const response = await request(url);
+            assert.strictEqual(response.status, 401, url);
+            assert.match(String(response.headers.get('www-authenticate')), /^Basic/, url);
+        }
+        const aliceBasic = {authorization: 'Basic ' + Buffer.from('alice:alice-opds-pass').toString('base64')};
+        assert.strictEqual((await (await request('/opds', aliceBasic)).json()).user, alice.id);
+        assert.strictEqual((await request('/opds', {authorization: 'Basic ' + Buffer.from('alice:wrong').toString('base64')})).status, 401);
+        assert.strictEqual((await request('/admin-backups/fixture.zip')).status, 401);
+        const config = await (await connect({cookie: session().cookie}))({action: 'get-config'});
+        assert.strictEqual(config.profileLoginRequired, true, 'The web app has its own switch');
+    });
+}
+
+// The admin switches web guest access; a reader cannot, and INPX_GUEST_ACCESS locks the switch.
+async function testGuestAccessAdminToggle() {
+    await fixture({}, async({config, worker, bob, session, connect}) => {
+        worker.saveRuntimeConfigPatch = async(patch) => Object.assign(config, patch);
+        worker.addAdminEvent = () => {};
+        const call = await connect({cookie: session(bob.id).cookie});
+        const {csrfToken} = await call({action: 'get-config'});
+        assert.match((await call({action: 'update-admin-guest-access', guestAccess: true, userId: bob.id, csrfToken})).error, /administrator|администратор/);
+        assert.notStrictEqual(config.guestAccess, true);
+
+        const login = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
+        const asAdmin = {userId: login.userId, profileAccessToken: login.profileAccessToken, csrfToken};
+        assert.deepStrictEqual((await call({action: 'get-config', ...asAdmin})).adminGuestAccess, {guestAccess: false, guestAccessFromEnv: false});
+        const updated = await call({action: 'update-admin-guest-access', guestAccess: true, ...asAdmin});
+        assert.deepStrictEqual([updated.guestAccess, updated.guestAccessFromEnv], [true, false]);
+        assert.strictEqual(config.guestAccess, true);
+        process.env.INPX_GUEST_ACCESS = 'true';
+        try {
+            assert.match((await call({action: 'update-admin-guest-access', guestAccess: false, ...asAdmin})).error, /INPX_GUEST_ACCESS/);
+            assert.strictEqual(config.guestAccess, true);
+        } finally {
+            delete process.env.INPX_GUEST_ACCESS;
+        }
+    });
+}
+
+module.exports = [testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
+    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedOnUpgrade, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

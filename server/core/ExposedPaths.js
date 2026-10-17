@@ -3,18 +3,23 @@
 function exposedPaths(config) {
     const root = String(config.rootPathStatic || '').replace(/\/$/, '');
     const profile = 'profile login';
+    const guestWeb = config.guestAccess === true;
+    const guestOpds = !!(config.opds && config.opds.enabled && config.opds.guestAccess === true);
+    const guestFiles = (guestWeb || guestOpds ? `; guest access: anyone (${[guestWeb && 'web', guestOpds && 'OPDS'].filter(Boolean).join(', ')})` : '');
     const paths = [
         [`${root}/`, 'anonymous', 'web app shell and login page, no library data'],
-        [`${root}/ (WebSocket)`, profile, 'anonymous: only the login bootstrap (get-config without data, login, logout)'],
+        [`${root}/ (WebSocket)`, profile, guestWeb
+            ? 'guest access: anyone may browse the catalog, download books and see shared shelves'
+            : 'anonymous: only the login bootstrap (get-config without data, login, logout)'],
         [`${root}/app-reset`, 'anonymous', 'static page that clears the browser cache'],
         [`${root}/session/rotate`, 'anonymous', 'needs a one-time token issued at login'],
         [`${root}/upload`, profile, ''],
-        [`${config.bookPathStatic || `${root}/book`}/`, profile, 'or OPDS Basic credentials'],
-        [`${root}/cover/`, profile, 'or OPDS Basic credentials'],
+        [`${config.bookPathStatic || `${root}/book`}/`, profile, `or OPDS Basic credentials${guestFiles}`],
+        [`${root}/cover/`, profile, `or OPDS Basic credentials${guestFiles}`],
         [`${root}/admin-backups/`, profile, 'admin only'],
     ];
     if (config.opds && config.opds.enabled)
-        paths.push([config.opds.root || '/opds', profile, 'or OPDS Basic credentials']);
+        paths.push([config.opds.root || '/opds', profile, `or OPDS Basic credentials${guestOpds ? '; guest access: anyone may browse the catalog, profiles still need credentials' : ''}`]);
     if (config.koboEnabled)
         paths.push([`${require('./kobo').rootPath(config)}/<device token>`, 'device token', 'own auth']);
     if (config.kosyncEnabled)

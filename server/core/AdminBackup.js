@@ -69,6 +69,7 @@ module.exports = {
             'loginRateLimitMaxAttempts',
             'requireAuth',
             'proxyBindProfile',
+            'guestAccess',
             'authMode',
             'trustProxy',
             'proxyAuthHeader',

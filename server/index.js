@@ -21,6 +21,10 @@ const argvStrings = ['host', 'port', 'config', 'data-dir', 'app-dir', 'lib-dir',
 function applyEnvSecurityOverrides(targetConfig) {
     if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_PROXY_BIND_PROFILE'))
         targetConfig.proxyBindProfile = process.env.INPX_PROXY_BIND_PROFILE === 'true';
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_GUEST_ACCESS'))
+        targetConfig.guestAccess = process.env.INPX_GUEST_ACCESS === 'true';
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_OPDS_GUEST_ACCESS'))
+        targetConfig.opds = Object.assign({}, targetConfig.opds, {guestAccess: process.env.INPX_OPDS_GUEST_ACCESS === 'true'});
     for (const [field, variable] of Object.entries({
         wsMessageLimitMb: 'INPX_WS_MESSAGE_LIMIT_MB',
         importLimitMb: 'INPX_IMPORT_LIMIT_MB',

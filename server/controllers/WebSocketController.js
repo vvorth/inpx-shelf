@@ -222,6 +222,8 @@ class WebSocketController {
                     await this.testAdminIntegration(req, ws); break;
                 case 'update-admin-opds':
                     await this.updateAdminOpds(req, ws); break;
+                case 'update-admin-guest-access':
+                    await this.updateAdminGuestAccess(req, ws); break;
                 case 'get-admin-dashboard':
                     await this.getAdminDashboard(req, ws); break;
                 case 'get-admin-dashboard-metrics':
@@ -587,6 +589,16 @@ class WebSocketController {
             const names = await this.webWorker.catalogSearch.authorNames.info();
             config.catalogSearch.authorNames = {ready: names.ready, updatedAt: names.updatedAt};
         }
+        if (req.guest) {
+            //гость: каталог без профиля; список профилей и данные администратора не отдаются
+            Object.assign(config, {profileLoginRequired: false, guest: true, profileAuthorized: false, userProfiles: [],
+                currentUserId: '', currentUserProfile: null, telegramShareEnabled: false, emailShareEnabled: false});
+            config.opdsRoot = this.config.opdsRoot || ((this.config.opds && this.config.opds.root) ? this.config.opds.root : '/opds');
+            delete ws.userId;
+            delete ws.userLastActivity;
+            this.send(config, req, ws);
+            return;
+        }
         const profiles = await this.webWorker.getUserProfiles(req.userId);
         const currentProfile = await this.webWorker.getCurrentUserProfile(req.userId, req.profileAccessToken);
         config.userProfiles = this.profileAccess ? this.profileAccess.filterProfiles(profiles.users, req) : profiles.users;
@@ -622,13 +634,14 @@ class WebSocketController {
         if (currentUser && currentUser.isAdmin && config.profileAuthorized) {
             config.adminIntegrations = this.webWorker.getAdminIntegrationConfig();
             config.adminOpds = this.webWorker.getAdminOpdsConfig();
+            config.adminGuestAccess = this.webWorker.getAdminGuestAccess();
         }
 
         this.send(config, req, ws);
     }
 
     async getWorkerState(req, ws) {
-        if (req.profileLoginRequired) {
+        if (req.profileLoginRequired || req.guest) {
             const state = this.workerState.getState('server_state') || {};
             this.send({state: state.state || 'normal', serverMessage: state.state === 'normal' ? '' : i18n.t('server.preparingLibrary')}, req, ws);
             return;
@@ -671,6 +684,9 @@ class WebSocketController {
     }
 
     async getDiscoveryShelves(req, ws) {
+        //гостю - общие полки из кеша: без персональных, без перезагрузки и без настроек источника администратора
+        if (req.guest)
+            req = {action: req.action, requestId: req.requestId, section: 'external', externalLimit: req.externalLimit};
         const result = await this.webWorker.getDiscoveryShelvesV2({
             userId: req.userId,
             profileAccessToken: req.profileAccessToken,
@@ -703,6 +719,8 @@ class WebSocketController {
     }
 
     async recordDiscoveryEvents(req, ws) {
+        if (req.guest)
+            return this.send({}, req, ws);
         const result = await this.webWorker.recordDiscoveryEvents(
             req.userId,
             req.profileAccessToken,
@@ -739,6 +757,11 @@ class WebSocketController {
             req.kind,
         );
 
+        this.send(result, req, ws);
+    }
+
+    async updateAdminGuestAccess(req, ws) {
+        const result = await this.webWorker.updateAdminGuestAccess(req.userId, req.profileAccessToken, req.guestAccess === true);
         this.send(result, req, ws);
     }
 
@@ -887,6 +910,8 @@ class WebSocketController {
 
     //Гостю и профилю без входа отвечаем пустым набором, а не need_profile_login: страницы каталога открыты всем
     async getBookStates(req, ws) {
+        if (req.guest)
+            return this.send(this.webWorker.getUserBookStates(null, req.bookUids, []), req, ws);
         const user = await this.webWorker.getAuthorizedUserOrNull(req.userId, req.profileAccessToken);
         const lists = (user ? await this.webWorker.readingListStore.getLists(user.id) : []);
         this.send(this.webWorker.getUserBookStates(user, req.bookUids, lists), req, ws);
@@ -902,6 +927,8 @@ class WebSocketController {
     }
 
     async getReadingLists(req, ws) {
+        if (req.guest)
+            return this.send({lists: []}, req, ws);
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getReadingLists(user.id, req.bookUid, this.listOptions(req));
         this.send(result, req, ws);

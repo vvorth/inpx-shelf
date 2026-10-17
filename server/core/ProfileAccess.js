@@ -3,6 +3,17 @@ const {timingSafeStringEqual: equal} = require('./Security');
 const {t} = require('./i18n');
 
 const bootstrapActions = new Set(['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile']);
+// With guest access on, a visitor without a profile runs only these: the catalog, book pages, downloads and the shared
+// discovery shelves. They run without a profile (userId ''), so a passwordless profile cannot be borrowed.
+const guestActions = new Set([
+    'test', 'get-config', 'get-worker-state', 'get-author-book-list', 'get-author-info', 'get-series-book-list', 'get-genre-tree',
+    'get-discovery-shelves', 'get-book-link', 'get-author-aliases', 'catalog-names', 'catalog-search', 'catalog-suggest',
+    'get-book', 'get-book-info',
+    //пустой ответ: страницы каталога просят их в фоне, окно входа здесь не нужно
+    'get-book-states', 'get-reading-lists', 'record-discovery-events',
+]);
+// OPDS pages that belong to a profile: a guest gets the Basic challenge, so the client can sign in.
+const opdsProfilePaths = ['/reading-lists', '/reading-profiles', '/reading-progress'];
 
 function denied(message = 'need_profile_login', status = 401) {
     const error = new Error(message);
@@ -15,6 +26,14 @@ class ProfileAccess {
         this.config = config;
         this.worker = worker;
         this.security = security;
+    }
+
+    get guestWeb() {
+        return this.config.guestAccess === true;
+    }
+
+    get guestOpds() {
+        return !!(this.config.opds && this.config.opds.guestAccess === true);
     }
 
     get bindingEnabled() {
@@ -88,9 +107,15 @@ class ProfileAccess {
             req.profileAccessToken = identity.token;
             req.profileBoundId = identity.bound ? identity.user.id : '';
         }
-        if (!identity && !bootstrapActions.has(req.action))
+        const guest = !identity && this.guestWeb && guestActions.has(req.action);
+        if (!identity && !guest && !bootstrapActions.has(req.action))
             throw denied();
-        req.profileLoginRequired = !identity;
+        if (guest) {
+            req.guest = true;
+            req.userId = '';
+            req.profileAccessToken = '';
+        }
+        req.profileLoginRequired = !identity && !guest;
     }
 
     filterProfiles(users, req) {
@@ -126,10 +151,27 @@ class ProfileAccess {
         return identity;
     }
 
-    httpGuard(opds = false) {
+    // A guest has no credentials at all: wrong Basic credentials stay a 401, and a guest never names a profile (?user=).
+    guestAllowed(req, opds) {
+        if (req.headers.authorization || String((req.query && req.query.user) || '').trim())
+            return false;
+        if (opds) {
+            const root = String(this.config.opdsRoot || (this.config.opds && this.config.opds.root) || '/opds').replace(/\/+$/, '');
+            const path = String(req.originalUrl || '').split('?')[0];
+            return this.guestOpds && !opdsProfilePaths.some(item => path === root + item || path.startsWith(`${root}${item}/`));
+        }
+        return this.guestWeb || this.guestOpds;
+    }
+
+    // opds: the OPDS feed; guest: books and covers, open to guests when web or OPDS guest access is on.
+    httpGuard({opds = false, guest = false} = {}) {
         return async(req, res, next) => {
             try {
                 const identity = (await this.resolve(req)) || (await this.basicIdentity(req));
+                if (!identity && guest && this.guestAllowed(req, opds)) {
+                    req.guestAccess = true;
+                    return next();
+                }
                 if (!identity) {
                     res.set('WWW-Authenticate', 'Basic realm="inpx-shelf OPDS", charset="UTF-8"');
                     throw denied('Authentication required');

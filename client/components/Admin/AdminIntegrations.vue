@@ -63,6 +63,13 @@
                         <q-icon :name="opdsPasswordVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="opdsPasswordVisible = !opdsPasswordVisible" />
                     </template>
                 </q-input>
+                <q-checkbox v-model="opdsSettings.guestAccess" size="34px" :disable="opdsSettings.guestAccessFromEnv" :label="$t('settings.opds.guestAccess')" />
+            </div>
+            <div class="card-hint">
+                {{ $t('settings.opds.guestAccessHint') }}
+                <template v-if="opdsSettings.guestAccessFromEnv">
+                    {{ $t('settings.opds.guestAccessFromEnv') }}
+                </template>
             </div>
             <div class="admin-mail-actions">
                 <q-btn color="primary" dense no-caps icon="la la-save" :loading="opdsSaveLoading" @click="saveOpdsSettings">
@@ -153,6 +160,8 @@ class AdminIntegrations {
             user: '',
             password: '',
             lang: '',
+            guestAccess: false,
+            guestAccessFromEnv: false,
         };
     }
 

@@ -124,7 +124,7 @@ module.exports = function(app, config, security = new (require('../Security'))(c
     const opdsPaths = [opdsRoot, `${opdsRoot}/*`];
 
     app.use(opdsPaths, stringQuery);
-    app.use(opdsPaths, new (require('../ProfileAccess'))(config, root.webWorker, security).httpGuard(true));
+    app.use(opdsPaths, new (require('../ProfileAccess'))(config, root.webWorker, security).httpGuard({opds: true, guest: true}));
     app.use(opdsPaths, scopeGuard(() => root.webWorker, security));
 
     app.get(opdsPaths, opds);

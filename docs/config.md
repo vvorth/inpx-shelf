@@ -93,6 +93,8 @@
     // обязательная авторизация всего приложения; режим proxy рассчитан на SWAG/nginx + Authelia/Authentik
     "requireAuth": false,
     "proxyBindProfile": false,
+    // гостевой доступ к веб-приложению без входа: каталог, книги, общие полки (INPX_GUEST_ACCESS), см. auth-monitoring.md
+    "guestAccess": false,
     "authMode": "local",
     "trustProxy": false,
     "proxyAuthHeader": "Remote-User",
@@ -151,6 +153,8 @@
         "user": "",
         "password": "",
         "root": "/opds",
+        // каталог OPDS и скачивание книг без входа; профили и их подборки - по паролю OPDS (INPX_OPDS_GUEST_ACCESS)
+        "guestAccess": false,
         // язык каталога: "ru", "en" или "" - автоматически
         // (переменная окружения INPX_OPDS_LANG, затем uiDefaults.uiLang, затем заголовок Accept-Language читалки)
         "lang": ""

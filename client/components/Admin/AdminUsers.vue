@@ -7,8 +7,15 @@
                         {{ $t('admin.users') }}
                     </h2>
                     <div class="card-hint">
-                        {{ $t('adminUsers.guestAccessIsOff') }}
+                        {{ guestAccess.guestAccess ? $t('adminUsers.guestAccessIsOn') : $t('adminUsers.guestAccessIsOff') }}
+                        <template v-if="guestAccess.guestAccessFromEnv">
+                            {{ $t('adminUsers.guestAccessFromEnv') }}
+                        </template>
                     </div>
+                    <q-toggle
+                        :model-value="!!guestAccess.guestAccess" :disable="!!guestAccess.guestAccessFromEnv || guestAccessSaving"
+                        :label="$t('adminUsers.guestAccess')" @update:model-value="setGuestAccess"
+                    />
                 </div>
                 <q-btn color="primary" unelevated no-caps icon="la la-user-plus" @click="toggleCreate">
                     {{ $t('adminUsers.newUser') }}
@@ -143,6 +150,7 @@ function emptyDraft() {
 
 class AdminUsers {
     createVisible = false;
+    guestAccessSaving = false;
     draft = emptyDraft();
     editId = '';
     edit = {};
@@ -157,6 +165,22 @@ class AdminUsers {
 
     get currentUserId() {
         return currentProfile(this.config).id || '';
+    }
+
+    get guestAccess() {
+        return this.config.adminGuestAccess || {};
+    }
+
+    async setGuestAccess(value) {
+        this.guestAccessSaving = true;
+        try {
+            await this.api.updateAdminGuestAccess(!!value);
+            await this.api.updateConfig();
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('common.error'));
+        } finally {
+            this.guestAccessSaving = false;
+        }
     }
 
     get users() {

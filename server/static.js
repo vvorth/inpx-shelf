@@ -295,7 +295,8 @@ module.exports = (app, config, webWorker = null, security = null) => {
     const webAppRoutePrefix = (webAppBasePath === '/' ? '' : webAppBasePath.slice(0, -1));
     if (webWorker && security) {
         const profileAccess = new (require('./core/ProfileAccess'))(config, webWorker, security);
-        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`, `${webAppRoutePrefix}/admin-backups`], profileAccess.httpGuard());
+        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`], profileAccess.httpGuard({guest: true}));
+        app.use(`${webAppRoutePrefix}/admin-backups`, profileAccess.httpGuard());
     }
     app.get(`${webAppRoutePrefix}/app-reset`, (req, res) => {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');

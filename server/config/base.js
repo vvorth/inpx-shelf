@@ -50,6 +50,8 @@ module.exports = {
     loginRateLimitMaxAttempts: 8,
     requireAuth: process.env.INPX_REQUIRE_AUTH === 'true',
     proxyBindProfile: process.env.INPX_PROXY_BIND_PROFILE === 'true',
+    //гостевой доступ к веб-приложению: каталог, книги и общие полки без входа (opds.guestAccess - то же для OPDS)
+    guestAccess: process.env.INPX_GUEST_ACCESS === 'true',
     authMode: String(process.env.INPX_AUTH_MODE || 'local').trim().toLowerCase(),
     trustProxy: process.env.INPX_TRUST_PROXY === 'true',
     proxyAuthHeader: process.env.INPX_PROXY_AUTH_HEADER || 'Remote-User',
@@ -97,6 +99,8 @@ module.exports = {
         user: '',
         password: '',
         root: '/opds',
+        //каталог OPDS без входа (также INPX_OPDS_GUEST_ACCESS); профили и их списки по-прежнему по паролю OPDS
+        guestAccess: process.env.INPX_OPDS_GUEST_ACCESS === 'true',
         //язык каталога: '' - автоматически, 'ru', 'en' (также переменная окружения INPX_OPDS_LANG)
         lang: '',
     },

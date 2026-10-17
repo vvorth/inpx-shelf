@@ -39,6 +39,7 @@ const propsToSave = [
     'loginRateLimitMaxAttempts',
     'requireAuth',
     'proxyBindProfile',
+    'guestAccess',
     'authMode',
     'trustProxy',
     'proxyAuthHeader',

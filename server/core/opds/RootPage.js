@@ -51,7 +51,8 @@ class RootPage extends BasePage {
                 this.readingProgressPage.myEntry(req, 'hidden', readingLibrary.counters.hidden || 0),
             );
             resultEntry.push(this.readingListsPage.myEntry(req));
-        } else {
+        } else if (!req.guestAccess) {
+            //гость профилей не видит: /reading-profiles просит у него вход
             const publicUsers = (await this.webWorker.getOpdsUsers()).filter(user => canSeeProfile(req, user.id, user.hasPassword));
             if (publicUsers.length)
                 resultEntry.push(this.readingProfilesPage.myEntry(req));
