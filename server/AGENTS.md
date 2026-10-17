@@ -17,7 +17,7 @@ Node.js 24 server. Entry: `index.js`.
   - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).
 - `core/LibraryFs.js` — file access for library paths (INPX, archives, asset folders): `s3://bucket/prefix` goes to `core/S3Fs.js` (AWS SDK, cached listings), any other path to `fs`. `dataDir`, `tempDir` and caches stay on `fs`.
 - `core/ZipReader.js` — reads library archives (zip with any method, 7z) with 7-Zip compiled to WebAssembly in `core/archive/`: worker threads (`ArchivePool`), a fresh 7-Zip instance per call (`SevenZipEngine`). An `s3://` archive is a read-only file in 7-Zip's FS (`S3File`): reads block on a fetcher thread through `Atomics.wait`, with an LRU of 256 KiB blocks.
-- `core/StateStore.js` — `state.sqlite`: prepared-book file cache, access-password sessions.
+- `core/StateStore.js` — `state.sqlite`: prepared-book file cache, KOReader document hashes, signed-in browser sessions (sha256 of the id + profile; the profile token is re-created after a restart).
 - `core/ReadingListStore.js` — `reading-lists.json`: loading, normalizing, saving, metadata overrides; `core/readingLists/` mixins add profiles (`Users`), lists (`Lists`), reader state, reader settings and discovery. Every async method except the password checks and `getMetadataOverrides` (cached per file version) runs in the store lock. `core/kobo/KoboStore.js` — `kobo-sync.json`. Writes go through `FilePersistence` transactions.
 - `core/BackupTransaction.js` — the files a full backup contains and restores.
 

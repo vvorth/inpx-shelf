@@ -88,6 +88,8 @@ class WebSocketController {
         this.workerState = new WorkerState();
         this.webWorker = new WebWorker(config);
         this.profileAccess = security ? new (require('../core/ProfileAccess'))(config, this.webWorker, security) : null;
+        if (security)
+            security.attachProfiles(this.webWorker);
 
         this.wss = wss;
         this.activeRequests = 0;
@@ -1015,8 +1017,10 @@ class WebSocketController {
 
     async logoutUserProfile(req, ws) {
         const result = await this.webWorker.closeProfileSession(req.profileAccessToken);
-        if (this.security && ws.req && ws.req.securitySession)
+        if (this.security && ws.req && ws.req.securitySession) {
             delete ws.req.securitySession.profileAccessToken;
+            this.security.persistSession(ws.req.securitySession);
+        }
         delete ws.userId;
         delete ws.userLastActivity;
         this.send(result, req, ws);

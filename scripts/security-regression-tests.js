@@ -709,6 +709,51 @@ async function testLoginLimiterKeysIpv6PrefixAndEvictsOldest() {
     assert.ok(!security.loginAttempts.has('opds:10.0.0.1'), 'The oldest entry goes');
 }
 
+// A signed-in browser session survives a restart: state.sqlite keeps the sha256 of its id and the profile, not the tokens.
+// Anonymous sessions stay in memory; a password change or logout removes the row.
+async function testSignedInSessionsSurviveRestart() {
+    await temporary(async(dir) => {
+        const StateStore = require('../server/core/StateStore');
+        const WebWorker = require('../server/core/WebWorker');
+        const stateStore = new StateStore({dataDir: dir});
+        const start = () => {
+            const worker = Object.assign(Object.create(WebWorker.prototype), {profileSessions: new Map(), stateStore});
+            const security = new Security({});
+            security.secret = 'test-secret';
+            security.attachProfiles(worker);
+            return {worker, security};
+        };
+        const first = start();
+        const session = first.security.ensureSession({headers: {}});
+        session.profileAccessToken = first.worker.createProfileSession('alice');
+        first.security.rotateSession(session);
+        const loginAt = session.createdAt;
+        const cookie = {cookie: `inpx_web_session=${first.security.packSessionId(session.id)}`};
+        const anonymous = first.security.ensureSession({headers: {}});
+        assert.strictEqual(stateStore.getWebSession(first.security.sessionHash(anonymous.id)), null, 'Anonymous sessions stay in memory');
+        assert.strictEqual(stateStore.getWebSession(session.id), null, 'Rows are keyed by a hash of the id');
+
+        const second = start();
+        const restored = second.security.getSession({headers: cookie});
+        assert.strictEqual(second.worker.getProfileSessionUser(restored.profileAccessToken), 'alice');
+        assert.notStrictEqual(restored.profileAccessToken, session.profileAccessToken, 'The profile token is new');
+        assert.deepStrictEqual([restored.csrfToken, restored.createdAt], [session.csrfToken, loginAt]);
+        assert.strictEqual(second.worker.profileSessions.get(restored.profileAccessToken).createdAt, loginAt, 'The 30-day limit counts from the login');
+
+        second.worker.revokeUserSessions('alice');
+        assert.strictEqual(start().security.getSession({headers: cookie}), null, 'A password change ends it after a restart too');
+
+        const third = start();
+        const again = third.security.ensureSession({headers: {}});
+        again.profileAccessToken = third.worker.createProfileSession('bob');
+        third.security.rotateSession(again);
+        delete again.profileAccessToken;
+        third.security.persistSession(again);
+        assert.strictEqual(start().security.getSession({headers: {cookie: `inpx_web_session=${third.security.packSessionId(again.id)}`}}), null, 'Logout');
+        stateStore.close();
+    });
+}
+
 // The server-wide request cap rejects one message and keeps the socket.
 async function testWebSocketCapRejectsMessageNotSocket() {
     const WebSocket = require('ws');
@@ -816,6 +861,7 @@ async function testGunzipBufferIsBounded() {
 }
 
 module.exports = [
+    testSignedInSessionsSurviveRestart,
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
     testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,

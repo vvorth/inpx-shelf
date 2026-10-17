@@ -58,12 +58,12 @@ module.exports = {
         return require('./ProfilePassword').hash(password);
     },
 
-    createProfileSession(userId) {
+    createProfileSession(userId, createdAt = Date.now()) {
         sessionLifetime.makeRoom(this.profileSessions);
         const token = utils.randomHexString(24);
         this.profileSessions.set(token, {
             userId,
-            createdAt: Date.now(),
+            createdAt,
             updatedAt: Date.now(),
         });
         return token;
@@ -214,5 +214,7 @@ module.exports = {
             if (session.userId === userId)
                 this.profileSessions.delete(token);
         }
+        if (this.stateStore)
+            this.stateStore.deleteUserWebSessions(userId);
     },
 };

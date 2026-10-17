@@ -53,7 +53,9 @@ class ProfileAccess {
         }
         // A removed/renamed SSO profile must not leave an old authenticated token.
         this.clearBinding(session);
-        const accessToken = token || (session && session.profileAccessToken) || '';
+        //токен из сообщения после перезапуска сервера устарел: тогда профиль - по сессии из cookie
+        const sessionToken = (session && session.profileAccessToken) || '';
+        const accessToken = (token && this.worker.getProfileSessionUser(token) ? token : sessionToken);
         const id = this.worker.getProfileSessionUser(accessToken);
         if (!id)
             return null;

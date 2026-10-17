@@ -16,6 +16,8 @@ const accountMaxDelayMs = 5*60*1000;
 const accountFailureWindowMs = 60*60*1000;
 const sessionRotateLifetimeMs = 60*1000;
 const maxSessionRotations = 1000;
+//updatedAt вошедшей сессии пишется на диск не чаще раза в минуту: тайм-аут простоя - дни
+const sessionTouchMs = 60*1000;
 
 function parseIpv4(value = '') {
     const normalized = String(value || '').trim()
@@ -169,14 +171,53 @@ class Security {
         const cookies = this.parseCookies(req.headers.cookie || '');
         const sessionId = req.securitySession ? req.securitySession.id
             : this.unpackSessionId(cookies[sessionCookieName] || '');
-        const session = this.sessions.get(sessionId);
+        const session = this.sessions.get(sessionId) || this.restoreSession(sessionId);
         if (sessionLifetime.expired(session)) {
             this.sessions.delete(sessionId);
+            if (this.profiles && sessionId)
+                this.profiles.stateStore.deleteWebSession(this.sessionHash(sessionId));
             delete req.securitySession;
             return null;
         }
         session.updatedAt = Date.now();
+        if (session.updatedAt - (session.persistedAt || 0) > sessionTouchMs)
+            this.persistSession(session);
         req.securitySession = session;
+        return session;
+    }
+
+    //Сессии вошедших в профиль переживают перезапуск: worker - профили и state.sqlite (WebWorker)
+    attachProfiles(worker) {
+        this.profiles = worker;
+        worker.stateStore.purgeWebSessions(Date.now() - sessionLifetime.maxAgeMs, Date.now() - sessionLifetime.idleMs);
+    }
+
+    sessionHash(sessionId) {
+        return crypto.createHash('sha256').update(String(sessionId)).digest('hex');
+    }
+
+    //SSO-привязка восстанавливается сама по заголовку прокси, анонимные сессии на диск не пишутся
+    persistSession(session) {
+        if (!this.profiles)
+            return;
+        const userId = (session.proxyProfileUserId ? '' : this.profiles.getProfileSessionUser(session.profileAccessToken));
+        const idHash = this.sessionHash(session.id);
+        if (userId)
+            this.profiles.stateStore.putWebSession(idHash, {userId, csrfToken: session.csrfToken, createdAt: session.createdAt, updatedAt: session.updatedAt});
+        else if (session.persistedAt)
+            this.profiles.stateStore.deleteWebSession(idHash);
+        session.persistedAt = (userId ? Date.now() : 0);
+    }
+
+    restoreSession(sessionId) {
+        const row = (this.profiles && sessionId ? this.profiles.stateStore.getWebSession(this.sessionHash(sessionId)) : null);
+        if (!row)
+            return null;
+        sessionLifetime.makeRoom(this.sessions);
+        //токен профиля - новый, но срок жизни считается от прежнего входа
+        const session = {id: sessionId, csrfToken: row.csrfToken, createdAt: row.createdAt, updatedAt: row.updatedAt, persistedAt: Date.now(),
+            profileAccessToken: this.profiles.createProfileSession(row.userId, row.createdAt)};
+        this.sessions.set(sessionId, session);
         return session;
     }
 
@@ -218,10 +259,14 @@ class Security {
             this.sessions.delete(session.id);
         else
             sessionLifetime.makeRoom(this.sessions);
+        if (this.profiles && session.persistedAt)
+            this.profiles.stateStore.deleteWebSession(this.sessionHash(session.id));
         session.id = this.randomToken(24);
         session.createdAt = now;
         session.updatedAt = now;
+        session.persistedAt = 0;
         this.sessions.set(session.id, session);
+        this.persistSession(session);
 
         //срок у всех токенов одинаковый, поэтому в начале Map - самые старые: оттуда уходят истёкшие и лишние сверх предела
         for (const [token, rotation] of this.sessionRotations) {

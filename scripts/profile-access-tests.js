@@ -389,6 +389,8 @@ async function testLoginRotatesSession() {
         assert.strictEqual((await request('/book/fixture.txt', {cookie: planted.cookie})).status, 401, 'The planted cookie');
         assert.strictEqual((await (await connect({cookie: planted.cookie}))({action: 'get-config'})).profileAuthorized, false);
         assert.strictEqual((await call({action: 'get-config'})).profileAuthorized, true, 'The open socket keeps the login');
+        assert.strictEqual((await call({action: 'get-config', profileAccessToken: 'stale-after-restart'})).profileAuthorized, true,
+            'A stale token from an open tab falls back to the session');
         assert.strictEqual((await otherTab({action: 'get-config'})).profileAuthorized, true, 'So does another tab on the same cookie');
 
         const rotated = await rotate(login.sessionRotateToken);
