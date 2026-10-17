@@ -25,7 +25,9 @@ const xmlEscape = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&
 async function listXml(root, bucket, params) {
     const prefix = params.get('prefix') || '';
     const dir = path.join(root, bucket, prefix);
-    const items = (await fs.pathExists(dir) && prefix.endsWith('/')) || !prefix ? await fs.readdir(dir, {withFileTypes: true}) : [];
+    //как S3: префикс-файл (archive.7z/) - пустой листинг; Windows не замечает / в конце, поэтому stat
+    const isDir = await fs.stat(dir).then(stat => stat.isDirectory(), () => false);
+    const items = (isDir && (!prefix || prefix.endsWith('/'))) ? await fs.readdir(dir, {withFileTypes: true}) : [];
     const contents = [];
     const prefixes = [];
     for (const item of items) {
