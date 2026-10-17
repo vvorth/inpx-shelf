@@ -28,6 +28,7 @@ module.exports = {
     readdir: (p, options = {}) => (isS3(p) ? s3.readdir(p, options) : fs.readdir(p, options)),
     readFile: async(p, encoding) => (isS3(p) ? (encoding ? (await s3.readFile(p)).toString(encoding) : s3.readFile(p)) : fs.readFile(p, encoding)),
     readRange: (p, offset, length) => (isS3(p) ? s3.readRange(p, offset, length) : readLocalRange(p, offset, length)),
+    createReadStream: async p => (isS3(p) ? s3.createReadStream(p) : fs.createReadStream(p)),
     copyToLocal: (p, outFile) => (isS3(p) ? s3.copyToLocal(p, outFile) : fs.copy(p, outFile)),
     //признак изменения файла: ETag и размер для S3, SHA-256 содержимого для диска
     contentHash: p => (isS3(p) ? s3.contentHash(p) : utils.getFileHash(p, 'sha256', 'hex')),

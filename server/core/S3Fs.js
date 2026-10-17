@@ -177,10 +177,14 @@ class S3Fs {
         return Buffer.from(await res.Body.transformToByteArray());
     }
 
-    async copyToLocal(uri, outFile) {
+    //поток объекта: ни копии в памяти, ни на диске
+    async createReadStream(uri) {
         const {bucket, key} = parse(uri);
-        const res = await this.send('GetObjectCommand', {Bucket: bucket, Key: key}, uri);
-        await pipeline(res.Body, fs.createWriteStream(outFile));
+        return (await this.send('GetObjectCommand', {Bucket: bucket, Key: key}, uri)).Body;
+    }
+
+    async copyToLocal(uri, outFile) {
+        await pipeline(await this.createReadStream(uri), fs.createWriteStream(outFile));
     }
 }
 

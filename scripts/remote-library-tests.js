@@ -91,13 +91,32 @@ async function testRemoteApiTokenAndSources() {
 }
 
 async function testRemoteApiInpxBooksAndCovers() {
-    await fixture(async({dir, base, token, calls}) => {
+    await fixture(async({dir, base, token, calls, config: mainConfig}) => {
         const auth = {authorization: `Bearer ${token}`};
         const inpx = await fetch(`${base}/remote/sources/b/inpx`, {headers: auth});
         assert.strictEqual(inpx.status, 200);
         assert.strictEqual(inpx.headers.get('etag'), '"hash-b"');
         assert.strictEqual(await inpx.text(), 'inpx of b');
         assert.strictEqual((await fetch(`${base}/remote/sources/b/inpx`, {headers: Object.assign({'if-none-match': '"hash-b"'}, auth)})).status, 304);
+
+        // an INPX in S3 streams through, it is not read into memory
+        const libraryFs = require('../server/core/LibraryFs');
+        const {Readable} = require('stream');
+        const client = libraryFs.s3.client;
+        const reads = [];
+        libraryFs.s3.client = {send: async command => {
+            reads.push(command.constructor.name);
+            return {Body: Readable.from([Buffer.from('inpx '), Buffer.from('from s3')])};
+        }};
+        const localInpx = mainConfig.librarySources[1].inpxFile;
+        mainConfig.librarySources[1].inpxFile = 's3://bucket/b.inpx';
+        try {
+            assert.strictEqual(await (await fetch(`${base}/remote/sources/b/inpx`, {headers: auth})).text(), 'inpx from s3');
+            assert.deepStrictEqual(reads, ['GetObjectCommand']);
+        } finally {
+            libraryFs.s3.client = client;
+            mainConfig.librarySources[1].inpxFile = localInpx;
+        }
 
         const book = await fetch(`${base}/remote/sources/b/books/${urlUid(1)}`, {headers: auth});
         assert.strictEqual(book.status, 200);

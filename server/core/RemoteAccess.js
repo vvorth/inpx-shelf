@@ -11,6 +11,7 @@
 const crypto = require('crypto');
 const fs = require('fs-extra');
 const express = require('express');
+const {pipeline} = require('stream/promises');
 const libraryFs = require('./LibraryFs');
 const {getEnabledLibrarySources} = require('./LibrarySources');
 
@@ -111,7 +112,7 @@ function init(app, config, worker, security) {
         }
         res.type('application/octet-stream');
         if (libraryFs.isS3(source.inpxFile))
-            return res.send(await libraryFs.readFile(source.inpxFile));
+            return await pipeline(await libraryFs.createReadStream(source.inpxFile), res);
         res.sendFile(source.inpxFile, {dotfiles: 'allow'});
     }));
 
@@ -149,6 +150,11 @@ function init(app, config, worker, security) {
 
     // eslint-disable-next-line no-unused-vars
     router.use((err, req, res, next) => {
+        //обрыв посреди ответа: заголовки уже ушли, соединение просто закрывается
+        if (res.headersSent) {
+            log(LM_ERR, `Remote API: ${req.method} ${req.originalUrl}: ${err.message}`);
+            return res.destroy();
+        }
         const status = (err.status === 404 || String(err.message).includes('ENOENT') ? 404 : 500);
         if (status === 500)
             log(LM_ERR, `Remote API: ${req.method} ${req.originalUrl}: ${err.message}`);
