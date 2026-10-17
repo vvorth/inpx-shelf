@@ -2,7 +2,6 @@
 const state = {
     config: {},
     settings: {
-        accessToken: '',
         currentUserId: '',
         profileAccessToken: '',
 

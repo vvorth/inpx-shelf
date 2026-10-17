@@ -259,11 +259,9 @@ async function main() {
     const opds = require('./core/opds');
     opds(app, config, security);
 
-    const webAccess = new (require('./core/WebAccess'))(config);
-    await webAccess.init();
 
     const { WebSocketController } = require('./controllers');
-    const webSocketController = new WebSocketController(wss, webAccess, config, security);
+    const webSocketController = new WebSocketController(wss, config, security);
     await webSocketController.webWorker.readingListStore.warnIfDefaultAdminPassword()
         .catch(e => log(LM_WARN, `Cannot check the admin password: ${e.message}`));
 
@@ -279,7 +277,7 @@ async function main() {
     app.post(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/session/rotate`, security.sessionRotateHandler());
 
     const initStatic = require('./static');
-    initStatic(app, config, webSocketController.webWorker, security, webAccess);
+    initStatic(app, config, webSocketController.webWorker, security);
 
     if (devModule) {
         devModule.logErrors(app);

@@ -102,8 +102,6 @@
         "you": "You"
     },
     "api": {
-        "accessRestricted": "Access restricted",
-        "enterPassword": "Enter password:",
         "enterProfileLoginPassword": "Enter the profile login and password:",
         "loginError": "Login error",
         "profileLogin": "Profile login",
@@ -1709,8 +1707,7 @@
     "shellUserMenu": {
         "devicesOpdsAndKobo": "Devices: OPDS and Kobo",
         "interfaceSettings": "Interface settings",
-        "lightTheme": "Light theme",
-        "lockTheLibrary": "Lock the library"
+        "lightTheme": "Light theme"
     },
     "tastePanel": {
         "genresAndAuthorsRefine": "Genres and authors refine your recommendations. Book languages are set with the “Book languages” button next to search."

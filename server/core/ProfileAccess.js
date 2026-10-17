@@ -2,7 +2,7 @@ const {parseBasicAuth} = require('./opds/Auth');
 const {timingSafeStringEqual: equal} = require('./Security');
 const {t} = require('./i18n');
 
-const bootstrapActions = new Set(['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile', 'logout']);
+const bootstrapActions = new Set(['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile']);
 
 function denied(message = 'need_profile_login', status = 401) {
     const error = new Error(message);

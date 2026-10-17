@@ -41,8 +41,6 @@ module.exports = {
 
     allowConfigRewrite: false,
     allowUnsafeFilter: false,
-    accessPassword: '',
-    accessTimeout: 0,
     bookReadLink: '',
     loggingEnabled: true,
     logServerStats: false,

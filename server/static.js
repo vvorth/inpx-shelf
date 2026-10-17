@@ -261,36 +261,7 @@ function appResetPage(rootPathStatic = '') {
 </html>`;
 }
 
-// With accessPassword, books and covers need what the web UI has: a session in which the access password was
-// entered. Without it: an X-Access-Token header (remote library), a signed OPDS link, or OPDS Basic credentials.
-function accessGuard(config, webAccess, security, profileAccess) {
-    return async(req, res, next) => {
-        if (!webAccess || webAccess.freeAccess)
-            return next();
-        try {
-            const session = security.getSession(req);
-            if ((session && webAccess.hasTokenAccess(session.accessToken)) || webAccess.hasTokenAccess(String(req.headers['x-access-token'] || ''))
-                || req.profileAccessIdentity)
-                return next();
-            if (security.hasBookLinkSignature(req)
-                || (req.headers.authorization && config.opds && config.opds.enabled && await profileAccess.basicIdentity(req))) {
-                //переход /book/by-uid на файл тоже должен открыться без сессии
-                req.signBookRedirect = true;
-                return next();
-            }
-            res.set('Cache-Control', 'no-store');
-            res.status(401).type('text/plain; charset=utf-8').send('Access password required');
-        } catch (error) {
-            if (error.code !== 'INPX_LOGIN_RATE_LIMIT')
-                return next(error);
-            res.set('Retry-After', String(error.retryAfter));
-            res.set('Cache-Control', 'no-store');
-            res.status(429).send('Too many login attempts. Try again later.');
-        }
-    };
-}
-
-module.exports = (app, config, webWorker = null, security = null, webAccess = null) => {
+module.exports = (app, config, webWorker = null, security = null) => {
     /*
     config.bookPathStatic = `${config.rootPathStatic}/book`;
     config.bookDir = `${config.publicFilesDir}/book`;
@@ -300,7 +271,6 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
     if (webWorker && security) {
         const profileAccess = new (require('./core/ProfileAccess'))(config, webWorker, security);
         app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`, `${webAppRoutePrefix}/admin-backups`], profileAccess.httpGuard());
-        app.use([config.bookPathStatic, `${webAppRoutePrefix}/cover`], accessGuard(config, webAccess, security, profileAccess));
     }
     app.get(`${webAppRoutePrefix}/app-reset`, (req, res) => {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -413,7 +383,7 @@ module.exports = (app, config, webWorker = null, security = null, webAccess = nu
             else if (zip)
                 href += '/zip';
 
-            res.redirect(302, (req.signBookRedirect ? security.signBookLink(href) : href));
+            res.redirect(302, href);
         } catch(e) {
             log(LM_ERR, `book by uid error: ${e.message}`);
             //пути сервера из ошибок 7z и файловой системы остаются в журнале

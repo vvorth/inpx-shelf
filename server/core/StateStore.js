@@ -1,6 +1,6 @@
 //Служебное состояние сервера, которое не входит в БД библиотеки и переживает её пересборку:
 //какие книги уже подготовлены в кеше файлов (хеш файла, размер, версия обработки)
-//сессии входа по общему паролю доступа и какой книге принадлежит файл, отданный читалке (хеш KOReader).
+//и какой книге принадлежит файл, отданный читалке (хеш KOReader).
 //Маленькие точечные запросы - синхронно в основном потоке.
 const path = require('path');
 const {DatabaseSync} = require('node:sqlite');
@@ -16,8 +16,8 @@ class StateStore {
             const db = new DatabaseSync(this.file);
             db.exec(`PRAGMA journal_mode = WAL;
                 CREATE TABLE IF NOT EXISTS book_file(uid TEXT PRIMARY KEY, hash TEXT NOT NULL, size INTEGER NOT NULL, asset_version TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS access(token TEXT PRIMARY KEY, value TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS setting(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                DROP TABLE IF EXISTS access;
+                DROP TABLE IF EXISTS setting;
                 CREATE INDEX IF NOT EXISTS book_file_hash ON book_file(hash);
                 CREATE TABLE IF NOT EXISTS kosync_document(hash TEXT PRIMARY KEY, uid TEXT NOT NULL);`);
             this.db = db;
@@ -53,32 +53,6 @@ class StateStore {
 
     putKosyncDocument(hash, uid) {
         this.open().prepare('INSERT OR REPLACE INTO kosync_document(hash, uid) VALUES (?, ?)').run(String(hash), String(uid));
-    }
-
-    //Сессии общего пароля доступа: [{id: токен, value: {time, used}}]
-    getAccessRows() {
-        return this.open().prepare('SELECT token, value FROM access').all().map(row => ({id: row.token, value: JSON.parse(row.value)}));
-    }
-
-    putAccess(token, value) {
-        this.open().prepare('INSERT OR REPLACE INTO access(token, value) VALUES (?, ?)').run(String(token), JSON.stringify(value));
-    }
-
-    deleteAccess(token) {
-        this.open().prepare('DELETE FROM access WHERE token = ?').run(String(token));
-    }
-
-    clearAccess() {
-        this.open().exec('DELETE FROM access');
-    }
-
-    getSetting(key) {
-        const row = this.open().prepare('SELECT value FROM setting WHERE key = ?').get(String(key));
-        return (row ? row.value : null);
-    }
-
-    setSetting(key, value) {
-        this.open().prepare('INSERT OR REPLACE INTO setting(key, value) VALUES (?, ?)').run(String(key), String(value));
     }
 
     close() {

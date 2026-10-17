@@ -164,30 +164,18 @@ async function testConversionPublishesOnlyCompletedFiles() {
     } finally { await fs.remove(dir); }
 }
 
-// A valid access token rides on every WebSocket message, and a user may log in to their own
-// profile between guesses: neither may reset the failures against another profile.
+// A user may log in to their own profile between guesses: that must not reset the failures against another profile.
 async function testProfileLoginRateLimitSurvivesOtherSuccesses() {
     const security = new Security({loginRateLimitMaxAttempts: 3});
     const req = {headers: {}, socket: {remoteAddress: '10.0.0.5'}};
     for (let i = 0; i < 3; i++) {
         security.checkLoginRate(req, 'profile');
         security.recordLoginAttempt(req, false, 'profile');
-        security.recordLoginAttempt(req, true, 'access');
+        security.recordLoginAttempt(req, true, 'opds');
         security.recordLoginAttempt(req, true, 'profile');
     }
     assert.throws(() => security.checkLoginRate(req, 'profile'), error => error.code === 'INPX_LOGIN_RATE_LIMIT');
-    assert.doesNotThrow(() => security.checkLoginRate(req, 'access'));
-}
-
-// The access token rides on every message: only its first use is a login that clears failures.
-async function testAccessTokenFirstUseIsTheLogin() {
-    const access = Object.assign(Object.create(require('../server/core/WebAccess').prototype), {
-        config: {accessPassword: 'secret'}, freeAccess: false, accessTimeout: 0, accessMap: new Map(), saveAccess: async() => {},
-    });
-    const token = require('../server/core/utils').getBufHash('secret' + access.newToken(), 'sha256', 'hex');
-    assert.strictEqual(await access.hasAccess(token), 1);
-    assert.strictEqual(await access.hasAccess(token), 2);
-    assert.strictEqual(await access.hasAccess('wrong'), false);
+    assert.doesNotThrow(() => security.checkLoginRate(req, 'opds'));
 }
 
 // Behind nginx with $proxy_add_x_forwarded_for the client controls the first entries.
@@ -202,4 +190,4 @@ async function testClientIpIgnoresSpoofedForwardedFor() {
 
 module.exports = [testClientIpIgnoresSpoofedForwardedFor, testConversionQueueLimitsAndRecovery, testConverterProcessTimeoutAndBoundedErrors,
     testProcessStdoutCapture, testOpdsAuthenticationRateLimit, testProfileLoginRateLimitSurvivesOtherSuccesses,
-    testAccessTokenFirstUseIsTheLogin, testConversionPublishesOnlyCompletedFiles];
+    testConversionPublishesOnlyCompletedFiles];

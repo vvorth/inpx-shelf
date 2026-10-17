@@ -31,10 +31,7 @@ async function fixture(options, test) {
     await security.init();
     const access = new ProfileAccess(config, worker, security);
     const controller = Object.create(Controller.prototype);
-    const WebAccess = require('../server/core/WebAccess');
-    const webAccess = (config.accessPassword ? Object.assign(Object.create(WebAccess.prototype), {config, freeAccess: false, accessTimeout: 0,
-        accessMap: new Map(), db: {putAccess() {}, deleteAccess() {}}}) : {hasAccess: async() => true, freeAccess: true});
-    Object.assign(controller, {config, security, webWorker: worker, profileAccess: access, webAccess, activeRequests: 0,
+    Object.assign(controller, {config, security, webWorker: worker, profileAccess: access, activeRequests: 0,
         workerState: {getState: () => ({state: 'normal', fileName: 'PRIVATE_LIBRARY_PATH'})}});
     const app = express();
     app.use(security.middleware());
@@ -44,7 +41,7 @@ async function fixture(options, test) {
     await fs.outputFile(path.join(config.dataDir, 'backups', 'fixture.zip'), 'BACKUP_FIXTURE');
     app.post('/upload', controller.uploadHandler());
     app.post('/session/rotate', security.sessionRotateHandler());
-    require('../server/static')(app, config, worker, security, (config.accessPassword ? webAccess : null));
+    require('../server/static')(app, config, worker, security);
     app.use('/opds', access.httpGuard(true), require('../server/core/opds/Auth')(config,
         (...args) => worker.verifyOpdsPassword(...args), security));
     app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
@@ -363,31 +360,9 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     });
 }
 
-// Books and covers need a profile login on top of the access password: neither the entered password,
-// a remote library's token nor a signed OPDS link opens them alone.
-async function testAccessPasswordGuardsBooksAndCovers() {
-    await fixture({accessPassword: 'secret'}, async({worker, security, alice, request, session, connect, rotate, base}) => {
-        worker.getBookLink = async() => ({link: '/book/fixture.txt'});
-        for (const url of ['/book/fixture.txt', '/book/by-uid?uid=u1', '/cover/by-uid?uid=u1'])
-            assert.strictEqual((await request(url)).status, 401, url);
-        const browser = session();
-        const call = await connect({cookie: browser.cookie});
-        const {salt} = await call({action: 'test'});
-        const accessToken = require('../server/core/utils').getBufHash(`secret${salt}`, 'sha256', 'hex');
-        const entered = await call({action: 'test', accessToken});
-        assert.ok(entered.message);
-        browser.cookie = (await rotate(entered.sessionRotateToken)).cookie;
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'The access password alone');
-        assert.strictEqual((await request('/book/fixture.txt', {'x-access-token': accessToken})).status, 401, 'A remote library token alone');
-        assert.strictEqual((await request(security.signBookLink('/book/fixture.txt'))).status, 401, 'A signed OPDS link alone');
-
-        const book = await request('/book/fixture.txt', {cookie: session(alice.id).cookie});
-        assert.deepStrictEqual([book.status, await book.text()], [200, 'BOOK_FIXTURE'], 'A signed-in profile');
-        const basic = user => ({authorization: 'Basic ' + Buffer.from(user).toString('base64')});
-        assert.strictEqual((await request('/book/fixture.txt', basic('alice:alice-fixture'))).status, 200, 'OPDS profile credentials');
-        assert.strictEqual((await request('/book/fixture.txt', basic('alice:wrong'))).status, 401);
-
-        //a cookie of a session the server no longer knows (restart) is replaced on the WebSocket upgrade
+// A cookie of a session the server no longer knows (restart) is replaced on the WebSocket upgrade.
+async function testStaleCookieReplacedOnUpgrade() {
+    await fixture({}, async({security, base}) => {
         const stale = `inpx_web_session=${security.packSessionId('gone')}`;
         const socket = new WebSocket(base.replace('http', 'ws'), {headers: {cookie: stale}});
         const upgrade = await new Promise((resolve, reject) => { socket.once('upgrade', resolve); socket.once('error', reject); });
@@ -546,6 +521,6 @@ async function testAdminRoleToggle() {
     });
 }
 
-module.exports = [testUnknownLoginTakesAsLong, testPasswordLengthAndPerLoginThrottle, testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+module.exports = [testUnknownLoginTakesAsLong, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedOnUpgrade, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

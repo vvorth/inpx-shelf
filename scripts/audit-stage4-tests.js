@@ -63,7 +63,6 @@ async function testWebSocketBoundsAndRecovery() {
     const Controller = require('../server/controllers/WebSocketController');
     const controller = Object.create(Controller.prototype);
     controller.config = {importLimitMb: 1, backupUploadLimitMb: 1};
-    controller.webAccess = {hasAccess: async() => true};
     controller.test = async(req, ws) => controller.send({ok: true}, req, ws);
     const server = new WebSocket.Server({port: 0, host: '127.0.0.1', maxPayload: requestLimits.transportLimit(controller.config)});
     server.on('connection', socket => {
@@ -124,7 +123,6 @@ async function testHttpUploadsGoThroughRequestChecks() {
         const controller = Object.create(Controller.prototype);
         const tempDir = path.join(dir, 'tmp');
         controller.config = {importLimitMb: 1, backupUploadLimitMb: 1, tempDir};
-        controller.webAccess = {hasAccess: async token => token === 'open', isActiveToken: () => true, newToken: () => 'salt'};
         let port = 0;
         controller.security = {
             sameOriginCheck: req => ({ok: !req.headers.origin || req.headers.origin === `http://127.0.0.1:${port}`}),
@@ -151,7 +149,7 @@ async function testHttpUploadsGoThroughRequestChecks() {
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         port = server.address().port;
         const post = (body, headers = {}, action = 'import-reading-lists') => fetch(`http://127.0.0.1:${port}/upload?action=${action}`,
-            {method: 'POST', body, duplex: 'half', headers: Object.assign({'X-Access-Token': 'open', 'X-CSRF-Token': 'csrf', 'X-User-Id': 'reader'}, headers)})
+            {method: 'POST', body, duplex: 'half', headers: Object.assign({'X-CSRF-Token': 'csrf', 'X-User-Id': 'reader'}, headers)})
             .then(async response => ({status: response.status, body: await response.json()}));
         try {
             //кто не прошёл проверки, ничего не пишет на диск: тело читается и отбрасывается
@@ -161,7 +159,6 @@ async function testHttpUploadsGoThroughRequestChecks() {
             const ok = await post(JSON.stringify({lists: [{name: 'A', books: []}]}));
             assert.deepStrictEqual(ok, {status: 200, body: {userId: 'reader', lists: 1}});
             assert.strictEqual((await post('{}', {'X-CSRF-Token': 'stale'})).body.error, 'bad_csrf_token');
-            assert.strictEqual((await post('{}', {'X-Access-Token': 'wrong'})).body.error, 'need_access_token');
             assert.strictEqual((await post('{}', {Origin: 'https://evil.example'})).status, 403);
             assert.strictEqual((await post('{}', {}, 'test')).status, 404, 'only import actions take files');
             assert.match((await post('{broken')).body.error, /JSON/);
@@ -186,7 +183,7 @@ async function testHttpUploadsGoThroughRequestChecks() {
             //WebSocket-сообщение не может указать файл на сервере
             const responses = [];
             const socket = {readyState: require('ws').OPEN, send: text => responses.push(JSON.parse(text)), close() {}};
-            await controller.onMessage(socket, JSON.stringify({action: 'import-reading-lists', accessToken: 'open', csrfToken: 'csrf',
+            await controller.onMessage(socket, JSON.stringify({action: 'import-reading-lists', csrfToken: 'csrf',
                 uploadFile: '/etc/passwd', data: {lists: []}}));
             assert.match(responses.pop().error, /HTTP/);
             assert.strictEqual(seen.length, 1);

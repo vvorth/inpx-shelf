@@ -30,9 +30,6 @@
         <button v-else-if="!sso" v-close-popup type="button" class="user-menu-item" @click="$emit('sign-out')">
             <q-icon name="la la-sign-out-alt" size="18px" />{{ $t('profiles.logout') }}
         </button>
-        <button v-if="accessLocked" v-close-popup type="button" class="user-menu-item" @click="$emit('leave-library')">
-            <q-icon name="la la-lock" size="18px" />{{ $t('shellUserMenu.lockTheLibrary') }}
-        </button>
     </div>
 </template>
 
@@ -41,7 +38,7 @@
 import vueComponent from '../vueComponent.js';
 
 const componentOptions = {
-    emits: ['sign-in', 'sign-out', 'leave-library', 'toggle-theme'],
+    emits: ['sign-in', 'sign-out', 'toggle-theme'],
 };
 
 class ShellUserMenu {
@@ -50,7 +47,6 @@ class ShellUserMenu {
         signedIn: Boolean,
         admin: Boolean,
         sso: Boolean,
-        accessLocked: Boolean,
         darkTheme: Boolean,
     };
 }

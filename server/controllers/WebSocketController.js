@@ -80,12 +80,10 @@ const readOnlyActions = new Set([
 ]);
 
 class WebSocketController {
-    constructor(wss, webAccess, config, security = null) {
+    constructor(wss, config, security = null) {
         this.config = config;
         this.isDevelopment = (config.branch == 'development');
         this.security = security;
-
-        this.webAccess = webAccess;
 
         this.workerState = new WorkerState();
         this.webWorker = new WebWorker(config);
@@ -184,29 +182,6 @@ class WebSocketController {
             //pong for WebSocketConnection
             this.send({_rok: 1}, req, ws);
 
-            //access: лимит попыток проверяем до пароля, иначе заблокированный перебор всё ещё может угадать
-            if (this.security && req.accessToken && !this.webAccess.isActiveToken(req.accessToken))
-                this.security.checkLoginRate(ws.req);
-            const access = await this.webAccess.hasAccess(req.accessToken);
-            if (!access) {
-                if (this.security && req.accessToken)
-                    this.security.recordLoginAttempt(ws.req, false);
-                //задержка не держит общий слот, только слот этого соединения
-                releaseGlobalSlot();
-                await utils.sleep(500);
-                const salt = this.webAccess.newToken();
-                this.send({error: 'need_access_token', salt}, req, ws);
-                return;
-            } else if (this.security && req.accessToken && access === 1) {
-                //вход - только первый запрос с новым токеном: иначе каждый запрос сбрасывал бы счётчик неудачных попыток
-                this.security.recordLoginAttempt(ws.req, true);
-            }
-            //сессия браузера с этим токеном открывает книги и обложки по HTTP (static.js)
-            if (access !== true && req.accessToken && ws.req && ws.req.securitySession)
-                ws.req.securitySession.accessToken = req.accessToken;
-            if (access === 1 && req.accessToken)
-                this.rotateSession(req, ws);
-
             if (this.security && this.isCsrfProtectedAction(req.action) && !this.security.hasValidCsrf(ws.req, req.csrfToken)) {
                 this.send({error: 'bad_csrf_token'}, req, ws);
                 return;
@@ -219,8 +194,6 @@ class WebSocketController {
             switch (req.action) {
                 case 'test':
                     await this.test(req, ws); break;
-                case 'logout':
-                    await this.logout(req, ws); break;
                 case 'get-config':
                     await this.getConfig(req, ws); break;
                 case 'get-worker-state':
@@ -428,8 +401,7 @@ class WebSocketController {
 
             const header = name => String(req.headers[name] || '');
             const message = JSON.stringify({action, scope: String(req.query.scope || ''), uiLang: header('x-ui-lang'),
-                userId: header('x-user-id'), profileAccessToken: header('x-profile-token'), accessToken: header('x-access-token'),
-                csrfToken: header('x-csrf-token')});
+                userId: header('x-user-id'), profileAccessToken: header('x-profile-token'), csrfToken: header('x-csrf-token')});
             const run = async(uploadFile) => {
                 const responses = [];
                 const connection = {req, readyState: WebSocket.OPEN, uploadFile, uploadCheck: !uploadFile,
@@ -571,16 +543,11 @@ class WebSocketController {
         this.send({message: `${this.config.name} project is awesome`}, req, ws);
     }
 
-    async logout(req, ws) {
-        await this.webAccess.deleteAccess(req.accessToken);
-        this.send({success: true}, req, ws);
-    }
-
     async getConfig(req, ws) {
         if (req.profileLoginRequired) {
             const config = _.pick(this.config, ['name', 'version', 'branch', 'dbVersion', 'rootPathStatic']);
             Object.assign(config, {profileLoginRequired: true, profileAuthorized: false, userProfiles: [],
-                currentUserId: '', currentUserProfile: null, freeAccess: this.webAccess.freeAccess});
+                currentUserId: '', currentUserProfile: null});
             if (this.security)
                 config.csrfToken = this.security.getCsrfToken(ws.req);
             this.send(config, req, ws);
@@ -607,7 +574,6 @@ class WebSocketController {
             const names = await this.webWorker.catalogSearch.authorNames.info();
             config.catalogSearch.authorNames = {ready: names.ready, updatedAt: names.updatedAt};
         }
-        config.freeAccess = this.webAccess.freeAccess;
         const profiles = await this.webWorker.getUserProfiles(req.userId);
         const currentProfile = await this.webWorker.getCurrentUserProfile(req.userId, req.profileAccessToken);
         config.userProfiles = this.profileAccess ? this.profileAccess.filterProfiles(profiles.users, req) : profiles.users;

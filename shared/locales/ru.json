@@ -102,8 +102,6 @@
         "you": "Это вы"
     },
     "api": {
-        "accessRestricted": "Доступ ограничен",
-        "enterPassword": "Введите пароль:",
         "enterProfileLoginPassword": "Введите логин и пароль профиля:",
         "loginError": "Ошибка входа",
         "profileLogin": "Вход в профиль",
@@ -1733,8 +1731,7 @@
     "shellUserMenu": {
         "devicesOpdsAndKobo": "Устройства: OPDS и Kobo",
         "interfaceSettings": "Настройки интерфейса",
-        "lightTheme": "Светлая тема",
-        "lockTheLibrary": "Закрыть доступ к библиотеке"
+        "lightTheme": "Светлая тема"
     },
     "tastePanel": {
         "genresAndAuthorsRefine": "Жанры и авторы уточняют рекомендации. Языки книг задаются кнопкой «Языки книг» рядом с поиском."

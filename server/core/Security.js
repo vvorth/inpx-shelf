@@ -14,7 +14,6 @@ const maxLoginAttemptKeys = 10000;
 const accountFreeFailures = 5;
 const accountMaxDelayMs = 5*60*1000;
 const accountFailureWindowMs = 60*60*1000;
-const bookLinkLifetimeMs = 7*24*60*60*1000;
 const sessionRotateLifetimeMs = 60*1000;
 const maxSessionRotations = 1000;
 
@@ -257,33 +256,6 @@ class Security {
         const session = req.securitySession;
         const cookies = this.parseCookies(req.headers.cookie || '');
         return (session && this.unpackSessionId(cookies[sessionCookieName] || '') !== session.id ? this.sessionCookie(req, session) : '');
-    }
-
-    //OPDS-ссылки на книгу или обложку подписаны: при пароле доступа (accessPassword) читалка скачивает
-    //их без сессии веб-интерфейса. Ключ - uid книги или имя файла в кэше книг (первая часть пути после /book/).
-    bookLinkKey(pathname = '', uid = '') {
-        if (uid)
-            return `uid:${uid}`;
-        const prefix = `${this.config.bookPathStatic || '/book'}/`;
-        return (pathname.startsWith(prefix) ? `file:${pathname.slice(prefix.length).split('/')[0]}` : '');
-    }
-
-    signBookLink(href = '') {
-        const url = new URL(href, 'http://localhost');
-        const key = this.bookLinkKey(url.pathname, url.searchParams.get('uid') || '');
-        if (!key)
-            return href;
-        const exp = String(Date.now() + bookLinkLifetimeMs);
-        return `${href}${href.includes('?') ? '&' : '?'}exp=${exp}&sig=${this.sign(`book-link:${key}:${exp}`)}`;
-    }
-
-    hasBookLinkSignature(req) {
-        const query = req.query || {};
-        const key = this.bookLinkKey(String(req.originalUrl || '').split('?')[0], String(query.uid || ''));
-        const exp = String(query.exp || '');
-        const time = Number(exp);
-        return !!key && Number.isSafeInteger(time) && time > Date.now() && time <= Date.now() + bookLinkLifetimeMs
-            && timingSafeStringEqual(String(query.sig || ''), this.sign(`book-link:${key}:${exp}`));
     }
 
     isSecureRequest(req) {
@@ -538,9 +510,9 @@ class Security {
         return chain.pop() || (req.socket && req.socket.remoteAddress) || '';
     }
 
-    normalizeLoginKind(kind = 'access') {
-        const normalized = String(kind || 'access').trim().toLowerCase();
-        return ['profile', 'opds', 'kobo', 'kosync'].includes(normalized) ? normalized : 'access';
+    normalizeLoginKind(kind = 'profile') {
+        const normalized = String(kind || 'profile').trim().toLowerCase();
+        return ['profile', 'opds', 'kobo', 'kosync'].includes(normalized) ? normalized : 'profile';
     }
 
     loginAttemptKey(req, kind) {
@@ -548,7 +520,7 @@ class Security {
         return `${this.normalizeLoginKind(kind)}:${loginAddress(this.clientIp(req)) || 'unknown'}`;
     }
 
-    incrementLoginMetric(kind = 'access', result = 'failure') {
+    incrementLoginMetric(kind = 'profile', result = 'failure') {
         const key = `${this.normalizeLoginKind(kind)}\t${String(result || 'failure').toLowerCase()}`;
         this.loginAttemptTotals.set(key, (this.loginAttemptTotals.get(key) || 0) + 1);
     }
@@ -563,7 +535,7 @@ class Security {
         this.lastLoginAttemptSweep = now;
     }
 
-    checkLoginRate(req, kind = 'access') {
+    checkLoginRate(req, kind = 'profile') {
         if (this.config.loginRateLimitEnabled === false)
             return;
 
@@ -587,19 +559,15 @@ class Security {
         }
     }
 
-    recordLoginAttempt(req, success = false, kind = 'access') {
+    recordLoginAttempt(req, success = false, kind = 'profile') {
         const ip = this.loginAttemptKey(req, kind);
         this.incrementLoginMetric(kind, success ? 'success' : 'failure');
         if (this.config.loginRateLimitEnabled === false)
             return;
 
-        if (success) {
-            // Only the shared access password is one secret. Logging in to a known profile must
-            // not erase failures against other profiles (the admin's among them).
-            if (this.normalizeLoginKind(kind) === 'access')
-                this.loginAttempts.delete(ip);
+        // Logging in to a known profile must not erase failures against other profiles (the admin's among them).
+        if (success)
             return;
-        }
 
         const now = Date.now();
         this.pruneLoginAttempts(now);
@@ -672,7 +640,7 @@ class Security {
         }
 
         const attempts = [];
-        for (const kind of ['access', 'profile', 'opds', 'kobo', 'kosync']) {
+        for (const kind of ['profile', 'opds', 'kobo', 'kosync']) {
             for (const result of ['success', 'failure', 'blocked']) {
                 attempts.push({
                     labels: {kind, result},

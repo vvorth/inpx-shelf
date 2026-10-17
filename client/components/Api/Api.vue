@@ -35,7 +35,6 @@ import vueComponent from '../vueComponent.js';
 
 import wsc from './webSocketConnection';
 import * as utils from '../../share/utils';
-const {sha256Hex} = require('../../../shared/sha256');
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
 import {t, tm, getLang} from '../../share/i18n';
@@ -98,11 +97,9 @@ class Api {
         clearTimeout(this.restoredTimer);
     }
 
-    //доступ к библиотеке и профиль - в каждом запросе
+    //профиль - в каждом запросе
     withAuth(params) {
-        const {accessToken, currentUserId, profileAccessToken} = this.settings;
-        if (accessToken)
-            params.accessToken = accessToken;
+        const {currentUserId, profileAccessToken} = this.settings;
         if (currentUserId)
             params.userId = currentUserId;
         if (profileAccessToken)
@@ -244,38 +241,6 @@ class Api {
         return this.$route.path === '/login';
     }
 
-    async showPasswordDialog() {
-        try {
-            await this.lock.get();//заход только один раз, остальные ждут закрытия диалога
-        } catch (e) {
-            return;
-        }
-
-        try {
-            const result = await this.$root.stdDialog.password(t('api.enterPassword'), t('api.accessRestricted'), {
-                inputValidator: (str) => (str ? true : t('common.passwordRequired')),
-                userName: 'access',
-                noEscDismiss: true,
-                noBackdropDismiss: true,
-                noCancel: true,
-            });
-
-            if (result && result.value) {
-                //получим свежую соль; запрос без action сервер отклоняет
-                const response = await wsc.message(await wsc.send({action: 'test'}), 10);
-                let salt = '';
-                if (response && response.error == 'need_access_token' && response.salt)
-                    salt = response.salt;
-
-                const accessToken = sha256Hex(result.value + salt);
-                this.commit('setSettings', {accessToken});
-            }
-        } finally {
-            this.lock.errAll();
-            this.lock.ret();
-        }
-    }
-
     async showBusyDialog() {
         try {
             await this.lock.get();//заход только один раз, остальные ждут закрытия диалога
@@ -321,11 +286,9 @@ class Api {
     //Файл для импорта - HTTP-запросом (POST /upload): сервер пишет его на диск и проверяет доступ так же, как у WebSocket
     async upload(action, file, query = {}) {
         for (let attempt = 0; ; attempt++) {
-            const {accessToken, currentUserId, profileAccessToken} = this.settings;
+            const {currentUserId, profileAccessToken} = this.settings;
             const config = this.$store.state.config;
             const headers = {'Content-Type': 'application/octet-stream', 'X-Ui-Lang': getLang()};
-            if (accessToken)
-                headers['X-Access-Token'] = accessToken;
             if (currentUserId)
                 headers['X-User-Id'] = currentUserId;
             if (profileAccessToken)
@@ -376,10 +339,7 @@ class Api {
                 this.connectionRestored();
                 await this.rotateSession(response);
 
-                if (response && response.error == 'need_access_token') {
-                    this.accessGranted = false;
-                    await this.showPasswordDialog();
-                } else if (response && response.error == 'need_profile_login') {
+                if (response && response.error == 'need_profile_login') {
                     if (options.suppressProfileLogin)
                         throw new Error('need_profile_login');
                     if (this.profileLoginPromise) {
@@ -733,23 +693,6 @@ class Api {
 
     async getConfig() {
         return await this.request({action: 'get-config'});
-    }
-
-    async logout() {
-        if (this.$store.state.config.profileAuthorized) {
-            try {
-                await this.logoutUserProfile();
-            } catch (e) {
-                // Ignore profile session cleanup errors during global logout.
-            }
-        }
-        await this.request({action: 'logout'});
-        this.commit('setSettings', {
-            currentUserId: '',
-            profileAccessToken: '',
-        });
-        this.accessGranted = false;
-        await this.request({action: 'test'});
     }
 
     //Вход в профиль: в читалке - диалогом поверх книги, в остальном приложении - страницей /login.

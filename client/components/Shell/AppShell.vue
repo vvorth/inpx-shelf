@@ -65,11 +65,9 @@
                             :signed-in="signedIn"
                             :admin="admin"
                             :sso="sso"
-                            :access-locked="!config.freeAccess"
                             :dark-theme="darkTheme"
                             @sign-in="signIn"
                             @sign-out="signOut"
-                            @leave-library="leaveLibrary"
                             @toggle-theme="toggleTheme"
                         />
                     </q-menu>
@@ -347,10 +345,6 @@ class AppShell {
         await this.$root.api.signOutProfile();
         if (this.$route.meta && ['me', 'admin'].includes(this.$route.meta.section))
             this.$router.push(this.catalogPath);
-    }
-
-    async leaveLibrary() {
-        await this.$root.api.logout();
     }
 }
 

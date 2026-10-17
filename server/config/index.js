@@ -30,8 +30,6 @@ const propsToSave = [
     'inpxFilterFile',
     'allowConfigRewrite',
     'allowUnsafeFilter',
-    'accessPassword',
-    'accessTimeout',
     'bookReadLink',
     'loggingEnabled',
     'logServerStats',

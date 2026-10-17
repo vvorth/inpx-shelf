@@ -601,53 +601,6 @@ async function testWriteActionsNeedCsrf() {
         assert.strictEqual(isProtected(action), false, action);
 }
 
-// Every request without the access password gets a salt: unused ones are capped and never written to disk.
-async function testUnusedAccessTokensAreCapped() {
-    const WebAccess = require('../server/core/WebAccess');
-    const saved = [];
-    const webAccess = Object.assign(Object.create(WebAccess.prototype),
-        {config: {accessPassword: 'secret'}, freeAccess: false, accessTimeout: 0, accessMap: new Map(),
-            db: {putAccess: token => saved.push(token), deleteAccess() {}}});
-    webAccess.accessMap.set('signed-in', {time: Date.now(), used: 3});
-    for (let i = 0; i < WebAccess.maxUnusedTokens + 50; i++)
-        webAccess.newToken();
-    assert.strictEqual(webAccess.accessMap.size, WebAccess.maxUnusedTokens);
-    assert.ok(webAccess.accessMap.has('signed-in'), 'a signed-in token is never pushed out');
-    const sleep = require('../server/core/utils').sleep;
-    require('../server/core/utils').sleep = () => Promise.reject(new Error('stop'));
-    try {
-        await webAccess.periodicClean().catch(() => {});
-    } finally {
-        require('../server/core/utils').sleep = sleep;
-    }
-    assert.deepStrictEqual(saved, ['signed-in']);
-}
-
-// A client over the login limit must not get in even with the right access password.
-async function testAccessPasswordLimitBlocksCorrectGuess() {
-    const Controller = require('../server/controllers/WebSocketController');
-    const WebAccess = require('../server/core/WebAccess');
-    const config = {accessPassword: 'secret', loginRateLimitMaxAttempts: 2};
-    const webAccess = Object.assign(Object.create(WebAccess.prototype),
-        {config, freeAccess: false, accessTimeout: 0, accessMap: new Map(), db: {putAccess() {}}});
-    const controller = Object.assign(Object.create(Controller.prototype), {config, webAccess, security: new Security(config), activeRequests: 0});
-    controller.test = async(req, ws) => controller.send({ok: true}, req, ws);
-    const sent = [];
-    const ws = {readyState: 1, req: {headers: {}, socket: {remoteAddress: '192.0.2.1'}}, send: message => sent.push(JSON.parse(message))};
-    const call = async(accessToken) => {
-        sent.length = 0;
-        await controller.processMessage(ws, JSON.stringify({action: 'test', accessToken}));
-        return sent.find(message => !message._rok);
-    };
-    for (let i = 0; i < 2; i++)
-        assert.strictEqual((await call('wrong')).error, 'need_access_token');
-    const token = require('../server/core/utils').getBufHash(`secret${webAccess.newToken()}`, 'sha256', 'hex');
-    assert.match((await call(token)).error, /Too many login attempts/);
-    assert.strictEqual(webAccess.isActiveToken(token), false, 'A blocked guess must not activate the token');
-    controller.security.loginAttempts.clear();
-    assert.strictEqual((await call(token)).ok, true);
-}
-
 // Anonymous callers of /api/index-status see only the indexing progress; WebSocket errors and the book cache keep server paths.
 async function testServerDetailsStayPrivate() {
     await temporary(async(dir) => {
@@ -685,7 +638,7 @@ async function testServerDetailsStayPrivate() {
         }
 
         const Controller = require('../server/controllers/WebSocketController');
-        const controller = Object.assign(Object.create(Controller.prototype), {config, webAccess: {hasAccess: async() => true}, activeRequests: 0});
+        const controller = Object.assign(Object.create(Controller.prototype), {config, activeRequests: 0});
         controller.webWorker = {getBookLink: async() => { throw new Error(`archive not found: ${config.libDir}/fb2-000001.zip`); }};
         const sent = [];
         const ws = {readyState: 1, req: {headers: {}}, send: message => sent.push(JSON.parse(message))};
@@ -747,21 +700,20 @@ async function testLoginLimiterKeysIpv6PrefixAndEvictsOldest() {
 
     security.loginAttempts.clear();
     for (let i = 0; i < 10000; i++)
-        security.recordLoginAttempt(from(`10.${i >> 16 & 255}.${i >> 8 & 255}.${i & 255}`), false, 'access');
-    security.recordLoginAttempt(from('10.0.0.0'), false, 'access');//the first one fails again: no longer the oldest
+        security.recordLoginAttempt(from(`10.${i >> 16 & 255}.${i >> 8 & 255}.${i & 255}`), false, 'opds');
+    security.recordLoginAttempt(from('10.0.0.0'), false, 'opds');//the first one fails again: no longer the oldest
     security.checkLoginRate(from('192.0.2.200'));
     security.recordLoginAttempt(from('192.0.2.200'), false);
     assert.strictEqual(security.loginAttempts.size, 10000);
-    assert.ok(security.loginAttempts.has('access:192.0.2.200') && security.loginAttempts.has('access:10.0.0.0'));
-    assert.ok(!security.loginAttempts.has('access:10.0.0.1'), 'The oldest entry goes');
+    assert.ok(security.loginAttempts.has('profile:192.0.2.200') && security.loginAttempts.has('opds:10.0.0.0'));
+    assert.ok(!security.loginAttempts.has('opds:10.0.0.1'), 'The oldest entry goes');
 }
 
-// The server-wide request cap rejects one message and keeps the socket; throttled guesses do not hold its slots.
+// The server-wide request cap rejects one message and keeps the socket.
 async function testWebSocketCapRejectsMessageNotSocket() {
     const WebSocket = require('ws');
     const Controller = require('../server/controllers/WebSocketController');
-    const controller = Object.assign(Object.create(Controller.prototype), {config: {}, activeRequests: 0,
-        webAccess: {hasAccess: async token => token === 'open', isActiveToken: () => true, newToken: () => 'salt'}});
+    const controller = Object.assign(Object.create(Controller.prototype), {config: {}, activeRequests: 0});
     let release;
     const gate = new Promise(resolve => release = resolve);
     controller.test = async(req, ws) => {
@@ -795,31 +747,19 @@ async function testWebSocketCapRejectsMessageNotSocket() {
     });
     try {
         const reader = await open();
-        //поток неверных токенов: 8 соединений по 8 запросов ждут задержку, но общий лимит свободен
-        const guesses = [];
-        for (let i = 0; i < 8; i++) {
-            const socket = await open();
-            for (let j = 0; j < 8; j++)
-                guesses.push(answer(socket, j + 1, {accessToken: 'wrong'}));
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-        assert.strictEqual(controller.activeRequests, 0, 'Throttled guesses hold no server-wide slot');
-        assert.strictEqual((await answer(reader, 1, {accessToken: 'open'})).ok, true);
-        assert.ok((await Promise.all(guesses)).every(message => message.error === 'need_access_token'));
-
         const held = [];
         for (let i = 0; i < 8; i++) {
             const socket = await open();
             for (let j = 0; j < 8; j++)
-                held.push(answer(socket, j + 1, {accessToken: 'open', hold: true}));
+                held.push(answer(socket, j + 1, {hold: true}));
         }
         while (controller.activeRequests < 64)
             await new Promise(resolve => setTimeout(resolve, 10));
-        assert.strictEqual((await answer(reader, 2, {accessToken: 'open'})).error, 'too_many_requests');
+        assert.strictEqual((await answer(reader, 2)).error, 'too_many_requests');
         assert.strictEqual(reader.readyState, WebSocket.OPEN, 'The socket stays open');
         release();
         await Promise.all(held);
-        assert.strictEqual((await answer(reader, 3, {accessToken: 'open'})).ok, true);
+        assert.strictEqual((await answer(reader, 3)).ok, true);
     } finally {
         release();
         for (const socket of sockets)
@@ -834,7 +774,7 @@ async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
     const runtimeMetrics = require('../server/core/RuntimeMetrics');
     const logger = new (require('../server/core/AppLogger'))().logger;
     const config = {logQueries: true};
-    const controller = Object.assign(Object.create(Controller.prototype), {config, webAccess: {hasAccess: async() => true}, activeRequests: 0});
+    const controller = Object.assign(Object.create(Controller.prototype), {config, activeRequests: 0});
     controller.test = async(req, ws) => controller.send({ok: true, profileAccessToken: 'OUT_SECRET'}, req, ws);
     const ws = {readyState: 1, req: {headers: {}}, send() {}};
     const lines = [];
@@ -878,7 +818,7 @@ async function testGunzipBufferIsBounded() {
 module.exports = [
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
-    testAccessPasswordLimitBlocksCorrectGuess, testUnusedAccessTokensAreCapped, testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
+    testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
