@@ -17,10 +17,6 @@ class ProfileAccess {
         this.security = security;
     }
 
-    get loginRequired() {
-        return this.config.allowAnonymousAccess === false;
-    }
-
     get bindingEnabled() {
         return this.config.proxyBindProfile === true && String(this.config.authMode || '').trim().toLowerCase() === 'proxy';
     }
@@ -75,10 +71,9 @@ class ProfileAccess {
     async prepareWebSocket(req, socketRequest) {
         delete req.profileBoundId;
         delete req.profileLoginRequired;
-        if (!this.loginRequired && !this.bindingEnabled && !(socketRequest.securitySession && socketRequest.securitySession.proxyProfileUserId))
-            return;
+        // Anonymous access is not configurable: every action except the login bootstrap needs a profile.
         const identity = await this.resolve(socketRequest, req.profileAccessToken);
-        if (identity && (identity.bound || this.loginRequired)) {
+        if (identity) {
             if (!['get-config', 'get-user-profiles', 'logout-user-profile'].includes(req.action))
                 this.assertProfile(identity, String(req.userId || '').trim());
             if (identity.bound && req.action === 'login-user-profile')
@@ -91,9 +86,9 @@ class ProfileAccess {
             req.profileAccessToken = identity.token;
             req.profileBoundId = identity.bound ? identity.user.id : '';
         }
-        if (this.loginRequired && !identity && !bootstrapActions.has(req.action))
+        if (!identity && !bootstrapActions.has(req.action))
             throw denied();
-        req.profileLoginRequired = this.loginRequired && !identity;
+        req.profileLoginRequired = !identity;
     }
 
     filterProfiles(users, req) {
@@ -127,24 +122,20 @@ class ProfileAccess {
 
     httpGuard(opds = false) {
         return async(req, res, next) => {
-            if (!this.loginRequired && !this.bindingEnabled)
-                return next();
             try {
-                let identity = await this.resolve(req);
-                if (!identity && this.loginRequired)
-                    identity = await this.basicIdentity(req);
-                if (!identity && this.loginRequired) {
+                const identity = (await this.resolve(req)) || (await this.basicIdentity(req));
+                if (!identity) {
                     res.set('WWW-Authenticate', 'Basic realm="inpx-shelf OPDS", charset="UTF-8"');
                     throw denied('Authentication required');
                 }
-                if (identity && identity.user && (identity.bound || this.loginRequired)) {
+                if (identity.user) {
                     this.assertProfile(identity, String((req.query && req.query.user) || '').trim());
                     req.profileAccessIdentity = identity;
                     if (opds) {
                         req.query.user = identity.user.id;
                         req.opdsAuthorized = true;
                     }
-                } else if (identity && identity.opds) {
+                } else if (identity.opds) {
                     req.opdsAuthorized = true;
                 }
                 next();

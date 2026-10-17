@@ -587,7 +587,7 @@ class WebSocketController {
             return;
         }
         const config = _.pick(this.config, this.config.webConfigParams);
-        config.profileLoginRequired = this.config.allowAnonymousAccess === false;
+        config.profileLoginRequired = true;
         config.profileBoundId = req.profileBoundId || '';
         config.librarySources = (Array.isArray(this.config.librarySources) ? this.config.librarySources : []).map(source => ({
             id: source.id || '',

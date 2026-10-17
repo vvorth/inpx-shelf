@@ -406,11 +406,7 @@ class Security {
     }
 
     isMetricsAuthExempt(req) {
-        return !!(
-            this.config.metricsEnabled
-            && this.isMetricsPath(req)
-            && (this.config.metricsExemptAuth === true || this.hasValidMetricsToken(req))
-        );
+        return !!(this.config.metricsEnabled && this.isMetricsPath(req) && this.hasValidMetricsToken(req));
     }
 
     verifyRequiredAuth(req) {

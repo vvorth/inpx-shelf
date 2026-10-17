@@ -101,7 +101,6 @@
 
     // обязательная авторизация всего приложения; режим proxy рассчитан на SWAG/nginx + Authelia/Authentik
     "requireAuth": false,
-    "allowAnonymousAccess": true,
     "proxyBindProfile": false,
     "authMode": "local",
     "trustProxy": false,
@@ -109,11 +108,10 @@
     "trustedProxyCidrs": [],
     "authExemptHealth": true,
 
-    // экспорт Prometheus-метрик
+    // экспорт Prometheus-метрик; без metricsToken /metrics закрыт
     "metricsEnabled": false,
     "metricsPath": "/metrics",
     "metricsToken": "",
-    "metricsExemptAuth": false,
 
     // максимальный размер в байтах директории книжного кэша в <раб.дир>/public-files
     // можно задать через INPX_BOOK_CACHE_SIZE_MB; maxFilesDirSize оставлен для совместимости

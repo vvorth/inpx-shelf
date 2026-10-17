@@ -120,19 +120,6 @@ async function buildMetrics(config, webWorker, security = null, webSocketControl
     return lines.join('\n');
 }
 
-function metricsAuthorized(req, config, security) {
-    if (!security)
-        return !config.metricsToken;
-
-    if (security.hasValidMetricsToken(req))
-        return true;
-
-    if (config.metricsToken)
-        return false;
-
-    return true;
-}
-
 async function indexStatusDetailsAllowed(req, webWorker, security) {
     if (!security)
         return false;
@@ -200,7 +187,8 @@ module.exports = function initHealthRoutes(app, config, webWorker, security = nu
             return;
         }
 
-        if (!metricsAuthorized(req, config, security)) {
+        //без метрик-токена /metrics закрыт: анонимного доступа нет
+        if (!security || !security.hasValidMetricsToken(req)) {
             res.status(401).send('Metrics token required');
             return;
         }

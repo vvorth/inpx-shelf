@@ -19,8 +19,6 @@ let branch = '';
 const argvStrings = ['host', 'port', 'config', 'data-dir', 'app-dir', 'lib-dir', 'inpx', 'library-sources', 'admin-login', 'admin-password'];
 
 function applyEnvSecurityOverrides(targetConfig) {
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_ALLOW_ANONYMOUS_ACCESS'))
-        targetConfig.allowAnonymousAccess = process.env.INPX_ALLOW_ANONYMOUS_ACCESS !== 'false';
     if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_PROXY_BIND_PROFILE'))
         targetConfig.proxyBindProfile = process.env.INPX_PROXY_BIND_PROFILE === 'true';
     for (const [field, variable] of Object.entries({
@@ -54,8 +52,6 @@ function applyEnvSecurityOverrides(targetConfig) {
         targetConfig.metricsPath = process.env.INPX_METRICS_PATH;
     if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_TOKEN'))
         targetConfig.metricsToken = process.env.INPX_METRICS_TOKEN || '';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_EXEMPT_AUTH'))
-        targetConfig.metricsExemptAuth = process.env.INPX_METRICS_EXEMPT_AUTH === 'true';
     if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_LOGIN_RATE_LIMIT_ENABLED'))
         targetConfig.loginRateLimitEnabled = process.env.INPX_LOGIN_RATE_LIMIT_ENABLED !== 'false';
 }
@@ -297,6 +293,7 @@ async function main() {
     server.listen(config.server.port, config.server.host, () => {
         config.server.ready = true;
         log(`Server accessible at http://127.0.0.1:${config.server.port} (listening on ${config.server.host}:${config.server.port})`);
+        log(require('./core/ExposedPaths').exposedPathsText(config));
     });
 }
 

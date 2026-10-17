@@ -7,10 +7,7 @@
                         {{ $t('admin.users') }}
                     </h2>
                     <div class="card-hint">
-                        {{ config.profileLoginRequired
-                            ? $t('adminUsers.guestAccessIsOff')
-                            : $t('adminUsers.guestAccessIsOn') }}
-                        {{ $t('adminUsers.setItWithThe') }}
+                        {{ $t('adminUsers.guestAccessIsOff') }}
                     </div>
                 </div>
                 <q-btn color="primary" unelevated no-caps icon="la la-user-plus" @click="toggleCreate">

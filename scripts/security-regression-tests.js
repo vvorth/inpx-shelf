@@ -444,12 +444,14 @@ async function testMetricsReuseDirectorySizes() {
     const worker = {config: {}, adminEvents: [], catalogSearch: {file: 'library.sqlite'}, getIndexStatus: async() => ({}),
         dirSize: async() => { walks++; return {size: 1, files: 1}; }};
     const app = require('express')();
-    require('../server/core/HealthRoutes')(app, {metricsEnabled: true, server: {}}, worker);
+    const config = {metricsEnabled: true, metricsToken: 'metrics-fixture', server: {}};
+    require('../server/core/HealthRoutes')(app, config, worker, new Security(config));
     const server = http.createServer(app);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     try {
+        assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/metrics`)).status, 401, 'No anonymous scrape');
         for (let i = 0; i < 3; i++) {
-            const res = await fetch(`http://127.0.0.1:${server.address().port}/metrics`);
+            const res = await fetch(`http://127.0.0.1:${server.address().port}/metrics`, {headers: {authorization: 'Bearer metrics-fixture'}});
             assert.match(await res.text(), /inpx_web_cover_cache_files 1/);
         }
         assert.strictEqual(walks, 3, 'One walk per directory');
@@ -655,6 +657,7 @@ async function testServerDetailsStayPrivate() {
         const worker = {getIndexStatus: async() => ({ready: true, state: 'normal', progress: 1, sources: [{id: 'a', name: 'Private shelf'}],
             inpxInfo: {collection: 'Private collection'}, stats: {bookCount: 5}, inpxFileHash: 'hash'}),
         getProfileSessionUser: token => (token === 'admin-token' ? 'admin' : ''),
+        readingListStore: {load: async() => ({users: [{id: 'admin', isAdmin: true}]})},
         requireAdmin: async(userId) => { if (userId !== 'admin') throw new Error('not admin'); }};
         await fs.outputFile(path.join(config.bookDir, 'abcdef.d.json'), JSON.stringify({sourceLibDir: config.libDir}));
         const app = require('express')();
@@ -674,7 +677,8 @@ async function testServerDetailsStayPrivate() {
             assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo, undefined, 'Not signed in');
             session.profileAccessToken = 'admin-token';
             assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo.collection, 'Private collection');
-            assert.strictEqual((await get('/book/abcdef.d.json')).status, 404);
+            assert.strictEqual((await get('/book/abcdef.d.json')).status, 401, 'No anonymous books');
+            assert.strictEqual((await get('/book/abcdef.d.json', {cookie})).status, 404);
         } finally {
             await new Promise(resolve => server.close(resolve));
         }

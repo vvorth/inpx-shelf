@@ -16,7 +16,7 @@ The catalog is built for self-hosted libraries, with a focus on large `.7z` / `.
 Key features:
 
 * runs in Docker and Proxmox LXC, handles large `.7z` / `.zip` / `fLibrary` collections, converts books with fb2cng and MuPDF
-* personal shelves on the home page (`Continue reading`, `From your lists`, `Unfinished series`, `Similar to what you read`), new books and genres for everyone including guests, and an external discovery tab
+* personal shelves on the home page (`Continue reading`, `From your lists`, `Unfinished series`, `Similar to what you read`), new books and genres, and an external discovery tab
 * catalog with book, series and author cards, covers, links between related books, authors and series, and an extended `fb2 info` section
 * search can group editions of the same work (re-uploads, other formats) into one card; the book page lists the other editions
 * a book opened from the catalog, shelves or lists appears in a window over the page: `Back` or `Esc` closes it and returns to the same place; a direct `/#/book/...` link opens the full book page

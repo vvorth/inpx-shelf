@@ -71,8 +71,10 @@ async function fixture(options, test) {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     const request = (url, headers = {}) => fetch(base + url, {headers, redirect: 'manual'});
-    const session = () => {
+    const session = (userId = '') => {
         const value = security.ensureSession({headers: {}});
+        if (userId)
+            value.profileAccessToken = worker.createProfileSession(userId);
         return {value, cookie: `inpx_web_session=${security.packSessionId(value.id)}`};
     };
     //cookie после входа: POST /session/rotate с токеном из ответа на вход, как в Api.vue
@@ -133,7 +135,8 @@ async function testProxyHeaderRequiredWithOldCookie() {
 }
 
 async function testAnonymousAccessDisabledHttpAndWebSocket() {
-    await fixture({allowAnonymousAccess: false}, async({worker, alice, bob, request, session, connect, rotate}) => {
+    //the removed allowAnonymousAccess switch must not open anything
+    await fixture({allowAnonymousAccess: true}, async({worker, alice, bob, request, session, connect, rotate}) => {
         assert.strictEqual((await request('/')).status, 200, 'Login shell stays reachable');
         for (const url of ['/book/fixture.txt', '/cover/by-uid?uid=x', '/opds'])
             assert.strictEqual((await request(url)).status, 401, url);
@@ -222,25 +225,18 @@ async function testProxyProfileBindingAndIdentityChange() {
             assert.strictEqual((await request('/admin-backups/fixture.zip', adminHeaders)).status, 200);
             const unknownCall = await connect({...headers, 'Remote-User': 'unmapped'});
             const legacy = await unknownCall({action: 'get-config', userId: bob.id});
-            assert.strictEqual(legacy.profileBoundId, '');
-            assert.strictEqual(legacy.currentUserId, bob.id, 'Unmapped SSO user keeps legacy selection');
+            assert.deepStrictEqual([legacy.profileLoginRequired, legacy.currentUserId], [true, ''], 'Unmapped SSO user must log in');
             assert.strictEqual(browser.value.proxyProfileUserId, undefined);
             await worker.deleteUserProfile(alice.id);
             const removed = await call({action: 'get-config', userId: bob.id});
-            assert.strictEqual(removed.profileBoundId, '');
+            assert.deepStrictEqual([removed.profileLoginRequired, removed.currentUserId], [true, '']);
             config.proxyBindProfile = false;
             assert.strictEqual((await request('/')).status, 200);
         });
 }
 
-async function testLegacyAccessAndGlobalOpdsCredentials() {
-    await fixture({}, async({request, connect, bob}) => {
-        assert.strictEqual((await request('/book/fixture.txt')).status, 200);
-        assert.strictEqual((await request('/opds')).status, 200);
-        const call = await connect();
-        assert.strictEqual((await call({action: 'get-config', userId: bob.id})).currentUserId, bob.id);
-    });
-    await fixture({allowAnonymousAccess: false, opds: {enabled: true, user: 'catalog', password: 'opds-fixture'}}, async({request}) => {
+async function testGlobalOpdsCredentials() {
+    await fixture({opds: {enabled: true, user: 'catalog', password: 'opds-fixture'}}, async({request}) => {
         const headers = {authorization: 'Basic ' + Buffer.from('catalog:opds-fixture').toString('base64')};
         assert.strictEqual((await request('/opds', headers)).status, 200);
         assert.strictEqual((await request('/book/fixture.txt', headers)).status, 200, 'OPDS readers can download acquisitions');
@@ -250,12 +246,13 @@ async function testLegacyAccessAndGlobalOpdsCredentials() {
 
 // Profile lookups fall back to the admin: an unknown or OPDS-disabled ?user= must not reach its lists.
 async function testOpdsScopeNeedsAnOpdsProfile() {
-    await fixture({}, async({worker, bob, request}) => {
+    await fixture({opds: {enabled: true, user: 'catalog', password: 'opds-fixture'}}, async({worker, bob, request}) => {
+        const headers = {authorization: 'Basic ' + Buffer.from('catalog:opds-fixture').toString('base64')};
         const store = worker.readingListStore;
         const admin = (await store.load()).users.find(user => user.isAdmin);
         const adminList = await store.createList(admin.id, 'Admin OPDS list', 'opds');
         const bobList = await store.createList(bob.id, 'Bob OPDS list', 'opds');
-        const list = (user, id) => request(`/opds/reading-lists/list?user=${encodeURIComponent(user)}&id=${encodeURIComponent(id)}`);
+        const list = (user, id) => request(`/opds/reading-lists/list?user=${encodeURIComponent(user)}&id=${encodeURIComponent(id)}`, headers);
         assert.strictEqual((await list('no-such-user', adminList.id)).status, 404);
         assert.strictEqual((await list(admin.id, adminList.id)).status, 404, 'OPDS is off for the admin');
         assert.strictEqual((await list(bob.id, bobList.id)).status, 200);
@@ -265,7 +262,7 @@ async function testOpdsScopeNeedsAnOpdsProfile() {
     });
 }
 
-// A profile with a password stays out of OPDS for everyone but itself (its Basic login or web session) and an admin.
+// OPDS shows a signed-in viewer only its own profile: other profiles' lists are refused, password profiles stay hidden.
 async function testOpdsHidesPasswordProfiles() {
     await fixture({}, async({worker, alice, bob, request, session}) => {
         const store = worker.readingListStore;
@@ -276,36 +273,28 @@ async function testOpdsHidesPasswordProfiles() {
         await store.updateReaderProgress(carol.id, 'book:1', {percent: 0.5});
         const list = (user, headers) => request(`/opds/reading-lists/list?user=${user.login}&id=${lists[user.id].id}`, headers);
 
-        const anonymous = await (await request('/opds/reading-profiles')).text();
-        assert.ok(anonymous.includes('Bob') && !anonymous.includes('Alice') && !anonymous.includes('Carol'), anonymous);
-        assert.strictEqual((await list(bob)).status, 200);
-        assert.strictEqual((await list(carol)).status, 404, 'No OPDS auth: hidden, not open');
-        assert.strictEqual((await request(`/opds?user=${carol.id}&state=all`)).status, 404);
-        assert.strictEqual((await list(alice)).status, 401);
+        assert.strictEqual((await list(bob)).status, 401, 'No anonymous OPDS');
+        const asBob = await (await request('/opds/reading-profiles', {cookie: session(bob.id).cookie})).text();
+        assert.ok(asBob.includes('Bob') && !asBob.includes('Alice') && !asBob.includes('Carol'), asBob);
 
         const aliceBasic = {authorization: 'Basic ' + Buffer.from('alice:alice-fixture').toString('base64')};
         assert.strictEqual((await list(alice, aliceBasic)).status, 200);
+        assert.strictEqual((await list(carol, aliceBasic)).status, 403, 'Another profile');
         const asAlice = await (await request('/opds/reading-profiles?user=alice', aliceBasic)).text();
         assert.ok(asAlice.includes('Alice') && !asAlice.includes('Carol'), asAlice);
         const carolBasic = {authorization: 'Basic ' + Buffer.from('carol:carol-fixture').toString('base64')};
-        assert.strictEqual((await list(carol, carolBasic)).status, 404, 'Basic login needs opdsAuthEnabled');
+        assert.strictEqual((await list(carol, carolBasic)).status, 401, 'Basic login needs opdsAuthEnabled');
 
-        const browser = session();
-        browser.value.profileAccessToken = worker.createProfileSession(alice.id);
-        assert.strictEqual((await list(carol, {cookie: browser.cookie})).status, 404, 'Another reader');
-        browser.value.profileAccessToken = worker.createProfileSession(carol.id);
-        assert.strictEqual((await list(carol, {cookie: browser.cookie})).status, 200, 'Own web session');
-        browser.value.profileAccessToken = worker.createProfileSession('admin');
-        assert.strictEqual((await list(carol, {cookie: browser.cookie})).status, 200, 'Admin');
-        assert.ok((await (await request('/opds/reading-profiles', {cookie: browser.cookie})).text()).includes('Carol'));
+        assert.strictEqual((await list(carol, {cookie: session(alice.id).cookie})).status, 401, 'Another reader');
+        assert.strictEqual((await list(carol, {cookie: session(carol.id).cookie})).status, 200, 'Own web session');
     });
 }
 
-// Anyone can open a profile without a password: only an admin gives it credentials. Own password needs the current one.
+// A profile without a password (reached through an SSO binding): only an admin gives it credentials. Own password needs the current one.
 async function testOpenProfileCredentialsAdminOnly() {
-    await fixture({kosyncEnabled: true}, async({worker, alice, bob, connect}) => {
+    await fixture({kosyncEnabled: true}, async({worker, alice, bob, connect, session}) => {
         worker.koboService = {createDevice: async() => ({device: {}}), regenerateToken: async() => ({device: {}})};
-        const call = await connect();
+        const call = await connect({cookie: session(bob.id).cookie});
         const {csrfToken} = await call({action: 'get-config'});
         const asBob = {userId: bob.id, csrfToken};
         const update = (profile, as = asBob, targetUserId = bob.id) => call({action: 'update-user-profile', targetUserId, profile, ...as});
@@ -337,7 +326,7 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     const options = {emailShareEnabled: true, smtpHost: '127.0.0.1', telegramShareEnabled: true, telegramBotToken: 'test', deliveryRateLimit: 2};
     await fixture(options, async({worker, alice, bob, connect, session, base}) => {
         worker.getPreparedBookFile = async() => { throw new Error('PREPARE_STUB'); };
-        const call = await connect();
+        const call = await connect({cookie: session(bob.id).cookie});
         const {csrfToken} = await call({action: 'get-config'});
         const update = (targetUserId, profile, as) => call({action: 'update-user-profile', targetUserId, profile, ...as});
         const asBob = {userId: bob.id, csrfToken};
@@ -359,7 +348,7 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
             assert.match((await call({action, bookUid: 'book', ...asAlice})).error, /2 per hour|2 в час/, action);
 
         //a profile backup imported into an open profile brings no delivery addresses (nor Kobo tokens)
-        const browser = session();
+        const browser = session(bob.id);
         const imported = await fetch(`${base}/upload?action=import-reading-lists`, {method: 'POST', body: JSON.stringify({lists: [],
             user: {emailTo: 'relay@example.test', telegramChatId: '42'}, kobo: {devices: []}}),
         headers: {cookie: browser.cookie, 'x-csrf-token': browser.value.csrfToken, 'x-user-id': bob.id}});
@@ -374,47 +363,33 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     });
 }
 
-// With accessPassword, books and covers need the browser session that entered it, a remote library's token,
-// a signed OPDS link or OPDS credentials.
+// Books and covers need a profile login on top of the access password: neither the entered password,
+// a remote library's token nor a signed OPDS link opens them alone.
 async function testAccessPasswordGuardsBooksAndCovers() {
-    await fixture({accessPassword: 'secret'}, async({config, worker, security, request, session, connect, rotate}) => {
+    await fixture({accessPassword: 'secret'}, async({worker, security, alice, request, session, connect, rotate, base}) => {
         worker.getBookLink = async() => ({link: '/book/fixture.txt'});
         for (const url of ['/book/fixture.txt', '/book/by-uid?uid=u1', '/cover/by-uid?uid=u1'])
             assert.strictEqual((await request(url)).status, 401, url);
         const browser = session();
         const call = await connect({cookie: browser.cookie});
         const {salt} = await call({action: 'test'});
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'Not entered yet');
         const accessToken = require('../server/core/utils').getBufHash(`secret${salt}`, 'sha256', 'hex');
         const entered = await call({action: 'test', accessToken});
         assert.ok(entered.message);
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'The cookie from before the password');
-        assert.strictEqual((await call({action: 'test', accessToken})).sessionRotateToken, undefined, 'Only the first request is a login');
         browser.cookie = (await rotate(entered.sessionRotateToken)).cookie;
-        const book = await request('/book/fixture.txt', {cookie: browser.cookie});
-        assert.deepStrictEqual([book.status, await book.text()], [200, 'BOOK_FIXTURE']);
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: session().cookie})).status, 401, 'Another browser');
-        assert.strictEqual((await request('/book/fixture.txt', {'x-access-token': accessToken})).status, 200, 'Remote library');
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'The access password alone');
+        assert.strictEqual((await request('/book/fixture.txt', {'x-access-token': accessToken})).status, 401, 'A remote library token alone');
+        assert.strictEqual((await request(security.signBookLink('/book/fixture.txt'))).status, 401, 'A signed OPDS link alone');
 
-        const signed = security.signBookLink('/book/fixture.txt');
-        assert.strictEqual((await request(signed)).status, 200);
-        assert.strictEqual((await request(signed.replace(/sig=.*/, `sig=${'0'.repeat(64)}`))).status, 401);
-        assert.strictEqual((await request(security.signBookLink('/book/other.txt').replace('other.txt', 'fixture.txt'))).status, 401);
-        const opdsBook = Object.assign(Object.create(require('../server/core/opds/BookPage').prototype), {config, security});
-        assert.strictEqual((await request(opdsBook.fileHref('/cover/by-uid?uid=u1'))).status, 404, 'OPDS links pass the guard');
-        const redirect = await request(security.signBookLink('/book/by-uid?uid=u1'));
-        assert.strictEqual(redirect.status, 302);
-        assert.strictEqual((await request(redirect.headers.get('location'))).status, 200, 'The redirect is signed too');
+        const book = await request('/book/fixture.txt', {cookie: session(alice.id).cookie});
+        assert.deepStrictEqual([book.status, await book.text()], [200, 'BOOK_FIXTURE'], 'A signed-in profile');
         const basic = user => ({authorization: 'Basic ' + Buffer.from(user).toString('base64')});
         assert.strictEqual((await request('/book/fixture.txt', basic('alice:alice-fixture'))).status, 200, 'OPDS profile credentials');
         assert.strictEqual((await request('/book/fixture.txt', basic('alice:wrong'))).status, 401);
 
-        const {csrfToken} = await call({action: 'get-config', accessToken});
-        assert.ok(!(await call({action: 'logout', accessToken, csrfToken})).error);
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'Logged out');
         //a cookie of a session the server no longer knows (restart) is replaced on the WebSocket upgrade
         const stale = `inpx_web_session=${security.packSessionId('gone')}`;
-        const socket = new WebSocket(`ws://127.0.0.1:${new URL(redirect.url).port}`, {headers: {cookie: stale}});
+        const socket = new WebSocket(base.replace('http', 'ws'), {headers: {cookie: stale}});
         const upgrade = await new Promise((resolve, reject) => { socket.once('upgrade', resolve); socket.once('error', reject); });
         socket.terminate();
         assert.match(String(upgrade.headers['set-cookie']), /^inpx_web_session=/);
@@ -424,7 +399,7 @@ async function testAccessPasswordGuardsBooksAndCovers() {
 // A login over the WebSocket moves the browser session to a new id: a cookie planted before it (session fixation) does
 // not get the login. The browser gets the new cookie with a one-time token; open sockets keep the session object.
 async function testLoginRotatesSession() {
-    await fixture({allowAnonymousAccess: false}, async({security, alice, request, session, connect, rotate}) => {
+    await fixture({}, async({security, alice, request, session, connect, rotate}) => {
         const planted = session();
         const call = await connect({cookie: planted.cookie});
         const otherTab = await connect({cookie: planted.cookie});
@@ -468,9 +443,9 @@ async function testLoginRotatesSession() {
 
 // A client cannot widen the store lookup to someone else's list.
 async function testForeignListNotReadable() {
-    await fixture({}, async({worker, alice, bob, connect}) => {
+    await fixture({}, async({worker, alice, bob, connect, session}) => {
         const secret = await worker.readingListStore.createList(alice.id, 'Alice private list');
-        const call = await connect();
+        const call = await connect({cookie: session(bob.id).cookie});
         for (const options of [undefined, {allowForeign: true}, {allowForeign: true, visibility: 'private'}]) {
             const response = await call({action: 'get-reading-list', userId: bob.id, listId: secret.id, options});
             assert.ok(response.error && !JSON.stringify(response).includes('Alice private list'), JSON.stringify(response));
@@ -536,4 +511,4 @@ async function testAdminRoleToggle() {
 
 module.exports = [testAccessPasswordGuardsBooksAndCovers, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
-    testProxyProfileBindingAndIdentityChange, testLegacyAccessAndGlobalOpdsCredentials];
+    testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

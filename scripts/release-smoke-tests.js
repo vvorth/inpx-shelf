@@ -1149,6 +1149,7 @@ async function testAdminBackupArchiveAndDownload() {
         const security = new Security({dataDir});
         await security.init();
         worker.profileSessions = new Map();
+        worker.readingListStore = {load: async() => ({users: [{id: 'admin', isAdmin: true}, {id: 'reader'}]})};
         worker.requireAdmin = async(userId) => {
             if (userId !== 'admin')
                 throw new Error('Admin required');
