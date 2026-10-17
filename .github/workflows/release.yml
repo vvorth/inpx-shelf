@@ -44,8 +44,9 @@ jobs:
           const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
 
           const lines = fs.readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n').split('\n');
-          // a section starts with "<version> / <date>" or, before CalVer, with the date alone
-          const end = lines.findIndex((line, index) => index > 0 && /^(\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\/|\d{4}-\d{2}-\d{2}\s*$)/.test(line));
+          // releases are "<version> / <date>"; sections before CalVer have only a date and stay in the
+          // first CalVer release notes
+          const end = lines.findIndex((line, index) => index > 0 && /^\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\//.test(line));
           if (lines[0].trim() !== 'Unreleased' || !lines.slice(1, end < 0 ? lines.length : end).some(line => line.startsWith('- ')))
             throw new Error('CHANGELOG.md does not start with an "Unreleased" section listing the changes: nothing to release');
 
@@ -282,7 +283,7 @@ jobs:
           if (start >= 0) {
             let end = lines.length;
             for (let i = start + 1; i < lines.length; i++) {
-              if (/^(\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\/|\d{4}-\d{2}-\d{2}\s*$)/.test(lines[i])) {
+              if (/^\d+\.\d+\.\d+(?:[-.][^\s/]+)?\s+\//.test(lines[i])) {
                 end = i;
                 break;
               }
