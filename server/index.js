@@ -4,7 +4,6 @@ const os = require('os');
 
 const express = require('express');
 const http = require('http');
-const WebSocket = require ('ws');
 
 const utils = require('./core/utils');
 const kobo = require('./core/kobo');
@@ -26,7 +25,7 @@ function applyEnvSecurityOverrides(targetConfig) {
     if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_OPDS_GUEST_ACCESS'))
         targetConfig.opds = Object.assign({}, targetConfig.opds, {guestAccess: process.env.INPX_OPDS_GUEST_ACCESS === 'true'});
     for (const [field, variable] of Object.entries({
-        wsMessageLimitMb: 'INPX_WS_MESSAGE_LIMIT_MB',
+        apiMessageLimitMb: 'INPX_API_MESSAGE_LIMIT_MB',
         importLimitMb: 'INPX_IMPORT_LIMIT_MB',
         backupUploadLimitMb: 'INPX_BACKUP_UPLOAD_LIMIT_MB',
         backupExpandedLimitMb: 'INPX_BACKUP_EXPANDED_LIMIT_MB',
@@ -230,19 +229,6 @@ async function main() {
     app.use(security.requiredAuthMiddleware());
 
     const server = http.createServer(app);
-    const wss = new WebSocket.Server({
-        server,
-        maxPayload: require('./core/RequestLimits').transportLimit(config),
-        verifyClient: (info, done) => {
-            done(security.verifyWebSocket(info.req, wss.clients), 403, 'Forbidden');
-        },
-    });
-
-    wss.on('headers', (headers, req) => {
-        const cookie = security.upgradeCookie(req);
-        if (cookie)
-            headers.push(`Set-Cookie: ${cookie}`);
-    });
 
     let devModule = undefined;
     if (branch == 'development') {
@@ -258,25 +244,25 @@ async function main() {
     opds(app, config, security);
 
 
-    const { WebSocketController } = require('./controllers');
-    const webSocketController = new WebSocketController(wss, config, security);
-    await webSocketController.webWorker.readingListStore.warnIfDefaultAdminPassword()
+    const { ApiController } = require('./controllers');
+    const apiController = new ApiController(config, security);
+    await apiController.webWorker.readingListStore.warnIfDefaultAdminPassword()
         .catch(e => log(LM_WARN, `Cannot check the admin password: ${e.message}`));
 
-    const koboService = kobo.init(app, config, webSocketController.webWorker, security);
+    const koboService = kobo.init(app, config, apiController.webWorker, security);
     if (koboService)
         await koboService.ready;
-    require('./core/Kosync').init(app, config, webSocketController.webWorker, security);
-    require('./core/RemoteAccess').init(app, config, webSocketController.webWorker, security);
+    require('./core/Kosync').init(app, config, apiController.webWorker, security);
+    require('./core/RemoteAccess').init(app, config, apiController.webWorker, security);
 
     const initHealthRoutes = require('./core/HealthRoutes');
-    initHealthRoutes(app, config, webSocketController.webWorker, security, webSocketController);
+    initHealthRoutes(app, config, apiController.webWorker, security, apiController);
 
-    app.post(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/upload`, webSocketController.uploadHandler());
-    app.post(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/session/rotate`, security.sessionRotateHandler());
+    //после HealthRoutes (/api/index-status при пустом root) и до static: неизвестный /api/... - JSON 404, а не веб-приложение
+    app.use(`${String(config.rootPathStatic || '').replace(/\/$/, '')}/api`, security.apiGuard(), apiController.router());
 
     const initStatic = require('./static');
-    initStatic(app, config, webSocketController.webWorker, security);
+    initStatic(app, config, apiController.webWorker, security);
 
     if (devModule) {
         devModule.logErrors(app);

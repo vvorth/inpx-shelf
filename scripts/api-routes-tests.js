@@ -22,7 +22,7 @@ function assertBadRequest(fn) {
 }
 
 function testApiRoutesCoverControllerActions() {
-    const source = fs.readFileSync(path.join(__dirname, '../server/controllers/WebSocketController.js'), 'utf8');
+    const source = fs.readFileSync(path.join(__dirname, '../server/controllers/ApiController.js'), 'utf8');
     const actions = [...source.matchAll(/^\s*case '([a-z0-9-]+)':/gm)].map(m => m[1]);
     assert.ok(actions.length > 80);
     assert.deepStrictEqual([...apiRoutes.routes.map(route => route.action)].sort(), [...actions].sort());

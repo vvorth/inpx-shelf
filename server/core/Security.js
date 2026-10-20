@@ -8,14 +8,11 @@ const sessionCookieName = 'inpx_web_session';
 const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
-const maxWebSocketsPerIp = 50;
 const maxLoginAttemptKeys = 10000;
 //per-login throttle: after accountFreeFailures failures each next attempt waits twice as long, up to accountMaxDelayMs
 const accountFreeFailures = 5;
 const accountMaxDelayMs = 5*60*1000;
 const accountFailureWindowMs = 60*60*1000;
-const sessionRotateLifetimeMs = 60*1000;
-const maxSessionRotations = 1000;
 //updatedAt вошедшей сессии пишется на диск не чаще раза в минуту: тайм-аут простоя - дни
 const sessionTouchMs = 60*1000;
 
@@ -87,7 +84,6 @@ class Security {
     constructor(config) {
         this.config = config;
         this.sessions = new Map();
-        this.sessionRotations = new Map();
         this.loginAttempts = new Map();
         this.lastLoginAttemptSweep = 0;
         this.loginAttemptTotals = new Map();
@@ -250,10 +246,12 @@ class Security {
         return `${sessionCookieName}=${encodeURIComponent(this.packSessionId(session.id))}; ${this.cookieOptions(req)}`;
     }
 
-    //Вход по WebSocket: сессия переезжает на новый id, и cookie со старым id, в том числе подброшенная до входа
-    //(session fixation), входа не видит. Объект сессии тот же: открытые WebSocket держат его и работают дальше.
-    //Новую cookie браузер получает одноразовым токеном через POST <root>/session/rotate (sessionRotateHandler)
-    rotateSession(session) {
+    //Вход и выход: сессия переезжает на новый id, и cookie со старым id, в том числе подброшенная до входа
+    //(session fixation), входа не видит. Новую cookie браузер получает в ответе на этот же запрос
+    rotateSession(req, res) {
+        const session = req.securitySession;
+        if (!session)
+            return null;
         const now = Date.now();
         if (this.sessions.get(session.id) === session)
             this.sessions.delete(session.id);
@@ -267,40 +265,34 @@ class Security {
         session.persistedAt = 0;
         this.sessions.set(session.id, session);
         this.persistSession(session);
-
-        //срок у всех токенов одинаковый, поэтому в начале Map - самые старые: оттуда уходят истёкшие и лишние сверх предела
-        for (const [token, rotation] of this.sessionRotations) {
-            if (rotation.expiresAt > now && this.sessionRotations.size < maxSessionRotations)
-                break;
-            this.sessionRotations.delete(token);
-        }
-        const token = this.randomToken(32);
-        this.sessionRotations.set(token, {session, expiresAt: now + sessionRotateLifetimeMs});
-        return token;
+        res.setHeader('Set-Cookie', this.sessionCookie(req, session));
+        return session;
     }
 
-    //Токен приходит в заголовке: с чужого сайта такой запрос без CORS не отправить, отдельный CSRF-токен не нужен.
-    //Прежняя cookie не сверяется: вход из вкладки, чью cookie уже перезаписала другая вкладка, тоже должен пережить перезагрузку
-    sessionRotateHandler() {
-        return (req, res) => {
-            res.set('Cache-Control', 'no-store');
-            const token = String(req.headers['x-session-rotate'] || '');
-            const rotation = this.sessionRotations.get(token);
-            this.sessionRotations.delete(token);
-            const session = (rotation && rotation.expiresAt > Date.now() && this.sameOriginCheck(req).ok ? rotation.session : null);
-            if (!session || this.sessions.get(session.id) !== session)
-                return res.sendStatus(403);
-            res.setHeader('Set-Cookie', this.sessionCookie(req, session));
-            res.sendStatus(204);
+    //Запросы <root>/api. Заголовок X-Inpx-Api не задать ни переходом, ни <img>/<form> с чужого сайта, а fetch с ним
+    //с чужого сайта требует CORS preflight, на который сервер не отвечает; Sec-Fetch-Site и Origin, если есть, - свой сайт.
+    //Cookie сессии, которой сервер не знает (перезапуск), заменяется новой в ответе: иначе книги и обложки по HTTP
+    //шли бы со старой cookie без входа
+    apiGuard() {
+        return (req, res, next) => {
+            const fetchSite = this.headerFirstValue(req, 'sec-fetch-site').toLowerCase();
+            const sameOrigin = this.sameOriginCheck(req);
+            let reason = '';
+            if (String(req.headers['x-inpx-api'] || '') !== '1')
+                reason = 'no X-Inpx-Api header';
+            else if (fetchSite && !['same-origin', 'none'].includes(fetchSite))
+                reason = `sec-fetch-site=${fetchSite}`;
+            else if (!sameOrigin.ok)
+                reason = `origin mismatch, origin=${sameOrigin.origin || '-'}, expected=${sameOrigin.expectedOrigins.join(',') || '-'}, host=${this.requestHost(req) || '-'}, x-forwarded-host=${this.headerFirstValue(req, 'x-forwarded-host') || '-'}, x-forwarded-proto=${this.headerFirstValue(req, 'x-forwarded-proto') || '-'}`;
+            if (reason) {
+                logSecurityWarning(`API forbidden: ${reason}, remote=${this.clientIp(req) || '-'}`);
+                res.set('Cache-Control', 'no-store');
+                return res.status(403).json({error: 'Forbidden'});
+            }
+            if (!req.securitySession)
+                this.ensureSession(req, res);
+            next();
         };
-    }
-
-    //WebSocket пришёл с cookie сессии, которой сервер не знает (перезапуск): новая уходит в ответе на upgrade,
-    //иначе книги и обложки по HTTP шли бы со старой cookie без входа
-    upgradeCookie(req) {
-        const session = req.securitySession;
-        const cookies = this.parseCookies(req.headers.cookie || '');
-        return (session && this.unpackSessionId(cookies[sessionCookieName] || '') !== session.id ? this.sessionCookie(req, session) : '');
     }
 
     isSecureRequest(req) {
@@ -501,37 +493,6 @@ class Security {
             origin: normalizedOrigin,
             expectedOrigins,
         };
-    }
-
-    verifyWebSocket(req, clients = []) {
-        // Each open socket holds memory and timers: cap them per client address.
-        const ip = this.clientIp(req);
-        let count = 0;
-        for (const client of clients) {
-            if (client.req && this.clientIp(client.req) === ip)
-                count++;
-        }
-        if (count >= maxWebSocketsPerIp) {
-            logSecurityWarning(`WebSocket forbidden: too many connections, remote=${ip || '-'}`);
-            return false;
-        }
-
-        const auth = this.verifyRequiredAuth(req);
-        if (!auth.ok) {
-            logSecurityWarning(`WebSocket forbidden: auth failed, status=${auth.status || 401}, remote=${this.clientIp(req) || '-'}`);
-            return false;
-        }
-
-        const sameOrigin = this.sameOriginCheck(req);
-        if (!sameOrigin.ok) {
-            logSecurityWarning(
-                `WebSocket forbidden: origin mismatch, origin=${sameOrigin.origin || '-'}, expected=${sameOrigin.expectedOrigins.join(',') || '-'}, host=${this.requestHost(req) || '-'}, x-forwarded-host=${this.headerFirstValue(req, 'x-forwarded-host') || '-'}, x-forwarded-proto=${this.headerFirstValue(req, 'x-forwarded-proto') || '-'}, remote=${this.clientIp(req) || '-'}`
-            );
-            return false;
-        }
-
-        this.ensureSession(req);
-        return true;
     }
 
     getCsrfToken(req) {

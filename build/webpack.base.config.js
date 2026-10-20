@@ -7,11 +7,6 @@ const appdir = require('./appdir');
 const clientDir = path.resolve(__dirname, '../client');
 
 module.exports = {
-    resolve: {
-        alias: {
-            ws: false,
-        }
-    },
     entry: [`${clientDir}/main.js`],
     output: {
         publicPath: `/${appdir}/`,

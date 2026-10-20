@@ -72,7 +72,7 @@ class ProfileAccess {
         }
         // A removed/renamed SSO profile must not leave an old authenticated token.
         this.clearBinding(session);
-        //токен из сообщения после перезапуска сервера устарел: тогда профиль - по сессии из cookie
+        //токен из запроса после перезапуска сервера устарел: тогда профиль - по сессии из cookie
         const sessionToken = (session && session.profileAccessToken) || '';
         const accessToken = (token && this.worker.getProfileSessionUser(token) ? token : sessionToken);
         const id = this.worker.getProfileSessionUser(accessToken);
@@ -89,11 +89,11 @@ class ProfileAccess {
         throw denied(identity.bound ? t('errors.profileBoundToProxy') : 'need_profile_login', identity.bound ? 403 : 401);
     }
 
-    async prepareWebSocket(req, socketRequest) {
+    async prepareRequest(req, httpRequest) {
         delete req.profileBoundId;
         delete req.profileLoginRequired;
         // Anonymous access is not configurable: every action except the login bootstrap needs a profile.
-        const identity = await this.resolve(socketRequest, req.profileAccessToken);
+        const identity = await this.resolve(httpRequest, req.profileAccessToken);
         if (identity) {
             if (!['get-config', 'get-user-profiles', 'logout-user-profile'].includes(req.action))
                 this.assertProfile(identity, String(req.userId || '').trim());

@@ -2,7 +2,7 @@ const {AsyncLocalStorage} = require('async_hooks');
 
 const i18n = require('../../shared/i18n');
 
-//Переводы на сервере. Язык выбирается на каждый запрос (WebSocket, HTTP, OPDS) и хранится
+//Переводы на сервере. Язык выбирается на каждый запрос (API, HTTP, OPDS) и хранится
 //в AsyncLocalStorage: объекты сервера общие и обслуживают параллельные запросы.
 //Тексты - в shared/locales/<lang>.json (см. shared/i18n.js).
 const storage = new AsyncLocalStorage();

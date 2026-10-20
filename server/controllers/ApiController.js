@@ -1,18 +1,31 @@
 const _ = require('lodash');
-const WebSocket = require ('ws');
 
 const WorkerState = require('../core/WorkerState');//singleton
 const WebWorker = require('../core/WebWorker');//singleton
 const log = new (require('../core/AppLogger'))().log;//singleton
 const utils = require('../core/utils');
 const runtimeMetrics = require('../core/RuntimeMetrics');
+const RequestLimits = require('../core/RequestLimits');
 const i18n = require('../core/i18n');
+const apiRoutes = require('../../shared/apiRoutes');
 const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');
 
 const cleanPeriod = 1*60*1000;//1 минута
-//пароли и токены не попадают в журнал запросов
+//клиент (сессия браузера) считается онлайн, если делал запрос за последние 5 минут
+const onlinePeriod = 5*60*1000;
+const maxOnlineClients = 10000;
+const maxSessionRequests = 8;
+const maxServerRequests = 64;
+const maxUrlLength = 8*1024;
+//приходят только заголовками или заполняются сервером (ProfileAccess): тело запроса их не задаёт
+const reservedParams = ['action', 'userId', 'profileAccessToken', 'csrfToken', 'uiLang', 'guest', 'profileBoundId', 'profileLoginRequired'];
+//ошибки в коде сервера, а не в запросе: 500, подробности - в журнал
+const programmingErrors = [TypeError, ReferenceError, RangeError, SyntaxError];
+
+const httpError = (status, message) => Object.assign(new Error(message), {status});
+
 // The request body to `file`; stops reading at `limit` bytes (the caller answers 413 and closes the connection).
 function receiveFile(req, file, limit) {
     return new Promise((resolve, reject) => {
@@ -28,7 +41,7 @@ function receiveFile(req, file, limit) {
         req.on('data', (chunk) => {
             size += chunk.length;
             if (size > limit)
-                return fail(Object.assign(new Error(i18n.t('errors.requestTooLarge')), {status: 413}));
+                return fail(httpError(413, i18n.t('errors.requestTooLarge')));
             if (!out.write(chunk)) {
                 req.pause();
                 out.once('drain', () => req.resume());
@@ -38,6 +51,39 @@ function receiveFile(req, file, limit) {
         req.on('error', fail);
         out.on('error', fail);
         out.on('finish', resolve);
+    });
+}
+
+// The request body in memory, up to `limit` bytes (413 over it).
+function receiveBody(req, limit) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        let size = 0;
+        const done = (error) => {
+            req.removeListener('data', onData);
+            req.removeListener('end', onEnd);
+            req.removeListener('error', onError);
+            req.removeListener('close', onError);
+            if (error) {
+                req.pause();
+                reject(error);
+            } else {
+                resolve(Buffer.concat(chunks, size));
+            }
+        };
+        const onData = (chunk) => {
+            size += chunk.length;
+            if (size > limit)
+                return done(httpError(413, i18n.t('errors.requestTooLarge')));
+            chunks.push(chunk);
+        };
+        const onEnd = () => done();
+        const onError = () => done(httpError(400, i18n.t('errors.apiInvalidRequest')));
+        req.on('data', onData);
+        req.on('end', onEnd);
+        req.on('error', onError);
+        //обрыв соединения до конца тела
+        req.on('close', onError);
     });
 }
 
@@ -67,20 +113,25 @@ function drain(req, max) {
     });
 }
 
+//пароли и токены не попадают в журнал запросов
 const hideSecrets = (key, value) => (/pass|token|secret/i.test(key) && value ? '***' : value);
-const closeSocketOnIdle = 5*60*1000;//5 минут
-//только чтение; всё остальное, в том числе новые действия, требует CSRF-токен
-const readOnlyActions = new Set([
-    'test', 'get-config', 'get-worker-state', 'get-author-book-list', 'get-author-info', 'get-series-book-list',
-    'get-genre-tree', 'get-discovery-shelves', 'get-admin-dashboard', 'get-admin-dashboard-metrics', 'get-admin-events',
-    'export-admin-settings', 'get-book-link', 'get-author-aliases', 'admin-author-names-status', 'catalog-names',
-    'catalog-search', 'catalog-suggest', 'get-book', 'get-book-states', 'get-book-info', 'get-reader-state',
-    'get-user-reading-library', 'get-reading-stats', 'get-reading-lists', 'get-user-profiles', 'get-reading-list', 'get-reading-now', 'export-reading-lists',
-    'get-kobo-devices', 'get-remote-access',
-]);
 
-class WebSocketController {
-    constructor(wss, config, security = null) {
+const contentType = req => String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+const header = (req, name) => String(req.headers[name] || '').trim();
+
+// Query string -> {name: value}; a repeated name is a bad request, not an array.
+function parseQuery(raw) {
+    const query = {};
+    for (const [name, value] of new URLSearchParams(raw)) {
+        if (Object.hasOwn(query, name))
+            throw httpError(400, `Repeated parameter ${name}`);
+        query[name] = value;
+    }
+    return query;
+}
+
+class ApiController {
+    constructor(config, security = null) {
         this.config = config;
         this.isDevelopment = (config.branch == 'development');
         this.security = security;
@@ -91,23 +142,12 @@ class WebSocketController {
         if (security)
             security.attachProfiles(this.webWorker);
 
-        this.wss = wss;
         this.activeRequests = 0;
-
-        wss.on('connection', (ws, req) => {
-            ws.req = req;
-            ws.on('message', (message, isBinary) => {
-                if (isBinary) {
-                    ws.close(1003, 'Text JSON required');
-                    return;
-                }
-                this.onMessage(ws, message.toString());
-            });
-
-            ws.on('error', (err) => {
-                log(LM_ERR, err);
-            });
-        });
+        //активные запросы и последняя активность по клиенту: объект сессии (тот же после смены её id при входе) или IP
+        this.clientRequests = new Map();
+        this.onlineClients = new Map();
+        this.largeRequestActive = false;
+        this.uploadActive = false;
 
         this.periodicClean();//no await
     }
@@ -115,361 +155,414 @@ class WebSocketController {
     async periodicClean() {
         while (1) {//eslint-disable-line no-constant-condition
             try {
+                //onlineClients упорядочен по последнему запросу: устаревшие - в начале
                 const now = Date.now();
-
-                //почистим ws-клиентов
-                this.wss.clients.forEach((ws) => {
-                    if (!ws.lastActivity || now - ws.lastActivity > closeSocketOnIdle - 50) {
-                        ws.terminate();
-                    }
-                });
+                for (const [key, client] of this.onlineClients) {
+                    if (now - client.at <= onlinePeriod)
+                        break;
+                    this.onlineClients.delete(key);
+                }
             } catch(e) {
-                log(LM_ERR, `WebSocketController.periodicClean error: ${e.message}`);
+                log(LM_ERR, `ApiController.periodicClean error: ${e.message}`);
             }
-            
+
             await utils.sleep(cleanPeriod);
         }
     }
 
-    async onMessage(ws, message) {
-        //тексты ответа - на языке интерфейса клиента (поле uiLang запроса), см. server/core/i18n.js
-        const langMatch = /"uiLang":"([a-z]{2})"/.exec(String(message));
-        const lang = i18n.resolveRequestLang(this.config, ws.req, (langMatch ? langMatch[1] : ''));
-        return i18n.run(lang, () => this.processMessage(ws, message));
+    // Express router for <root>/api: every route comes from shared/apiRoutes.js.
+    router() {
+        const router = require('express').Router();
+        router.use((req, res, next) => {
+            const lang = i18n.resolveRequestLang(this.config, req, header(req, 'x-ui-lang'));
+            i18n.run(lang, () => this.handle(req, res)).catch(next);
+        });
+        return router;
     }
 
-    async processMessage(ws, message) {
-        const messageBytes = Buffer.byteLength(message);
-        const large = messageBytes > require('../core/RequestLimits').limits(this.config).message;
-        if ((ws.activeRequests || 0) >= 8) {
-            ws.close(1013, 'Too many active requests');
-            return;
+    clientKey(req) {
+        return req.securitySession || `ip:${this.security ? this.security.clientIp(req) : (req.socket && req.socket.remoteAddress) || ''}`;
+    }
+
+    touchClient(key, userId) {
+        this.onlineClients.delete(key);
+        this.onlineClients.set(key, {at: Date.now(), userId});
+        if (this.onlineClients.size > maxOnlineClients)
+            this.onlineClients.delete(this.onlineClients.keys().next().value);
+    }
+
+    // The JSON reply. A body not read yet is drained (up to drainMax bytes) so the client gets the answer; a longer one
+    // closes the connection.
+    async reply(req, res, status, body, drainMax = 1024*1024) {
+        if (!await drain(req, drainMax)) {
+            res.set('Connection', 'close');
+            res.on('finish', () => req.destroy());
         }
-        //общий лимит сервера отклоняет только это сообщение: закрытие сокета дало бы чужому потоку запросов рвать соединения всех
-        if ((this.activeRequests || 0) >= 64 || (large && this.largeRequestActive)) {
-            const requestId = /"requestId":(\d{1,16})[,}]/.exec(message);
-            this.send({error: 'too_many_requests'}, {requestId: (requestId ? Number(requestId[1]) : undefined)}, ws);
+        if (res.headersSent)
             return;
+        res.set('Cache-Control', 'no-store');
+        res.status(status).json(body);
+    }
+
+    errorStatus(e) {
+        if (e && Number.isInteger(e.status) && e.status >= 400 && e.status < 600)
+            return e.status;
+        if (!(e instanceof Error) || programmingErrors.some(type => e instanceof type))
+            return 500;
+        if (e.code === 'INPX_LOGIN_RATE_LIMIT' || e.message === 'too_many_requests')
+            return 429;
+        return {need_profile_login: 401, bad_csrf_token: 403, server_busy: 503}[e.message] || 400;
+    }
+
+    errorReply(res, e, params = {}) {
+        const status = this.errorStatus(e);
+        if (status === 429)
+            res.set('Retry-After', String((e && e.retryAfter) || 1));
+        if (status === 500) {
+            log(LM_ERR, `API ${params.action || ''}: ${(e && e.stack) || e}`);
+            return [status, {error: i18n.t('errors.serverErrorSeeLog')}];
         }
-        ws.activeRequests = (ws.activeRequests || 0) + 1;
-        this.activeRequests = (this.activeRequests || 0) + 1;
+        return [status, {error: this.errorText(e, params)}];
+    }
+
+    async handle(req, res) {
+        const [rawPath, rawQuery = ''] = String(req.url || '').split(/\?(.*)/s);
+        if (String(req.originalUrl || req.url || '').length > maxUrlLength)
+            return this.reply(req, res, 414, {error: 'URI Too Long'});
+        const found = apiRoutes.match(req.method, rawPath);
+        if (!found)
+            return this.reply(req, res, 404, {error: 'Not found'});
+        if (!found.route) {
+            res.set('Allow', found.allow.join(', '));
+            return this.reply(req, res, 405, {error: 'Method Not Allowed'});
+        }
+        const route = found.route;
+        const messageLimit = RequestLimits.limits(this.config).message;
+        const json = route.method === 'POST' && !route.upload;
+        //крупное тело в памяти - одно на сервер; без Content-Length размер заранее неизвестен
+        const large = json && !(Number(req.headers['content-length']) <= messageLimit/2);
+
+        const key = this.clientKey(req);
+        const clientRequests = this.clientRequests.get(key) || 0;
+        if (clientRequests >= maxSessionRequests || this.activeRequests >= maxServerRequests || (large && this.largeRequestActive)) {
+            res.set('Retry-After', '1');
+            return this.reply(req, res, 429, {error: 'too_many_requests'});
+        }
+        this.clientRequests.set(key, clientRequests + 1);
+        this.activeRequests++;
         if (large)
             this.largeRequestActive = true;
-        let globalSlot = true;
-        const releaseGlobalSlot = () => {
-            if (!globalSlot)
-                return;
-            globalSlot = false;
+
+        const startTime = Date.now();
+        let params = {action: route.action};
+        let userId = '';
+        let metricToken = null;
+        let metricOk = false;
+        let status = 200;
+        let result;
+        try {
+            const query = parseQuery(rawQuery);
+            let body;
+            if (json) {
+                if (contentType(req) !== 'application/json')
+                    throw httpError(415, 'application/json expected');
+                if (Number(req.headers['content-length']) > messageLimit)
+                    throw httpError(413, i18n.t('errors.requestTooLarge'));
+                const raw = await receiveBody(req, messageLimit);
+                try {
+                    body = JSON.parse(raw.toString('utf8') || 'null');
+                } catch (e) {
+                    throw httpError(400, i18n.t('errors.apiInvalidRequest'));
+                }
+            } else if (route.upload) {
+                if (contentType(req) !== 'application/octet-stream')
+                    throw httpError(415, 'application/octet-stream expected');
+                if (Number(req.headers['content-length']) > RequestLimits.uploadLimit(route.action, this.config))
+                    throw httpError(413, i18n.t('errors.requestTooLarge'));
+            }
+            if (this.isDevelopment || this.config.logQueries)
+                log(`API-IN:  ${req.method} ${rawPath} ${utils.cutString(JSON.stringify({query, body}, hideSecrets))}`);
+
+            if (body && typeof body === 'object' && reservedParams.some(name => Object.hasOwn(body, name)))
+                throw httpError(400, i18n.t('errors.apiInvalidRequest'));
+            params = apiRoutes.decode(route, found.pathParams, query, body);
+            params.action = route.action;
+            const userIdHeader = header(req, 'x-user-id');
+            const tokenHeader = header(req, 'x-profile-token');
+            if (userIdHeader)
+                params.userId = userIdHeader;
+            if (tokenHeader)
+                params.profileAccessToken = tokenHeader;
+
+            //GET ничего не меняет и токена не требует, любой POST - с CSRF-токеном
+            if (this.security && route.method !== 'GET' && !this.security.hasValidCsrf(req, header(req, 'x-csrf-token')))
+                throw httpError(403, 'bad_csrf_token');
+
+            //токен из заголовка после перезапуска сервера устарел: тогда профиль - по сессии из cookie
+            if (!params.profileAccessToken && req.securitySession && req.securitySession.profileAccessToken)
+                params.profileAccessToken = req.securitySession.profileAccessToken;
+            if (this.profileAccess) {
+                await this.profileAccess.prepareRequest(params, req);
+                userId = (params.guest || params.profileLoginRequired ? '' : String(params.userId || ''));
+            }
+
+            metricToken = runtimeMetrics.beginAction(route.action);
+            const ctx = {http: req, res, uploadFile: '', uploadCheck: false};
+            if (route.upload)
+                result = await this.runUpload(route, params, ctx);
+            else
+                result = await this.dispatch(route.action, params, ctx);
+            if (result === undefined || result === null || typeof result !== 'object')
+                result = {};
+            metricOk = true;
+        } catch (e) {
+            [status, result] = this.errorReply(res, e, params);
+        } finally {
+            this.touchClient(key, userId);
+            const left = (this.clientRequests.get(key) || 1) - 1;
+            if (left)
+                this.clientRequests.set(key, left);
+            else
+                this.clientRequests.delete(key);
             this.activeRequests--;
             if (large)
                 this.largeRequestActive = false;
-        };
-        let req = {};
-        let metricToken = null;
-        let metricOk = false;
-        try {
-            req = JSON.parse(message);
-            if (this.isDevelopment || this.config.logQueries) {
-                log(`WebSocket-IN:  ${utils.cutString(JSON.stringify(req, hideSecrets))}`);
-            }
-
-            require('../core/RequestLimits').checkRequest(req, messageBytes, this.config);
-            req.__startTime = Date.now();
-            metricToken = runtimeMetrics.beginAction(this.actionLabel(req.action));
-            if (!req.profileAccessToken && this.security && ws.req && ws.req.securitySession && ws.req.securitySession.profileAccessToken)
-                req.profileAccessToken = ws.req.securitySession.profileAccessToken;
-
-            ws.lastActivity = Date.now();
-            
-            //pong for WebSocketConnection
-            this.send({_rok: 1}, req, ws);
-
-            if (this.security && this.isCsrfProtectedAction(req.action) && !this.security.hasValidCsrf(ws.req, req.csrfToken)) {
-                this.send({error: 'bad_csrf_token'}, req, ws);
-                return;
-            }
-
-            if (this.profileAccess)
-                await this.profileAccess.prepareWebSocket(req, ws.req);
-
-            //api
-            switch (req.action) {
-                case 'test':
-                    await this.test(req, ws); break;
-                case 'get-config':
-                    await this.getConfig(req, ws); break;
-                case 'get-worker-state':
-                    await this.getWorkerState(req, ws); break;
-                case 'get-author-book-list':
-                    await this.getAuthorBookList(req, ws); break;
-                case 'get-author-info':
-                    await this.getAuthorInfo(req, ws); break;
-                case 'get-series-book-list':
-                    await this.getSeriesBookList(req, ws); break;
-                case 'get-genre-tree':
-                    await this.getGenreTree(req, ws); break;
-                case 'get-discovery-shelves':
-                    await this.getDiscoveryShelves(req, ws); break;
-                case 'update-discovery-preferences':
-                    await this.updateDiscoveryPreferences(req, ws); break;
-                case 'record-discovery-events':
-                    await this.recordDiscoveryEvents(req, ws); break;
-                case 'update-shared-discovery-config':
-                    await this.updateSharedDiscoveryConfig(req, ws); break;
-                case 'update-admin-integrations':
-                    await this.updateAdminIntegrations(req, ws); break;
-                case 'test-admin-integration':
-                    await this.testAdminIntegration(req, ws); break;
-                case 'update-admin-opds':
-                    await this.updateAdminOpds(req, ws); break;
-                case 'update-admin-guest-access':
-                    await this.updateAdminGuestAccess(req, ws); break;
-                case 'get-admin-dashboard':
-                    await this.getAdminDashboard(req, ws); break;
-                case 'get-admin-dashboard-metrics':
-                    await this.getAdminDashboardMetrics(req, ws); break;
-                case 'get-admin-events':
-                    await this.getAdminEvents(req, ws); break;
-                case 'update-admin-event-log':
-                    await this.updateAdminEventLog(req, ws); break;
-                case 'add-admin-test-event':
-                    await this.addAdminTestEvent(req, ws); break;
-                case 'update-admin-library-sources':
-                    await this.updateAdminLibrarySources(req, ws); break;
-                case 'admin-diagnose-library-source':
-                    await this.adminDiagnoseLibrarySource(req, ws); break;
-                case 'get-remote-access':
-                    this.send(await this.webWorker.getRemoteAccess(req.userId, req.profileAccessToken), req, ws); break;
-                case 'create-remote-access':
-                    this.send(await this.webWorker.createRemoteAccess(req.userId, req.profileAccessToken, req.access || {}), req, ws); break;
-                case 'update-remote-access':
-                    this.send(await this.webWorker.updateRemoteAccess(req.userId, req.profileAccessToken, req.access || {}), req, ws); break;
-                case 'delete-remote-access':
-                    this.send(await this.webWorker.deleteRemoteAccess(req.userId, req.profileAccessToken, req.id), req, ws); break;
-                case 'admin-remote-library-sources':
-                    this.send(await this.webWorker.listRemoteLibrarySources(req.userId, req.profileAccessToken, req.remote || {}), req, ws); break;
-                case 'update-admin-cache':
-                    await this.updateAdminCache(req, ws); break;
-                case 'admin-clean-cache':
-                    await this.adminCleanCache(req, ws); break;
-                case 'admin-clean-broken-covers':
-                    await this.adminCleanBrokenCovers(req, ws); break;
-                case 'admin-rebuild-cover':
-                    await this.adminRebuildCover(req, ws); break;
-                case 'admin-reindex':
-                    await this.adminReindex(req, ws); break;
-                case 'export-admin-settings':
-                    await this.exportAdminSettings(req, ws); break;
-                case 'import-admin-settings':
-                    await this.importAdminSettings(req, ws); break;
-                case 'create-admin-backup':
-                    await this.createAdminBackup(req, ws); break;
-                case 'import-admin-backup':
-                    await this.importAdminBackup(req, ws); break;
-                case 'update-book-metadata':
-                    await this.updateBookMetadata(req, ws); break;
-                case 'get-book-link':
-                    await this.getBookLink(req, ws); break;
-                case 'get-author-aliases':
-                    await this.getAuthorAliases(req, ws); break;
-                case 'admin-author-names-status':
-                    await this.adminAuthorNamesStatus(req, ws); break;
-                case 'admin-author-names-update':
-                    await this.adminAuthorNamesUpdate(req, ws); break;
-                case 'catalog-names':
-                    await this.catalogNames(req, ws); break;
-                case 'catalog-search':
-                    await this.catalogSearch(req, ws); break;
-                case 'catalog-suggest':
-                    await this.catalogSuggest(req, ws); break;
-                case 'get-book':
-                    await this.getBook(req, ws); break;
-                case 'get-book-states':
-                    await this.getBookStates(req, ws); break;
-                case 'get-book-info':
-                    await this.getBookInfo(req, ws); break;
-                case 'get-reader-state':
-                    await this.getReaderState(req, ws); break;
-                case 'get-user-reading-library':
-                    await this.getUserReadingLibrary(req, ws); break;
-                case 'get-reading-stats':
-                    await this.getReadingStats(req, ws); break;
-                case 'update-reader-progress':
-                    await this.updateReaderProgress(req, ws); break;
-                case 'delete-reader-progress':
-                    await this.deleteReaderProgress(req, ws); break;
-                case 'forget-books':
-                    await this.forgetBooks(req, ws); break;
-                case 'clear-reader-progress':
-                    await this.clearReaderProgress(req, ws); break;
-                case 'update-reader-preferences':
-                    await this.updateReaderPreferences(req, ws); break;
-                case 'add-reader-bookmark':
-                    await this.addReaderBookmark(req, ws); break;
-                case 'delete-reader-bookmark':
-                    await this.deleteReaderBookmark(req, ws); break;
-                case 'get-reading-lists':
-                    await this.getReadingLists(req, ws); break;
-                case 'get-user-profiles':
-                    await this.getUserProfiles(req, ws); break;
-                case 'login-user-profile':
-                    await this.loginUserProfile(req, ws); break;
-                case 'logout-user-profile':
-                    await this.logoutUserProfile(req, ws); break;
-                case 'create-user-profile':
-                    await this.createUserProfile(req, ws); break;
-                case 'update-user-profile':
-                    await this.updateUserProfile(req, ws); break;
-                case 'delete-user-profile':
-                    await this.deleteUserProfile(req, ws); break;
-                case 'get-reading-now':
-                    await this.getReadingNow(req, ws); break;
-                case 'get-reading-list':
-                    await this.getReadingList(req, ws); break;
-                case 'create-reading-list':
-                    await this.createReadingList(req, ws); break;
-                case 'rename-reading-list':
-                    await this.renameReadingList(req, ws); break;
-                case 'set-reading-list-visibility':
-                    await this.setReadingListVisibility(req, ws); break;
-                case 'delete-reading-list':
-                    await this.deleteReadingList(req, ws); break;
-                case 'export-reading-lists':
-                    await this.exportReadingLists(req, ws); break;
-                case 'import-reading-lists':
-                    await this.importReadingLists(req, ws); break;
-                case 'update-reading-list-book':
-                    await this.updateReadingListBook(req, ws); break;
-                case 'replace-listed-book':
-                    await this.replaceListedBook(req, ws); break;
-                case 'set-reading-list-book-read':
-                    await this.setReadingListBookRead(req, ws); break;
-                case 'mark-reader-books-read':
-                    await this.markReaderBooksRead(req, ws); break;
-                case 'mark-series-read':
-                    await this.markSeriesRead(req, ws); break;
-                case 'add-series-to-reading-list':
-                    await this.addSeriesToReadingList(req, ws); break;
-                case 'get-kobo-devices':
-                    await this.getKoboDevices(req, ws); break;
-                case 'create-kobo-device':
-                    await this.createKoboDevice(req, ws); break;
-                case 'update-kobo-device':
-                    await this.updateKoboDevice(req, ws); break;
-                case 'regenerate-kobo-device-token':
-                    await this.regenerateKoboDeviceToken(req, ws); break;
-                case 'reset-kobo-device':
-                    await this.resetKoboDevice(req, ws); break;
-                case 'refresh-kobo-device':
-                    await this.refreshKoboDevice(req, ws); break;
-                case 'delete-kobo-device':
-                    await this.deleteKoboDevice(req, ws); break;
-                case 'set-opds-password':
-                    await this.setOpdsPassword(req, ws); break;
-                case 'create-kosync-password':
-                    await this.createKosyncPassword(req, ws); break;
-                case 'send-book-telegram':
-                    await this.sendBookTelegram(req, ws); break;
-                case 'send-book-email':
-                    await this.sendBookEmail(req, ws); break;
-
-
-                default:
-                    throw new Error(`Action not found: ${req.action}`);
-            }
-            metricOk = true;
-        } catch (e) {
-            this.send({error: this.errorText(e, req)}, req || {}, ws);
-        } finally {
-            ws.activeRequests--;
-            releaseGlobalSlot();
             runtimeMetrics.endAction(metricToken, metricOk);
+        }
+
+        if (this.isDevelopment || this.config.logQueries)
+            log(`API-OUT: ${status} ${utils.cutString(JSON.stringify(result, hideSecrets))} ${Date.now() - startTime}ms`);
+        //тело сверх лимита не дочитывается
+        await this.reply(req, res, status, result, (status === 413 ? 0 : 1024*1024));
+    }
+
+    // Upload: the handler first checks who asks without the body (ctx.uploadCheck: profile, role), and only then the body
+    // is stored to a temp file under the action's limit and handed to the handler as ctx.uploadFile. The file never
+    // comes from request parameters.
+    async runUpload(route, params, ctx) {
+        await this.dispatch(route.action, params, Object.assign({}, ctx, {uploadCheck: true}));
+        if (this.uploadActive)
+            throw new Error('server_busy');
+
+        this.uploadActive = true;
+        let folder = '';
+        try {
+            const tempRoot = this.config.tempDir || os.tmpdir();
+            await fs.ensureDir(tempRoot);
+            folder = await fs.mkdtemp(path.join(tempRoot, 'upload-'));
+            const file = path.join(folder, 'upload');
+            await receiveFile(ctx.http, file, RequestLimits.uploadLimit(route.action, this.config));
+            return await this.dispatch(route.action, params, Object.assign({}, ctx, {uploadFile: file}));
+        } finally {
+            this.uploadActive = false;
+            if (folder)
+                await fs.remove(folder).catch(() => {});
         }
     }
 
-    // POST <root>/upload?action=...: a file for an import action. The request runs through processMessage twice, like a
-    // WebSocket one: first without the body (access password, CSRF, profile, the action's own role check), and only then
-    // the body is stored under the action's limit and handed to the handler. The file is passed on the connection object,
-    // never in the request JSON, so a WebSocket client cannot name a file.
-    uploadHandler() {
-        const RequestLimits = require('../core/RequestLimits');
-        return async(req, res) => {
-            res.set('Cache-Control', 'no-store');
-            //остаток тела дочитывается без сохранения, чтобы клиент получил ответ; слишком длинный - соединение закрывается
-            const reply = async(status, body, drainMax = 1024*1024) => {
-                if (!await drain(req, drainMax)) {
-                    res.set('Connection', 'close');
-                    res.on('finish', () => req.destroy());
-                }
-                res.status(status).json(body);
-            };
-            const fail = (status, error, drainMax) => reply(status, {error: i18n.render(error)}, drainMax);
-            const action = String(req.query.action || '');
-            const limit = RequestLimits.uploadLimit(action, this.config);
-            if (!limit)
-                return fail(404, `Action not found: ${action}`);
-            if (this.security && !this.security.sameOriginCheck(req).ok)
-                return fail(403, 'Forbidden');
-            if (Number(req.headers['content-length']) > limit)
-                return fail(413, i18n.t('errors.requestTooLarge'), 0);
-
-            const header = name => String(req.headers[name] || '');
-            const message = JSON.stringify({action, scope: String(req.query.scope || ''), uiLang: header('x-ui-lang'),
-                userId: header('x-user-id'), profileAccessToken: header('x-profile-token'), csrfToken: header('x-csrf-token')});
-            const run = async(uploadFile) => {
-                const responses = [];
-                const connection = {req, readyState: WebSocket.OPEN, uploadFile, uploadCheck: !uploadFile,
-                    send: text => responses.push(JSON.parse(text)), close: () => responses.push({error: 'server_busy'})};
-                await this.onMessage(connection, message);
-                return responses.filter(item => !item._rok).pop() || {error: 'No response'};
-            };
-            const allowed = await run('');
-            if (allowed.error)
-                return reply(403, allowed);
-            if (this.uploadActive)
-                return reply(503, {error: 'server_busy'});
-
-            this.uploadActive = true;
-            let folder = '';
-            let result;
-            try {
-                const tempRoot = this.config.tempDir || os.tmpdir();
-                await fs.ensureDir(tempRoot);
-                folder = await fs.mkdtemp(path.join(tempRoot, 'upload-'));
-                const file = path.join(folder, 'upload');
-                await receiveFile(req, file, limit);
-                result = [200, await run(file)];
-            } catch (e) {
-                result = [e.status || 400, {error: i18n.render(e.message)}];
-            } finally {
-                this.uploadActive = false;
-                if (folder)
-                    await fs.remove(folder).catch(() => {});
-            }
-            await reply(result[0], result[1], limit);
-        };
+    // Only actions of the route table reach here (apiRoutes.match).
+    async dispatch(action, req, ctx) {
+        switch (action) {
+            case 'test':
+                return this.test(req, ctx);
+            case 'get-config':
+                return this.getConfig(req, ctx);
+            case 'get-worker-state':
+                return this.getWorkerState(req, ctx);
+            case 'get-author-book-list':
+                return this.getAuthorBookList(req, ctx);
+            case 'get-author-info':
+                return this.getAuthorInfo(req, ctx);
+            case 'get-series-book-list':
+                return this.getSeriesBookList(req, ctx);
+            case 'get-genre-tree':
+                return this.getGenreTree(req, ctx);
+            case 'get-discovery-shelves':
+                return this.getDiscoveryShelves(req, ctx);
+            case 'update-discovery-preferences':
+                return this.updateDiscoveryPreferences(req, ctx);
+            case 'record-discovery-events':
+                return this.recordDiscoveryEvents(req, ctx);
+            case 'update-shared-discovery-config':
+                return this.updateSharedDiscoveryConfig(req, ctx);
+            case 'update-admin-integrations':
+                return this.updateAdminIntegrations(req, ctx);
+            case 'test-admin-integration':
+                return this.testAdminIntegration(req, ctx);
+            case 'update-admin-opds':
+                return this.updateAdminOpds(req, ctx);
+            case 'update-admin-guest-access':
+                return this.updateAdminGuestAccess(req, ctx);
+            case 'get-admin-dashboard':
+                return this.getAdminDashboard(req, ctx);
+            case 'get-admin-dashboard-metrics':
+                return this.getAdminDashboardMetrics(req, ctx);
+            case 'get-admin-events':
+                return this.getAdminEvents(req, ctx);
+            case 'update-admin-event-log':
+                return this.updateAdminEventLog(req, ctx);
+            case 'add-admin-test-event':
+                return this.addAdminTestEvent(req, ctx);
+            case 'update-admin-library-sources':
+                return this.updateAdminLibrarySources(req, ctx);
+            case 'admin-diagnose-library-source':
+                return this.adminDiagnoseLibrarySource(req, ctx);
+            case 'get-remote-access':
+                return this.webWorker.getRemoteAccess(req.userId, req.profileAccessToken);
+            case 'create-remote-access':
+                return this.webWorker.createRemoteAccess(req.userId, req.profileAccessToken, req.access || {});
+            case 'update-remote-access':
+                return this.webWorker.updateRemoteAccess(req.userId, req.profileAccessToken, req.access || {});
+            case 'delete-remote-access':
+                return this.webWorker.deleteRemoteAccess(req.userId, req.profileAccessToken, req.id);
+            case 'admin-remote-library-sources':
+                return this.webWorker.listRemoteLibrarySources(req.userId, req.profileAccessToken, req.remote || {});
+            case 'update-admin-cache':
+                return this.updateAdminCache(req, ctx);
+            case 'admin-clean-cache':
+                return this.adminCleanCache(req, ctx);
+            case 'admin-clean-broken-covers':
+                return this.adminCleanBrokenCovers(req, ctx);
+            case 'admin-rebuild-cover':
+                return this.adminRebuildCover(req, ctx);
+            case 'admin-reindex':
+                return this.adminReindex(req, ctx);
+            case 'export-admin-settings':
+                return this.exportAdminSettings(req, ctx);
+            case 'import-admin-settings':
+                return this.importAdminSettings(req, ctx);
+            case 'create-admin-backup':
+                return this.createAdminBackup(req, ctx);
+            case 'import-admin-backup':
+                return this.importAdminBackup(req, ctx);
+            case 'update-book-metadata':
+                return this.updateBookMetadata(req, ctx);
+            case 'get-book-link':
+                return this.getBookLink(req, ctx);
+            case 'get-author-aliases':
+                return this.getAuthorAliases(req, ctx);
+            case 'admin-author-names-status':
+                return this.adminAuthorNamesStatus(req, ctx);
+            case 'admin-author-names-update':
+                return this.adminAuthorNamesUpdate(req, ctx);
+            case 'catalog-names':
+                return this.catalogNames(req, ctx);
+            case 'catalog-search':
+                return this.catalogSearch(req, ctx);
+            case 'catalog-suggest':
+                return this.catalogSuggest(req, ctx);
+            case 'get-book':
+                return this.getBook(req, ctx);
+            case 'get-book-states':
+                return this.getBookStates(req, ctx);
+            case 'get-book-info':
+                return this.getBookInfo(req, ctx);
+            case 'get-reader-state':
+                return this.getReaderState(req, ctx);
+            case 'get-user-reading-library':
+                return this.getUserReadingLibrary(req, ctx);
+            case 'get-reading-stats':
+                return this.getReadingStats(req, ctx);
+            case 'update-reader-progress':
+                return this.updateReaderProgress(req, ctx);
+            case 'delete-reader-progress':
+                return this.deleteReaderProgress(req, ctx);
+            case 'forget-books':
+                return this.forgetBooks(req, ctx);
+            case 'clear-reader-progress':
+                return this.clearReaderProgress(req, ctx);
+            case 'update-reader-preferences':
+                return this.updateReaderPreferences(req, ctx);
+            case 'add-reader-bookmark':
+                return this.addReaderBookmark(req, ctx);
+            case 'delete-reader-bookmark':
+                return this.deleteReaderBookmark(req, ctx);
+            case 'get-reading-lists':
+                return this.getReadingLists(req, ctx);
+            case 'get-user-profiles':
+                return this.getUserProfiles(req, ctx);
+            case 'login-user-profile':
+                return this.loginUserProfile(req, ctx);
+            case 'logout-user-profile':
+                return this.logoutUserProfile(req, ctx);
+            case 'create-user-profile':
+                return this.createUserProfile(req, ctx);
+            case 'update-user-profile':
+                return this.updateUserProfile(req, ctx);
+            case 'delete-user-profile':
+                return this.deleteUserProfile(req, ctx);
+            case 'get-reading-now':
+                return this.getReadingNow(req, ctx);
+            case 'get-reading-list':
+                return this.getReadingList(req, ctx);
+            case 'create-reading-list':
+                return this.createReadingList(req, ctx);
+            case 'rename-reading-list':
+                return this.renameReadingList(req, ctx);
+            case 'set-reading-list-visibility':
+                return this.setReadingListVisibility(req, ctx);
+            case 'delete-reading-list':
+                return this.deleteReadingList(req, ctx);
+            case 'export-reading-lists':
+                return this.exportReadingLists(req, ctx);
+            case 'import-reading-lists':
+                return this.importReadingLists(req, ctx);
+            case 'update-reading-list-book':
+                return this.updateReadingListBook(req, ctx);
+            case 'replace-listed-book':
+                return this.replaceListedBook(req, ctx);
+            case 'set-reading-list-book-read':
+                return this.setReadingListBookRead(req, ctx);
+            case 'mark-reader-books-read':
+                return this.markReaderBooksRead(req, ctx);
+            case 'mark-series-read':
+                return this.markSeriesRead(req, ctx);
+            case 'add-series-to-reading-list':
+                return this.addSeriesToReadingList(req, ctx);
+            case 'get-kobo-devices':
+                return this.getKoboDevices(req, ctx);
+            case 'create-kobo-device':
+                return this.createKoboDevice(req, ctx);
+            case 'update-kobo-device':
+                return this.updateKoboDevice(req, ctx);
+            case 'regenerate-kobo-device-token':
+                return this.regenerateKoboDeviceToken(req, ctx);
+            case 'reset-kobo-device':
+                return this.resetKoboDevice(req, ctx);
+            case 'refresh-kobo-device':
+                return this.refreshKoboDevice(req, ctx);
+            case 'delete-kobo-device':
+                return this.deleteKoboDevice(req, ctx);
+            case 'set-opds-password':
+                return this.setOpdsPassword(req, ctx);
+            case 'create-kosync-password':
+                return this.createKosyncPassword(req, ctx);
+            case 'send-book-telegram':
+                return this.sendBookTelegram(req, ctx);
+            case 'send-book-email':
+                return this.sendBookEmail(req, ctx);
+            default:
+                throw new Error(`Action not found: ${action}`);
+        }
     }
 
-    // Upload preflight (see uploadHandler): the action checks who asks and answers without reading a file.
-    async uploadAllowed(req, ws, check) {
-        if (!ws.uploadCheck)
-            return false;
+    async uploadAllowed(check) {
         await check();
-        this.send({ok: true}, req, ws);
-        return true;
+        return {ok: true};
     }
 
-    uploadedFile(ws) {
-        if (!ws.uploadFile)
-            throw new Error(i18n.t('errors.uploadOverHttp'));
-        return ws.uploadFile;
+    uploadedFile(ctx) {
+        if (!ctx.uploadFile)
+            throw httpError(400, i18n.t('errors.apiInvalidRequest'));
+        return ctx.uploadFile;
     }
 
-    async uploadedJson(ws) {
+    async uploadedJson(ctx) {
+        const file = this.uploadedFile(ctx);
         try {
-            return JSON.parse(await fs.readFile(this.uploadedFile(ws), 'utf8'));
+            return JSON.parse(await fs.readFile(file, 'utf8'));
         } catch (e) {
-            throw (ws.uploadFile ? new Error(i18n.t('errors.uploadInvalidJson')) : e);
+            throw new Error(i18n.t('errors.uploadInvalidJson'));
         }
     }
 
@@ -481,46 +574,8 @@ class WebSocketController {
             .map(dir => String(dir || '')).filter(dir => dir.length > 1);
         if (!dirs.some(dir => text.includes(dir) || text.includes(dir.replace(/\\/g, '/'))))
             return text;
-        log(LM_ERR, `WebSocket ${(req && req.action) || ''}: ${text}`);
+        log(LM_ERR, `API ${(req && req.action) || ''}: ${text}`);
         return i18n.t('errors.serverErrorSeeLog');
-    }
-
-    send(res, req, ws) {
-        if (ws.readyState == WebSocket.OPEN) {
-            ws.lastActivity = Date.now();
-            let r = res;
-            if (req.requestId)
-                r = Object.assign({requestId: req.requestId}, r);
-            if (req.sessionRotateToken)
-                r = Object.assign({sessionRotateToken: req.sessionRotateToken}, r);
-
-            const message = JSON.stringify(r);
-            ws.send(message);
-
-            if (this.isDevelopment || this.config.logQueries) {
-                log(`WebSocket-OUT: ${utils.cutString(JSON.stringify(r, hideSecrets))}`);
-                log(`${Date.now() - req.__startTime}ms`);
-            }
-
-        }
-    }
-
-    //Вход в профиль или по паролю доступа: сессия браузера получает новый id (Security.rotateSession), токен для новой
-    //cookie уходит в ответе на этот запрос. Загрузка файла (uploadHandler) - HTTP-запрос, её ответ токен не передаёт
-    rotateSession(req, ws) {
-        if (this.security && ws.req && ws.req.securitySession && !('uploadFile' in ws))
-            req.sessionRotateToken = this.security.rotateSession(ws.req.securitySession);
-    }
-
-    //метка метрики только для действий, у которых есть обработчик (имя метода = camelCase действия),
-    //иначе запросы до входа с произвольным action плодят метки без ограничения
-    actionLabel(action) {
-        const method = _.camelCase(action);
-        return (typeof action === 'string' && _.kebabCase(method) === action && typeof this[method] === 'function' ? action : 'unknown');
-    }
-
-    isCsrfProtectedAction(action = '') {
-        return !readOnlyActions.has(action);
     }
 
     getOnlineMetrics() {
@@ -528,44 +583,31 @@ class WebSocketController {
         const users = new Set();
         let clients = 0;
         let anonymousClients = 0;
-
-        this.wss.clients.forEach((ws) => {
-            if (ws.readyState !== WebSocket.OPEN)
-                return;
-
-            const lastActivity = ws.lastActivity || 0;
-            if (!lastActivity || now - lastActivity > closeSocketOnIdle)
-                return;
-
+        for (const client of this.onlineClients.values()) {
+            if (now - client.at > onlinePeriod)
+                continue;
             clients++;
-            if (ws.userId) {
-                users.add(ws.userId);
-            } else {
+            if (client.userId)
+                users.add(client.userId);
+            else
                 anonymousClients++;
-            }
-        });
-
-        return {
-            clients,
-            users: users.size,
-            anonymousClients,
-        };
+        }
+        return {clients, users: users.size, anonymousClients};
     }
 
     //Actions ------------------------------------------------------------------
-    async test(req, ws) {
-        this.send({message: `${this.config.name} project is awesome`}, req, ws);
+    async test() {
+        return {message: `${this.config.name} project is awesome`};
     }
 
-    async getConfig(req, ws) {
+    async getConfig(req, ctx) {
         if (req.profileLoginRequired) {
             const config = _.pick(this.config, ['name', 'version', 'branch', 'dbVersion', 'rootPathStatic']);
             Object.assign(config, {profileLoginRequired: true, profileAuthorized: false, userProfiles: [],
                 currentUserId: '', currentUserProfile: null});
             if (this.security)
-                config.csrfToken = this.security.getCsrfToken(ws.req);
-            this.send(config, req, ws);
-            return;
+                config.csrfToken = this.security.getCsrfToken(ctx.http);
+            return config;
         }
         const config = _.pick(this.config, this.config.webConfigParams);
         config.profileLoginRequired = true;
@@ -577,7 +619,7 @@ class WebSocketController {
             remote: !!source.remote,
         }));
         if (this.security)
-            config.csrfToken = this.security.getCsrfToken(ws.req);
+            config.csrfToken = this.security.getCsrfToken(ctx.http);
         config.discovery = Object.assign(
             {},
             config.discovery || {},
@@ -594,10 +636,7 @@ class WebSocketController {
             Object.assign(config, {profileLoginRequired: false, guest: true, profileAuthorized: false, userProfiles: [],
                 currentUserId: '', currentUserProfile: null, telegramShareEnabled: false, emailShareEnabled: false});
             config.opdsRoot = this.config.opdsRoot || ((this.config.opds && this.config.opds.root) ? this.config.opds.root : '/opds');
-            delete ws.userId;
-            delete ws.userLastActivity;
-            this.send(config, req, ws);
-            return;
+            return config;
         }
         const profiles = await this.webWorker.getUserProfiles(req.userId);
         const currentProfile = await this.webWorker.getCurrentUserProfile(req.userId, req.profileAccessToken);
@@ -606,13 +645,6 @@ class WebSocketController {
         config.currentUserProfile = currentProfile.currentUserProfile;
         config.profileAuthorized = currentProfile.profileAuthorized;
         config.opdsRoot = this.config.opdsRoot || ((this.config.opds && this.config.opds.root) ? this.config.opds.root : '/opds');
-        if (config.profileAuthorized && config.currentUserId) {
-            ws.userId = String(config.currentUserId || '').trim();
-            ws.userLastActivity = Date.now();
-        } else {
-            delete ws.userId;
-            delete ws.userLastActivity;
-        }
 
         const currentUser = currentProfile.currentUserProfile || null;
         //отправка книг - только из профиля с паролем (или SSO), см. requireProtectedProfile
@@ -637,56 +669,55 @@ class WebSocketController {
             config.adminGuestAccess = this.webWorker.getAdminGuestAccess();
         }
 
-        this.send(config, req, ws);
+        return config;
     }
 
-    async getWorkerState(req, ws) {
+    async getWorkerState(req) {
         if (req.profileLoginRequired || req.guest) {
             const state = this.workerState.getState('server_state') || {};
-            this.send({state: state.state || 'normal', serverMessage: state.state === 'normal' ? '' : i18n.t('server.preparingLibrary')}, req, ws);
-            return;
+            return {state: state.state || 'normal', serverMessage: state.state === 'normal' ? '' : i18n.t('server.preparingLibrary')};
         }
         if (!req.workerId)
             throw new Error(`key 'workerId' is empty`);
 
         const state = this.workerState.getState(req.workerId);
         //сообщения состояния хранятся как ключи/описания переводов и переводятся на языке запроса
-        this.send((state ? Object.assign({}, state, {
+        return (state ? Object.assign({}, state, {
             serverMessage: i18n.render(state.serverMessage),
             jobMessage: i18n.render(state.jobMessage),
-        }) : {}), req, ws);
+        }) : {});
     }
 
-    async getAuthorBookList(req, ws) {
+    async getAuthorBookList(req) {
         //без authorId автор ищется по точному имени (страница автора)
         const author = (req.authorId ? undefined : String(req.author || '').trim());
         const result = await this.webWorker.getAuthorBookList(req.authorId, author, req.query);
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getAuthorInfo(req, ws) {
+    async getAuthorInfo(req) {
         const result = await this.webWorker.getAuthorInfo(req.authorId, req.author);
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getSeriesBookList(req, ws) {
+    async getSeriesBookList(req) {
         const result = await this.webWorker.getSeriesBookList(req.series, req.query);
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getGenreTree(req, ws) {
+    async getGenreTree() {
         const result = await this.webWorker.getGenreTree();
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getDiscoveryShelves(req, ws) {
+    async getDiscoveryShelves(req) {
         //гостю - общие полки из кеша: без персональных, без перезагрузки и без настроек источника администратора
         if (req.guest)
-            req = {action: req.action, requestId: req.requestId, section: 'external', externalLimit: req.externalLimit};
+            req = {action: req.action, section: 'external', externalLimit: req.externalLimit};
         const result = await this.webWorker.getDiscoveryShelvesV2({
             userId: req.userId,
             profileAccessToken: req.profileAccessToken,
@@ -705,170 +736,170 @@ class WebSocketController {
             externalLanguages: req.externalLanguages,
         });
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateDiscoveryPreferences(req, ws) {
+    async updateDiscoveryPreferences(req) {
         const result = await this.webWorker.updateDiscoveryPreferences(
             req.userId,
             req.profileAccessToken,
             req.preferences || {},
         );
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async recordDiscoveryEvents(req, ws) {
+    async recordDiscoveryEvents(req) {
         if (req.guest)
-            return this.send({}, req, ws);
+            return {};
         const result = await this.webWorker.recordDiscoveryEvents(
             req.userId,
             req.profileAccessToken,
             req.events || [],
         );
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateSharedDiscoveryConfig(req, ws) {
+    async updateSharedDiscoveryConfig(req) {
         const result = await this.webWorker.updateSharedDiscoveryConfig(
             req.userId,
             req.profileAccessToken,
             req.discovery || {},
         );
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateAdminIntegrations(req, ws) {
+    async updateAdminIntegrations(req) {
         const result = await this.webWorker.updateAdminIntegrationConfig(
             req.userId,
             req.profileAccessToken,
             req.integrations || {},
         );
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async testAdminIntegration(req, ws) {
+    async testAdminIntegration(req) {
         const result = await this.webWorker.testAdminIntegrationConfig(
             req.userId,
             req.profileAccessToken,
             req.kind,
         );
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateAdminGuestAccess(req, ws) {
+    async updateAdminGuestAccess(req) {
         const result = await this.webWorker.updateAdminGuestAccess(req.userId, req.profileAccessToken, req.guestAccess === true);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateAdminOpds(req, ws) {
+    async updateAdminOpds(req) {
         const result = await this.webWorker.updateAdminOpdsConfig(
             req.userId,
             req.profileAccessToken,
             req.opds || {},
         );
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getAdminDashboard(req, ws) {
+    async getAdminDashboard(req) {
         const result = await this.webWorker.getAdminDashboard(req.userId, req.profileAccessToken);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getAdminDashboardMetrics(req, ws) {
+    async getAdminDashboardMetrics(req) {
         const result = await this.webWorker.getAdminDashboardMetrics(req.userId, req.profileAccessToken);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getAdminEvents(req, ws) {
+    async getAdminEvents(req) {
         const result = await this.webWorker.getAdminEvents(req.userId, req.profileAccessToken, req.options || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateAdminEventLog(req, ws) {
+    async updateAdminEventLog(req) {
         const result = await this.webWorker.updateAdminEventLog(req.userId, req.profileAccessToken, req.options || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async addAdminTestEvent(req, ws) {
+    async addAdminTestEvent(req) {
         const result = await this.webWorker.addAdminTestEvent(req.userId, req.profileAccessToken, req.level);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateAdminLibrarySources(req, ws) {
+    async updateAdminLibrarySources(req) {
         const result = await this.webWorker.updateAdminLibrarySources(
             req.userId,
             req.profileAccessToken,
             req.sources || [],
         );
-        this.send(result, req, ws);
+        return result;
     }
 
-    async adminDiagnoseLibrarySource(req, ws) {
+    async adminDiagnoseLibrarySource(req) {
         const result = await this.webWorker.diagnoseLibrarySource(req.userId, req.profileAccessToken, req.source || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async adminCleanCache(req, ws) {
+    async adminCleanCache(req) {
         const result = await this.webWorker.runAdminCacheCleanKind(req.userId, req.profileAccessToken, req.kind || 'all');
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateAdminCache(req, ws) {
+    async updateAdminCache(req) {
         const result = await this.webWorker.updateAdminCacheConfig(req.userId, req.profileAccessToken, req.cache || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async adminCleanBrokenCovers(req, ws) {
+    async adminCleanBrokenCovers(req) {
         const result = await this.webWorker.cleanBrokenCoverCache(req.userId, req.profileAccessToken);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async adminRebuildCover(req, ws) {
+    async adminRebuildCover(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
         const result = await this.webWorker.rebuildCoverCacheForBook(req.userId, req.profileAccessToken, req.bookUid);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async adminReindex(req, ws) {
+    async adminReindex(req) {
         const result = await this.webWorker.startAdminReindex(req.userId, req.profileAccessToken);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getBookLink(req, ws) {
+    async getBookLink(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
         const result = await this.webWorker.getBookLink(req.bookUid);
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getAuthorAliases(req, ws) {
+    async getAuthorAliases(req) {
         this.webWorker.checkMyState();
         const aliases = await this.webWorker.catalogSearch.authorAliases(String(req.author || ''));
-        this.send({aliases}, req, ws);
+        return {aliases};
     }
 
-    async adminAuthorNamesStatus(req, ws) {
+    async adminAuthorNamesStatus(req) {
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.catalogSearch.wikidataStatus(req.table), req, ws);
+        return await this.webWorker.catalogSearch.wikidataStatus(req.table);
     }
 
     //req.table: 'author-names' (по умолчанию) или 'work-titles'
-    async adminAuthorNamesUpdate(req, ws) {
+    async adminAuthorNamesUpdate(req) {
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
         this.webWorker.catalogSearch.startWikidataDownload(req.table);
-        this.send(await this.webWorker.catalogSearch.wikidataStatus(req.table), req, ws);
+        return await this.webWorker.catalogSearch.wikidataStatus(req.table);
     }
 
-    async catalogNames(req, ws) {
+    async catalogNames(req) {
         this.webWorker.checkMyState();
         const result = await this.webWorker.catalogSearch.listNames({
             kind: (req.kind === 'series' ? 'series' : 'author'),
@@ -876,10 +907,10 @@ class WebSocketController {
             offset: req.offset,
             limit: req.limit,
         });
-        this.send(result, req, ws);
+        return result;
     }
 
-    async catalogSearch(req, ws) {
+    async catalogSearch(req) {
         this.webWorker.checkMyState();
         const result = await this.webWorker.catalogSearch.search({
             q: String(req.q || ''),
@@ -891,47 +922,47 @@ class WebSocketController {
             showDeleted: req.showDeleted === true,
             facets: req.facets !== false,
         });
-        this.send(result, req, ws);
+        return result;
     }
 
-    async catalogSuggest(req, ws) {
+    async catalogSuggest(req) {
         this.webWorker.checkMyState();
         const result = await this.webWorker.catalogSearch.suggest({q: String(req.q || '')});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getBook(req, ws) {
+    async getBook(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error('bookUid is empty');
 
         const result = await this.webWorker.getBook(req.bookUid);
-        this.send(result, req, ws);
+        return result;
     }
 
     //Гостю и профилю без входа отвечаем пустым набором, а не need_profile_login: страницы каталога открыты всем
-    async getBookStates(req, ws) {
+    async getBookStates(req) {
         if (req.guest)
-            return this.send(this.webWorker.getUserBookStates(null, req.bookUids, []), req, ws);
+            return this.webWorker.getUserBookStates(null, req.bookUids, []);
         const user = await this.webWorker.getAuthorizedUserOrNull(req.userId, req.profileAccessToken);
         const lists = (user ? await this.webWorker.readingListStore.getLists(user.id) : []);
-        this.send(this.webWorker.getUserBookStates(user, req.bookUids, lists), req, ws);
+        return this.webWorker.getUserBookStates(user, req.bookUids, lists);
     }
 
-    async getBookInfo(req, ws) {
+    async getBookInfo(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
         const result = await this.webWorker.getBookInfo(req.bookUid, {fetchRemote: req.fetchRemote === true});
 
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getReadingLists(req, ws) {
+    async getReadingLists(req) {
         if (req.guest)
-            return this.send({lists: []}, req, ws);
+            return {lists: []};
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getReadingLists(user.id, req.bookUid, this.listOptions(req));
-        this.send(result, req, ws);
+        return result;
     }
 
     //от клиента - только фильтр по видимости: прочие опции хранилища не для запросов
@@ -939,74 +970,74 @@ class WebSocketController {
         return _.pick((req.options && typeof(req.options) === 'object' ? req.options : {}), ['visibility']);
     }
 
-    async getReaderState(req, ws) {
+    async getReaderState(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error('bookUid is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getReaderState(user.id, req.bookUid);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getUserReadingLibrary(req, ws) {
+    async getUserReadingLibrary(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getUserReadingLibrary(user, req.options || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getReadingStats(req, ws) {
+    async getReadingStats(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.getReadingStats(user), req, ws);
+        return await this.webWorker.getReadingStats(user);
     }
 
-    async updateReaderProgress(req, ws) {
+    async updateReaderProgress(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error('bookUid is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.updateReaderProgress(user.id, req.bookUid, req.progress || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async deleteReaderProgress(req, ws) {
+    async deleteReaderProgress(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error('bookUid is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.deleteReaderProgress(user.id, req.bookUid);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async forgetBooks(req, ws) {
+    async forgetBooks(req) {
         if (!Array.isArray(req.bookUids) || req.bookUids.length > 5000)
             throw new Error('bookUids is invalid');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.forgetBooks(user.id, req.bookUids), req, ws);
+        return await this.webWorker.forgetBooks(user.id, req.bookUids);
     }
 
-    async clearReaderProgress(req, ws) {
+    async clearReaderProgress(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.clearReaderProgress(user.id);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateReaderPreferences(req, ws) {
+    async updateReaderPreferences(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.updateReaderPreferences(user.id, req.preferences || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async addReaderBookmark(req, ws) {
+    async addReaderBookmark(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error('bookUid is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.addReaderBookmark(user.id, req.bookUid, req.bookmark || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async deleteReaderBookmark(req, ws) {
+    async deleteReaderBookmark(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error('bookUid is empty');
         if (!utils.hasProp(req, 'bookmarkId'))
@@ -1014,55 +1045,52 @@ class WebSocketController {
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.deleteReaderBookmark(user.id, req.bookUid, req.bookmarkId);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getUserProfiles(req, ws) {
+    async getUserProfiles(req) {
         const result = await this.webWorker.getUserProfiles(req.userId);
         if (this.profileAccess)
             result.users = this.profileAccess.filterProfiles(result.users, req);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async loginUserProfile(req, ws) {
+    async loginUserProfile(req, ctx) {
         if (this.security) {
-            this.security.checkLoginRate(ws.req, 'profile');
+            this.security.checkLoginRate(ctx.http, 'profile');
             this.security.checkAccountRate('profile', req.login);
         }
 
         try {
             const result = await this.webWorker.loginUserProfile(req.login, req.password);
-            if (this.security && ws.req && ws.req.securitySession)
-                ws.req.securitySession.profileAccessToken = result.profileAccessToken;
-            this.rotateSession(req, ws);
-            ws.userId = String(result.userId || '').trim();
-            ws.userLastActivity = Date.now();
+            if (this.security && ctx.http.securitySession) {
+                ctx.http.securitySession.profileAccessToken = result.profileAccessToken;
+                this.security.rotateSession(ctx.http, ctx.res);
+            }
             if (this.security) {
-                this.security.recordLoginAttempt(ws.req, true, 'profile');
+                this.security.recordLoginAttempt(ctx.http, true, 'profile');
                 this.security.recordAccountAttempt('profile', req.login, true);
             }
-            this.send(result, req, ws);
+            return result;
         } catch (e) {
             if (this.security) {
-                this.security.recordLoginAttempt(ws.req, false, 'profile');
+                this.security.recordLoginAttempt(ctx.http, false, 'profile');
                 this.security.recordAccountAttempt('profile', req.login, false);
             }
             throw e;
         }
     }
 
-    async logoutUserProfile(req, ws) {
+    async logoutUserProfile(req, ctx) {
         const result = await this.webWorker.closeProfileSession(req.profileAccessToken);
-        if (this.security && ws.req && ws.req.securitySession) {
-            delete ws.req.securitySession.profileAccessToken;
-            this.security.persistSession(ws.req.securitySession);
+        if (this.security && ctx.http.securitySession) {
+            delete ctx.http.securitySession.profileAccessToken;
+            this.security.rotateSession(ctx.http, ctx.res);
         }
-        delete ws.userId;
-        delete ws.userLastActivity;
-        this.send(result, req, ws);
+        return result;
     }
 
-    async createUserProfile(req, ws) {
+    async createUserProfile(req) {
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
         const profile = Object.assign({}, req.profile || {});
         delete profile.passwordHash;
@@ -1076,10 +1104,10 @@ class WebSocketController {
         delete profile.password;
 
         const result = await this.webWorker.createUserProfile(profile);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateUserProfile(req, ws) {
+    async updateUserProfile(req, ctx) {
         if (!utils.hasProp(req, 'targetUserId'))
             throw new Error('targetUserId is empty');
 
@@ -1104,10 +1132,10 @@ class WebSocketController {
             await this.requireProtectedProfile(target, req, 'errors.deliveryNeedsPassword');
         if (isOwnProfile && target.passwordHash && profile.password) {
             if (this.security)
-                this.security.checkLoginRate(ws.req, 'profile');
+                this.security.checkLoginRate(ctx.http, 'profile');
             if (!await store.verifyUserPassword(target.id, String(profile.currentPassword || ''))) {
                 if (this.security)
-                    this.security.recordLoginAttempt(ws.req, false, 'profile');
+                    this.security.recordLoginAttempt(ctx.http, false, 'profile');
                 throw new Error(i18n.t('errors.currentPasswordInvalid'));
             }
         }
@@ -1123,7 +1151,7 @@ class WebSocketController {
             delete profile.isAdmin;
 
         const result = await this.webWorker.updateUserProfile(req.targetUserId, profile);
-        this.send(result, req, ws);
+        return result;
     }
 
     //профиль, закреплённый за пользователем SSO, защищён прокси и без своего пароля
@@ -1136,103 +1164,103 @@ class WebSocketController {
             throw new Error(i18n.t(messageKey));
     }
 
-    async deleteUserProfile(req, ws) {
+    async deleteUserProfile(req) {
         if (!utils.hasProp(req, 'targetUserId'))
             throw new Error('targetUserId is empty');
 
         await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
 
         const result = await this.webWorker.deleteUserProfile(req.targetUserId);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async getReadingNow(req, ws) {
+    async getReadingNow(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.getReadingNow(user, req.hidden === true), req, ws);
+        return await this.webWorker.getReadingNow(user, req.hidden === true);
     }
 
-    async getReadingList(req, ws) {
+    async getReadingList(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.getReadingList(user.id, req.listId, this.listOptions(req));
-        this.send(result, req, ws);
+        return result;
     }
 
-    async createReadingList(req, ws) {
+    async createReadingList(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.createReadingList(user.id, req.name, req.visibility);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async renameReadingList(req, ws) {
+    async renameReadingList(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.renameReadingList(user.id, req.listId, req.name);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async setReadingListVisibility(req, ws) {
+    async setReadingListVisibility(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.setReadingListVisibility(user.id, req.listId, req.visibility);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async deleteReadingList(req, ws) {
+    async deleteReadingList(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.deleteReadingList(user.id, req.listId);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async exportReadingLists(req, ws) {
+    async exportReadingLists(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.exportReadingLists(user.id);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async exportAdminSettings(req, ws) {
+    async exportAdminSettings(req) {
         const result = await this.webWorker.exportAdminSettings(req.userId, req.profileAccessToken);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async importAdminSettings(req, ws) {
-        if (await this.uploadAllowed(req, ws, () => this.webWorker.requireAdmin(req.userId, req.profileAccessToken)))
-            return;
-        const result = await this.webWorker.importAdminSettings(req.userId, req.profileAccessToken, await this.uploadedJson(ws));
-        this.send(result, req, ws);
+    async importAdminSettings(req, ctx) {
+        if (ctx.uploadCheck)
+            return this.uploadAllowed(() => this.webWorker.requireAdmin(req.userId, req.profileAccessToken));
+        const result = await this.webWorker.importAdminSettings(req.userId, req.profileAccessToken, await this.uploadedJson(ctx));
+        return result;
     }
 
-    async createAdminBackup(req, ws) {
+    async createAdminBackup(req) {
         const result = await this.webWorker.createAdminBackup(req.userId, req.profileAccessToken, req.scope);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async importAdminBackup(req, ws) {
-        if (await this.uploadAllowed(req, ws, () => this.webWorker.requireAdmin(req.userId, req.profileAccessToken)))
-            return;
-        const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, {file: this.uploadedFile(ws)}, req.scope);
-        this.send(result, req, ws);
+    async importAdminBackup(req, ctx) {
+        if (ctx.uploadCheck)
+            return this.uploadAllowed(() => this.webWorker.requireAdmin(req.userId, req.profileAccessToken));
+        const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, {file: this.uploadedFile(ctx)}, req.scope);
+        return result;
     }
 
-    async updateBookMetadata(req, ws) {
+    async updateBookMetadata(req) {
         const result = await this.webWorker.updateBookMetadata(req.userId, req.profileAccessToken, req.bookUid, req.metadata);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async importReadingLists(req, ws) {
-        if (await this.uploadAllowed(req, ws, () => this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken)))
-            return;
+    async importReadingLists(req, ctx) {
+        if (ctx.uploadCheck)
+            return this.uploadAllowed(() => this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken));
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const data = await this.uploadedJson(ws);
+        const data = await this.uploadedJson(ctx);
         //в открытый профиль из файла не переносятся устройства Kobo (их токены) и адреса отправки, см. requireProtectedProfile
         if (data && typeof(data) === 'object' && !await this.isProtectedProfile(user, req)) {
             delete data.kobo;
@@ -1242,10 +1270,10 @@ class WebSocketController {
             }
         }
         const result = await this.webWorker.importReadingLists(user.id, data);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async updateReadingListBook(req, ws) {
+    async updateReadingListBook(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
         if (!utils.hasProp(req, 'bookUid'))
@@ -1253,18 +1281,18 @@ class WebSocketController {
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.updateReadingListBook(user.id, req.listId, req.bookUid, req.enabled);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async replaceListedBook(req, ws) {
+    async replaceListedBook(req) {
         if (!req.fromUid || !req.toUid)
             throw new Error('bookUid is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        this.send(await this.webWorker.replaceListedBook(user.id, req.fromUid, req.toUid), req, ws);
+        return await this.webWorker.replaceListedBook(user.id, req.fromUid, req.toUid);
     }
 
-    async setReadingListBookRead(req, ws) {
+    async setReadingListBookRead(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
         if (!utils.hasProp(req, 'bookUid'))
@@ -1272,28 +1300,28 @@ class WebSocketController {
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.setReadingListBookRead(user.id, req.listId, req.bookUid, req.read);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async markReaderBooksRead(req, ws) {
+    async markReaderBooksRead(req) {
         if (!utils.hasProp(req, 'bookUids'))
             throw new Error('bookUids is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.markReaderBooksRead(user.id, req.bookUids, req.read, req.options || {});
-        this.send(result, req, ws);
+        return result;
     }
 
-    async markSeriesRead(req, ws) {
+    async markSeriesRead(req) {
         if (!utils.hasProp(req, 'series'))
             throw new Error('series is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.markSeriesRead(user.id, req.series, req.read);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async addSeriesToReadingList(req, ws) {
+    async addSeriesToReadingList(req) {
         if (!utils.hasProp(req, 'listId'))
             throw new Error('listId is empty');
         if (!utils.hasProp(req, 'series'))
@@ -1301,7 +1329,7 @@ class WebSocketController {
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const result = await this.webWorker.addSeriesToReadingList(user.id, req.listId, req.series);
-        this.send(result, req, ws);
+        return result;
     }
 
     async koboUser(req) {
@@ -1321,45 +1349,45 @@ class WebSocketController {
             .filter(key => utils.hasProp(settings, key)).map(key => [key, settings[key]]));
     }
 
-    async getKoboDevices(req, ws) {
+    async getKoboDevices(req) {
         const {kobo, user} = await this.koboUser(req);
-        this.send(await kobo.getDevices(user.id), req, ws);
+        return await kobo.getDevices(user.id);
     }
 
-    async createKoboDevice(req, ws) {
+    async createKoboDevice(req, ctx) {
         const {kobo, user} = await this.koboUser(req);
         await this.requireProtectedProfile(user, req);
-        this.send(await kobo.createDevice(user.id, this.koboDeviceSettings(req), ws.req), req, ws);
+        return await kobo.createDevice(user.id, this.koboDeviceSettings(req), ctx.http);
     }
 
-    async updateKoboDevice(req, ws) {
+    async updateKoboDevice(req) {
         const {kobo, user} = await this.koboUser(req);
-        this.send(await kobo.updateDevice(user.id, String(req.deviceId || ''), this.koboDeviceSettings(req)), req, ws);
+        return await kobo.updateDevice(user.id, String(req.deviceId || ''), this.koboDeviceSettings(req));
     }
 
-    async regenerateKoboDeviceToken(req, ws) {
+    async regenerateKoboDeviceToken(req, ctx) {
         const {kobo, user} = await this.koboUser(req);
         await this.requireProtectedProfile(user, req);
-        this.send(await kobo.regenerateToken(user.id, String(req.deviceId || ''), ws.req), req, ws);
+        return await kobo.regenerateToken(user.id, String(req.deviceId || ''), ctx.http);
     }
 
-    async resetKoboDevice(req, ws) {
+    async resetKoboDevice(req) {
         const {kobo, user} = await this.koboUser(req);
-        this.send(await kobo.store.resetDevice(user.id, String(req.deviceId || '')), req, ws);
+        return await kobo.store.resetDevice(user.id, String(req.deviceId || ''));
     }
 
-    async refreshKoboDevice(req, ws) {
+    async refreshKoboDevice(req) {
         const {kobo, user} = await this.koboUser(req);
-        this.send(await kobo.refreshDevice(user.id, String(req.deviceId || '')), req, ws);
+        return await kobo.refreshDevice(user.id, String(req.deviceId || ''));
     }
 
-    async deleteKoboDevice(req, ws) {
+    async deleteKoboDevice(req) {
         const {kobo, user} = await this.koboUser(req);
-        this.send(await kobo.store.deleteDevice(user.id, String(req.deviceId || '')), req, ws);
+        return await kobo.store.deleteDevice(user.id, String(req.deviceId || ''));
     }
 
     // OPDS password: generated and shown once, or chosen by the user (10+ characters). A new one replaces the old.
-    async setOpdsPassword(req, ws) {
+    async setOpdsPassword(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         if (user.opdsEnabled === false)
             throw new Error(i18n.t('errors.opdsOffForProfile'));
@@ -1367,11 +1395,11 @@ class WebSocketController {
         const chosen = String(req.password || '');
         const password = chosen || require('crypto').randomBytes(12).toString('base64url');
         await this.webWorker.readingListStore.setOpdsPassword(user.id, await this.webWorker.hashProfilePassword(user.login, password));
-        this.send({username: user.login, password: (chosen ? '' : password)}, req, ws);
+        return {username: user.login, password: (chosen ? '' : password)};
     }
 
     // The KOReader password is shown once; a new one replaces the old.
-    async createKosyncPassword(req, ws) {
+    async createKosyncPassword(req) {
         if (!this.config.kosyncEnabled)
             throw new Error(i18n.t('errors.kosyncDisabled'));
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
@@ -1380,29 +1408,29 @@ class WebSocketController {
             throw new Error(i18n.t('errors.kosyncNeedsProfile'));
         await this.requireProtectedProfile(user, req);
         const password = await this.webWorker.readingListStore.createKosyncPassword(user.id);
-        this.send({username: user.login || user.id, password}, req, ws);
+        return {username: user.login || user.id, password};
     }
 
-    async sendBookTelegram(req, ws) {
+    async sendBookTelegram(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         await this.requireProtectedProfile(user, req, 'errors.deliveryNeedsPassword');
         const result = await this.webWorker.sendBookToTelegram(req.bookUid, req.format, user.id);
-        this.send(result, req, ws);
+        return result;
     }
 
-    async sendBookEmail(req, ws) {
+    async sendBookEmail(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         await this.requireProtectedProfile(user, req, 'errors.deliveryNeedsPassword');
         const result = await this.webWorker.sendBookToEmail(req.bookUid, req.format, user.id);
-        this.send(result, req, ws);
+        return result;
     }
 
 }
 
-module.exports = WebSocketController;
+module.exports = ApiController;

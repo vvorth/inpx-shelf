@@ -41,7 +41,7 @@
             <div class="admin-dashboard-section-title">{{ $t('settings.admin.requests') }}</div>
             <div class="admin-dashboard-grid admin-dashboard-grid--runtime">
                 <div class="admin-stat">
-                    <div class="admin-stat-label">WebSocket action</div>
+                    <div class="admin-stat-label">API actions</div>
                     <div class="admin-stat-value">{{ adminRuntime.totalActions || 0 }}</div>
                     <div class="admin-stat-hint">{{ adminRuntimeHint }}</div>
                 </div>

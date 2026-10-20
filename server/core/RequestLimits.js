@@ -1,33 +1,23 @@
 const {t} = require('./i18n');
 const MiB = 1024*1024;
-// A message over the request limit but under this one gets an error reply; a larger one closes the socket.
-const transportCap = 6*MiB;
 function bounded(value, fallback, max) {
     const number = Number(value);
     return Number.isFinite(number) && number >= 1 ? Math.min(max, Math.floor(number)) : fallback;
 }
 function limits(config = {}) {
     return {
-        message: bounded(config.wsMessageLimitMb, 1, 16)*MiB,
+        message: bounded(config.apiMessageLimitMb, 1, 16)*MiB,
         import: bounded(config.importLimitMb, 16, 64)*MiB,
         // Backups come over HTTP straight to disk (see uploadLimit); only the unpacked files are held in memory.
         backup: bounded(config.backupUploadLimitMb, 256, 2048)*MiB,
         expanded: bounded(config.backupExpandedLimitMb, 512, 2048)*MiB,
     };
 }
-// Files are uploaded over HTTP by signed-in users, not sent as WebSocket messages that anyone can send before signing in.
+// Files go as upload request bodies, checked for access before they are read: the JSON body limit (message), which anyone
+// can reach before signing in, does not grow with them.
 function uploadLimit(action, config) {
     const value = limits(config);
     return {'import-admin-backup': value.backup, 'import-reading-lists': value.import, 'import-admin-settings': value.import}[action] || 0;
-}
-function transportLimit(config) {
-    return Math.max(transportCap, limits(config).message);
-}
-function checkRequest(req, bytes, config) {
-    if (!req || typeof req !== 'object' || Array.isArray(req) || typeof req.action !== 'string')
-        throw new Error(t('errors.wsInvalidRequest'));
-    if (bytes > limits(config).message)
-        throw new Error(t('errors.requestTooLarge'));
 }
 function checkImport(payload, config) {
     if (Buffer.byteLength(JSON.stringify(payload) || '') > limits(config).import)
@@ -43,4 +33,4 @@ function checkImport(payload, config) {
         }
     }
 }
-module.exports = {limits, uploadLimit, transportLimit, checkRequest, checkImport};
+module.exports = {limits, uploadLimit, checkImport};

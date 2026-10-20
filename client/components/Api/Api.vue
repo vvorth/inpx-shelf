@@ -33,7 +33,8 @@ import vueComponent from '../vueComponent.js';
 
 //import _ from 'lodash';
 
-import wsc from './webSocketConnection';
+import {call} from './apiConnection';
+import apiRoutes from '../../../shared/apiRoutes.js';
 import * as utils from '../../share/utils';
 import LockQueue from '../../../server/core/LockQueue';
 import packageJson from '../../../package.json';
@@ -85,7 +86,7 @@ class Api {
         if (!this.isStandaloneReaderLab)
             this.updateConfig();//no await
 
-        //после сна телефона или смены сети сокет может быть мёртв: проверяем заранее, а не на первом действии
+        //после сна телефона или смены сети связи может не быть: проверяем заранее, а не на первом действии
         this.onResume = () => this.checkConnection();
         document.addEventListener('visibilitychange', this.onResume);
         window.addEventListener('online', this.onResume);
@@ -97,23 +98,25 @@ class Api {
         clearTimeout(this.restoredTimer);
     }
 
-    //профиль - в каждом запросе
-    withAuth(params) {
+    //профиль и язык - в каждом запросе, токен CSRF - в каждом изменении (POST)
+    authHeaders(action) {
         const {currentUserId, profileAccessToken} = this.settings;
+        const headers = {'X-Ui-Lang': getLang()};
         if (currentUserId)
-            params.userId = currentUserId;
+            headers['X-User-Id'] = currentUserId;
         if (profileAccessToken)
-            params.profileAccessToken = profileAccessToken;
-        return params;
+            headers['X-Profile-Token'] = profileAccessToken;
+        const csrfToken = this.$store.state.config.csrfToken;
+        if (csrfToken && !apiRoutes.isRead(action))
+            headers['X-CSRF-Token'] = csrfToken;
+        return headers;
     }
 
-    //Сервер подтверждает приём любого запроса сразу (_rok), поэтому для проверки связи хватает подтверждения test.
-    //Повисший сокет при этом закрывается, и вторая попытка идёт уже по новому
+    //Проверка связи - GET api/ping с коротким ожиданием; вторая попытка - на случай единичного сбоя сети
     async probeConnection() {
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
-                const requestId = await wsc.send(this.withAuth({action: 'test', uiLang: getLang()}), 2);
-                wsc.message(requestId, 10).then(response => this.rotateSession(response)).catch(() => {});
+                await call('test', {}, {timeoutSecs: 5, headers: this.authHeaders('test')});
                 return true;
             } catch (e) {
                 //пробуем ещё раз или сообщаем о потере связи
@@ -253,8 +256,9 @@ class Api {
         this.busyDialogVisible = true;
         try {
             while (1) {// eslint-disable-line
-                const params = this.withAuth({action: 'get-worker-state', workerId: 'server_state', uiLang: getLang()});
-                const server = await wsc.message(await wsc.send(params));
+                const server = await call('get-worker-state', {workerId: 'server_state'}, {timeoutSecs: 4, headers: this.authHeaders('get-worker-state')});
+                if (server.error)
+                    throw new Error(server.error);
 
                 if (server.state != 'normal') {
                     this.mainMessage = tm(server.serverMessage);
@@ -283,21 +287,10 @@ class Api {
         }
     }
 
-    //Файл для импорта - HTTP-запросом (POST /upload): сервер пишет его на диск и проверяет доступ так же, как у WebSocket
+    //Файл для импорта - телом POST api/<action>, параметры - в query; ждём без ограничения: файл может быть большим
     async upload(action, file, query = {}) {
         for (let attempt = 0; ; attempt++) {
-            const {currentUserId, profileAccessToken} = this.settings;
-            const config = this.$store.state.config;
-            const headers = {'Content-Type': 'application/octet-stream', 'X-Ui-Lang': getLang()};
-            if (currentUserId)
-                headers['X-User-Id'] = currentUserId;
-            if (profileAccessToken)
-                headers['X-Profile-Token'] = profileAccessToken;
-            if (config.csrfToken)
-                headers['X-CSRF-Token'] = config.csrfToken;
-            const url = `${String(config.rootPathStatic || '').replace(/\/$/, '')}/upload?${new URLSearchParams(Object.assign({action}, query))}`;
-            const response = await fetch(url, {method: 'POST', headers, body: file, credentials: 'same-origin'});
-            const result = await response.json().catch(() => ({error: `${response.status} ${response.statusText}`}));
+            const result = await call(action, query, {headers: this.authHeaders(action), body: file});
             //токен CSRF устарел (новая сессия): берём свежий и пробуем ещё раз
             if (result.error === 'bad_csrf_token' && !attempt) {
                 await this.updateConfig();
@@ -309,35 +302,15 @@ class Api {
         }
     }
 
-    //Вход по WebSocket переносит сессию на новый id: новую HttpOnly-cookie браузер получает только ответом на HTTP-запрос.
-    //Без неё вход работает до перезагрузки страницы. Адрес относительный: страница приложения всегда <root>/
-    async rotateSession(response) {
-        const token = response && response.sessionRotateToken;
-        if (!token)
-            return;
-        try {
-            const result = await fetch('session/rotate', {method: 'POST', headers: {'X-Session-Rotate': token}, credentials: 'same-origin'});
-            if (!result.ok)
-                throw new Error(`${result.status} ${result.statusText}`);
-        } catch (e) {
-            console.warn(`Session cookie was not renewed after login: ${e.message}`);
-        }
-    }
-
+    //Ответ с {error} разбирается по значению error, а не по коду статуса
     async request(params, timeoutSecs = 10, options = {}) {
+        const {action, ...actionParams} = params;
         let retries = 0;
         while (1) {// eslint-disable-line
             try {
-                const csrfToken = this.$store.state.config.csrfToken;
-
-                this.withAuth(params);
-                if (csrfToken)
-                    params.csrfToken = csrfToken;
-                params.uiLang = getLang();
-
-                const response = await wsc.message(await wsc.send(params), timeoutSecs);
+                //заголовки - на каждой попытке: после входа или обновления конфига они другие
+                const response = await call(action, actionParams, {timeoutSecs, headers: this.authHeaders(action)});
                 this.connectionRestored();
-                await this.rotateSession(response);
 
                 if (response && response.error == 'need_profile_login') {
                     if (options.suppressProfileLogin)

@@ -18,7 +18,7 @@ const upstreamCheckReleaseLinks = [
 
 const propsToSave = [
     'dataDir',
-    'wsMessageLimitMb',
+    'apiMessageLimitMb',
     'importLimitMb',
     'backupUploadLimitMb',
     'backupExpandedLimitMb',

@@ -8,12 +8,10 @@ function exposedPaths(config) {
     const guestFiles = (guestWeb || guestOpds ? `; guest access: anyone (${[guestWeb && 'web', guestOpds && 'OPDS'].filter(Boolean).join(', ')})` : '');
     const paths = [
         [`${root}/`, 'anonymous', 'web app shell and login page, no library data'],
-        [`${root}/ (WebSocket)`, profile, guestWeb
-            ? 'guest access: anyone may browse the catalog, download books and see shared shelves'
-            : 'anonymous: only the login bootstrap (get-config without data, login, logout)'],
         [`${root}/app-reset`, 'anonymous', 'static page that clears the browser cache'],
-        [`${root}/session/rotate`, 'anonymous', 'needs a one-time token issued at login'],
-        [`${root}/upload`, profile, ''],
+        [`${root}/api/`, profile, guestWeb
+            ? 'guest access: anyone may browse the catalog, download books and see shared shelves'
+            : 'anonymous: only the login bootstrap (GET config without data, ping, worker-state; POST login, logout)'],
         [`${config.bookPathStatic || `${root}/book`}/`, profile, `or OPDS Basic credentials${guestFiles}`],
         [`${root}/cover/`, profile, `or OPDS Basic credentials${guestFiles}`],
         [`${root}/admin-backups/`, profile, 'admin only'],
