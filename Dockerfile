@@ -3,11 +3,14 @@
 ARG NODE_IMAGE=node:24-bookworm-slim
 ARG RUNTIME_IMAGE=debian:bookworm-slim
 ARG FB2CNG_VERSION=v1.9.1
-ARG FB2CNG_ARCH=linux-amd64
-# SHA-256 of fbc-${FB2CNG_ARCH}.zip: update with FB2CNG_VERSION/FB2CNG_ARCH, in release.yml and in scripts/bundle-windows-tools.ps1.
-ARG FB2CNG_SHA256=51ae29f268994374fdbf9e7244f37510b46aa9a0439bd57eb89c7c0924359174
+# SHA-256 of fbc-linux-amd64.zip and fbc-linux-arm64.zip: update with FB2CNG_VERSION, in release.yml and in scripts/bundle-windows-tools.ps1.
+ARG FB2CNG_SHA256_AMD64=51ae29f268994374fdbf9e7244f37510b46aa9a0439bd57eb89c7c0924359174
+ARG FB2CNG_SHA256_ARM64=53aeef47359de5782c0e504aa76e69b985c44e612a138cceebe412462b804041
 
+# Images are built for linux/amd64 and linux/arm64; TARGETARCH (amd64, arm64) comes from BuildKit.
 FROM ${NODE_IMAGE} AS build-deps
+
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -15,25 +18,30 @@ COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --ignore-scripts --no-audit --no-fund
 # Let the locked packaging dependency select and verify its matching base binary.
-RUN node -e "require('@yao-pkg/pkg-fetch').need({nodeRange:'node24',platform:'linux',arch:'x64'}).catch(error=>{console.error(error);process.exit(1)})"
+RUN node -e "require('@yao-pkg/pkg-fetch').need({nodeRange:'node24',platform:'linux',arch:process.env.TARGETARCH==='arm64'?'arm64':'x64'}).catch(error=>{console.error(error);process.exit(1)})"
 
 FROM build-deps AS build
 
+ARG TARGETARCH
+
 COPY . .
-RUN npm run build:linux
+# The runtime stages copy dist/linux whatever the architecture.
+RUN if [ "$TARGETARCH" = arm64 ]; then npm run build:linux-arm64 && mv dist/linux-arm64 dist/linux; else npm run build:linux; fi
 
 FROM ${NODE_IMAGE} AS fb2cng-tools
 
+ARG TARGETARCH
 ARG FB2CNG_VERSION
-ARG FB2CNG_ARCH
-ARG FB2CNG_SHA256
+ARG FB2CNG_SHA256_AMD64
+ARG FB2CNG_SHA256_ARM64
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates unzip wget \
-    && wget -O /tmp/fbc.zip "https://github.com/rupor-github/fb2cng/releases/download/${FB2CNG_VERSION}/fbc-${FB2CNG_ARCH}.zip" \
-    && echo "${FB2CNG_SHA256}  /tmp/fbc.zip" | sha256sum -c - \
+    && if [ "$TARGETARCH" = arm64 ]; then sha256="$FB2CNG_SHA256_ARM64"; else sha256="$FB2CNG_SHA256_AMD64"; fi \
+    && wget -O /tmp/fbc.zip "https://github.com/rupor-github/fb2cng/releases/download/${FB2CNG_VERSION}/fbc-linux-${TARGETARCH}.zip" \
+    && echo "${sha256}  /tmp/fbc.zip" | sha256sum -c - \
     && unzip /tmp/fbc.zip -d /fb2cng-runtime \
     && chmod +x /fb2cng-runtime/fbc \
     && rm -rf /tmp/fbc.zip /var/lib/apt/lists/*

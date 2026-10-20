@@ -68,7 +68,7 @@ Notes:
 
 A ready YAML example for `docker compose` is [docker-compose.yml](./docker-compose.yml): set your paths in it and run `docker compose up -d`.
 
-Image tags: `latest` (newest release), `<version>` (a specific release, such as `26.10.0`), `dev` (for testing); each has a `-pdf` variant with MuPDF. Standalone binaries for Linux, Windows and macOS are on [GitHub Releases](https://github.com/vvorth/inpx-shelf/releases).
+Image tags: `latest` (newest release), `<version>` (a specific release, such as `26.10.0`), `dev` (for testing); each has a `-pdf` variant with MuPDF. Images are multi-arch (`linux/amd64`, `linux/arm64`). Standalone binaries for Linux (x64, ARM64), Windows and macOS (Intel) are on [GitHub Releases](https://github.com/vvorth/inpx-shelf/releases).
 
 ## Documentation
 

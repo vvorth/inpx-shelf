@@ -1,3 +1,7 @@
+Unreleased
+
+- Docker images are multi-arch: every tag (`latest`, `<version>`, `dev` and their `-pdf` variants) now also runs on `linux/arm64` (Raspberry Pi 4/5, ARM servers, Apple Silicon with Docker Desktop); Docker picks the right one on its own.
+
 26.10.0 / 2026-10-20
 
 - Releases now ship when ready, without betas, and are numbered by date: `26.10.0`, `26.10.1`, … (year, month and the number of the release in that month). The `beta` Docker image is no longer updated: switch to `latest`. The `updateChannel` setting (`INPX_UPDATE_CHANNEL`) is gone: the update check always looks at the latest release. `dev` builds show a version with a commit mark, for example `26.10.0+dev.b95beaa`.

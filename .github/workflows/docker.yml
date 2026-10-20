@@ -1,0 +1,119 @@
+name: Docker
+
+# Images for linux/amd64 and linux/arm64, each built and tested on a runner of its own architecture
+# (no emulation). With publish set, both architectures are pushed by digest and joined into one tag:
+# runtime as vvorth/inpx-shelf:<tag>, runtime-pdf as <tag>-pdf. runtime-lite is only tested.
+# ci.yml (pull requests, dev) and release.yml call it.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out (empty means the ref of the calling event)
+        type: string
+        default: ''
+      publish:
+        description: Empty to build and test only, dev for dev and dev-<commit>, a release version for <version> and latest
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  REPOSITORY: vvorth/inpx-shelf
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      # package.json holds the last release; dev images add the commit (26.10.0+dev.b95beaa)
+      # so they are not taken for that release. Build metadata does not count as a newer version.
+      - name: Mark the version as a dev build
+        if: inputs.publish == '' || inputs.publish == 'dev'
+        run: npm pkg set version="$(node -p "require('./package.json').version")+dev.${GITHUB_SHA::7}"
+      - uses: docker/setup-buildx-action@v4
+      # The three targets share the build and base stages, so the second and third builds
+      # reuse their layers.
+      - name: Build images
+        run: |
+          REVISION=$(git rev-parse HEAD)
+          echo "REVISION=$REVISION" >> "$GITHUB_ENV"
+          for target in runtime runtime-pdf runtime-lite; do
+            docker buildx build --target "$target" --label "org.opencontainers.image.revision=$REVISION" \
+              --load -t "inpx-shelf:$target" .
+          done
+      - run: npm ci --ignore-scripts
+      - name: Test packaged web application
+        run: |
+          for target in runtime runtime-pdf runtime-lite; do
+            node scripts/binary-smoke-test.js --image "inpx-shelf:$target"
+          done
+      - name: Log in to Docker Hub
+        if: inputs.publish != ''
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # The same builds come from the cache. They are pushed without a tag: the publish job tags
+      # both architectures at once, so a tag never points to one architecture only.
+      - name: Push images by digest
+        if: inputs.publish != ''
+        run: |
+          mkdir -p digests
+          for target in runtime runtime-pdf; do
+            docker buildx build --target "$target" --label "org.opencontainers.image.revision=$REVISION" \
+              --output "type=image,name=$REPOSITORY,push-by-digest=true,name-canonical=true,push=true" \
+              --metadata-file metadata.json .
+            node -p "require('./metadata.json')['containerimage.digest']" > "digests/$target.${{ matrix.arch }}"
+          done
+      - if: inputs.publish != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: docker-digests-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ inputs.publish }}
+    needs: build
+    if: inputs.publish != ''
+    runs-on: ubuntu-latest
+    env:
+      PUBLISH: ${{ inputs.publish }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: docker-digests-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Tag multi-arch images
+        run: |
+          if [ "$PUBLISH" = dev ]; then tags="dev dev-${GITHUB_SHA::7}"; else tags="$PUBLISH latest"; fi
+          for target in runtime runtime-pdf; do
+            suffix=${target#runtime}
+            args=()
+            for tag in $tags; do args+=(-t "$REPOSITORY:$tag$suffix"); done
+            for file in digests/"$target".*; do args+=("$REPOSITORY@$(cat "$file")"); done
+            docker buildx imagetools create "${args[@]}"
+          done

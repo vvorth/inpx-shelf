@@ -33,53 +33,24 @@ jobs:
     needs: check-linux
     # main gets commits already built on dev; its images are built by release.yml.
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/dev'
+    uses: ./.github/workflows/docker.yml
+    with:
+      publish: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && 'dev' || '' }}
+    secrets: inherit
+
+  docker-cleanup:
+    name: Remove old dev tags
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    env:
-      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+    # Deleting tags needs a Docker Hub token with the Delete permission. Without it this job
+    # warns and fails on its own, but the dev images are already published.
+    continue-on-error: true
     steps:
-      - uses: actions/checkout@v5
-      # package.json holds the last release; dev images add the commit (26.10.0+dev.b95beaa)
-      # so they are not taken for that release. Build metadata does not count as a newer version.
-      - name: Mark the version as a dev build
-        run: npm pkg set version="$(node -p "require('./package.json').version")+dev.${GITHUB_SHA::7}"
-      # The three targets share the build and base stages, so the second and third builds
-      # reuse their layers.
-      - name: Build images
-        run: |
-          docker build --target runtime --label "org.opencontainers.image.revision=$GITHUB_SHA" -t inpx-shelf:dev .
-          docker build --target runtime-pdf --label "org.opencontainers.image.revision=$GITHUB_SHA" -t inpx-shelf:dev-pdf .
-          docker build --target runtime-lite -t inpx-shelf:lite .
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Test packaged web application
-        run: |
-          node scripts/binary-smoke-test.js --image inpx-shelf:dev
-          node scripts/binary-smoke-test.js --image inpx-shelf:dev-pdf
-          node scripts/binary-smoke-test.js --image inpx-shelf:lite
-      - name: Log in to Docker Hub
-        if: env.PUBLISH == 'true'
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Publish dev images
-        if: env.PUBLISH == 'true'
-        run: |
-          for suffix in "" -pdf; do
-            for tag in dev "dev-${GITHUB_SHA::7}"; do
-              docker tag "inpx-shelf:dev$suffix" "vvorth/inpx-shelf:$tag$suffix"
-              docker push "vvorth/inpx-shelf:$tag$suffix"
-            done
-          done
       - name: Remove old dev tags
-        if: env.PUBLISH == 'true'
-        # Deleting tags needs a Docker Hub token with the Delete permission. Without it this step
-        # warns and fails on its own, but the dev image above is already published.
-        continue-on-error: true
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

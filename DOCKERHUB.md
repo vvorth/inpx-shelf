@@ -27,6 +27,8 @@ The data path inside the container is still `/usr/local/bin/.inpx-web`, so an ex
 | `<version>` | Image with fb2cng, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
 | `…-pdf` | Every tag above also exists with a `-pdf` suffix (`latest-pdf`, `dev-pdf`, `<version>-pdf`): the same image plus MuPDF for `fb2` / `epub` → `pdf` conversion, about 100 MB larger. |
 
+Every tag is multi-arch: `linux/amd64` and `linux/arm64`; Docker pulls the one for your host.
+
 ## Quick Start
 
 Single library source:
