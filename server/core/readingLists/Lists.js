@@ -1,10 +1,7 @@
+const utils = require('../utils');
 const {t} = require('../i18n');
 const {bookNote} = require('../search/bookMatch');
 const {READ_PERCENT} = require('../ReaderProgress');
-
-function utilsHasProp(obj, prop) {
-    return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
-}
 
 // Reading lists and their books, list export and import. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
@@ -297,9 +294,9 @@ module.exports = {
         const shared = (options.shared === false ? [] : [data.metadataOverrides, data.bookNotes]);
         for (const [from, to] of pairs) {
             for (const rows of [...shared, ...users.flatMap((user) => [user.readerProgress, user.readerBookmarks])]) {
-                if (!rows || typeof(rows) !== 'object' || !utilsHasProp(rows, from))
+                if (!rows || typeof(rows) !== 'object' || !utils.hasProp(rows, from))
                     continue;
-                if (!utilsHasProp(rows, to))
+                if (!utils.hasProp(rows, to))
                     rows[to] = rows[from];
                 delete rows[from];
             }
@@ -434,23 +431,23 @@ module.exports = {
         let importedBookmarks = 0;
 
         if (target) {
-            if (utilsHasProp(incomingUser, 'name')) {
+            if (utils.hasProp(incomingUser, 'name')) {
                 const normalizedName = this.validateUserName(incomingUser.name);
                 const duplicateName = data.users.find((item) => item.id !== target.id && item.name.toLowerCase() === normalizedName.toLowerCase());
                 if (!duplicateName)
                     target.name = normalizedName;
             }
             //один адрес, как в updateUser; неверный не переносим, остальное импортируется
-            if (utilsHasProp(incomingUser, 'emailTo')) {
+            if (utils.hasProp(incomingUser, 'emailTo')) {
                 try {
                     target.emailTo = this.validateEmailTo(incomingUser.emailTo);
                 } catch (e) {
                     //адрес остаётся прежним
                 }
             }
-            if (utilsHasProp(incomingUser, 'telegramChatId'))
+            if (utils.hasProp(incomingUser, 'telegramChatId'))
                 target.telegramChatId = String(incomingUser.telegramChatId || '').trim();
-            if (utilsHasProp(incomingUser, 'opdsEnabled'))
+            if (utils.hasProp(incomingUser, 'opdsEnabled'))
                 target.opdsEnabled = (incomingUser.opdsEnabled !== false);
             //пароль OPDS - только профилю с логином, как в setOpdsPassword
             if (/^scrypt:v1:[a-f0-9]{32}:[a-f0-9]{64}$/.test(incomingUser.opdsPasswordHash) && target.login)
@@ -461,12 +458,12 @@ module.exports = {
                 target.kosyncKeyHash = incomingUser.kosyncKeyHash;
             if (incomingUser.kosyncProgress && typeof(incomingUser.kosyncProgress) === 'object')
                 target.kosyncProgress = this.mergeKosyncProgress(target.kosyncProgress, incomingUser.kosyncProgress);
-            if (utilsHasProp(incomingUser, 'readerPreferences'))
+            if (utils.hasProp(incomingUser, 'readerPreferences'))
                 target.readerPreferences = this.normalizeReaderPreferences(incomingUser.readerPreferences);
-            if (utilsHasProp(incomingUser, 'discoveryPreferences'))
+            if (utils.hasProp(incomingUser, 'discoveryPreferences'))
                 target.discoveryPreferences = this.normalizeDiscoveryPreferences(incomingUser.discoveryPreferences);
 
-            if (utilsHasProp(incomingUser, 'readerProgress')) {
+            if (utils.hasProp(incomingUser, 'readerProgress')) {
                 const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0);
                 const current = target.readerProgress || {};
                 //старый бэкап не откатывает позицию, сохранённую позже него
@@ -482,7 +479,7 @@ module.exports = {
                 importedProgress = Object.keys(progress).length;
             }
 
-            if (utilsHasProp(incomingUser, 'readerBookmarks')) {
+            if (utils.hasProp(incomingUser, 'readerBookmarks')) {
                 const bookmarks = this.normalizeReaderBookmarks(incomingUser.readerBookmarks);
                 target.readerBookmarks = Object.assign({}, target.readerBookmarks || {});
                 for (const [bookUid, incomingRows] of Object.entries(bookmarks)) {

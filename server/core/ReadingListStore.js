@@ -444,19 +444,14 @@ class ReadingListStore {
             await fs.writeFile(`${backupFile}.error.txt`, String(error.stack || error.message));
     }
 
-    async save(data, options = {}) {
+    async save(data) {
         const out = this.normalizeData(data);
-        await this.writeData(out, options);
+        await this.writeData(out);
     }
 
-    async writeData(data, options = {}) {
+    async writeData(data) {
         const snapshot = JSON.parse(JSON.stringify(data));
-        const prepare = async() => {
-            if (options && options.rebaseProgressGeneration === true)
-                return await this.rebaseReaderProgressGeneration(snapshot);
-            return await this.preserveReaderProgressResetState(snapshot);
-        };
-        return await this.writeDataNow(await prepare());
+        return await this.writeDataNow(await this.preserveReaderProgressResetState(snapshot));
     }
 
     // What the file holds now: the copy this instance last read or wrote while the file is unchanged,

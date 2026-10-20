@@ -1,7 +1,4 @@
-
-function utilsHasProp(obj, prop) {
-    return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
-}
+const utils = require('../utils');
 
 // Discovery shelves: taste, events, metrics and the shared external source. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
@@ -111,7 +108,7 @@ module.exports = {
         const metrics = this.normalizeDiscoveryMetrics(current.metrics);
         let taste = Object.assign({}, current.taste || {});
 
-        if (utilsHasProp(patch, 'taste')) {
+        if (utils.hasProp(patch, 'taste')) {
             taste = this.normalizeDiscoveryPreferences({
                 taste: Object.assign({}, taste, patch.taste || {}, {
                     completedAt: String(patch.taste && patch.taste.completedAt || taste.completedAt || this.nowIso()),
@@ -120,7 +117,7 @@ module.exports = {
             }).taste;
         }
 
-        if (utilsHasProp(patch, 'tastePromptDismissedAt')) {
+        if (utils.hasProp(patch, 'tastePromptDismissedAt')) {
             taste = this.normalizeDiscoveryPreferences({
                 taste: Object.assign({}, taste, {
                     promptDismissedAt: String(patch.tastePromptDismissedAt || this.nowIso()),

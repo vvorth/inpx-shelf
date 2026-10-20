@@ -1,9 +1,6 @@
+const utils = require('../utils');
 const {t} = require('../i18n');
 const {READ_PERCENT} = require('../ReaderProgress');
-
-function utilsHasProp(obj, prop) {
-    return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
-}
 
 // Доля прочитанного до отметки «прочитано» (setBooksRead): снятие отметки возвращает её вместе с местом в книге
 function percentBeforeRead(row = {}) {
@@ -107,19 +104,19 @@ module.exports = {
             target.readerProgress = {};
 
         const current = target.readerProgress[normalizedBookUid] || {};
-        const percent = Number(utilsHasProp(patch, 'percent') ? patch.percent : current.percent);
-        const sectionId = String(utilsHasProp(patch, 'sectionId') ? patch.sectionId : current.sectionId || '').trim();
-        const pageIndex = Number(utilsHasProp(patch, 'pageIndex') ? patch.pageIndex : current.pageIndex);
-        const textOffset = Number(utilsHasProp(patch, 'textOffset') ? patch.textOffset : current.textOffset);
-        const textSnippet = String(utilsHasProp(patch, 'textSnippet') ? patch.textSnippet : current.textSnippet || '').trim().slice(0, 240);
-        const hidden = (utilsHasProp(patch, 'hidden') ? patch.hidden === true : current.hidden === true);
-        const patchUpdatedAt = String(utilsHasProp(patch, 'updatedAt') ? patch.updatedAt : '').trim();
+        const percent = Number(utils.hasProp(patch, 'percent') ? patch.percent : current.percent);
+        const sectionId = String(utils.hasProp(patch, 'sectionId') ? patch.sectionId : current.sectionId || '').trim();
+        const pageIndex = Number(utils.hasProp(patch, 'pageIndex') ? patch.pageIndex : current.pageIndex);
+        const textOffset = Number(utils.hasProp(patch, 'textOffset') ? patch.textOffset : current.textOffset);
+        const textSnippet = String(utils.hasProp(patch, 'textSnippet') ? patch.textSnippet : current.textSnippet || '').trim().slice(0, 240);
+        const hidden = (utils.hasProp(patch, 'hidden') ? patch.hidden === true : current.hidden === true);
+        const patchUpdatedAt = String(utils.hasProp(patch, 'updatedAt') ? patch.updatedAt : '').trim();
         const currentUpdatedAt = String(current.updatedAt || '').trim();
         const patchTime = Date.parse(patchUpdatedAt);
         const currentTime = Date.parse(currentUpdatedAt);
         const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0);
-        const explicitHiddenPatch = utilsHasProp(patch, 'hidden') && !patchUpdatedAt;
-        const patchGeneration = utilsHasProp(patch, 'generation')
+        const explicitHiddenPatch = utils.hasProp(patch, 'hidden') && !patchUpdatedAt;
+        const patchGeneration = utils.hasProp(patch, 'generation')
             ? Math.max(0, parseInt(patch.generation, 10) || 0)
             : (explicitHiddenPatch ? generation : 0);
         const resetAt = String(target.readerProgressResetAt || '').trim();

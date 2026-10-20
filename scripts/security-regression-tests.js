@@ -199,7 +199,6 @@ async function testDownloaderClosesFailedTransfers() {
         await assert.rejects(downloader.load(`${url}/large-stream`, options), /слишком большой/);
         await assert.rejects(downloader.load(`${url}/stall`, options), /timed out/);
         await assert.rejects(downloader.load(`${url}/no-headers`, {...options, timeout: 100}), /timed out|timeout/);
-        await assert.rejects(downloader.head(`${url}/no-headers`, {...options, timeout: 100}), /timeout/);
         let abort = false;
         const cancelled = downloader.load(`${url}/no-headers`, options, null, () => abort);
         abort = true;
@@ -714,6 +713,28 @@ async function testOpdsEscapesLibraryText() {
     assert.ok(description.includes('alert(1) Tom &amp; &quot;Jerry&quot;'), description);
 }
 
+// OPDS follows the library: after an INPX swap the genre names and the collection title change without a restart.
+async function testOpdsGenresAndTitleFollowLibrary() {
+    const page = name => Object.assign(Object.create(require(`../server/core/opds/${name}`).prototype),
+        {config: {opdsRoot: '/opds', bookPathStatic: '/book'}, opdsRoot: '/opds', rootTag: 'feed', id: name});
+    const tree = {genreTree: [{id: 1, name: 'Section', value: [{value: 'zz_custom', name: 'Old genre'}]}]};
+    let collection = 'Old library\nrest';
+    const webWorker = {getGenreTree: async() => tree, dbConfig: async() => ({inpxInfo: {collection}}), getOpdsUsers: async() => []};
+    const genre = page('GenrePage');
+    genre.webWorker = webWorker;
+    const genreFeed = () => genre.body({query: {from: 'author', section: 'Section'}, originalUrl: '/opds/genre'});
+    const root = page('RootPage');
+    root.webWorker = webWorker;
+    root.authorPage = root.seriesPage = root.titlePage = root.genrePage = {myEntry: () => ({id: 'x', title: 'x'})};
+    const rootFeed = () => root.body({query: {}, originalUrl: '/opds'});
+    assert.ok((await genreFeed()).includes('Old genre'));
+    assert.ok((await rootFeed()).includes('Old library'));
+    collection = 'New library';
+    tree.genreTree = [{id: 1, name: 'Section', value: [{value: 'zz_custom', name: 'New genre'}]}];
+    assert.ok((await genreFeed()).includes('New genre'), 'The genre tree is read for every request');
+    assert.ok((await rootFeed()).includes('New library'), 'The collection title is read for every request');
+}
+
 // An IPv6 client counts as its /64; a full table drops its oldest entry instead of refusing every new address.
 async function testLoginLimiterKeysIpv6PrefixAndEvictsOldest() {
     const security = new Security({loginRateLimitMaxAttempts: 2});
@@ -1137,7 +1158,7 @@ async function testGunzipBufferIsBounded() {
 
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
-    testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

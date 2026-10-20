@@ -162,8 +162,6 @@ class BookPage extends BasePage {
             }
 
             if (bookInfo) {
-                const {genreMap} = await this.getGenres();
-
                 //format
                 const ext = bookInfo.book.ext;
                 const fileNameInUrl = encodeURIComponent(bookInfo.downFileName || `${bookInfo.book.title || 'book'}.${ext}`);
@@ -212,7 +210,7 @@ class BookPage extends BasePage {
                 //genre
                 const genre = bookInfo.book.genre.split(',');
                 for (const g of genre) {
-                    const genreName = genreMap.get(g);
+                    const genreName = this.genreMap.get(g);
                     if (genreName) {
                         if (!e.category)
                             e.category = [];

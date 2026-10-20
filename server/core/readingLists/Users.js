@@ -1,10 +1,7 @@
+const utils = require('../utils');
 const fs = require('fs-extra');
 const profilePassword = require('../ProfilePassword');
 const {t} = require('../i18n');
-
-function utilsHasProp(obj, prop) {
-    return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
-}
 
 // Profiles: lookup, OPDS access, passwords. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
@@ -177,8 +174,8 @@ module.exports = {
     async updateUser(userId, patch = {}) {
         const {data, user: target} = await this.resolveUser(userId);
 
-        const nextName = this.validateUserName(utilsHasProp(patch, 'name') ? patch.name : target.name);
-        const nextLogin = this.validateLogin(utilsHasProp(patch, 'login') ? patch.login : target.login);
+        const nextName = this.validateUserName(utils.hasProp(patch, 'name') ? patch.name : target.name);
+        const nextLogin = this.validateLogin(utils.hasProp(patch, 'login') ? patch.login : target.login);
         if (nextLogin !== target.login && profilePassword.isLegacy(target.passwordHash)
             && (!String(patch.passwordHash || '').trim() || patch.passwordHash === target.passwordHash))
             throw new Error(t('errors.loginChangeNeedsPassword'));
@@ -187,17 +184,17 @@ module.exports = {
 
         target.name = nextName;
         target.login = nextLogin;
-        if (utilsHasProp(patch, 'passwordHash'))
+        if (utils.hasProp(patch, 'passwordHash'))
             target.passwordHash = String(patch.passwordHash || '').trim();
-        if (utilsHasProp(patch, 'emailTo'))
+        if (utils.hasProp(patch, 'emailTo'))
             target.emailTo = this.validateEmailTo(patch.emailTo);
-        if (utilsHasProp(patch, 'telegramChatId'))
+        if (utils.hasProp(patch, 'telegramChatId'))
             target.telegramChatId = String(patch.telegramChatId || '').trim();
-        if (utilsHasProp(patch, 'opdsEnabled'))
+        if (utils.hasProp(patch, 'opdsEnabled'))
             target.opdsEnabled = (patch.opdsEnabled !== false);
-        if (utilsHasProp(patch, 'readerPreferences'))
+        if (utils.hasProp(patch, 'readerPreferences'))
             target.readerPreferences = this.normalizeReaderPreferences(patch.readerPreferences);
-        if (utilsHasProp(patch, 'isAdmin')) {
+        if (utils.hasProp(patch, 'isAdmin')) {
             //первый профиль - главный администратор из конфига (applyAdminBootstrap): без него запуск выбрал бы другого
             if (target.isAdmin && patch.isAdmin !== true && data.users[0] && data.users[0].id === target.id)
                 throw new Error(t('errors.cannotRemoveMainAdmin'));

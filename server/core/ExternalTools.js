@@ -1,4 +1,3 @@
-const fs = require('fs-extra');
 const path = require('path');
 const {t} = require('./i18n');
 
@@ -118,20 +117,9 @@ function isMissingToolError(error, code = '') {
     return code ? error.code === code : /^INPX_MISSING_/.test(String(error.code || ''));
 }
 
-async function pathExistsSafe(filePath) {
-    try {
-        return Boolean(filePath) && await fs.pathExists(filePath);
-    } catch (err) {
-        return false;
-    }
-}
-
 module.exports = {
-    DJXL_DOWNLOAD_URL,
-    DWEBP_DOWNLOAD_URL,
     bundledBinDir,
     configuredToolCandidates,
-    currentConverterPaths,
     resolveConverterPaths,
     djxlCommandCandidates,
     dwebpCommandCandidates,
@@ -139,5 +127,4 @@ module.exports = {
     missingDwebpMessage,
     createMissingToolError,
     isMissingToolError,
-    pathExistsSafe,
 };

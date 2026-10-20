@@ -27,13 +27,9 @@ class RootPage extends BasePage {
     async body(req) {
         const result = {};
 
-        if (!this.title) {
-            const dbConfig = await this.webWorker.dbConfig();
-            const collection = dbConfig.inpxInfo.collection.split('\n');
-            this.title = collection[0].trim();
-            if (!this.title)
-                this.title = 'opds.unknownCollection';
-        }
+        const dbConfig = await this.webWorker.dbConfig();
+        const collection = dbConfig.inpxInfo.collection.split('\n');
+        this.title = collection[0].trim() || 'opds.unknownCollection';
 
         const resultEntry = [
             this.authorPage.myEntry(req),

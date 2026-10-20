@@ -113,6 +113,8 @@ async function testConversionPublishesOnlyCompletedFiles() {
         release();
         await Promise.all([first, second]);
         assert.strictEqual(await fs.readFile(cached.filePath, 'utf8'), 'complete');
+        assert.strictEqual((await converter.prepareConvertedFile(options)).created, false);
+        assert.strictEqual(calls, 1, 'A finished conversion is reused');
         fail = true;
         await assert.rejects(converter.convert({inputFile, outputFile: cached.filePath, format: 'pdf', sourceFileName: 'book.fb2'}), /conversion failed/);
         assert.strictEqual(await fs.readFile(cached.filePath, 'utf8'), 'complete');

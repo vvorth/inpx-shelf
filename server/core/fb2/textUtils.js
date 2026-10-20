@@ -90,32 +90,7 @@ function getEncodingLite(buf, returnAll) {
         return 'ISO-8859-5';
 }
 
-function checkIfText(buf) {
-    const enc = getEncodingLite(buf, true);
-    if (enc[0].c > enc[0].totalChecked*0.9)
-        return true;
-
-    let spaceCount = 0;
-    let crCount = 0;
-    let lfCount = 0;
-    for (let i = 0; i < buf.length; i++) {
-        if (buf[i] == 32)
-            spaceCount++;
-        if (buf[i] == 13)
-            crCount++;
-        if (buf[i] == 10)
-            lfCount++;
-    }
-
-    const spaceFreq = spaceCount/(buf.length + 1);
-    const crFreq = crCount/(buf.length + 1);
-    const lfFreq = lfCount/(buf.length + 1);
-
-    return (buf.length < 1000 || spaceFreq > 0.1 || crFreq > 0.03 || lfFreq > 0.03);
-}
-
 module.exports = {
     getEncoding,
     getEncodingLite,
-    checkIfText,
 }

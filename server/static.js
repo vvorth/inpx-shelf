@@ -514,6 +514,5 @@ module.exports = (app, config, webWorker = null, security = null) => {
     app.use(config.rootPathStatic, precompressedStatic(config.publicDir), express.static(config.publicDir, webAppStaticOptions));
 };
 
-module.exports.sendCachedCover = sendCachedCover;
 module.exports.writeCachedCover = writeCachedCover;
 module.exports.sendBookCover = sendBookCover;

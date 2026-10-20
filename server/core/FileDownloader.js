@@ -77,15 +77,6 @@ class FileDownloader {
         }
     }
 
-    async head(url, opts = {}) {
-        const response = await axios.head(url, {
-            timeout: 10*1000,
-            ...opts,
-            headers: {'user-agent': userAgent, ...opts.headers},
-        });
-        return response.headers;
-    }
-
     streamToBuffer(stream, progress = () => {}, timeout = 30*1000) {
         return new Promise((resolve, reject) => {
             const chunks = [];

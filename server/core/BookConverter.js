@@ -1,12 +1,12 @@
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
+const utils = require('./utils');
 const {ConversionRuntime, runProcess: run} = require('./ConversionRuntime');
 const runtime = new ConversionRuntime();
 const externalTools = require('./ExternalTools');
 const {bundledBinDir} = externalTools;
 
-const pending = new Map();
 const validatedFb2cngConfigs = new Set();
 const conversionCacheSchema = 'v2';
 const targetFormats = new Set(['epub', 'epub3', 'kepub', 'kfx', 'azw8', 'pdf']);
@@ -259,11 +259,7 @@ async function convert({inputFile, outputFile, format, sourceFileName = '', conv
     if (!canConvertSourceTo(sourceExt, format))
         throw new Error(`Unsupported convert format: ${sourceExt || 'unknown'} -> ${format}`);
 
-    const key = `${inputFile}=>${outputFile}`;
-    if (pending.has(key))
-        return await pending.get(key);
-
-    const job = runtime.run(async() => {
+    await runtime.run(async() => {
         await fs.ensureDir(path.dirname(outputFile));
         let convertInput = inputFile;
         let tempInput = '';
@@ -284,13 +280,6 @@ async function convert({inputFile, outputFile, format, sourceFileName = '', conv
                 await fs.remove(tempInput);
         }
     });
-
-    pending.set(key, job);
-    try {
-        await job;
-    } finally {
-        pending.delete(key);
-    }
 }
 
 async function prepareConvertedFile({
@@ -318,17 +307,15 @@ async function prepareConvertedFile({
         config,
     });
 
-    const created = !await fs.pathExists(cacheInfo.filePath);
-    if (created) {
-        await convert({
-            inputFile,
-            outputFile: cacheInfo.filePath,
-            format: cacheInfo.format,
-            sourceFileName,
-            converterPaths: config.converterPaths,
-            fb2cngConfigPath: config.fb2cngConfigPath,
-        });
-    }
+    // Concurrent requests share one conversion; the file appears in the cache only when complete.
+    const created = await utils.prepareCachedFile(cacheInfo.filePath, temporaryFile => convert({
+        inputFile,
+        outputFile: temporaryFile,
+        format: cacheInfo.format,
+        sourceFileName,
+        converterPaths: config.converterPaths,
+        fb2cngConfigPath: config.fb2cngConfigPath,
+    }));
 
     return {
         filePath: cacheInfo.filePath,

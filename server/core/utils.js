@@ -40,7 +40,7 @@ async function touchFile(filename) {
 }
 
 function hasProp(obj, prop) {
-    return Object.prototype.hasOwnProperty.call(obj, prop);
+    return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
 function freeMemory() {

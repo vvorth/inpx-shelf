@@ -27,8 +27,8 @@ class GenrePage extends BasePage {
         if (query.from) {
             if (query.section) {
                 //выбираем подразделы
-                const {genreSection} = await this.getGenres();
-                const section = genreSection.get(query.section);
+                const {genreTree} = await this.webWorker.getGenreTree();
+                const section = (genreTree.find(s => s.name === query.section) || {}).value;
 
                 if (section) {
                     let id = 0;
@@ -54,7 +54,7 @@ class GenrePage extends BasePage {
                 }
             } else {
                 //выбираем разделы
-                const {genreTree} = await this.getGenres();
+                const {genreTree} = await this.webWorker.getGenreTree();
                 let id = 0;
                 for (const section of genreTree) {
                     entry.push(

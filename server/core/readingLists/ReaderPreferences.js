@@ -1,8 +1,5 @@
+const utils = require('../utils');
 const {readerPreferencesVersion, readerDefaults, einkReaderDefaults, migrateReaderPreferences} = require('../../../shared/readerPreferences');
-
-function utilsHasProp(obj, prop) {
-    return !!obj && Object.prototype.hasOwnProperty.call(obj, prop);
-}
 
 // Reader settings normalizers. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
@@ -13,13 +10,13 @@ module.exports = {
 
     normalizeReaderRuntimeSettings(value = {}, defaults = {}) {
         const setting = (key, fallback) => (
-            utilsHasProp(value, key)
+            utils.hasProp(value, key)
                 ? value[key]
-                : (utilsHasProp(defaults, key) ? defaults[key] : fallback)
+                : (utils.hasProp(defaults, key) ? defaults[key] : fallback)
         );
         //сторона без своего значения берётся из общего, как в читалке (normalizeReaderSpacingPreferences): низ = верх + 4
         const side = (key, shared, extra = 0) => {
-            if (!utilsHasProp(value, key) && utilsHasProp(value, shared) && Number.isFinite(Number(value[shared])))
+            if (!utils.hasProp(value, key) && utils.hasProp(value, shared) && Number.isFinite(Number(value[shared])))
                 return Number(value[shared]) + extra;
             return setting(key, 0);
         };
@@ -69,7 +66,7 @@ module.exports = {
         if (!value || typeof(value) !== 'object')
             return {};
 
-        const hasOwn = key => utilsHasProp(value, key);
+        const hasOwn = key => utils.hasProp(value, key);
         const normalized = this.normalizeReaderRuntimeSettings(value, defaults);
         const allowed = [
             'readMode',

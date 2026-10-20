@@ -21,8 +21,6 @@ class BasePage {
         this.webWorker = new WebWorker(config);
         this.rootTag = 'feed';
         this.opdsRoot = config.opdsRoot;
-
-        this.showDeleted = false;
     }
 
     makeEntry(entry = {}) {
@@ -356,7 +354,7 @@ class BasePage {
                 }
             }
 
-            return (this.showDeleted || !book.del)
+            return !book.del
                 && authorFound
                 && filterBySearch(book.series, s.series)
                 && filterBySearch(book.title, s.title, {looseTitlePrefix: true})
@@ -454,32 +452,6 @@ class BasePage {
         }
 
         return '';
-    }
-
-    async getGenres() {
-        let result;
-        if (!this.genres) {
-            const res = await this.webWorker.getGenreTree();
-
-            result = {
-                genreTree: res.genreTree,
-                genreMap: new Map(),
-                genreSection: new Map(),
-            };
-
-            for (const section of result.genreTree) {
-                result.genreSection.set(section.name, section.value);
-
-                for (const g of section.value)
-                    result.genreMap.set(g.value, g.name);
-            }
-
-            this.genres = result;
-        } else {
-            result = this.genres;
-        }
-
-        return result;
     }
 }
 
