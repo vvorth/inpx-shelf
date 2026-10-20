@@ -311,8 +311,11 @@ module.exports = {
                 if (runtimePatch)
                     Object.assign(this.config, runtimePatch);
                 //профили и пароли могли смениться - сеансы сбрасываются; одни имена авторов их не трогают
-                if (archive['config.json'] || archive['reading-lists.json'])
+                if (archive['config.json'] || archive['reading-lists.json']) {
                     this.profileSessions.clear();
+                    if (this.stateStore)
+                        this.stateStore.deleteAllWebSessions();
+                }
                 const restored = Object.keys(content);
                 if (only)
                     this.addAdminEvent('info', 'settings', msg(importEvent, {count: counts[only[0]] || 0}));

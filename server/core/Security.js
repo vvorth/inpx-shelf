@@ -185,7 +185,11 @@ class Security {
     //Сессии вошедших в профиль переживают перезапуск: worker - профили и state.sqlite (WebWorker)
     attachProfiles(worker) {
         this.profiles = worker;
-        worker.stateStore.purgeWebSessions(Date.now() - sessionLifetime.maxAgeMs, Date.now() - sessionLifetime.idleMs);
+        //сброс пароля администратора завершает все сохранённые входы (флаг снимается при первой загрузке профилей, позже)
+        if (this.config.resetAdminPassword)
+            worker.stateStore.deleteAllWebSessions();
+        else
+            worker.stateStore.purgeWebSessions(Date.now() - sessionLifetime.maxAgeMs, Date.now() - sessionLifetime.idleMs);
     }
 
     sessionHash(sessionId) {

@@ -76,6 +76,10 @@ class StateStore {
         this.open().prepare('DELETE FROM web_session WHERE user_id = ?').run(String(userId));
     }
 
+    deleteAllWebSessions() {
+        this.open().prepare('DELETE FROM web_session').run();
+    }
+
     purgeWebSessions(createdBefore, updatedBefore) {
         this.open().prepare('DELETE FROM web_session WHERE created_at < ? OR updated_at < ?').run(Number(createdBefore), Number(updatedBefore));
     }

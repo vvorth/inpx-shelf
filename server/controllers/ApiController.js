@@ -1098,18 +1098,21 @@ class ApiController {
         if (!utils.hasProp(req, 'targetUserId'))
             throw new Error('targetUserId is empty');
 
-        const target = await this.webWorker.readingListStore.getUser(req.targetUserId);
+        const store = this.webWorker.readingListStore;
+        //только точный id: getUser нашёл бы профиль и по логину, а по неизвестному id - главного администратора
+        if (!await store.hasUser(req.targetUserId))
+            throw new Error(i18n.t('errors.userNotFound'));
+        const target = await store.getUser(req.targetUserId);
         const current = await this.webWorker.getEffectiveUser(req.userId, req.profileAccessToken);
         const isOwnProfile = !!(current && current.id === target.id);
         if (isOwnProfile) {
-            await this.webWorker.requireAuthorizedUser(req.targetUserId, req.profileAccessToken);
+            await this.webWorker.requireAuthorizedUser(target.id, req.profileAccessToken);
         } else {
             await this.webWorker.requireAdmin(req.userId, req.profileAccessToken);
         }
 
         const profile = Object.assign({}, req.profile || {});
         delete profile.passwordHash;
-        const store = this.webWorker.readingListStore;
         if (isOwnProfile && (profile.password || (utils.hasProp(profile, 'login') && store.normalizeLogin(profile.login) !== (target.login || ''))))
             await this.requireProtectedProfile(target, req);
         //свой пароль меняют, только зная текущий: открытая чужая сессия не должна отнимать профиль
@@ -1137,7 +1140,7 @@ class ApiController {
         if (isOwnProfile)
             delete profile.isAdmin;
 
-        const result = await this.webWorker.updateUserProfile(req.targetUserId, profile);
+        const result = await this.webWorker.updateUserProfile(target.id, profile);
         return result;
     }
 

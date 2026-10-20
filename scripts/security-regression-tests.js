@@ -719,6 +719,45 @@ async function testSignedInSessionsSurviveRestart() {
     });
 }
 
+// Сохранённые входы в браузере не переживают ни полное восстановление бэкапа, ни сброс пароля администратора
+async function testRestoreAndAdminResetEndSavedLogins() {
+    await temporary(async(dir) => {
+        const StateStore = require('../server/core/StateStore');
+        const WebWorker = require('../server/core/WebWorker');
+        const stateStore = new StateStore({dataDir: dir});
+        const config = {dataDir: dir, tempDir: path.join(dir, 'tmp'), configFile: path.join(dir, 'config.json'),
+            name: 'inpx-shelf', version: 'test', librarySources: [], opds: {}};
+        const start = (securityConfig = {}) => {
+            const worker = Object.assign(Object.create(WebWorker.prototype), {config, profileSessions: new Map(), stateStore,
+                checkMyState() {}, requireAdmin: async() => true, addAdminEvent() {},
+                readingListStore: new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'})});
+            const security = new Security(securityConfig);
+            security.secret = 'test-secret';
+            security.attachProfiles(worker);
+            return {worker, security};
+        };
+        const signIn = ({worker, security}) => {
+            const session = security.ensureSession({headers: {}});
+            session.profileAccessToken = worker.createProfileSession('admin');
+            security.rotateSession({headers: {}, securitySession: session}, fakeResponse());
+            return {cookie: `inpx_web_session=${security.packSessionId(session.id)}`};
+        };
+
+        let headers = signIn(start());
+        start({resetAdminPassword: true});
+        assert.strictEqual(start().security.getSession({headers}), null, 'An admin password reset ends saved logins');
+
+        const running = start();
+        headers = signIn(running);
+        await fs.outputJson(config.configFile, {opds: {}});
+        const backup = await running.worker.createAdminBackup('admin', 'token');
+        await running.worker.importAdminBackup('admin', 'token', {file: path.join(dir, 'backups', backup.fileName)});
+        assert.strictEqual(running.worker.getProfileSessionUser(running.security.getSession({headers}).profileAccessToken), '', 'Signed out right away');
+        assert.strictEqual(start().security.getSession({headers}), null, 'and after a restart');
+        stateStore.close();
+    });
+}
+
 // ApiController behind apiGuard with handler stubs (handlers): the transport rules without the application behind them.
 async function apiFixture({config: overrides = {}, worker: workerFields = {}, handlers = {}}, test) {
     await temporary(async(dir) => {
@@ -957,7 +996,7 @@ async function testGunzipBufferIsBounded() {
 }
 
 module.exports = [
-    testSignedInSessionsSurviveRestart,
+    testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testApiRequestRules, testApiUnderRootPath, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,

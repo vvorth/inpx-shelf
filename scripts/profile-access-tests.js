@@ -541,6 +541,24 @@ async function testAdminRoleToggle() {
     });
 }
 
+// Администратор правит профиль только по точному id: логин или неизвестный id - ошибка, а не другой профиль
+async function testAdminEditNeedsExactProfileId() {
+    await fixture({}, async({worker, alice, connect}) => {
+        const call = await connect();
+        const cfg = await call({action: 'get-config'});
+        const login = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken: cfg.csrfToken});
+        const admin = {userId: login.userId, profileAccessToken: login.profileAccessToken, csrfToken: cfg.csrfToken};
+        const update = (targetUserId, profile) => call({action: 'update-user-profile', targetUserId, profile, ...admin});
+
+        assert.match((await update('no-such-user', {name: 'Hijacked'})).error, /not found|не найден/);
+        assert.notStrictEqual((await worker.readingListStore.getUser('admin')).name, 'Hijacked', 'The main admin is not edited');
+        const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: cfg.csrfToken});
+        assert.match((await update('alice', {password: 'alice-new-password'})).error, /not found|не найден/, 'A login is not an id');
+        assert.strictEqual((await update(alice.id, {password: 'alice-new-password'})).user.id, alice.id);
+        assert.strictEqual(worker.getProfileSessionUser(aliceLogin.profileAccessToken), '', 'The new password signs Alice out');
+    });
+}
+
 // Guest access (web): the catalog without a profile. A guest never acts as a profile, not even a passwordless one,
 // and gets nothing of a profile: lists, progress, admin, the profile list.
 async function testGuestAccessWeb() {
@@ -688,6 +706,6 @@ async function testProfileComesFromHeadersOnly() {
 }
 
 module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromHeadersOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
-    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

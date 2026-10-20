@@ -190,7 +190,7 @@ module.exports = {
             const previous = await this.readingListStore.getUser(userId);
             const user = await this.readingListStore.updateUser(userId, patch);
             if (previous.passwordHash !== user.passwordHash || previous.login !== user.login)
-                this.revokeUserSessions(userId);
+                this.revokeUserSessions(user.id);
             return {user};
         });
     },
