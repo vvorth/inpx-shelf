@@ -2535,6 +2535,7 @@ const tests = [
     ...require('./xml-parser-tests'),
     ...require('./client-tests'),
     ...require('./web-worker-tests'),
+    ...require('./api-routes-tests'),
     testConfigSecretsSurviveRestart,
     testAppCacheRecoveryBootstrapAndRoute,
     testStaticAssetsArePrecompressed,

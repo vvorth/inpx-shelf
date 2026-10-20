@@ -1,6 +1,6 @@
 # Plan: HTTP API instead of WebSocket (hybrid)
 
-Status: in progress. Delete this file when the migration is merged.
+Status: step 1 done (`shared/apiRoutes.js`). Delete this file when the migration is merged.
 
 ## Why
 
@@ -25,7 +25,8 @@ retried.
 - One declarative table, `shared/apiRoutes.js`, maps every action to its method, path and parameter types.
   The server builds its router from it; the client builds URLs from it, so `Api.vue` keeps calling
   `request({action, ...params})`. Handlers keep receiving one params object with today's field names.
-- Ids in the path only when opaque (`bookUid`, `listId`, `deviceId`, `workerId`, remote access `id`).
+- Ids in the path only when opaque (`bookUid`, `listId`, `workerId`, `table`). `bookUid` (base64 SHA-256) goes in
+  the path as base64url without `=`, as in `RemoteAccess.js`; handlers get the plain uid.
   Names (author, series) go in the query string: they contain `/` and other characters proxies decode.
 - Tokens never go in URLs: profile token and user id are headers.
 
