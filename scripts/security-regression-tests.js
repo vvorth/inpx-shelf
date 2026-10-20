@@ -11,7 +11,7 @@ const Security = require('../server/core/Security');
 const FileDownloader = require('../server/core/FileDownloader');
 const lifetime = require('../server/core/SessionLifetime');
 const apiRoutes = require('../shared/apiRoutes');
-const {ApiTestClient, apiController, apiApp, listen, fakeResponse, sampleParams, sampleUid} = require('./api-test-client');
+const {ApiTestClient, sessionCookie, apiController, apiApp, listen, fakeResponse, sampleParams, sampleUid} = require('./api-test-client');
 
 async function temporary(fn) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-security-test-'));
@@ -103,11 +103,8 @@ async function testSessionLifetimeAndMalformedCookies() {
     security.secret = 'test-secret';
     const middleware = security.middleware();
     const response = {setHeader: name => assert.notStrictEqual(name, 'Set-Cookie', 'Polling or assets must not set cookies')};
-    for (let i = 0; i < 1000; i++) {
-        for (const pathname of ['/health', '/ready', '/metrics', '/app.js'])
-            middleware({path: pathname, headers: {}, socket: {}}, response, () => {});
-    }
-    assert.strictEqual(security.sessions.size, 0);
+    for (const pathname of ['/health', '/ready', '/metrics', '/app.js'])
+        middleware({path: pathname, headers: {}, socket: {}}, response, () => {});
     let cookie;
     const headers = {};
     middleware({path: '/', headers: {}, socket: {}}, {setHeader: (name, value) => { headers[name] = value; }}, () => {});
@@ -120,53 +117,90 @@ async function testSessionLifetimeAndMalformedCookies() {
     middleware({path: '/', headers: {}, socket: {encrypted: true}}, {setHeader: (name, value) => { headers[name] = value; }}, () => {});
     assert.strictEqual(headers['Content-Security-Policy'], "frame-ancestors 'none'; upgrade-insecure-requests");
     assert.ok(headers['Strict-Transport-Security']);
-    assert.ok(cookie.startsWith('inpx_web_session='));
-    const request = {headers: {cookie}};
-    const session = security.getSession(request);
-    assert.ok(session);
-    session.updatedAt = Date.now() - lifetime.idleMs - 1;
-    assert.strictEqual(security.getSession(request), null);
-    const absolute = security.ensureSession({headers: {}});
-    absolute.createdAt = Date.now() - lifetime.maxAgeMs - 1;
-    assert.strictEqual(security.getSession({headers: {}, securitySession: absolute}), null);
+    assert.match(cookie, /^inpx_web_session=[^;]+; HttpOnly; SameSite=Lax; Path=\/; Max-Age=2592000$/);
+    assert.match(headers['Set-Cookie'], /; Secure$/);
+    assert.deepStrictEqual(Object.keys(security.getSession({headers: {cookie}})), ['sid', 'uid', 'createdAt', 'updatedAt']);
+
+    const now = Date.now();
+    const valid = fields => !!security.getSession({headers: {cookie: sessionCookie(security, 'alice', fields).cookie}});
+    assert.strictEqual(valid({}), true);
+    assert.strictEqual(valid({updatedAt: now - lifetime.idleMs - 1}), false, '7 days idle');
+    assert.strictEqual(valid({createdAt: now - lifetime.maxAgeMs - 1, updatedAt: now}), false, '30 days after the login');
+    assert.strictEqual(valid({updatedAt: 'now'}), false);
+
+    //подпись закрывает весь payload: другой uid с прежней подписью не проходит
+    const [body, signature] = sessionCookie(security, 'bob').cookie.split('=')[1].split('.');
+    const forged = Buffer.from(JSON.stringify({...JSON.parse(Buffer.from(body, 'base64url')), uid: 'admin'})).toString('base64url');
+    assert.strictEqual(security.getSession({headers: {cookie: `inpx_web_session=${forged}.${signature}`}}), null, 'Tampered uid');
+    const other = new Security({});
+    other.secret = 'other-secret';
+    assert.strictEqual(other.getSession({headers: {cookie: sessionCookie(security, 'bob').cookie}}), null, 'Another session-secret');
+
     assert.deepStrictEqual(security.parseCookies('bad=%ZZ; good=value'), {good: 'value'});
-    assert.strictEqual(security.unpackSessionId(`id.${'я'.repeat(64)}`), '');
+    assert.strictEqual(security.unpackSession(`id.${'я'.repeat(64)}`), null);
+    assert.strictEqual(security.unpackSession(`${Buffer.from('not json').toString('base64url')}.${security.sign(Buffer.from('not json').toString('base64url'))}`), null);
     assert.strictEqual(security.hasValidCsrf({headers: {}}, 'я'.repeat(64)), false);
-    const loggedIn = security.ensureSession({headers: {}});
-    loggedIn.profileAccessToken = 'profile-token';
-    for (let i = 0; i < lifetime.maxSessions + 10; i++)
-        security.ensureSession({headers: {}});
-    assert.strictEqual(security.sessions.size, lifetime.maxSessions);
-    assert.strictEqual(security.sessions.get(loggedIn.id), loggedIn, 'Anonymous sessions are evicted before logged-in ones');
 }
 
+// The cookie is issued again (same sid, uid and createdAt, updatedAt = now) once it is an hour old, not before.
+async function testIdleSessionReissue() {
+    const security = new Security({});
+    security.secret = 'test-secret';
+    const middleware = security.middleware();
+    const hour = 60*60*1000;
+    const touched = (age) => {
+        const {session, cookie} = sessionCookie(security, 'alice', {updatedAt: Date.now() - age});
+        const response = fakeResponse();
+        middleware({path: '/app.js', headers: {cookie}, socket: {}}, response, () => {});
+        const issued = response.getHeader('set-cookie');
+        return {session, issued: issued && security.getSession({headers: {cookie: issued.split(';')[0]}})};
+    };
+    assert.strictEqual(touched(hour - 60*1000).issued, undefined, 'Not before an hour');
+    const {session, issued} = touched(hour + 1000);
+    assert.deepStrictEqual([issued.sid, issued.uid, issued.createdAt], [session.sid, session.uid, session.createdAt]);
+    assert.ok(Date.now() - issued.updatedAt < 1000);
+}
+
+// A password or login change ends the profile's sessions (sessionsValidAfter), a name change does not; so does deleting it.
 async function testProfileCredentialChangesRevokeSessions() {
     await temporary(async(dataDir) => {
         const Worker = require('../server/core/WebWorker');
         const worker = Object.create(Worker.prototype);
         worker.checkMyState = () => {};
-        worker.profileSessions = new Map();
         worker.readingListStore = new ReadingListStore({dataDir});
+        const security = new Security({dataDir});
+        await security.init();
+        const access = new (require('../server/core/ProfileAccess'))({}, worker, security);
+        const login = async(name, password) => {
+            const result = await worker.loginUserProfile(name, password);
+            const response = fakeResponse();
+            security.startSession({headers: {}}, response, result.userId, result.sessionsValidAfter);
+            return response.getHeader('set-cookie').split(';')[0];
+        };
+        const signedIn = async cookie => ((await access.resolve({headers: {cookie}})) || {user: {}}).user.id || '';
         const user = await worker.readingListStore.createUser({name: 'Reader', login: 'reader',
             passwordHash: require('../server/core/ProfilePassword').legacy('reader', 'old')});
         await assert.rejects(worker.updateUserProfile(user.id, {login: 'renamed'}), /пароль заново/);
-        const login = await worker.loginUserProfile('reader', 'old');
+        const first = await login('reader', 'old');
         await worker.updateUserProfile(user.id, {login: 'reader', name: 'Changed name'});
-        assert.strictEqual(worker.getProfileSessionUser(login.profileAccessToken), user.id);
+        assert.strictEqual(await signedIn(first), user.id);
         assert.match((await worker.readingListStore.getUser(user.id)).passwordHash, /^scrypt:v1:/);
-        await worker.loginUserProfile('reader', 'old');
         await worker.updateUserProfile(user.id, {passwordHash: await worker.hashProfilePassword('reader', 'new-password')});
-        await assert.rejects(worker.requireAuthorizedUser(user.id, login.profileAccessToken), /need_profile_login/);
+        assert.strictEqual(await signedIn(first), '');
         await assert.rejects(worker.loginUserProfile('reader', 'old'), /Неверный/);
-        const current = await worker.loginUserProfile('reader', 'new-password');
+        const current = await login('reader', 'new-password');
+        assert.strictEqual(await signedIn(current), user.id, 'A login right after the change');
         await worker.updateUserProfile(user.id, {login: 'renamed'});
-        assert.strictEqual(worker.getProfileSessionUser(current.profileAccessToken), '');
-        const renamed = await worker.loginUserProfile('renamed', 'new-password');
-        worker.profileSessions.get(renamed.profileAccessToken).updatedAt = Date.now() - lifetime.idleMs - 1;
-        assert.strictEqual(worker.getProfileSessionUser(renamed.profileAccessToken), '');
-        const deleted = await worker.loginUserProfile('renamed', 'new-password');
+        assert.strictEqual(await signedIn(current), '');
+        const renamed = await login('renamed', 'new-password');
+        //сессия, созданная до sessionsValidAfter: подпись верна, но профиль её не принимает
+        const older = (await worker.readingListStore.getUser(user.id)).sessionsValidAfter - 1;
+        assert.strictEqual(await signedIn(sessionCookie(security, user.id, {createdAt: older, updatedAt: Date.now()}).cookie), '');
+
+        const deleted = await login('renamed', 'new-password');
+        assert.strictEqual(await signedIn(renamed), user.id);
         await worker.deleteUserProfile(user.id);
-        assert.strictEqual(worker.getProfileSessionUser(deleted.profileAccessToken), '');
+        assert.strictEqual(await signedIn(deleted), '');
     });
 }
 
@@ -633,8 +667,8 @@ async function testServerDetailsStayPrivate() {
         security.secret = 'test-secret';
         const worker = {getIndexStatus: async() => ({ready: true, state: 'normal', progress: 1, sources: [{id: 'a', name: 'Private shelf'}],
             inpxInfo: {collection: 'Private collection'}, stats: {bookCount: 5}, inpxFileHash: 'hash'}),
-        getProfileSessionUser: token => (token === 'admin-token' ? 'admin' : ''),
-        readingListStore: {load: async() => ({users: [{id: 'admin', isAdmin: true}]})},
+        profileToken: userId => ({userId}),
+        readingListStore: {load: async() => ({users: [{id: 'admin', isAdmin: true, sessionsValidAfter: 0}, {id: 'reader', sessionsValidAfter: 0}]})},
         requireAdmin: async(userId) => { if (userId !== 'admin') throw new Error('not admin'); }};
         await fs.outputFile(path.join(config.bookDir, 'abcdef.d.json'), JSON.stringify({sourceLibDir: config.libDir}));
         const app = require('express')();
@@ -649,10 +683,9 @@ async function testServerDetailsStayPrivate() {
             assert.deepStrictEqual(anonymous, {serverReady: true, ready: true, state: 'normal', progress: 1});
             const scraper = await (await get('/api/index-status', {authorization: 'Bearer metrics-fixture'})).json();
             assert.strictEqual(scraper.sources[0].name, 'Private shelf');
-            const session = security.ensureSession({headers: {}});
-            const cookie = `inpx_web_session=${security.packSessionId(session.id)}`;
-            assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo, undefined, 'Not signed in');
-            session.profileAccessToken = 'admin-token';
+            for (const uid of ['', 'reader'])
+                assert.strictEqual((await (await get('/api/index-status', {cookie: sessionCookie(security, uid).cookie})).json()).inpxInfo, undefined, uid);
+            const cookie = sessionCookie(security, 'admin').cookie;
             assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo.collection, 'Private collection');
             assert.strictEqual((await get('/book/abcdef.d.json')).status, 401, 'No anonymous books');
             assert.strictEqual((await get('/book/abcdef.d.json', {cookie})).status, 404);
@@ -757,87 +790,69 @@ async function testLoginLimiterKeysIpv6PrefixAndEvictsOldest() {
     assert.ok(!security.loginAttempts.has('opds:10.0.0.1'), 'The oldest entry goes');
 }
 
-// A signed-in browser session survives a restart: state.sqlite keeps the sha256 of its id and the profile, not the tokens.
-// Anonymous sessions stay in memory; a password change or logout removes the row.
+// A signed-in browser session survives a restart: the cookie is signed with session-secret and the server keeps nothing.
+// The CSRF token is computed from the sid: the same after a restart, another for another sid. A new session-secret signs everyone out.
 async function testSignedInSessionsSurviveRestart() {
     await temporary(async(dir) => {
-        const StateStore = require('../server/core/StateStore');
         const WebWorker = require('../server/core/WebWorker');
-        const stateStore = new StateStore({dataDir: dir});
-        const start = () => {
-            const worker = Object.assign(Object.create(WebWorker.prototype), {profileSessions: new Map(), stateStore});
-            const security = new Security({});
-            security.secret = 'test-secret';
-            security.attachProfiles(worker);
-            return {worker, security};
+        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        const alice = await store.createUser({name: 'Alice', login: 'alice', passwordHash: 'scrypt:fixture'});
+        const start = async() => {
+            const security = new Security({dataDir: dir});
+            await security.init();
+            const worker = Object.assign(Object.create(WebWorker.prototype), {readingListStore: store});
+            return {security, access: new (require('../server/core/ProfileAccess'))({}, worker, security)};
         };
-        const first = start();
-        const session = first.security.ensureSession({headers: {}});
-        session.profileAccessToken = first.worker.createProfileSession('alice');
-        first.security.rotateSession({headers: {}, securitySession: session}, fakeResponse());
-        const loginAt = session.createdAt;
-        const cookie = {cookie: `inpx_web_session=${first.security.packSessionId(session.id)}`};
-        const anonymous = first.security.ensureSession({headers: {}});
-        assert.strictEqual(stateStore.getWebSession(first.security.sessionHash(anonymous.id)), null, 'Anonymous sessions stay in memory');
-        assert.strictEqual(stateStore.getWebSession(session.id), null, 'Rows are keyed by a hash of the id');
+        const first = await start();
+        const response = fakeResponse();
+        first.security.startSession({headers: {}}, response, alice.id, alice.sessionsValidAfter);
+        const cookie = response.getHeader('set-cookie').split(';')[0];
+        const csrfToken = first.security.getCsrfToken({headers: {cookie}});
 
-        const second = start();
-        const restored = second.security.getSession({headers: cookie});
-        assert.strictEqual(second.worker.getProfileSessionUser(restored.profileAccessToken), 'alice');
-        assert.notStrictEqual(restored.profileAccessToken, session.profileAccessToken, 'The profile token is new');
-        assert.deepStrictEqual([restored.csrfToken, restored.createdAt], [session.csrfToken, loginAt]);
-        assert.strictEqual(second.worker.profileSessions.get(restored.profileAccessToken).createdAt, loginAt, 'The 30-day limit counts from the login');
+        const second = await start();
+        assert.strictEqual((await second.access.resolve({headers: {cookie}})).user.id, alice.id);
+        assert.strictEqual(second.security.getCsrfToken({headers: {cookie}}), csrfToken, 'The CSRF token after a restart');
+        assert.notStrictEqual(second.security.getCsrfToken({headers: {cookie: sessionCookie(second.security, alice.id).cookie}}), csrfToken,
+            'Another sid, another CSRF token');
+        assert.ok(!(await fs.pathExists(path.join(dir, 'state.sqlite'))), 'Nothing is written for a session');
 
-        second.worker.revokeUserSessions('alice');
-        assert.strictEqual(start().security.getSession({headers: cookie}), null, 'A password change ends it after a restart too');
-
-        const third = start();
-        const again = third.security.ensureSession({headers: {}});
-        again.profileAccessToken = third.worker.createProfileSession('bob');
-        third.security.rotateSession({headers: {}, securitySession: again}, fakeResponse());
-        delete again.profileAccessToken;
-        third.security.persistSession(again);
-        assert.strictEqual(start().security.getSession({headers: {cookie: `inpx_web_session=${third.security.packSessionId(again.id)}`}}), null, 'Logout');
-        stateStore.close();
+        await fs.remove(path.join(dir, 'session-secret'));
+        assert.strictEqual(await (await start()).access.resolve({headers: {cookie}}), null, 'A new session-secret');
     });
 }
 
 // Сохранённые входы в браузере не переживают ни полное восстановление бэкапа, ни сброс пароля администратора
 async function testRestoreAndAdminResetEndSavedLogins() {
     await temporary(async(dir) => {
-        const StateStore = require('../server/core/StateStore');
         const WebWorker = require('../server/core/WebWorker');
-        const stateStore = new StateStore({dataDir: dir});
         const config = {dataDir: dir, tempDir: path.join(dir, 'tmp'), configFile: path.join(dir, 'config.json'),
             name: 'inpx-shelf', version: 'test', librarySources: [], opds: {}};
-        const start = (securityConfig = {}) => {
-            const worker = Object.assign(Object.create(WebWorker.prototype), {config, profileSessions: new Map(), stateStore,
-                checkMyState() {}, requireAdmin: async() => true, addAdminEvent() {},
-                readingListStore: new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'})});
-            const security = new Security(securityConfig);
-            security.secret = 'test-secret';
-            security.attachProfiles(worker);
-            return {worker, security};
+        const storeConfig = {dataDir: dir, adminLogin: 'admin', adminPassword: 'admin-fixture'};
+        const worker = Object.assign(Object.create(WebWorker.prototype), {config, checkMyState() {}, requireAdmin: async() => true,
+            addAdminEvent() {}, readingListStore: new ReadingListStore(storeConfig)});
+        const security = new Security({dataDir: dir});
+        await security.init();
+        const access = new (require('../server/core/ProfileAccess'))(config, worker, security);
+        const signIn = async() => {
+            const result = await worker.loginUserProfile('admin', 'admin-fixture');
+            const response = fakeResponse();
+            security.startSession({headers: {}}, response, result.userId, result.sessionsValidAfter);
+            return response.getHeader('set-cookie').split(';')[0];
         };
-        const signIn = ({worker, security}) => {
-            const session = security.ensureSession({headers: {}});
-            session.profileAccessToken = worker.createProfileSession('admin');
-            security.rotateSession({headers: {}, securitySession: session}, fakeResponse());
-            return {cookie: `inpx_web_session=${security.packSessionId(session.id)}`};
-        };
+        const signedIn = async cookie => !!(await access.resolve({headers: {cookie}}));
 
-        let headers = signIn(start());
-        start({resetAdminPassword: true});
-        assert.strictEqual(start().security.getSession({headers}), null, 'An admin password reset ends saved logins');
+        let cookie = await signIn();
+        assert.strictEqual(await signedIn(cookie), true);
+        await new ReadingListStore(Object.assign({}, storeConfig, {resetAdminPassword: true})).load();
+        assert.strictEqual(await signedIn(cookie), false, 'An admin password reset ends saved logins');
 
-        const running = start();
-        headers = signIn(running);
+        //бэкап сделан после входа: его sessionsValidAfter старше cookie, а восстановление всё равно завершает вход
+        cookie = await signIn();
         await fs.outputJson(config.configFile, {opds: {}});
-        const backup = await running.worker.createAdminBackup('admin', 'token');
-        await running.worker.importAdminBackup('admin', 'token', {file: path.join(dir, 'backups', backup.fileName)});
-        assert.strictEqual(running.worker.getProfileSessionUser(running.security.getSession({headers}).profileAccessToken), '', 'Signed out right away');
-        assert.strictEqual(start().security.getSession({headers}), null, 'and after a restart');
-        stateStore.close();
+        const backup = await worker.createAdminBackup('admin', 'token');
+        await worker.importAdminBackup('admin', 'token', {file: path.join(dir, 'backups', backup.fileName)});
+        assert.strictEqual(await signedIn(cookie), false, 'A full restore ends saved logins');
+        assert.strictEqual(await signedIn(await signIn()), true, 'A new login works');
     });
 }
 
@@ -887,7 +902,7 @@ async function testRestoreResetsKeysMissingFromBackup() {
         process.env.LIBDIR = libDir;
         const config = {dataDir: dir, tempDir: path.join(dir, 'tmp'), configFile, name: 'inpx-shelf', version: 'test', librarySources: [], opds: {}};
         await require('../server/core/LibrarySources').resolveLibrarySources(config);
-        const worker = Object.assign(Object.create(WebWorker.prototype), {config, profileSessions: new Map(),
+        const worker = Object.assign(Object.create(WebWorker.prototype), {config,
             checkMyState() {}, requireAdmin: async() => true, addAdminEvent() {},
             readingListStore: new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'})});
         await fs.outputJson(configFile, {opds: {}});
@@ -975,7 +990,7 @@ async function testApiRequestRules() {
 
         //POST - только с CSRF-токеном своей сессии; GET токена не требует
         const write = options => api.call('update-reader-preferences', {preferences: {fontSize: 20}}, options);
-        for (const csrfToken of [null, '', 'x'.repeat(64), security.ensureSession({headers: {}}).csrfToken]) {
+        for (const csrfToken of [null, '', 'x'.repeat(64), security.getCsrfToken({headers: {}})]) {
             const response = await write({csrfToken});
             assert.deepStrictEqual([response.status, response.body.error], [403, 'bad_csrf_token'], String(csrfToken));
         }
@@ -1121,7 +1136,7 @@ async function testApiLogHidesSecretsAndBoundsMetrics() {
         logger.handlers.push(capture);
         try {
             const response = await api.call('update-reader-preferences', {password: 'IN_SECRET', accessToken: 'IN_SECRET',
-                profile: {password: 'IN_SECRET'}, preferences: {fontSize: 20}}, {profileToken: 'HEADER_SECRET', userId: 'reader'});
+                profile: {password: 'IN_SECRET'}, preferences: {fontSize: 20}});
             assert.strictEqual(response.status, 200);
             await api.request('GET', 'api/random-action-name');
         } finally {
@@ -1163,5 +1178,5 @@ module.exports = [
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testBrokenStoreWithoutCopyIsNotOverwritten, testBackupsKeepNewestTen, testWikidataDownloadWaitsForFileLock, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
-    testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
+    testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testIdleSessionReissue, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded, testRemoteLibVerifiesTlsCertificates];

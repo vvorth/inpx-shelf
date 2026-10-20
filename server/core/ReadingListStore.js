@@ -118,9 +118,24 @@ class ReadingListStore {
             isAdmin: true,
             readerProgressGeneration: 0,
             readerProgressResetAt: '',
+            //заново созданный профиль с прежним id не принимает cookie прежнего
+            sessionsValidAfter: Date.now(),
             createdAt: now,
             updatedAt: now,
         };
+    }
+
+    //Завершает сессии профиля: cookie, выданные раньше, недействительны (ProfileAccess.resolve).
+    //Значение только растёт: две смены пароля в одну миллисекунду тоже видны проверке входа (loginUserProfile)
+    endSessions(user) {
+        user.sessionsValidAfter = Math.max(Date.now(), user.sessionsValidAfter || 0) + 1;
+        return user.sessionsValidAfter;
+    }
+
+    async endAllSessions() {
+        const data = await this.load();
+        data.users.forEach(user => this.endSessions(user));
+        await this.save(data);
     }
 
     normalizeBookUid(bookUid) {
@@ -241,6 +256,7 @@ class ReadingListStore {
         normalized.readerBookmarks = this.normalizeReaderBookmarks(normalized.readerBookmarks);
         normalized.discoveryPreferences = this.normalizeDiscoveryPreferences(normalized.discoveryPreferences);
         normalized.isAdmin = !!normalized.isAdmin;
+        normalized.sessionsValidAfter = Math.max(0, Number(normalized.sessionsValidAfter) || 0);
         normalized.createdAt = normalized.createdAt || now;
         normalized.updatedAt = normalized.updatedAt || now;
         return normalized;
@@ -369,6 +385,12 @@ class ReadingListStore {
                 admin.opdsPasswordHash = '';
                 changed = true;
             }
+        }
+
+        //сброс пароля администратора завершает все сессии
+        if (this.config.resetAdminPassword) {
+            users.forEach(user => this.endSessions(user));
+            changed = true;
         }
 
         const adminIndex = users.findIndex((item) => item.id === adminTemplate.id || item.isAdmin);

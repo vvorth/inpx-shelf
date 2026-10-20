@@ -6,7 +6,7 @@ import root from './root.js';
 const debug = process.env.NODE_ENV !== 'production';
 
 //В localStorage - только настройки. Конфигурация сервера (csrfToken, профили, интеграции) приходит заново
-//с get-config, токен профиля не нужен: после перезагрузки сервер узнаёт профиль по HttpOnly-cookie сессии.
+//с get-config; профиль сервер узнаёт по HttpOnly-cookie сессии. Токен профиля прежних версий отбрасывается.
 function persisted(state = {}) {
     const settings = Object.assign({}, state.settings);
     delete settings.profileAccessToken;

@@ -343,12 +343,10 @@ module.exports = {
                 }
                 if (runtimePatch)
                     Object.assign(this.config, runtimePatch);
-                //профили и пароли могли смениться - сеансы сбрасываются; одни имена авторов их не трогают
-                if (archive['config.json'] || archive['reading-lists.json']) {
-                    this.profileSessions.clear();
-                    if (this.stateStore)
-                        this.stateStore.deleteAllWebSessions();
-                }
+                //профили и пароли могли смениться - сеансы завершаются; одни имена авторов их не трогают.
+                //После записи файла: иначе sessionsValidAfter из бэкапа вернул бы сессии, завершённые после него
+                if (archive['config.json'] || archive['reading-lists.json'])
+                    await this.readingListStore.endAllSessions();
                 const restored = Object.keys(content);
                 if (only)
                     this.addAdminEvent('info', 'settings', msg(importEvent, {count: counts[only[0]] || 0}));

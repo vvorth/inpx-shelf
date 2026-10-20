@@ -6,7 +6,7 @@ const apiRoutes = require('../shared/apiRoutes');
 const Security = require('../server/core/Security');
 const ProfileAccess = require('../server/core/ProfileAccess');
 const ReadingListStore = require('../server/core/ReadingListStore');
-const {ApiTestClient, apiController, apiApp, listen, fakeResponse, sampleParams} = require('./api-test-client');
+const {ApiTestClient, sessionCookie, apiController, apiApp, listen, sampleParams} = require('./api-test-client');
 
 async function fixture(options, test) {
     const Worker = require('../server/core/WebWorker');
@@ -17,7 +17,6 @@ async function fixture(options, test) {
     const worker = Object.create(Worker.prototype);
     worker.config = config;
     worker.checkMyState = () => {};
-    worker.profileSessions = new Map();
     worker.readingListStore = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
     worker.dbConfig = async() => ({inpxInfo: {collection: 'Test collection'}});
     worker.getSharedDiscoveryConfig = async() => ({});
@@ -37,7 +36,7 @@ async function fixture(options, test) {
     const app = apiApp({config, security, controller, health: false, after: app => {
         require('../server/static')(app, config, worker, security);
         app.use('/opds', access.httpGuard({opds: true, guest: true}));
-        app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
+        app.use('/opds', require('../server/core/opds').scopeGuard(() => worker));
         app.get('/opds', (req, res) => res.json({user: req.query.user || ''}));
         for (const [url, name] of [['/opds/reading-profiles', 'ReadingProfilesPage'], ['/opds/reading-lists/list', 'ReadingListPage']]) {
             const page = Object.create(require(`../server/core/opds/${name}`).prototype);
@@ -50,25 +49,28 @@ async function fixture(options, test) {
     }});
     const {base, close} = await listen(app);
     const request = (url, headers = {}) => fetch(base + url, {headers, redirect: 'manual'});
-    const session = (userId = '') => {
-        const value = security.ensureSession({headers: {}});
-        if (userId)
-            value.profileAccessToken = worker.createProfileSession(userId);
-        return {value, cookie: `inpx_web_session=${security.packSessionId(value.id)}`};
-    };
+    //cookie браузера, вошедшего в профиль userId ('' - без входа)
+    const session = (userId = '') => sessionCookie(security, userId);
     //клиент браузера: cookie обновляется из ответов (вход ставит новую), заголовки headers - в каждом запросе
     const client = (headers = {}) => new ApiTestClient(base, {headers});
-    //запрос как от Api.vue: userId, profileAccessToken и csrfToken идут заголовками, остальное - параметры действия;
+    //запрос как от Api.vue: профиль - по cookie, CSRF-токен - текущей сессии (csrfToken: null - без него);
     //ответ - тело (JSON), в том числе {error}
     const connect = async(headers = {}) => {
         const api = client(headers);
-        const call = async({action, userId, profileAccessToken, csrfToken, ...params}) =>
-            (await api.call(action, params, {userId, profileToken: profileAccessToken, csrfToken})).body;
+        const call = async({action, csrfToken, ...params}) =>
+            (await api.call(action, params, {csrfToken: (csrfToken === null ? null : undefined)})).body;
         call.api = api;
         return call;
     };
+    //новый браузер, вошедший через login-user-profile
+    const signIn = async(login, password) => {
+        const call = await connect();
+        const result = await call({action: 'login-user-profile', login, password});
+        assert.ok(!result.error, result.error);
+        return call;
+    };
     try {
-        await test({config, worker, security, access, alice, bob, request, session, client, connect, base});
+        await test({config, worker, security, access, alice, bob, request, session, client, connect, signIn, base});
     } finally {
         await close();
         await fs.remove(dir);
@@ -94,13 +96,13 @@ async function testProxyHeaderRequiredWithOldCookie() {
 
 async function testAnonymousAccessDisabledHttpAndApi() {
     //the removed allowAnonymousAccess switch must not open anything
-    await fixture({allowAnonymousAccess: true}, async({worker, security, alice, bob, request, session, connect}) => {
+    await fixture({allowAnonymousAccess: true}, async({worker, alice, request, session, connect}) => {
         assert.strictEqual((await request('/')).status, 200, 'Login shell stays reachable');
         for (const url of ['/book/fixture.txt', '/cover/by-uid?uid=x', '/opds'])
             assert.strictEqual((await request(url)).status, 401, url);
         const browser = session();
         const call = await connect({cookie: browser.cookie});
-        const config = await call({action: 'get-config', userId: bob.id});
+        const config = await call({action: 'get-config'});
         assert.strictEqual(config.profileLoginRequired, true);
         assert.deepStrictEqual(config.userProfiles, []);
         assert.strictEqual(config.dbConfig, undefined);
@@ -108,32 +110,28 @@ async function testAnonymousAccessDisabledHttpAndApi() {
         assert.strictEqual(state.state, 'normal');
         assert.strictEqual(state.fileName, undefined);
         for (const action of ['catalog-search', 'get-user-profiles', 'get-reading-lists', 'create-reading-list', 'get-admin-dashboard']) {
-            const response = await call.api.call(action, {}, {userId: bob.id, csrfToken: config.csrfToken});
+            const response = await call.api.call(action, {});
             assert.deepStrictEqual([response.status, response.body.error], [401, 'need_profile_login'], action);
         }
-        const bad = await call({action: 'login-user-profile', login: 'alice', password: 'wrong', csrfToken: config.csrfToken});
+        const bad = await call({action: 'login-user-profile', login: 'alice', password: 'wrong'});
         assert.match(bad.error, /Неверный/);
-        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: config.csrfToken});
+        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture'});
         assert.strictEqual(login.userId, alice.id);
         assert.notStrictEqual(call.api.cookie, browser.cookie, 'The login response sets a new session cookie');
         browser.cookie = call.api.cookie;
-        const authed = await call({action: 'get-config', userId: bob.id});
-        assert.strictEqual(authed.currentUserId, alice.id, 'Stale selection must be replaced');
+        const authed = await call({action: 'get-config'});
+        assert.strictEqual(authed.currentUserId, alice.id);
         assert.strictEqual(authed.profileAuthorized, true);
         assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 200);
         assert.strictEqual((await request('/opds?user=bob', {cookie: browser.cookie})).status, 401);
         assert.strictEqual((await (await request('/opds', {cookie: browser.cookie})).json()).user, alice.id);
-        assert.strictEqual((await call({action: 'get-reading-lists', userId: bob.id})).error, 'need_profile_login');
-        await call({action: 'logout-user-profile', csrfToken: config.csrfToken});
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401);
-        browser.cookie = call.api.cookie;
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'The cookie after logout');
-        assert.strictEqual((await call({action: 'get-reading-lists', userId: alice.id, profileAccessToken: login.profileAccessToken})).error, 'need_profile_login');
-        const current = security.getSession({headers: {cookie: browser.cookie}});
-        current.profileAccessToken = worker.createProfileSession(alice.id);
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 200);
-        worker.revokeUserSessions(alice.id);
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401);
+        await call({action: 'logout-user-profile'});
+        //сервер сессий не хранит: копия cookie действует до своих сроков (docs/auth-monitoring.md)
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 200, 'A copy of the cookie');
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: call.api.cookie})).status, 401, 'The cookie after logout');
+        assert.strictEqual((await call({action: 'get-reading-lists'})).error, 'need_profile_login');
+        await worker.updateUserProfile(alice.id, {passwordHash: await worker.hashProfilePassword('alice', 'alice-changed')});
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'A password change ends the copy too');
         const basic = {authorization: 'Basic ' + Buffer.from('alice:alice-opds-pass').toString('base64')};
         assert.strictEqual((await request('/book/fixture.txt', basic)).status, 200);
         assert.strictEqual((await (await request('/opds', basic)).json()).user, alice.id);
@@ -143,14 +141,12 @@ async function testAnonymousAccessDisabledHttpAndApi() {
 
 async function testProxyProfileBindingAndIdentityChange() {
     await fixture({authMode: 'proxy', proxyBindProfile: true, trustProxy: true, trustedProxyCidrs: ['127.0.0.1/32']},
-        async({config, worker, alice, bob, request, session, connect}) => {
+        async({config, security, worker, alice, bob, request, session, connect}) => {
             assert.strictEqual((await request('/')).status, 401, 'Binding itself requires trusted SSO identity');
-            const browser = session();
-            browser.value.profileAccessToken = worker.createProfileSession('admin');
-            const oldToken = browser.value.profileAccessToken;
+            const browser = session('admin');
             const headers = {cookie: browser.cookie, 'Remote-User': ' ALICE '};
             const call = await connect(headers);
-            const authed = await call({action: 'get-config', userId: bob.id, profileAccessToken: oldToken});
+            const authed = await call({action: 'get-config'});
             assert.strictEqual(authed.currentUserId, alice.id);
             assert.strictEqual(authed.profileBoundId, alice.id);
             assert.strictEqual(authed.profileAuthorized, true, 'SSO avoids a second password prompt');
@@ -158,11 +154,12 @@ async function testProxyProfileBindingAndIdentityChange() {
             assert.strictEqual(authed.userProfiles[0].requiresLogin, false);
             assert.strictEqual(authed.currentUserProfile.emailTo, 'alice@example.test');
             assert.strictEqual((await request('/admin-backups/fixture.zip', headers)).status, 403, 'Stale admin cookie cannot grant backup access');
-            const switched = await call({action: 'get-reading-lists', userId: bob.id, profileAccessToken: oldToken});
-            assert.match(switched.error, /закреплён/);
-            const renamed = await call({action: 'update-user-profile', targetUserId: alice.id, profile: {login: 'changed'}, csrfToken: authed.csrfToken});
+            //вход паролем из cookie привязка убирает: без заголовка SSO-профиля он не вернётся
+            assert.strictEqual(security.getSession({headers: {cookie: call.api.cookie}}).uid, '');
+            headers.cookie = call.api.cookie;
+            const renamed = await call({action: 'update-user-profile', targetUserId: alice.id, profile: {login: 'changed'}});
             assert.match(renamed.error, /закреплён/);
-            assert.match((await call({action: 'login-user-profile', login: 'bob', password: 'ignored', csrfToken: authed.csrfToken})).error, /закреплён/);
+            assert.match((await call({action: 'login-user-profile', login: 'bob', password: 'ignored'})).error, /закреплён/);
             assert.strictEqual((await request('/opds?user=bob', headers)).status, 403);
             assert.strictEqual((await (await request('/opds?user=alice', headers)).json()).user, alice.id);
             const ownList = await worker.readingListStore.createList(alice.id, 'Alice OPDS list', 'opds');
@@ -174,24 +171,21 @@ async function testProxyProfileBindingAndIdentityChange() {
             const other = await request(`/opds/reading-lists/list?id=${otherList.id}`, headers);
             assert.strictEqual(other.status, 404);
             assert.ok(!(await other.text()).includes('Bob OPDS list'));
-            const boundToken = browser.value.profileAccessToken;
             const bobCall = await connect({...headers, 'Remote-User': 'bob'});
-            const bobConfig = await bobCall({action: 'get-config', userId: alice.id, profileAccessToken: boundToken});
+            const bobConfig = await bobCall({action: 'get-config'});
             assert.strictEqual(bobConfig.currentUserId, bob.id);
             assert.strictEqual(bobConfig.currentUserProfile.emailTo, 'bob@example.test');
-            assert.strictEqual(worker.getProfileSessionUser(boundToken), '', 'Previous bound token must be revoked');
             const adminHeaders = {...headers, 'Remote-User': 'admin'};
             const adminCall = await connect(adminHeaders);
-            const adminConfig = await adminCall({action: 'get-config', userId: bob.id});
+            const adminConfig = await adminCall({action: 'get-config'});
             assert.strictEqual(adminConfig.currentUserProfile.isAdmin, true);
             assert.ok(adminConfig.userProfiles.some(user => user.id === bob.id), 'Bound admins retain profile management');
             assert.strictEqual((await request('/admin-backups/fixture.zip', adminHeaders)).status, 200);
             const unknownCall = await connect({...headers, 'Remote-User': 'unmapped'});
-            const legacy = await unknownCall({action: 'get-config', userId: bob.id});
+            const legacy = await unknownCall({action: 'get-config'});
             assert.deepStrictEqual([legacy.profileLoginRequired, legacy.currentUserId], [true, ''], 'Unmapped SSO user must log in');
-            assert.strictEqual(browser.value.proxyProfileUserId, undefined);
             await worker.deleteUserProfile(alice.id);
-            const removed = await call({action: 'get-config', userId: bob.id});
+            const removed = await call({action: 'get-config'});
             assert.deepStrictEqual([removed.profileLoginRequired, removed.currentUserId], [true, '']);
             config.proxyBindProfile = false;
             assert.strictEqual((await request('/')).status, 200);
@@ -257,30 +251,26 @@ async function testOpdsHidesPasswordProfiles() {
 
 // A profile without a password (reached through an SSO binding): only an admin gives it credentials. Own password needs the current one.
 async function testOpenProfileCredentialsAdminOnly() {
-    await fixture({kosyncEnabled: true}, async({worker, alice, bob, connect, session}) => {
+    await fixture({kosyncEnabled: true}, async({worker, alice, bob, connect, signIn, session}) => {
         worker.koboService = {createDevice: async() => ({device: {}}), regenerateToken: async() => ({device: {}})};
-        const call = await connect({cookie: session(bob.id).cookie});
-        const {csrfToken} = await call({action: 'get-config'});
-        const asBob = {userId: bob.id, csrfToken};
-        const update = (profile, as = asBob, targetUserId = bob.id) => call({action: 'update-user-profile', targetUserId, profile, ...as});
+        const asBob = await connect({cookie: session(bob.id).cookie});
+        const update = (profile, as = asBob, targetUserId = bob.id) => as({action: 'update-user-profile', targetUserId, profile});
         for (const profile of [{password: 'taken-over'}, {login: 'bobby'}, {login: 'bobby', password: 'taken-over'}, {login: ''}])
             assert.match((await update(profile)).error || '', /administrator|администратор/, JSON.stringify(profile));
         for (const action of ['create-kobo-device', 'regenerate-kobo-device-token', 'create-kosync-password'])
-            assert.match((await call({action, ...asBob})).error || '', /administrator|администратор/, action);
+            assert.match((await asBob({action})).error || '', /administrator|администратор/, action);
         const renamed = await update({name: 'Bobby', login: 'BOB'});
         assert.strictEqual(renamed.user && renamed.user.name, 'Bobby', JSON.stringify(renamed), 'Name and other settings stay editable');
         assert.strictEqual((await worker.readingListStore.getUser(bob.id)).passwordHash, '');
 
-        const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
-        const asAlice = {userId: alice.id, profileAccessToken: aliceLogin.profileAccessToken, csrfToken};
-        assert.ok((await call({action: 'create-kosync-password', ...asAlice})).password, 'A protected profile makes its own');
+        const asAlice = await signIn('alice', 'alice-fixture');
+        assert.ok((await asAlice({action: 'create-kosync-password'})).password, 'A protected profile makes its own');
         assert.match((await update({password: 'new-password'}, asAlice, alice.id)).error, /current password|текущий пароль/);
         assert.match((await update({password: 'new-password', currentPassword: 'wrong'}, asAlice, alice.id)).error, /current password|текущий пароль/);
         assert.ok(!(await update({password: 'new-password', currentPassword: 'alice-fixture'}, asAlice, alice.id)).error);
         assert.ok(await worker.readingListStore.verifyUserPassword(alice.id, 'new-password'));
 
-        const adminLogin = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
-        const asAdmin = {userId: adminLogin.userId, profileAccessToken: adminLogin.profileAccessToken, csrfToken};
+        const asAdmin = await signIn('admin', 'admin-fixture');
         assert.strictEqual((await update({login: 'bobby', password: 'bob-password'}, asAdmin)).user.login, 'bobby', 'The admin sets credentials');
         assert.ok(!(await update({password: 'alice-reset'}, asAdmin, alice.id)).error, 'The admin needs no current password of others');
     });
@@ -289,100 +279,75 @@ async function testOpenProfileCredentialsAdminOnly() {
 // Book delivery: one recipient, only from a profile with a password (or an admin), at most deliveryRateLimit sends an hour.
 async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     const options = {emailShareEnabled: true, smtpHost: '127.0.0.1', telegramShareEnabled: true, telegramBotToken: 'test', deliveryRateLimit: 2};
-    await fixture(options, async({worker, security, alice, bob, connect, session, base}) => {
+    await fixture(options, async({worker, security, alice, bob, connect, signIn, session, base}) => {
         worker.getPreparedBookFile = async() => { throw new Error('PREPARE_STUB'); };
-        const call = await connect({cookie: session(bob.id).cookie});
-        const {csrfToken} = await call({action: 'get-config'});
-        const update = (targetUserId, profile, as) => call({action: 'update-user-profile', targetUserId, profile, ...as});
-        const asBob = {userId: bob.id, csrfToken};
-        assert.strictEqual((await call({action: 'get-config', userId: bob.id})).emailShareEnabled, false);
+        const asBob = await connect({cookie: session(bob.id).cookie});
+        const update = (targetUserId, profile, as) => as({action: 'update-user-profile', targetUserId, profile});
+        assert.strictEqual((await asBob({action: 'get-config'})).emailShareEnabled, false);
         assert.match((await update(bob.id, {emailTo: 'relay@example.test'}, asBob)).error, /password|паролем/);
         assert.match((await update(bob.id, {telegramChatId: '42'}, asBob)).error, /password|паролем/);
-        assert.match((await call({action: 'send-book-email', bookUid: 'book', ...asBob})).error, /password|паролем/);
+        assert.match((await asBob({action: 'send-book-email', bookUid: 'book'})).error, /password|паролем/);
         assert.strictEqual((await update(bob.id, {name: 'Bobby', emailTo: 'bob@example.test'}, asBob)).user.name, 'Bobby', 'Unchanged address is no change');
 
-        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
-        const asAlice = {userId: alice.id, profileAccessToken: login.profileAccessToken, csrfToken};
-        assert.strictEqual((await call({action: 'get-config', ...asAlice})).emailShareEnabled, true);
+        const asAlice = await signIn('alice', 'alice-fixture');
+        assert.strictEqual((await asAlice({action: 'get-config'})).emailShareEnabled, true);
         for (const emailTo of ['a@example.test, b@example.test', 'a@example.test;b@example.test', 'a@example.test\nBcc: b@example.test', 'nobody', '<a@example.test>'])
             assert.match((await update(alice.id, {emailTo}, asAlice)).error, /one email|один адрес/, emailTo);
         assert.strictEqual((await update(alice.id, {emailTo: 'alice2@example.test', telegramChatId: '42'}, asAlice)).user.emailTo, 'alice2@example.test');
         for (let i = 0; i < 2; i++)
-            assert.match((await call({action: i ? 'send-book-telegram' : 'send-book-email', bookUid: 'book', ...asAlice})).error, /PREPARE_STUB/);
+            assert.match((await asAlice({action: i ? 'send-book-telegram' : 'send-book-email', bookUid: 'book'})).error, /PREPARE_STUB/);
         for (const action of ['send-book-email', 'send-book-telegram'])
-            assert.match((await call({action, bookUid: 'book', ...asAlice})).error, /2 per hour|2 в час/, action);
+            assert.match((await asAlice({action, bookUid: 'book'})).error, /2 per hour|2 в час/, action);
 
         //a profile backup imported into an open profile brings no delivery addresses (nor Kobo tokens)
-        const uploader = ApiTestClient.forSession(base, security, session(bob.id).value);
-        const imported = await uploader.call('import-reading-lists', {}, {userId: bob.id, body: JSON.stringify({lists: [],
+        const uploader = ApiTestClient.forSession(base, security, bob.id);
+        const imported = await uploader.call('import-reading-lists', {}, {body: JSON.stringify({lists: [],
             user: {emailTo: 'relay@example.test', telegramChatId: '42'}, kobo: {devices: []}})});
         assert.strictEqual(imported.status, 200, imported.text);
         const stored = await worker.readingListStore.getUser(bob.id);
         assert.deepStrictEqual([stored.emailTo, stored.telegramChatId], ['bob@example.test', '']);
 
-        const adminLogin = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
-        const asAdmin = {userId: adminLogin.userId, profileAccessToken: adminLogin.profileAccessToken, csrfToken};
+        const asAdmin = await signIn('admin', 'admin-fixture');
         assert.strictEqual((await update(bob.id, {emailTo: 'bob2@example.test'}, asAdmin)).user.emailTo, 'bob2@example.test');
         await assert.rejects(worker.readingListStore.updateUser(bob.id, {emailTo: 'a@example.test,b@example.test'}), /один адрес|one email/);
     });
 }
 
-// A cookie of a session the server no longer knows (restart) is replaced by the next API response.
+// A cookie that fails verification (the format of earlier versions, another session-secret) is replaced by the next API response.
 async function testStaleCookieReplacedByApi() {
     await fixture({}, async({security, client}) => {
-        const stale = `inpx_web_session=${security.packSessionId('gone')}`;
+        const stale = `inpx_web_session=${'a'.repeat(48)}.${security.sign('a'.repeat(48))}`;
         const api = client({cookie: stale});
         const response = await api.request('GET', 'api/ping');
         assert.strictEqual(response.status, 200);
         assert.match(String(response.headers.get('set-cookie')), /^inpx_web_session=/);
         assert.notStrictEqual(api.cookie, stale);
-        assert.ok(security.getSession({headers: {cookie: api.cookie}}), 'The new cookie names a known session');
+        assert.ok(security.getSession({headers: {cookie: api.cookie}}), 'The new cookie verifies');
         const fresh = client();
         assert.match(String((await fresh.request('GET', 'api/ping')).headers.get('set-cookie')), /^inpx_web_session=/, 'No cookie at all');
     });
 }
 
-// A login moves the browser session to a new id and sets the new cookie in its own response: a cookie planted before it
+// A login starts a new session (new sid) and sets the new cookie in its own response: a cookie planted before it
 // (session fixation) does not get the login.
 async function testLoginRotatesSession() {
     await fixture({}, async({security, alice, request, session, connect}) => {
         const planted = session();
         const call = await connect({cookie: planted.cookie});
-        const {csrfToken} = await call({action: 'get-config'});
-        const sessions = security.sessions.size;
-        const login = await call.api.call('login-user-profile', {login: 'alice', password: 'alice-fixture'}, {csrfToken});
+        const login = await call.api.call('login-user-profile', {login: 'alice', password: 'alice-fixture'});
         assert.strictEqual(login.status, 200, login.text);
-        assert.strictEqual(login.body.sessionRotateToken, undefined, 'No second request for the cookie');
+        assert.deepStrictEqual(login.body, {userId: alice.id}, 'No token in the answer');
         const cookie = String(login.headers.get('set-cookie') || '').split(';')[0];
         assert.match(cookie, /^inpx_web_session=/);
-        assert.notStrictEqual(cookie, planted.cookie);
         assert.strictEqual(call.api.cookie, cookie);
-        assert.strictEqual(security.sessions.size, sessions, 'The session is moved, not copied');
+        const signed = security.getSession({headers: {cookie}});
+        assert.notStrictEqual(signed.sid, planted.session.sid);
+        assert.strictEqual(signed.uid, alice.id);
         assert.strictEqual((await request('/book/fixture.txt', {cookie: planted.cookie})).status, 401, 'The planted cookie');
         assert.strictEqual((await (await connect({cookie: planted.cookie}))({action: 'get-config'})).profileAuthorized, false);
         assert.strictEqual((await request('/book/fixture.txt', {cookie})).status, 200, 'The new cookie');
         const reloaded = await (await connect({cookie}))({action: 'get-config'});
         assert.deepStrictEqual([reloaded.profileAuthorized, reloaded.currentUserId], [true, alice.id], 'A reload stays signed in');
-        assert.strictEqual((await call({action: 'get-config', profileAccessToken: 'stale-after-restart'})).profileAuthorized, true,
-            'A stale token from an open tab falls back to the session');
-
-        //повторные входы не растят реестр сессий; вытесненная тем временем сессия возвращается в пределах лимита
-        const current = security.getSession({headers: {cookie}});
-        const size = security.sessions.size;
-        for (let i = 0; i < 1100; i++)
-            security.rotateSession({headers: {}, securitySession: current}, fakeResponse());
-        assert.strictEqual(security.sessions.size, size);
-        const response = fakeResponse();
-        security.rotateSession({headers: {}, securitySession: current}, response);
-        assert.ok(String(response.getHeader('set-cookie')).includes(encodeURIComponent(security.packSessionId(current.id))),
-            'The new cookie goes to the response');
-        const lifetime = require('../server/core/SessionLifetime');
-        while (security.sessions.size < lifetime.maxSessions)
-            security.ensureSession({headers: {}});
-        security.sessions.delete(current.id);
-        security.rotateSession({headers: {}, securitySession: current}, fakeResponse());
-        assert.strictEqual(security.sessions.size, lifetime.maxSessions, 'A session evicted meanwhile comes back within the limit');
-        assert.strictEqual(security.sessions.get(current.id), current);
     });
 }
 
@@ -451,24 +416,20 @@ async function testOpdsAuthenticationRateLimit() {
 
 // The OPDS password: generated and shown once, or the user's own of 10+ characters; a new one replaces the old.
 async function testSetOpdsPassword() {
-    await fixture({}, async({bob, request, session, connect}) => {
-        const call = await connect({cookie: session().cookie});
-        const {csrfToken} = await call({action: 'get-config'});
-        const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
-        const as = {profileAccessToken: login.profileAccessToken, csrfToken};
+    await fixture({}, async({bob, request, session, connect, signIn}) => {
+        const call = await signIn('alice', 'alice-fixture');
         const basic = password => ({authorization: 'Basic ' + Buffer.from(`alice:${password}`).toString('base64')});
-        const generated = await call({action: 'set-opds-password', ...as});
+        const generated = await call({action: 'set-opds-password'});
         assert.strictEqual(generated.username, 'alice');
         assert.strictEqual(generated.password.length, 16);
         assert.strictEqual((await request('/opds', basic(generated.password))).status, 200);
         assert.strictEqual((await request('/opds', basic('alice-opds-pass'))).status, 401, 'The old one stops working');
-        assert.match((await call({action: 'set-opds-password', password: 'short', ...as})).error, /10/);
-        const own = await call({action: 'set-opds-password', password: 'my-own-opds-pass', ...as});
+        assert.match((await call({action: 'set-opds-password', password: 'short'})).error, /10/);
+        const own = await call({action: 'set-opds-password', password: 'my-own-opds-pass'});
         assert.strictEqual(own.password, '', 'A chosen password is not sent back');
         assert.strictEqual((await request('/opds', basic('my-own-opds-pass'))).status, 200);
         const bobCall = await connect({cookie: session(bob.id).cookie});
-        const bobConfig = await bobCall({action: 'get-config'});
-        assert.match((await bobCall({action: 'set-opds-password', csrfToken: bobConfig.csrfToken})).error, /.+/, 'A profile without a password');
+        assert.match((await bobCall({action: 'set-opds-password'})).error, /.+/, 'A profile without a password');
     });
 }
 
@@ -478,7 +439,7 @@ async function testForeignListNotReadable() {
         const secret = await worker.readingListStore.createList(alice.id, 'Alice private list');
         const call = await connect({cookie: session(bob.id).cookie});
         for (const options of [undefined, {allowForeign: true}, {allowForeign: true, visibility: 'private'}]) {
-            const response = await call({action: 'get-reading-list', userId: bob.id, listId: secret.id, options});
+            const response = await call({action: 'get-reading-list', listId: secret.id, options});
             assert.ok(response.error && !JSON.stringify(response).includes('Alice private list'), JSON.stringify(response));
         }
         assert.strictEqual(await worker.readingListStore.getList(bob.id, secret.id, {allowForeign: true}), null);
@@ -514,18 +475,14 @@ async function testInvalidStoredRowsAreRepairedNotDropped() {
 
 // The admin role can be given to a profile with a login and password; the last admin keeps it, nobody changes their own role.
 async function testAdminRoleToggle() {
-    await fixture({}, async({config, worker, alice, bob, connect}) => {
-        const call = await connect();
-        const cfg = await call({action: 'get-config'});
-        const login = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken: cfg.csrfToken});
-        const admin = {userId: login.userId, profileAccessToken: login.profileAccessToken, csrfToken: cfg.csrfToken};
-        const update = (targetUserId, profile, as = admin) => call({action: 'update-user-profile', targetUserId, profile, ...as});
+    await fixture({}, async({config, worker, alice, bob, signIn}) => {
+        const admin = await signIn('admin', 'admin-fixture');
+        const update = (targetUserId, profile, as = admin) => as({action: 'update-user-profile', targetUserId, profile});
 
         assert.match((await update(bob.id, {isAdmin: true})).error, /login and password|логин и пароль/);
         assert.strictEqual((await update(alice.id, {isAdmin: true})).user.isAdmin, true);
-        const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: cfg.csrfToken});
-        const asAlice = {userId: alice.id, profileAccessToken: aliceLogin.profileAccessToken, csrfToken: cfg.csrfToken};
-        await worker.requireAdmin(alice.id, aliceLogin.profileAccessToken);
+        const asAlice = await signIn('alice', 'alice-fixture');
+        assert.strictEqual((await asAlice({action: 'get-config'})).currentUserProfile.isAdmin, true);
         assert.strictEqual((await update(alice.id, {isAdmin: false}, asAlice)).user.isAdmin, true, 'Own role is not changed');
         assert.strictEqual((await update(alice.id, {isAdmin: false})).user.isAdmin, false);
         assert.match((await update('admin', {isAdmin: false}, asAlice)).error, /.+/, 'A reader cannot change roles');
@@ -533,29 +490,27 @@ async function testAdminRoleToggle() {
         assert.match((await update('admin', {isAdmin: false}, asAlice)).error, /main administrator|главного администратора/);
         const profiles = (await worker.getUserProfiles()).users;
         assert.deepStrictEqual(profiles.filter(item => item.mainAdmin).map(item => item.id), ['admin']);
-        const created = await call({action: 'create-user-profile', profile: {name: 'Dora', login: 'dora', password: 'dora-password', isAdmin: true}, ...asAlice});
+        const created = await asAlice({action: 'create-user-profile', profile: {name: 'Dora', login: 'dora', password: 'dora-password', isAdmin: true}});
         assert.strictEqual(created.user.isAdmin, true);
-        assert.match((await call({action: 'create-user-profile', profile: {name: 'Eve', isAdmin: true}, ...asAlice})).error, /.+/);
-        assert.match((await call({action: 'create-user-profile', profile: {name: 'Fay', login: 'fay'}, ...asAlice})).error, /login and password|логин и пароль/, 'No password without SSO');
+        assert.deepStrictEqual(['passwordHash', 'sessionsValidAfter'].filter(key => Object.hasOwn(created.user, key)), [], 'No secrets in the answer');
+        assert.match((await asAlice({action: 'create-user-profile', profile: {name: 'Eve', isAdmin: true}})).error, /.+/);
+        assert.match((await asAlice({action: 'create-user-profile', profile: {name: 'Fay', login: 'fay'}})).error, /login and password|логин и пароль/, 'No password without SSO');
         assert.ok(config);
     });
 }
 
 // Администратор правит профиль только по точному id: логин или неизвестный id - ошибка, а не другой профиль
 async function testAdminEditNeedsExactProfileId() {
-    await fixture({}, async({worker, alice, connect}) => {
-        const call = await connect();
-        const cfg = await call({action: 'get-config'});
-        const login = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken: cfg.csrfToken});
-        const admin = {userId: login.userId, profileAccessToken: login.profileAccessToken, csrfToken: cfg.csrfToken};
-        const update = (targetUserId, profile) => call({action: 'update-user-profile', targetUserId, profile, ...admin});
+    await fixture({}, async({worker, alice, signIn}) => {
+        const admin = await signIn('admin', 'admin-fixture');
+        const update = (targetUserId, profile) => admin({action: 'update-user-profile', targetUserId, profile});
 
         assert.match((await update('no-such-user', {name: 'Hijacked'})).error, /not found|не найден/);
         assert.notStrictEqual((await worker.readingListStore.getUser('admin')).name, 'Hijacked', 'The main admin is not edited');
-        const aliceLogin = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: cfg.csrfToken});
+        const asAlice = await signIn('alice', 'alice-fixture');
         assert.match((await update('alice', {password: 'alice-new-password'})).error, /not found|не найден/, 'A login is not an id');
         assert.strictEqual((await update(alice.id, {password: 'alice-new-password'})).user.id, alice.id);
-        assert.strictEqual(worker.getProfileSessionUser(aliceLogin.profileAccessToken), '', 'The new password signs Alice out');
+        assert.strictEqual((await asAlice({action: 'get-config'})).profileAuthorized, false, 'The new password signs Alice out');
     });
 }
 
@@ -571,23 +526,22 @@ async function testGuestAccessWeb() {
         await worker.readingListStore.createList(bob.id, 'Bob private list', 'private');
 
         const call = await connect({cookie: session().cookie});
-        const guestConfig = await call({action: 'get-config', userId: bob.id});
+        const guestConfig = await call({action: 'get-config'});
         assert.deepStrictEqual([guestConfig.profileLoginRequired, guestConfig.guest, guestConfig.profileAuthorized], [false, true, false]);
         assert.deepStrictEqual([guestConfig.userProfiles, guestConfig.currentUserId, guestConfig.currentUserProfile], [[], '', null]);
         assert.strictEqual(guestConfig.adminGuestAccess, undefined);
-        const asBob = {userId: bob.id, csrfToken: guestConfig.csrfToken};
 
-        assert.deepStrictEqual((await call({action: 'catalog-search', q: 'x', ...asBob})).rows, ['ROW']);
-        assert.deepStrictEqual((await call({action: 'get-reading-lists', ...asBob})).lists, [], 'Not the lists of the passwordless profile');
-        assert.ok(!(await call({action: 'get-book-states', bookUids: ['a'], ...asBob})).error);
-        assert.ok(!(await call({action: 'record-discovery-events', events: [{bookUid: 'a', type: 'open'}], ...asBob})).error);
-        await call({action: 'get-discovery-shelves', section: 'personal', forceRefresh: true, externalSource: 'none', ...asBob});
+        assert.deepStrictEqual((await call({action: 'catalog-search', q: 'x'})).rows, ['ROW']);
+        assert.deepStrictEqual((await call({action: 'get-reading-lists'})).lists, [], 'Not the lists of the passwordless profile');
+        assert.ok(!(await call({action: 'get-book-states', bookUids: ['a']})).error);
+        assert.ok(!(await call({action: 'record-discovery-events', events: [{bookUid: 'a', type: 'open'}]})).error);
+        await call({action: 'get-discovery-shelves', section: 'personal', forceRefresh: true, externalSource: 'none'});
         const shelves = calls.find(item => item[0] === 'shelves')[1];
         assert.deepStrictEqual([shelves.section, shelves.userId, shelves.forceRefresh, shelves.externalSource], ['external', undefined, false, undefined]);
         assert.ok(!calls.some(item => item[0] === 'events'), 'Guest events are not stored');
         for (const action of ['get-user-profiles', 'get-reading-list', 'create-reading-list', 'get-reader-state', 'update-reader-progress',
             'get-reading-now', 'update-discovery-preferences', 'get-admin-dashboard', 'update-admin-guest-access']) {
-            const response = await call.api.call(action, sampleParams(action), {userId: bob.id, csrfToken: guestConfig.csrfToken});
+            const response = await call.api.call(action, sampleParams(action));
             assert.deepStrictEqual([response.status, response.body.error], [401, 'need_profile_login'], action);
         }
 
@@ -601,7 +555,7 @@ async function testGuestAccessWeb() {
 
         config.guestAccess = false;
         assert.strictEqual((await call({action: 'get-config'})).profileLoginRequired, true);
-        assert.strictEqual((await call({action: 'catalog-search', q: 'x', ...asBob})).error, 'need_profile_login');
+        assert.strictEqual((await call({action: 'catalog-search', q: 'x'})).error, 'need_profile_login');
         assert.strictEqual((await request('/book/fixture.txt')).status, 401);
     });
 }
@@ -631,19 +585,17 @@ async function testGuestAccessAdminToggle() {
         worker.saveRuntimeConfigPatch = async(patch) => Object.assign(config, patch);
         worker.addAdminEvent = () => {};
         const call = await connect({cookie: session(bob.id).cookie});
-        const {csrfToken} = await call({action: 'get-config'});
-        assert.match((await call({action: 'update-admin-guest-access', guestAccess: true, userId: bob.id, csrfToken})).error, /administrator|администратор/);
+        assert.match((await call({action: 'update-admin-guest-access', guestAccess: true})).error, /administrator|администратор/);
         assert.notStrictEqual(config.guestAccess, true);
 
-        const login = await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture', csrfToken});
-        const asAdmin = {userId: login.userId, profileAccessToken: login.profileAccessToken, csrfToken};
-        assert.deepStrictEqual((await call({action: 'get-config', ...asAdmin})).adminGuestAccess, {guestAccess: false, guestAccessFromEnv: false});
-        const updated = await call({action: 'update-admin-guest-access', guestAccess: true, ...asAdmin});
+        assert.ok(!(await call({action: 'login-user-profile', login: 'admin', password: 'admin-fixture'})).error);
+        assert.deepStrictEqual((await call({action: 'get-config'})).adminGuestAccess, {guestAccess: false, guestAccessFromEnv: false});
+        const updated = await call({action: 'update-admin-guest-access', guestAccess: true});
         assert.deepStrictEqual([updated.guestAccess, updated.guestAccessFromEnv], [true, false]);
         assert.strictEqual(config.guestAccess, true);
         process.env.INPX_GUEST_ACCESS = 'true';
         try {
-            assert.match((await call({action: 'update-admin-guest-access', guestAccess: false, ...asAdmin})).error, /INPX_GUEST_ACCESS/);
+            assert.match((await call({action: 'update-admin-guest-access', guestAccess: false})).error, /INPX_GUEST_ACCESS/);
             assert.strictEqual(config.guestAccess, true);
         } finally {
             delete process.env.INPX_GUEST_ACCESS;
@@ -675,9 +627,9 @@ async function testAnonymousAndGuestRoutes() {
     }
 }
 
-// The profile is named only by the X-User-Id / X-Profile-Token headers and the session: the same fields in the body or
-// the query do not switch it.
-async function testProfileComesFromHeadersOnly() {
+// The profile comes only from the session cookie: userId or a profile token in the body, the query or the headers
+// (X-User-Id, X-Profile-Token of earlier versions) does not switch it.
+async function testProfileComesFromCookieOnly() {
     await fixture({}, async({worker, alice, bob, session, client}) => {
         const store = worker.readingListStore;
         const owns = async(user, name) => (await store.getLists(user.id)).some(list => list.name === name);
@@ -686,22 +638,20 @@ async function testProfileComesFromHeadersOnly() {
         assert.ok([200, 400].includes(fromBody.status), fromBody.text);
         assert.strictEqual(await owns(alice, 'From body'), false, 'A userId in the body');
         assert.strictEqual(await owns(bob, 'From body'), fromBody.status === 200);
-        const fromHeader = await asBob.call('create-reading-list', {name: 'From header'}, {userId: alice.id});
-        assert.deepStrictEqual([fromHeader.status, fromHeader.body.error], [401, 'need_profile_login'], 'X-User-Id of another profile');
-        assert.strictEqual(await owns(alice, 'From header'), false);
+        const fromHeader = await asBob.call('create-reading-list', {name: 'From header'}, {headers: {'x-user-id': alice.id}});
+        assert.strictEqual(fromHeader.status, 200, fromHeader.text);
+        assert.deepStrictEqual([await owns(alice, 'From header'), await owns(bob, 'From header')], [false, true], 'X-User-Id is ignored');
         assert.strictEqual((await asBob.request('GET', `api/reading-lists?userId=${alice.id}`)).status, 400, 'A userId in the query');
 
-        const aliceToken = worker.createProfileSession(alice.id);
+        const aliceToken = session(alice.id).cookie.split('=')[1];
         const anonymous = client();
         const bodyToken = await anonymous.call('create-reading-list', {name: 'Body token', profileAccessToken: aliceToken});
         assert.notStrictEqual(bodyToken.status, 200, bodyToken.text);
         assert.strictEqual(await owns(alice, 'Body token'), false, 'A profile token in the body');
         assert.strictEqual((await anonymous.request('GET', `api/reading-lists?profileAccessToken=${aliceToken}`)).status, 400);
-        const headerToken = await anonymous.call('create-reading-list', {name: 'Header token'}, {profileToken: aliceToken});
-        assert.strictEqual(headerToken.status, 200, headerToken.text);
-        assert.strictEqual(await owns(alice, 'Header token'), true, 'X-Profile-Token');
-        const lists = await anonymous.call('get-reading-lists', {}, {profileToken: aliceToken});
-        assert.ok(lists.body.lists.some(list => list.name === 'Header token'));
+        const headerToken = await anonymous.call('create-reading-list', {name: 'Header token'}, {headers: {'x-profile-token': aliceToken}});
+        assert.deepStrictEqual([headerToken.status, headerToken.body.error], [401, 'need_profile_login'], 'X-Profile-Token is ignored');
+        assert.strictEqual(await owns(alice, 'Header token'), false);
     });
 }
 
@@ -718,7 +668,7 @@ async function testOpdsUserPrefersIdOverLogin() {
     });
 }
 
-module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromHeadersOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
+module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromCookieOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
     testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials, testOpdsUserPrefersIdOverLogin];

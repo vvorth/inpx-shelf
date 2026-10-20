@@ -40,17 +40,10 @@ class ProfileAccess {
         return this.config.proxyBindProfile === true && String(this.config.authMode || '').trim().toLowerCase() === 'proxy';
     }
 
-    clearBinding(session) {
-        if (!session || !session.proxyProfileUserId)
-            return;
-        this.worker.closeProfileSession(session.profileAccessToken);
-        delete session.profileAccessToken;
-        delete session.proxyProfileUserId;
-        delete session.proxyProfileLogin;
-    }
-
-    async resolve(req, token = '') {
-        let session = this.security && this.security.getSession(req);
+    //Профиль запроса: по заголовку SSO-прокси (привязка) или по cookie сессии - подпись и сроки проверил Security,
+    //здесь - что профиль есть и его сессии не завершены после создания этой (sessionsValidAfter).
+    //token - внутренний токен профиля на этот запрос (profileToken) для проверок WebWorker
+    async resolve(req) {
         if (this.bindingEnabled) {
             const auth = this.security.verifyRequiredAuth(req);
             if (!auth.ok)
@@ -58,29 +51,25 @@ class ProfileAccess {
             const login = this.worker.readingListStore.normalizeLogin(this.security.getProxyAuthUser(req));
             const data = await this.worker.readingListStore.load();
             const user = data.users.find(item => item.login && item.login === login);
+            //привязка в cookie не пишется, а прежний вход паролем из cookie убирается (sid тот же):
+            //удалённый или переименованный профиль SSO не оставляет входа
             if (user) {
-                session = this.security.ensureSession(req);
-                if (session.proxyProfileUserId !== user.id || session.proxyProfileLogin !== login)
-                    this.clearBinding(session);
-                if (this.worker.getProfileSessionUser(session.profileAccessToken) !== user.id) {
-                    session.profileAccessToken = this.worker.createProfileSession(user.id);
-                    session.proxyProfileUserId = user.id;
-                    session.proxyProfileLogin = login;
+                const session = this.security.getSession(req);
+                if (session && session.uid && req.res) {
+                    session.uid = '';
+                    req.res.setHeader('Set-Cookie', this.security.sessionCookie(req, session));
                 }
-                return {user, token: session.profileAccessToken, bound: true};
+                return {user, token: this.worker.profileToken(user.id), bound: true};
             }
         }
-        // A removed/renamed SSO profile must not leave an old authenticated token.
-        this.clearBinding(session);
-        //токен из запроса после перезапуска сервера устарел: тогда профиль - по сессии из cookie
-        const sessionToken = (session && session.profileAccessToken) || '';
-        const accessToken = (token && this.worker.getProfileSessionUser(token) ? token : sessionToken);
-        const id = this.worker.getProfileSessionUser(accessToken);
-        if (!id)
+        const session = this.security && this.security.getSession(req);
+        if (!session || !session.uid)
             return null;
         const data = await this.worker.readingListStore.load();
-        const user = data.users.find(item => item.id === id);
-        return user ? {user, token: accessToken, bound: false} : null;
+        const user = data.users.find(item => item.id === session.uid);
+        if (!user || session.createdAt < user.sessionsValidAfter)
+            return null;
+        return {user, token: this.worker.profileToken(user.id), bound: false};
     }
 
     assertProfile(identity, requested = '') {
@@ -93,7 +82,7 @@ class ProfileAccess {
         delete req.profileBoundId;
         delete req.profileLoginRequired;
         // Anonymous access is not configurable: every action except the login bootstrap needs a profile.
-        const identity = await this.resolve(httpRequest, req.profileAccessToken);
+        const identity = await this.resolve(httpRequest);
         if (identity) {
             if (!['get-config', 'get-user-profiles', 'logout-user-profile'].includes(req.action))
                 this.assertProfile(identity, String(req.userId || '').trim());

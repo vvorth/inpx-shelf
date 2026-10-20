@@ -107,12 +107,13 @@ async function testHttpUploadsGoThroughRequestChecks() {
         const security = new Security(config);
         security.secret = 'test-secret';
         const seen = [];
+        let signedIn = true;
         const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})},
             webWorker: {
-                requireAuthorizedUser: async(userId) => {
-                    if (userId === 'stranger')
+                requireAuthorizedUser: async() => {
+                    if (!signedIn)
                         throw new Error('need_profile_login');
-                    return {id: userId || 'default'};
+                    return {id: 'reader'};
                 },
                 isProtectedProfile: async() => true,
                 importReadingLists: async(userId, data) => {
@@ -125,10 +126,12 @@ async function testHttpUploadsGoThroughRequestChecks() {
         const {base, close} = await listen(apiApp({config, security, controller, health: false}));
         const port = new URL(base).port;
         const api = ApiTestClient.forSession(base, security);
-        const post = (body, options = {}) => api.call('import-reading-lists', {}, Object.assign({body, userId: 'reader'}, options));
+        const post = (body, options = {}) => api.call('import-reading-lists', {}, Object.assign({body}, options));
         try {
             //кто не прошёл проверки, ничего не пишет на диск: тело читается и отбрасывается
-            const stranger = await post(Buffer.alloc(512*1024), {userId: 'stranger'});
+            signedIn = false;
+            const stranger = await post(Buffer.alloc(512*1024));
+            signedIn = true;
             assert.deepStrictEqual([stranger.status, stranger.body.error], [401, 'need_profile_login']);
             assert.strictEqual(await fs.pathExists(tempDir), false, 'nothing is stored before the checks pass');
             const ok = await post(JSON.stringify({lists: [{name: 'A', books: []}]}));
@@ -147,7 +150,7 @@ async function testHttpUploadsGoThroughRequestChecks() {
             const declared = await new Promise((resolve, reject) => {
                 const request = http.request({host: '127.0.0.1', port, method: 'POST', path: '/api/import-reading-lists',
                     headers: {'Content-Length': String(1024*1024 + 1), 'Content-Type': 'application/octet-stream', 'X-Inpx-Api': '1',
-                        'X-CSRF-Token': api.csrfToken, 'X-User-Id': 'reader', cookie: api.cookie}}, response => {
+                        'X-CSRF-Token': api.csrfToken, cookie: api.cookie}}, response => {
                     response.resume();
                     resolve(response.statusCode);
                 });
@@ -167,10 +170,10 @@ async function testHttpUploadsGoThroughRequestChecks() {
 
             //JSON-запрос не может указать файл на сервере: ни телом, ни параметром адреса
             const named = await api.request('POST', 'api/import-reading-lists', {body: JSON.stringify({uploadFile: '/etc/passwd', data: {lists: []}}),
-                headers: {'content-type': 'application/json', 'x-csrf-token': api.csrfToken, 'x-user-id': 'reader'}});
+                headers: {'content-type': 'application/json', 'x-csrf-token': api.csrfToken}});
             assert.strictEqual(named.status, 415);
             const query = await api.request('POST', 'api/import-reading-lists?uploadFile=%2Fetc%2Fpasswd', {body: '{"lists":[]}',
-                headers: {'content-type': 'application/octet-stream', 'x-csrf-token': api.csrfToken, 'x-user-id': 'reader'}});
+                headers: {'content-type': 'application/octet-stream', 'x-csrf-token': api.csrfToken}});
             assert.strictEqual(query.status, 400);
             assert.strictEqual(seen.length, 2);
         } finally {
@@ -188,7 +191,6 @@ async function testBackupValidationBeforeMutation() {
         worker.checkMyState = () => {};
         worker.requireAdmin = async() => {};
         worker.addAdminEvent = () => {};
-        worker.profileSessions = new Map([['old', {userId: 'admin'}]]);
         worker.readingListStore = new ReadingListStore(worker.config);
         await worker.readingListStore.load();
         await fs.writeJson(worker.config.configFile, {opds: {password: 'old'}});
@@ -207,7 +209,6 @@ async function testBackupValidationBeforeMutation() {
         assert.strictEqual(await fs.readFile(worker.config.configFile, 'utf8'), before);
         assert.strictEqual(await fs.readFile(worker.readingListStore.file, 'utf8'), listsBefore);
         assert.strictEqual(worker.config.opds.password, 'old');
-        assert.strictEqual(worker.profileSessions.size, 1);
         assert.deepStrictEqual(await fs.readdir(worker.config.tempDir), []);
 
         // Upstream inpx-web backups carry the discovery cache and upstream release links: neither is restored.

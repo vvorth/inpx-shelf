@@ -71,7 +71,6 @@ class WebWorker {
             this.inpxHashCreator = new InpxHashCreator(config);
             this.readingListStore = new ReadingListStore(config);
             this.fb2Helper = new Fb2Helper();
-            this.profileSessions = new Map();
             this.discoveryCache = new Map();
             this.sharedDiscoveryConfig = null;
             this.resetLibraryAssetCaches();

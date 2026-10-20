@@ -7,17 +7,10 @@ function parseBasicAuth(header = '') {
 }
 
 // Кто смотрит ленту: профиль, вошедший по Basic (свой пароль OPDS), по SSO-привязке
-// или в веб-интерфейсе (cookie сессии). Общий логин opds.user - не профиль.
-async function resolveViewer(req, worker, security) {
-    const users = [req.profileAccessIdentity && req.profileAccessIdentity.user].filter(Boolean);
-    const session = security && security.getSession(req);
-    const sessionUserId = (session && session.profileAccessToken ? worker.getProfileSessionUser(session.profileAccessToken) : '');
-    if (sessionUserId) {
-        const user = (await worker.readingListStore.load()).users.find(item => item.id === sessionUserId);
-        if (user)
-            users.push(user);
-    }
-    return {ids: new Set(users.map(user => user.id)), admin: users.some(user => user.isAdmin)};
+// или в веб-интерфейсе (cookie сессии) - его находит ProfileAccess.httpGuard. Общий логин opds.user - не профиль.
+function resolveViewer(req) {
+    const user = req.profileAccessIdentity && req.profileAccessIdentity.user;
+    return {ids: new Set(user ? [user.id] : []), admin: !!(user && user.isAdmin)};
 }
 
 // Профиль с паролем (история чтения, списки) показывается в OPDS только ему самому и администратору

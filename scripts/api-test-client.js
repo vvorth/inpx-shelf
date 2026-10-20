@@ -30,10 +30,11 @@ class ApiTestClient {
         this.headers = all;
     }
 
-    //клиент с готовой сессией браузера: cookie и её CSRF-токен
-    static forSession(base, security, session = security.ensureSession({headers: {}}), headers = {}) {
-        const client = new ApiTestClient(base, {headers, csrfToken: session.csrfToken});
-        client.cookie = `inpx_web_session=${security.packSessionId(session.id)}`;
+    //клиент с готовой сессией браузера: cookie (uid - вошедший профиль) и её CSRF-токен
+    static forSession(base, security, uid = '', headers = {}) {
+        const {cookie, csrfToken} = sessionCookie(security, uid);
+        const client = new ApiTestClient(base, {headers, csrfToken});
+        client.cookie = cookie;
         return client;
     }
 
@@ -50,7 +51,9 @@ class ApiTestClient {
         }
     }
 
+    //новая сессия (вход, выход) - новый CSRF-токен: следующий POST возьмёт его из GET api/config
     storeCookies(response) {
+        const session = this.jar.get('inpx_web_session');
         for (const line of response.headers.getSetCookie()) {
             const [pair, ...attributes] = line.split(';');
             const index = pair.indexOf('=');
@@ -61,6 +64,8 @@ class ApiTestClient {
             else
                 this.jar.set(name, value);
         }
+        if (this.jar.get('inpx_web_session') !== session)
+            this.csrfToken = '';
     }
 
     // url - относительно корня приложения ('api/ping'); ответ: {status, headers, body (JSON или текст), text}
@@ -86,17 +91,13 @@ class ApiTestClient {
         return this.csrfToken;
     }
 
-    // Запрос действия по shared/apiRoutes.js. userId и profileToken - заголовки X-User-Id и X-Profile-Token;
-    // csrfToken: не задан - токен сессии (GET api/config), null - без заголовка; body - тело загрузки файла
-    async call(action, params = {}, {headers = {}, userId, profileToken, csrfToken, body} = {}) {
+    // Запрос действия по shared/apiRoutes.js. csrfToken: не задан - токен сессии (GET api/config), null - без заголовка;
+    // body - тело загрузки файла
+    async call(action, params = {}, {headers = {}, csrfToken, body} = {}) {
         const route = apiRoutes.routeFor(action);
         const encoded = apiRoutes.encode(action, params);
         const query = apiRoutes.queryString(encoded.query);
         const own = {};
-        if (userId !== undefined)
-            own['x-user-id'] = userId;
-        if (profileToken !== undefined)
-            own['x-profile-token'] = profileToken;
         if (encoded.method === 'POST') {
             own['content-type'] = (route.upload ? 'application/octet-stream' : 'application/json');
             const token = (csrfToken === undefined ? await this.csrf() : csrfToken);
@@ -108,6 +109,14 @@ class ApiTestClient {
             body: (encoded.method !== 'POST' ? undefined : (route.upload ? body : JSON.stringify(encoded.body))),
         });
     }
+}
+
+//cookie сессии браузера, как её выдаёт Security: uid - вошедший профиль ('' - без входа),
+//fields меняют поля сессии (createdAt, updatedAt) до подписи
+function sessionCookie(security, uid = '', fields = {}) {
+    const req = {headers: {}};
+    const session = Object.assign(security.startSession(req, null, uid), fields);
+    return {session, cookie: `inpx_web_session=${encodeURIComponent(security.packSession(session))}`, csrfToken: security.getCsrfToken(req)};
 }
 
 //Параметры, с которыми действие доходит до обработчика: ids пути и ничего лишнего в query
@@ -164,7 +173,7 @@ async function listen(app) {
     }};
 }
 
-//ответ Express для прямых вызовов Security (rotateSession): запоминает заголовки
+//ответ Express для прямых вызовов Security (startSession): запоминает заголовки
 function fakeResponse() {
     const headers = {};
     const response = {
@@ -224,4 +233,4 @@ function rawPost(base, path, headers, bodySize) {
     });
 }
 
-module.exports = {ApiTestClient, rawPost, apiController, mountApi, apiApp, listen, fakeResponse, sampleParams, sampleUid};
+module.exports = {ApiTestClient, sessionCookie, rawPost, apiController, mountApi, apiApp, listen, fakeResponse, sampleParams, sampleUid};

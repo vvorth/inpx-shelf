@@ -24,7 +24,6 @@ function makeWorker(config = {}) {
         opds: {},
     }, config);
     worker.checkMyState = () => true;
-    worker.profileSessions = new Map();
     worker.requireAdmin = async() => true;
     worker.addAdminEvent = () => {};
     return worker;
@@ -1025,14 +1024,15 @@ async function testAuthorNamesExportAndImport() {
 
         const events = [];
         target.addAdminEvent = (level, area, message) => events.push([level, area, message]);
-        target.profileSessions.set('session', {userId: 'reader'});
+        const validAfter = (await target.readingListStore.load()).users.map(user => user.sessionsValidAfter);
         const result = await target.importAdminBackup('admin', 'token', await upload(exported.fileName), 'author-names');
         assert.deepStrictEqual(result.restored, ['author-names.json']);
         assert.deepStrictEqual(events.map(([level, area]) => [level, area]), [['info', 'settings']]);
         assert.doesNotMatch(JSON.stringify(events), /fullBackupRestored/, 'a names import is not reported as a full restore');
         assert.match(JSON.stringify(events), /authorNamesImported/);
         assert.strictEqual(result.restartRecommended, false);
-        assert.strictEqual(target.profileSessions.size, 1, 'importing names keeps everyone signed in');
+        assert.deepStrictEqual((await target.readingListStore.load()).users.map(user => user.sessionsValidAfter), validAfter,
+            'importing names keeps everyone signed in');
         assert.strictEqual(target.catalogSearch.authorNames.infoCache, null, 'the names status is read again');
         assert.deepStrictEqual(await fs.readJson(path.join(target.config.dataDir, 'author-names.json')),
             {source: 'wikidata', updatedAt: '2026-10-01T00:00:00.000Z', entries: [['Азимов Айзек', 'Isaac Asimov']]});
@@ -1147,17 +1147,13 @@ async function testAdminBackupArchiveAndDownload() {
         const Security = require('../server/core/Security');
         const security = new Security({dataDir});
         await security.init();
-        worker.profileSessions = new Map();
-        worker.readingListStore = {load: async() => ({users: [{id: 'admin', isAdmin: true}, {id: 'reader'}]})};
+        const users = [{id: 'admin', isAdmin: true, sessionsValidAfter: 0}, {id: 'reader', sessionsValidAfter: 0}];
+        worker.readingListStore = {load: async() => ({users})};
         worker.requireAdmin = async(userId) => {
             if (userId !== 'admin')
                 throw new Error('Admin required');
         };
-        const sessionHeaders = userId => {
-            const session = security.ensureSession({headers: {}});
-            session.profileAccessToken = worker.createProfileSession(userId);
-            return {cookie: `inpx_web_session=${security.packSessionId(session.id)}`};
-        };
+        const sessionHeaders = (userId, fields) => ({cookie: require('./api-test-client').sessionCookie(security, userId, fields).cookie});
         const adminHeaders = sessionHeaders('admin');
         const readerHeaders = sessionHeaders('reader');
         await fs.outputFile(path.join(bookDir, 'backup', result.fileName), 'legacy-secret');
@@ -1179,9 +1175,7 @@ async function testAdminBackupArchiveAndDownload() {
             assert.match(ok.headers['content-disposition'] || '', /attachment/);
             assert.ok(ok.body.length > 0);
 
-            const expiredHeaders = sessionHeaders('admin');
-            const expiredSession = security.getSession({headers: expiredHeaders});
-            expiredSession.createdAt = Date.now() - 400*24*60*60*1000;
+            const expiredHeaders = sessionHeaders('admin', {createdAt: Date.now() - 400*24*60*60*1000});
             assert.strictEqual((await request(server, result.link, expiredHeaders)).status, 401);
 
             const notZip = await request(server, '/admin-backups/readme.txt', adminHeaders);
@@ -1191,8 +1185,8 @@ async function testAdminBackupArchiveAndDownload() {
                 assert.strictEqual(denied.status, 403, prefix);
                 assert.ok(!denied.body.includes(Buffer.from('legacy-secret')));
             }
-            worker.revokeUserSessions('admin');
-            assert.strictEqual((await request(server, result.link, adminHeaders)).status, 401);
+            users[0].sessionsValidAfter = Date.now() + 1;
+            assert.strictEqual((await request(server, result.link, adminHeaders)).status, 401, 'Sessions ended');
         }, worker, security);
 
         const ReadingListStore = require('../server/core/ReadingListStore');
@@ -1233,7 +1227,7 @@ async function testAdminBackupArchiveAndDownload() {
         });
         const preRestoreReset = await restoreWorker.readingListStore.clearReaderProgress('reader');
         assert.strictEqual(preRestoreReset.generation, 1);
-        const preRestoreSession = restoreWorker.createProfileSession('reader');
+        const restoreStarted = Date.now();
         const restoreKoboStore = new KoboStore({dataDir: restoreDataDir});
         await restoreKoboStore.load();
         restoreWorker.koboService = {store: restoreKoboStore};
@@ -1241,7 +1235,7 @@ async function testAdminBackupArchiveAndDownload() {
 
         const restored = await restoreWorker.importAdminBackup('admin', 'token', {file: path.join(dataDir, 'backups', result.fileName)});
         assert.strictEqual(restored.success, true);
-        assert.strictEqual(restoreWorker.getProfileSessionUser(preRestoreSession), '');
+        assert.ok((await restoreWorker.readingListStore.load()).users.every(user => user.sessionsValidAfter > restoreStarted), 'A restore ends all sessions');
         assert.strictEqual(restored.restartRecommended, true);
         assert.ok(restored.restored.includes('config.json'));
         assert.ok(restored.restored.includes('secret.key'));
@@ -1473,11 +1467,11 @@ async function testBookPageRecordAndReaderStates() {
         open: {id: 'open', name: 'Дети', passwordHash: ''},
         locked: {id: 'locked', name: 'Вера', passwordHash: 'hash'},
     })[userId];
-    worker.profileSessions.set('token', {userId: 'locked', createdAt: Date.now(), updatedAt: Date.now()});
     assert.strictEqual(await worker.getAuthorizedUserOrNull('guest', ''), null);
     assert.strictEqual((await worker.getAuthorizedUserOrNull('open', '')).id, 'open');
     assert.strictEqual(await worker.getAuthorizedUserOrNull('locked', ''), null);
-    assert.strictEqual((await worker.getAuthorizedUserOrNull('locked', 'token')).id, 'locked');
+    assert.strictEqual((await worker.getAuthorizedUserOrNull('locked', worker.profileToken('locked'))).id, 'locked');
+    assert.strictEqual(await worker.getAuthorizedUserOrNull('locked', {userId: 'locked'}), null, 'Only a token the server issued');
 }
 
 async function testCatalogIndexSearch() {

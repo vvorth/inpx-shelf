@@ -182,10 +182,13 @@ module.exports = {
         this.ensureUniqueUserName(data.users, nextName, target.id);
         this.ensureUniqueUserLogin(data.users, nextLogin, target.id);
 
+        const nextPasswordHash = (utils.hasProp(patch, 'passwordHash') ? String(patch.passwordHash || '').trim() : target.passwordHash);
+        //новые пароль или логин завершают сессии профиля
+        if (nextLogin !== target.login || nextPasswordHash !== target.passwordHash)
+            this.endSessions(target);
         target.name = nextName;
         target.login = nextLogin;
-        if (utils.hasProp(patch, 'passwordHash'))
-            target.passwordHash = String(patch.passwordHash || '').trim();
+        target.passwordHash = nextPasswordHash;
         if (utils.hasProp(patch, 'emailTo'))
             target.emailTo = this.validateEmailTo(patch.emailTo);
         if (utils.hasProp(patch, 'telegramChatId'))

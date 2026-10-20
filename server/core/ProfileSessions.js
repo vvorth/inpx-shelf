@@ -1,6 +1,4 @@
-const sessionLifetime = require('./SessionLifetime');
 const {withFileTransaction} = require('./FilePersistence');
-const utils = require('./utils');
 const i18n = require('./i18n');
 const {t} = i18n;
 const {isReadingInProgress} = require('./ReaderProgress');
@@ -22,6 +20,8 @@ function isAnonymousDefaultUser(user = {}) {
     const name = String(user.name || '').trim();
     return user.id === 'default' && defaultNames.includes(name) && !user.login && !user.passwordHash;
 }
+
+const issuedTokens = new WeakSet();
 
 // Профили читателей: вход по паролю, сессии профилей, проверка прав (requireAdmin), создание и правка профилей.
 // Подмешивается в WebWorker.prototype: `this` - воркер.
@@ -58,31 +58,16 @@ module.exports = {
         return require('./ProfilePassword').hash(password);
     },
 
-    createProfileSession(userId, createdAt = Date.now()) {
-        sessionLifetime.makeRoom(this.profileSessions);
-        const token = utils.randomHexString(24);
-        this.profileSessions.set(token, {
-            userId,
-            createdAt,
-            updatedAt: Date.now(),
-        });
+    //Токен профиля - объект на один запрос: его выдаёт ProfileAccess.resolve, проверив cookie сессии.
+    //Клиент его не подделает: строки и чужие объекты в issuedTokens нет
+    profileToken(userId) {
+        const token = Object.freeze({userId});
+        issuedTokens.add(token);
         return token;
     },
 
-    getProfileSessionUser(token = '') {
-        const rec = this.profileSessions.get(String(token || '').trim());
-        if (sessionLifetime.expired(rec)) {
-            this.profileSessions.delete(String(token || '').trim());
-            return '';
-        }
-
-        rec.updatedAt = Date.now();
-        return rec.userId || '';
-    },
-
-    closeProfileSession(token = '') {
-        this.profileSessions.delete(String(token || '').trim());
-        return {success: true};
+    getProfileSessionUser(token) {
+        return (issuedTokens.has(token) ? token.userId : '');
     },
 
     async getEffectiveUser(userId = '', profileAccessToken = '') {
@@ -161,22 +146,17 @@ module.exports = {
     },
 
     //Пароль (scrypt, ~0.3 с) проверяется вне блокировки хранилища профилей. Если за это время
-    //у профиля сменили пароль или логин или удалили его (сессии отозваны), вход не состоится.
+    //у профиля сменили пароль или логин или удалили его (sessionsValidAfter сдвинулся), вход не состоится.
+    //sessionsValidAfter - нижняя граница createdAt новой сессии: вход в ту же миллисекунду, что и смена пароля, действителен
     async loginUserProfile(login = '', password = '') {
         const user = await this.readingListStore.findUserByLogin(login);
         const userId = (user ? user.id : '');
-        const revocation = this.sessionRevocation(userId);
         //неизвестный логин проверяется так же долго, как известный (verifyUserPassword)
-        if (!await this.readingListStore.verifyUserPassword(userId, password) || !user || this.sessionRevocation(userId) !== revocation)
+        const verified = await this.readingListStore.verifyUserPassword(userId, password);
+        const current = (verified && user ? (await this.readingListStore.load()).users.find(item => item.id === userId) : null);
+        if (!current || current.login !== user.login || current.sessionsValidAfter !== user.sessionsValidAfter)
             throw new Error(t('errors.invalidLogin'));
-        return {
-            userId: user.id,
-            profileAccessToken: this.createProfileSession(user.id),
-        };
-    },
-
-    sessionRevocation(userId) {
-        return (this.profileSessionRevocations && this.profileSessionRevocations.get(userId)) || 0;
+        return {userId, sessionsValidAfter: current.sessionsValidAfter};
     },
 
     async createUserProfile(profile = {}) {
@@ -186,35 +166,16 @@ module.exports = {
 
     async updateUserProfile(userId, patch = {}) {
         this.checkMyState();
-        return withFileTransaction(this.readingListStore.file, async() => {
-            const previous = await this.readingListStore.getUser(userId);
-            const user = await this.readingListStore.updateUser(userId, patch);
-            if (previous.passwordHash !== user.passwordHash || previous.login !== user.login)
-                this.revokeUserSessions(user.id);
-            return {user};
-        });
+        return {user: await this.readingListStore.updateUser(userId, patch)};
     },
 
     async deleteUserProfile(userId) {
         this.checkMyState();
         return withFileTransaction(this.readingListStore.file, async() => {
             const result = await this.readingListStore.deleteUser(userId);
-            this.revokeUserSessions(userId);
             if (this.koboService)
                 await this.koboService.store.deleteUserDevices(userId);
             return result;
         });
-    },
-
-    revokeUserSessions(userId) {
-        if (!this.profileSessionRevocations)
-            this.profileSessionRevocations = new Map();
-        this.profileSessionRevocations.set(userId, this.sessionRevocation(userId) + 1);
-        for (const [token, session] of this.profileSessions) {
-            if (session.userId === userId)
-                this.profileSessions.delete(token);
-        }
-        if (this.stateStore)
-            this.stateStore.deleteUserWebSessions(userId);
     },
 };

@@ -3,7 +3,6 @@ const state = {
     config: {},
     settings: {
         currentUserId: '',
-        profileAccessToken: '',
 
         //uiDefaults
         limit: 20,

@@ -98,14 +98,9 @@ class Api {
         clearTimeout(this.restoredTimer);
     }
 
-    //профиль и язык - в каждом запросе, токен CSRF - в каждом изменении (POST)
+    //язык - в каждом запросе, токен CSRF - в каждом изменении (POST); профиль сервер знает по cookie сессии
     authHeaders(action) {
-        const {currentUserId, profileAccessToken} = this.settings;
         const headers = {'X-Ui-Lang': getLang()};
-        if (currentUserId)
-            headers['X-User-Id'] = currentUserId;
-        if (profileAccessToken)
-            headers['X-Profile-Token'] = profileAccessToken;
         const csrfToken = this.$store.state.config.csrfToken;
         if (csrfToken && !apiRoutes.isRead(action))
             headers['X-CSRF-Token'] = csrfToken;
@@ -176,7 +171,7 @@ class Api {
                 const parsed = JSON.parse(raw) || {};
                 const currentUserId = String(parsed.currentUserId || '').trim();
                 if (!this.settings.currentUserId && currentUserId)
-                    this.commit('setSettings', {currentUserId, profileAccessToken: String(parsed.profileAccessToken || '').trim()});
+                    this.commit('setSettings', {currentUserId});
             }
         } catch (e) {
             //испорченную запись просто удаляем
@@ -223,13 +218,6 @@ class Api {
                 this.commit('setSettings', {currentUserId: config.currentUserId});
             else if (!selectedUserId)
                 this.commit('setSettings', {currentUserId: (preferredProfile && preferredProfile.id) || config.currentUserId || ''});
-            if (!config.profileAuthorized) {
-                const rememberedUserId = String(this.$store.state.settings.currentUserId || selectedUserId || '').trim();
-                this.commit('setSettings', {
-                    currentUserId: rememberedUserId,
-                    profileAccessToken: '',
-                });
-            }
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         }
@@ -737,10 +725,7 @@ class Api {
     }
 
     async completeProfileLogin(result) {
-        this.commit('setSettings', {
-            currentUserId: result.userId,
-            profileAccessToken: result.profileAccessToken || '',
-        });
+        this.commit('setSettings', {currentUserId: result.userId});
         await this.updateConfig();
 
         const request = this.loginPageRequest;
@@ -761,7 +746,7 @@ class Api {
             }
         }
 
-        this.commit('setSettings', {currentUserId: String(userId || ''), profileAccessToken: ''});
+        this.commit('setSettings', {currentUserId: String(userId || '')});
         await this.updateConfig();
 
         const request = this.loginPageRequest;
@@ -778,7 +763,7 @@ class Api {
         }
 
         const guest = (this.$store.state.config.userProfiles || []).find(profile => profile && profile.anonymousProfile);
-        this.commit('setSettings', {currentUserId: (guest ? guest.id : ''), profileAccessToken: ''});
+        this.commit('setSettings', {currentUserId: (guest ? guest.id : '')});
         await this.updateConfig();
     }
 

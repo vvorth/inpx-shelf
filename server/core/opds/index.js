@@ -20,11 +20,11 @@ const log = new (require('../AppLogger'))().log;//singleton
 // Profile lookups fall back to the first profile (the admin), and the OPDS auth check skips profiles
 // without OPDS: a ?user= scope must name a profile with OPDS on, or the signed-in profile itself.
 // A profile with a password is shown only to itself and to an admin (see Auth.canSeeProfile).
-function scopeGuard(getWorker, security = null) {
+function scopeGuard(getWorker) {
     return async(req, res, next) => {
         try {
             const worker = getWorker();
-            req.opdsViewer = await resolveViewer(req, worker, security);
+            req.opdsViewer = resolveViewer(req);
             const scopeUser = String((req.query && req.query.user) || '').trim();
             const identity = req.profileAccessIdentity;
             if (scopeUser && !(identity && identity.user && identity.user.id === scopeUser)) {
@@ -125,7 +125,7 @@ module.exports = function(app, config, security = new (require('../Security'))(c
 
     app.use(opdsPaths, stringQuery);
     app.use(opdsPaths, new (require('../ProfileAccess'))(config, root.webWorker, security).httpGuard({opds: true, guest: true}));
-    app.use(opdsPaths, scopeGuard(() => root.webWorker, security));
+    app.use(opdsPaths, scopeGuard(() => root.webWorker));
 
     app.get(opdsPaths, opds);
 };

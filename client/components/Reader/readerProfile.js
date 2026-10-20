@@ -7,8 +7,8 @@ export default class ReaderProfile {
         return this.settings.currentUserId || this.config.currentUserId || '';
     }
 
-    get hasReaderProfileAccessToken() {
-        return !!String(this.settings.profileAccessToken || '').trim();
+    get readerProfileAuthorized() {
+        return !!this.config.profileAuthorized;
     }
 
     get currentSelectedProfile() {

@@ -120,19 +120,14 @@ async function buildMetrics(config, webWorker, security = null, apiController = 
     return lines.join('\n');
 }
 
-async function indexStatusDetailsAllowed(req, webWorker, security) {
+async function indexStatusDetailsAllowed(req, config, webWorker, security) {
     if (!security)
         return false;
     if (security.hasValidMetricsToken(req))
         return true;
-    const session = security.getSession(req);
-    const token = (session && session.profileAccessToken) || '';
-    const userId = (token ? webWorker.getProfileSessionUser(token) : '');
-    if (!userId)
-        return false;
     try {
-        await webWorker.requireAdmin(userId, token);
-        return true;
+        const identity = await new (require('./ProfileAccess'))(config, webWorker, security).resolve(req);
+        return !!(identity && identity.user.isAdmin);
     } catch (e) {
         return false;
     }
@@ -173,7 +168,7 @@ module.exports = function initHealthRoutes(app, config, webWorker, security = nu
         noStore(res);
         const index = await webWorker.getIndexStatus();
         const full = Object.assign({serverReady: !!config.server.ready, version: config.version}, index);
-        if (await indexStatusDetailsAllowed(req, webWorker, security))
+        if (await indexStatusDetailsAllowed(req, config, webWorker, security))
             return res.json(full);
         res.json(Object.fromEntries(['serverReady', 'ready', 'state', 'serverMessage', 'job', 'jobMessage', 'jobStep', 'jobStepCount',
             'progress', 'recsLoaded', 'dbLoaded', 'searchReady'].filter(key => Object.hasOwn(full, key)).map(key => [key, full[key]])));

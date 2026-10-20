@@ -1,7 +1,5 @@
 const maxAgeMs = 30*24*60*60*1000;
 const idleMs = 7*24*60*60*1000;
-const maxSessions = 10000;
-const lastSweep = new WeakMap();
 
 function expired(session, now = Date.now()) {
     return !session || !Number.isFinite(session.createdAt)
@@ -9,23 +7,4 @@ function expired(session, now = Date.now()) {
         || now - session.updatedAt >= idleMs;
 }
 
-function makeRoom(sessions, now = Date.now()) {
-    if (now - (lastSweep.get(sessions) || 0) >= 60*1000 || sessions.size >= maxSessions) {
-        for (const [key, session] of sessions) {
-            if (expired(session, now))
-                sessions.delete(key);
-        }
-        lastSweep.set(sessions, now);
-    }
-    // Sessions without a profile go first: cookie-less hits must not log users out.
-    for (const [key, session] of sessions) {
-        if (sessions.size < maxSessions)
-            break;
-        if (!session.profileAccessToken)
-            sessions.delete(key);
-    }
-    while (sessions.size >= maxSessions)
-        sessions.delete(sessions.keys().next().value);
-}
-
-module.exports = {expired, makeRoom, maxAgeMs, idleMs, maxSessions};
+module.exports = {expired, maxAgeMs, idleMs};

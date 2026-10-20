@@ -3,7 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const sessionLifetime = require('./SessionLifetime');
 
-// Cookie names keep the pre-rename inpx-web prefix so existing sessions survive the update.
+// The cookie name keeps the pre-rename inpx-web prefix.
 const sessionCookieName = 'inpx_web_session';
 const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
@@ -13,8 +13,8 @@ const maxLoginAttemptKeys = 10000;
 const accountFreeFailures = 5;
 const accountMaxDelayMs = 5*60*1000;
 const accountFailureWindowMs = 60*60*1000;
-//updatedAt вошедшей сессии пишется на диск не чаще раза в минуту: тайм-аут простоя - дни
-const sessionTouchMs = 60*1000;
+//cookie с updatedAt старше часа выдаётся заново: тайм-аут простоя - дни, обновлять её на каждый запрос незачем
+const sessionTouchMs = 60*60*1000;
 
 function parseIpv4(value = '') {
     const normalized = String(value || '').trim()
@@ -83,7 +83,6 @@ function logSecurityWarning(message = '') {
 class Security {
     constructor(config) {
         this.config = config;
-        this.sessions = new Map();
         this.loginAttempts = new Map();
         this.lastLoginAttemptSweep = 0;
         this.loginAttemptTotals = new Map();
@@ -146,137 +145,64 @@ class Security {
         return result;
     }
 
-    packSessionId(sessionId) {
-        return `${sessionId}.${this.sign(sessionId)}`;
+    //Cookie сессии - подписанные {sid, uid, createdAt, updatedAt}: сервер ничего о сессиях не хранит,
+    //любая копия сервера проверяет cookie ключом session-secret. Профиль uid проверяет ProfileAccess.resolve
+    packSession(session) {
+        const body = Buffer.from(JSON.stringify({sid: session.sid, uid: session.uid, createdAt: session.createdAt, updatedAt: session.updatedAt})).toString('base64url');
+        return `${body}.${this.sign(body)}`;
     }
 
-    unpackSessionId(raw = '') {
-        const [sessionId, signature] = String(raw || '').split('.');
-        if (!sessionId || !signature)
-            return '';
-
-        const expected = this.sign(sessionId);
-        if (!timingSafeStringEqual(signature, expected)) {
-            return '';
-        }
-
-        return sessionId;
-    }
-
-    getSession(req) {
-        const cookies = this.parseCookies(req.headers.cookie || '');
-        const sessionId = req.securitySession ? req.securitySession.id
-            : this.unpackSessionId(cookies[sessionCookieName] || '');
-        const session = this.sessions.get(sessionId) || this.restoreSession(sessionId);
-        if (sessionLifetime.expired(session)) {
-            this.sessions.delete(sessionId);
-            if (this.profiles && sessionId)
-                this.profiles.stateStore.deleteWebSession(this.sessionHash(sessionId));
-            delete req.securitySession;
+    unpackSession(raw = '') {
+        const [body, signature] = String(raw || '').split('.');
+        if (!body || !signature || !timingSafeStringEqual(signature, this.sign(body)))
+            return null;
+        try {
+            const session = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+            if (!session || typeof session.sid !== 'string' || !session.sid || typeof session.uid !== 'string'
+                || !Number.isFinite(session.updatedAt) || sessionLifetime.expired(session))
+                return null;
+            return session;
+        } catch (e) {
             return null;
         }
-        session.updatedAt = Date.now();
-        if (session.updatedAt - (session.persistedAt || 0) > sessionTouchMs)
-            this.persistSession(session);
-        req.securitySession = session;
-        return session;
     }
 
-    //Сессии вошедших в профиль переживают перезапуск: worker - профили и state.sqlite (WebWorker)
-    attachProfiles(worker) {
-        this.profiles = worker;
-        //сброс пароля администратора завершает все сохранённые входы (флаг снимается при первой загрузке профилей, позже)
-        if (this.config.resetAdminPassword)
-            worker.stateStore.deleteAllWebSessions();
-        else
-            worker.stateStore.purgeWebSessions(Date.now() - sessionLifetime.maxAgeMs, Date.now() - sessionLifetime.idleMs);
-    }
-
-    sessionHash(sessionId) {
-        return crypto.createHash('sha256').update(String(sessionId)).digest('hex');
-    }
-
-    //SSO-привязка восстанавливается сама по заголовку прокси, анонимные сессии на диск не пишутся
-    persistSession(session) {
-        if (!this.profiles)
-            return;
-        const userId = (session.proxyProfileUserId ? '' : this.profiles.getProfileSessionUser(session.profileAccessToken));
-        const idHash = this.sessionHash(session.id);
-        if (userId)
-            this.profiles.stateStore.putWebSession(idHash, {userId, csrfToken: session.csrfToken, createdAt: session.createdAt, updatedAt: session.updatedAt});
-        else if (session.persistedAt)
-            this.profiles.stateStore.deleteWebSession(idHash);
-        session.persistedAt = (userId ? Date.now() : 0);
-    }
-
-    restoreSession(sessionId) {
-        const row = (this.profiles && sessionId ? this.profiles.stateStore.getWebSession(this.sessionHash(sessionId)) : null);
-        if (!row)
-            return null;
-        sessionLifetime.makeRoom(this.sessions);
-        //токен профиля - новый, но срок жизни считается от прежнего входа
-        const session = {id: sessionId, csrfToken: row.csrfToken, createdAt: row.createdAt, updatedAt: row.updatedAt, persistedAt: Date.now(),
-            profileAccessToken: this.profiles.createProfileSession(row.userId, row.createdAt)};
-        this.sessions.set(sessionId, session);
+    //Проверенная cookie запроса (null - нет или недействительна). С res cookie, к которой не обращались
+    //больше sessionTouchMs, выдаётся заново с updatedAt = сейчас: тайм-аут простоя считается от неё
+    getSession(req, res = null) {
+        if (req.securitySession === undefined)
+            req.securitySession = this.unpackSession(this.parseCookies(req.headers.cookie || '')[sessionCookieName]);
+        const session = req.securitySession;
+        if (session && res && Date.now() - session.updatedAt >= sessionTouchMs) {
+            session.updatedAt = Date.now();
+            res.setHeader('Set-Cookie', this.sessionCookie(req, session));
+        }
         return session;
     }
 
     ensureSession(req, res = null) {
-        let session = this.getSession(req);
-
-        if (!session) {
-            sessionLifetime.makeRoom(this.sessions);
-            const sessionId = this.randomToken(24);
-            session = {
-                id: sessionId,
-                csrfToken: this.randomToken(32),
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
-            this.sessions.set(sessionId, session);
-        } else {
-            session.updatedAt = Date.now();
-        }
-
-        req.securitySession = session;
-
-        if (res)
-            res.setHeader('Set-Cookie', this.sessionCookie(req, session));
-
-        return session;
+        return this.getSession(req, res) || this.startSession(req, res, '');
     }
 
     sessionCookie(req, session) {
-        return `${sessionCookieName}=${encodeURIComponent(this.packSessionId(session.id))}; ${this.cookieOptions(req)}`;
+        return `${sessionCookieName}=${encodeURIComponent(this.packSession(session))}; ${this.cookieOptions(req)}`;
     }
 
-    //Вход и выход: сессия переезжает на новый id, и cookie со старым id, в том числе подброшенная до входа
-    //(session fixation), входа не видит. Новую cookie браузер получает в ответе на этот же запрос
-    rotateSession(req, res) {
-        const session = req.securitySession;
-        if (!session)
-            return null;
-        const now = Date.now();
-        if (this.sessions.get(session.id) === session)
-            this.sessions.delete(session.id);
-        else
-            sessionLifetime.makeRoom(this.sessions);
-        if (this.profiles && session.persistedAt)
-            this.profiles.stateStore.deleteWebSession(this.sessionHash(session.id));
-        session.id = this.randomToken(24);
-        session.createdAt = now;
-        session.updatedAt = now;
-        session.persistedAt = 0;
-        this.sessions.set(session.id, session);
-        this.persistSession(session);
-        res.setHeader('Set-Cookie', this.sessionCookie(req, session));
+    //Вход (uid профиля) и выход (uid ''): новая сессия с новым sid, и cookie, выданная до входа, в том числе
+    //подброшенная (session fixation), входа не получает. Новую cookie браузер получает в ответе на этот же запрос.
+    //notBefore - sessionsValidAfter профиля: вход в ту же миллисекунду, что и смена пароля, не теряется
+    startSession(req, res, uid, notBefore = 0) {
+        const now = Math.max(Date.now(), notBefore);
+        const session = {sid: this.randomToken(24), uid: String(uid || ''), createdAt: now, updatedAt: now};
+        req.securitySession = session;
+        if (res)
+            res.setHeader('Set-Cookie', this.sessionCookie(req, session));
         return session;
     }
 
     //Запросы <root>/api. Заголовок X-Inpx-Api не задать ни переходом, ни <img>/<form> с чужого сайта, а fetch с ним
     //с чужого сайта требует CORS preflight, на который сервер не отвечает; Sec-Fetch-Site и Origin, если есть, - свой сайт.
-    //Cookie сессии, которой сервер не знает (перезапуск), заменяется новой в ответе: иначе книги и обложки по HTTP
-    //шли бы со старой cookie без входа
+    //Недействительная cookie заменяется новой в ответе: иначе книги и обложки по HTTP шли бы со старой cookie без входа
     apiGuard() {
         return (req, res, next) => {
             const fetchSite = this.headerFirstValue(req, 'sec-fetch-site').toLowerCase();
@@ -293,8 +219,7 @@ class Security {
                 res.set('Cache-Control', 'no-store');
                 return res.status(403).json({error: 'Forbidden'});
             }
-            if (!req.securitySession)
-                this.ensureSession(req, res);
+            this.ensureSession(req, res);
             next();
         };
     }
@@ -329,7 +254,7 @@ class Security {
             if (!this.isHealthPath(req) && !this.isMetricsPath(req) && documentRequest)
                 this.ensureSession(req, res);
             else
-                this.getSession(req);
+                this.getSession(req, res);
             next();
         };
     }
@@ -499,18 +424,14 @@ class Security {
         };
     }
 
+    //CSRF-токен вычисляется из sid и нигде не хранится
     getCsrfToken(req) {
-        const session = this.ensureSession(req);
-        return session.csrfToken;
+        return this.sign(`csrf:${this.ensureSession(req).sid}`);
     }
 
     hasValidCsrf(req, token = '') {
-        const session = this.ensureSession(req);
         const supplied = String(token || '').trim();
-        if (!supplied || supplied.length !== session.csrfToken.length)
-            return false;
-
-        return timingSafeStringEqual(supplied, session.csrfToken);
+        return !!supplied && timingSafeStringEqual(supplied, this.getCsrfToken(req));
     }
 
     clientIp(req) {

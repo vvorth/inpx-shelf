@@ -337,9 +337,8 @@ module.exports = (app, config, webWorker = null, security = null) => {
 
     app.get(`${webAppRoutePrefix}/admin-backups/:fileName`, async(req, res, next) => {
         res.set('Cache-Control', 'no-store');
-        const session = security && security.getSession(req);
         const identity = req.profileAccessIdentity;
-        const token = identity ? identity.token : session && session.profileAccessToken;
+        const token = identity && identity.token;
         const userId = token && webWorker && webWorker.getProfileSessionUser(token);
         if (!userId)
             return res.sendStatus(401);

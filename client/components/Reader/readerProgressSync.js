@@ -100,7 +100,7 @@ export default class ReaderProgressSync {
         }));
         this.writeStoredReaderProgress(requestProgress, bookUid);
 
-        if (this.readerProfileWarningVisible && !this.hasReaderProfileAccessToken)
+        if (this.readerProfileWarningVisible && !this.readerProfileAuthorized)
             return;
 
         const api = this.$root.api;
@@ -175,7 +175,7 @@ export default class ReaderProgressSync {
         const bookUid = this.bookUid;
         if (!api || !bookUid || this.isStandaloneMode || this.loading || this.bookPreparing || this.error)
             return;
-        if (this.readerProfileWarningVisible && !this.hasReaderProfileAccessToken)
+        if (this.readerProfileWarningVisible && !this.readerProfileAuthorized)
             return;
 
         let state = null;

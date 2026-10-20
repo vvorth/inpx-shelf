@@ -303,7 +303,7 @@ async function testProfileLoginChecksPasswordOutsideTheStoreLock() {
         const profilePassword = require('../server/core/ProfilePassword');
         const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
         const user = await store.createUser({name: 'Carol', login: 'carol', passwordHash: await profilePassword.hash('carol-pass')});
-        const worker = bareWorker({checkMyState: () => {}, readingListStore: store, profileSessions: new Map()});
+        const worker = bareWorker({checkMyState: () => {}, readingListStore: store});
 
         let done = false;
         const login = worker.loginUserProfile('carol', 'carol-pass').then(result => (done = true, result));
@@ -316,7 +316,6 @@ async function testProfileLoginChecksPasswordOutsideTheStoreLock() {
         await new Promise(resolve => setImmediate(resolve));
         await worker.updateUserProfile(user.id, {passwordHash});
         await assert.rejects(raced, error => error.message === require('../server/core/i18n').t('errors.invalidLogin'));
-        assert.strictEqual(worker.profileSessions.size, 0);
         assert.strictEqual((await worker.loginUserProfile('carol', 'new-pass')).userId, user.id);
     });
 }

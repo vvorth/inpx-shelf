@@ -21,12 +21,14 @@ const maxServerRequests = 64;
 const maxUrlLength = 8*1024;
 //ненужное тело запроса дочитывается до этого размера, дальше соединение закрывается
 const maxDiscardedBody = 64*1024*1024;
-//приходят только заголовками или заполняются сервером (ProfileAccess): тело запроса их не задаёт
+//заполняются сервером (ProfileAccess): тело запроса их не задаёт
 const reservedParams = ['action', 'userId', 'profileAccessToken', 'csrfToken', 'uiLang', 'guest', 'profileBoundId', 'profileLoginRequired'];
 //ошибки в коде сервера, а не в запросе: 500, подробности - в журнал
 const programmingErrors = [TypeError, ReferenceError, RangeError, SyntaxError];
 
 const httpError = (status, message) => Object.assign(new Error(message), {status});
+//профиль в ответе - без хешей паролей и границы его сессий
+const publicUser = ({user}) => ({user: _.omit(user, ['passwordHash', 'opdsPasswordHash', 'kosyncKeyHash', 'sessionsValidAfter'])});
 
 //действия, которые только передают параметры в WebWorker (проверки доступа - в самом WebWorker)
 const workerActions = {
@@ -162,11 +164,9 @@ class ApiController {
         this.workerState = new WorkerState();
         this.webWorker = new WebWorker(config);
         this.profileAccess = security ? new (require('../core/ProfileAccess'))(config, this.webWorker, security) : null;
-        if (security)
-            security.attachProfiles(this.webWorker);
 
         this.activeRequests = 0;
-        //активные запросы и последняя активность по клиенту: объект сессии (тот же после смены её id при входе) или IP
+        //активные запросы и последняя активность по клиенту: sid сессии или IP
         this.clientRequests = new Map();
         this.onlineClients = new Map();
         this.largeRequestActive = false;
@@ -204,7 +204,7 @@ class ApiController {
     }
 
     clientKey(req) {
-        return req.securitySession || `ip:${this.security ? this.security.clientIp(req) : (req.socket && req.socket.remoteAddress) || ''}`;
+        return (req.securitySession ? `sid:${req.securitySession.sid}` : `ip:${this.security ? this.security.clientIp(req) : (req.socket && req.socket.remoteAddress) || ''}`);
     }
 
     touchClient(key, userId) {
@@ -307,20 +307,11 @@ class ApiController {
                 throw httpError(400, i18n.t('errors.apiInvalidRequest'));
             params = apiRoutes.decode(route, found.pathParams, query, body);
             params.action = route.action;
-            const userIdHeader = header(req, 'x-user-id');
-            const tokenHeader = header(req, 'x-profile-token');
-            if (userIdHeader)
-                params.userId = userIdHeader;
-            if (tokenHeader)
-                params.profileAccessToken = tokenHeader;
 
             //GET ничего не меняет и токена не требует, любой POST - с CSRF-токеном
             if (this.security && route.method !== 'GET' && !this.security.hasValidCsrf(req, header(req, 'x-csrf-token')))
                 throw httpError(403, 'bad_csrf_token');
 
-            //токен из заголовка после перезапуска сервера устарел: тогда профиль - по сессии из cookie
-            if (!params.profileAccessToken && req.securitySession && req.securitySession.profileAccessToken)
-                params.profileAccessToken = req.securitySession.profileAccessToken;
             if (this.profileAccess) {
                 await this.profileAccess.prepareRequest(params, req);
                 userId = (params.guest || params.profileLoginRequired ? '' : String(params.userId || ''));
@@ -775,16 +766,13 @@ class ApiController {
         }
 
         try {
-            const result = await this.webWorker.loginUserProfile(req.login, req.password);
-            if (this.security && ctx.http.securitySession) {
-                ctx.http.securitySession.profileAccessToken = result.profileAccessToken;
-                this.security.rotateSession(ctx.http, ctx.res);
-            }
+            const {userId, sessionsValidAfter} = await this.webWorker.loginUserProfile(req.login, req.password);
             if (this.security) {
+                this.security.startSession(ctx.http, ctx.res, userId, sessionsValidAfter);
                 this.security.recordLoginAttempt(ctx.http, true, 'profile');
                 this.security.recordAccountAttempt('profile', req.login, true);
             }
-            return result;
+            return {userId};
         } catch (e) {
             if (this.security) {
                 this.security.recordLoginAttempt(ctx.http, false, 'profile');
@@ -795,12 +783,10 @@ class ApiController {
     }
 
     async logoutUserProfile(req, ctx) {
-        const result = await this.webWorker.closeProfileSession(req.profileAccessToken);
-        if (this.security && ctx.http.securitySession) {
-            delete ctx.http.securitySession.profileAccessToken;
-            this.security.rotateSession(ctx.http, ctx.res);
-        }
-        return result;
+        //браузер получает новую анонимную сессию; копия прежней cookie действует до своих сроков
+        if (this.security)
+            this.security.startSession(ctx.http, ctx.res, '');
+        return {success: true};
     }
 
     async createUserProfile(req) {
@@ -816,8 +802,7 @@ class ApiController {
             profile.passwordHash = await this.webWorker.hashProfilePassword(profile.login, profile.password);
         delete profile.password;
 
-        const result = await this.webWorker.createUserProfile(profile);
-        return result;
+        return publicUser(await this.webWorker.createUserProfile(profile));
     }
 
     async updateUserProfile(req, ctx) {
@@ -866,8 +851,7 @@ class ApiController {
         if (isOwnProfile)
             delete profile.isAdmin;
 
-        const result = await this.webWorker.updateUserProfile(target.id, profile);
-        return result;
+        return publicUser(await this.webWorker.updateUserProfile(target.id, profile));
     }
 
     //профиль, закреплённый за пользователем SSO, защищён прокси и без своего пароля
