@@ -27,7 +27,8 @@ function safeArchiveEntry(entry) {
     return {sourceName: entry.name, name: safeEntryName(rawName), isDirectory: entry.isDirectory};
 }
 
-async function restore(bookFile, config = {}, loadImage = async() => null) {
+// loadImages([{num, name}]) returns image data in the same order: one call per book, so each image archive opens once.
+async function restore(bookFile, config = {}, loadImages = async images => images.map(() => null)) {
     const reader = new ZipReader(config);
     let stagingDir = '';
     try {
@@ -59,28 +60,24 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
             throw new Error(t('errors.epubMultipleImageIndexes'));
 
         stagingDir = await fs.mkdtemp(path.join(config.tempDir || path.dirname(bookFile), 'epub-'));
-        let extractedDir = '';
-        if (reader.archiveType === '7z') {
-            // A solid PPMd container must be decompressed once. Extracting each
-            // chapter separately replays the solid block for every file.
-            extractedDir = path.join(stagingDir, 'source');
-            await fs.ensureDir(extractedDir);
-            const seen = new Set();
-            for (const entry of validated) {
-                const key = entry.name.toLowerCase();
-                if (seen.has(key))
-                    throw new Error(t('errors.epubDuplicatePath', {name: entry.name}));
-                seen.add(key);
-            }
-            await reader.extractAllToDir(extractedDir);
-            for (const entry of entries) {
-                const stat = await fs.lstat(path.join(extractedDir, entry.name));
-                if (!stat.isFile())
-                    throw new Error(t('errors.epubInvalidFile', {name: entry.name}));
-            }
+        // Container is unpacked by one 7-Zip run: a solid PPMd container is decompressed once,
+        // and a zip one is not reopened for every file.
+        const extractedDir = path.join(stagingDir, 'source');
+        await fs.ensureDir(extractedDir);
+        const seen = new Set();
+        for (const entry of validated) {
+            const key = entry.name.toLowerCase();
+            if (seen.has(key))
+                throw new Error(t('errors.epubDuplicatePath', {name: entry.name}));
+            seen.add(key);
         }
-        const readEntry = async(name) => extractedDir
-            ? await fs.readFile(path.join(extractedDir, safeEntryName(name))) : await reader.extractToBuf(name);
+        await reader.extractAllToDir(extractedDir);
+        for (const entry of entries) {
+            const stat = await fs.lstat(path.join(extractedDir, entry.name));
+            if (!stat.isFile())
+                throw new Error(t('errors.epubInvalidFile', {name: entry.name}));
+        }
+        const readEntry = async(name) => await fs.readFile(path.join(extractedDir, safeEntryName(name)));
         if (!files.has('mimetype') || (await readEntry(files.get('mimetype'))).toString().trim() !== mimetype)
             throw new Error(t('errors.epubMimetype'));
 
@@ -111,20 +108,20 @@ async function restore(bookFile, config = {}, loadImage = async() => null) {
         for (const [name, sourceName] of files) {
             if (name === 'mimetype' || indexSources.has(sourceName))
                 continue;
-            const file = extractedDir ? path.join(extractedDir, safeEntryName(sourceName))
-                : path.join(stagingDir, `entry-${staged.size}`);
-            if (!extractedDir)
-                await reader.extractToFile(sourceName, file);
-            staged.set(name, file);
+            staged.set(name, path.join(extractedDir, safeEntryName(sourceName)));
         }
+        const needed = [];
         for (const image of images) {
             const existing = staged.get(image.name);
-            if (existing && (await fs.stat(existing)).size)
-                continue;
-            const data = await loadImage(image.num, image.name);
+            if (!existing || !(await fs.stat(existing)).size)
+                needed.push(image);
+        }
+        const loaded = needed.length ? await loadImages(needed) : [];
+        for (const [index, image] of needed.entries()) {
+            const data = loaded[index];
             if (!data || !data.length)
                 throw new Error(t('errors.epubImageNotFound', {name: image.name, num: image.num}));
-            const file = existing || path.join(stagingDir, `entry-${staged.size}`);
+            const file = staged.get(image.name) || path.join(stagingDir, `entry-${staged.size}`);
             await fs.writeFile(file, data);
             staged.set(image.name, file);
         }

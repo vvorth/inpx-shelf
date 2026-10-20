@@ -188,13 +188,25 @@ async function extract(file, names = [], pattern = '') {
     }
 }
 
-//true - запись найдена и записана в outputFile
+//true - запись найдена и записана в outputFile. 7-Zip пишет прямо на диск через подключённый каталог: большая
+//запись не копируется в память. Временный каталог рядом с outputFile - rename в пределах одной ФС.
 async function extractToFile(file, name, outputFile) {
-    const data = (await extract(file, [name]))[name];
-    if (!data)
-        return false;
-    fs.writeFileSync(outputFile, data);
-    return true;
+    const sz = await load();
+    const tempDir = fs.mkdtempSync(`${outputFile}.`);
+    const point = mount(sz, tempDir);
+    try {
+        //-spd: имя без шаблонов, как в extract
+        withArchive(sz, file, archive => run(sz, ['x', '-y', '-bd', '-sccUTF-8', `-o${point}`, '-spd', '--', archive, name]));
+        const extracted = path.join(tempDir, name);
+        //имя с .. не должно указать на файл вне временного каталога
+        if (!extracted.startsWith(tempDir + path.sep) || !fs.statSync(extracted, {throwIfNoEntry: false})?.isFile())
+            return false;
+        fs.renameSync(extracted, outputFile);
+        return true;
+    } finally {
+        unmount(sz, point);
+        fs.rmSync(tempDir, {recursive: true, force: true});
+    }
 }
 
 async function extractAll(file, outputDir) {

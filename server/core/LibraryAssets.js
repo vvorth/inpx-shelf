@@ -280,14 +280,21 @@ module.exports = {
                         return ai - bi;
                     });
 
+                let found = {};
+                try {
+                    found = await zipReader.extractMany(entryNames);
+                } catch(e) {
+                    log(LM_ERR, `images ${archive.file}: ${e.message}`);
+                }
+
                 const result = [];
                 for (const entryName of entryNames) {
                     const id = entryName.substring(prefix.length);
-                    if (!id)
+                    if (!id || !found[entryName])
                         continue;
 
                     try {
-                        const data = await zipReader.extractToBuf(entryName);
+                        const data = found[entryName];
                         result.push(Object.assign({id}, await imageUtils.normalizeForFb2(data, this.config.tempDir, this.config.converterPaths)));
                     } catch(e) {
                         log(LM_ERR, `image ${entryName}: ${e.message}`);
@@ -377,33 +384,34 @@ module.exports = {
         }
     },
 
-    async getEpubImage(libid, num, fileName, libFolder, sourceLibDir = '', archiveCache = new Map(), readerCache = null) {
-        const subDir = num === -1 ? 'covers' : 'images';
-        if (!archiveCache.has(subDir))
-            archiveCache.set(subDir, await this.getBookAssetArchives(subDir, libFolder, sourceLibDir));
-        for (const archive of archiveCache.get(subDir)) {
-            const cachedReader = readerCache && readerCache.get(archive.file);
-            const reader = cachedReader || new ZipReader(this.config);
-            let data;
-            try {
-                if (!cachedReader) {
+    //images: [{num, name}] - все изображения книги; ответ - данные по порядку images, null - не найдено.
+    //Каждый архив открывается один раз: в solid-архиве блок распаковывается один раз на книгу, а не на изображение.
+    async getEpubImages(libid, images, libFolder, sourceLibDir = '') {
+        const result = images.map(() => null);
+        for (const subDir of ['covers', 'images']) {
+            const wanted = images.map((image, index) => ({...image, index, entry: image.num === -1 ? String(libid) : `${libid}/${image.num}`}))
+                .filter(item => (item.num === -1) === (subDir === 'covers'));
+            for (const archive of (wanted.length ? await this.getBookAssetArchives(subDir, libFolder, sourceLibDir) : [])) {
+                const missing = wanted.filter(item => !result[item.index]);
+                if (!missing.length)
+                    break;
+                const reader = new ZipReader(this.config);
+                let found = {};
+                try {
                     await reader.open(archive.file, false);
-                    if (readerCache)
-                        readerCache.set(archive.file, reader);
-                }
-                data = await reader.extractToBuf(num === -1 ? String(libid) : `${libid}/${num}`);
-            } catch (error) {
-                if (externalTools.isMissingToolError(error))
-                    throw error;
-                log(LM_WARN, `EPUB image ${archive.file}: ${error.message}`);
-            } finally {
-                if (!readerCache || !readerCache.has(archive.file))
+                    found = await reader.extractMany([...new Set(missing.map(item => item.entry))]);
+                } catch (error) {
+                    log(LM_WARN, `EPUB images ${archive.file}: ${error.message}`);
+                } finally {
                     await reader.close();
+                }
+                for (const item of missing) {
+                    if (found[item.entry] && found[item.entry].length)
+                        result[item.index] = await imageUtils.normalizeForEpub(found[item.entry], item.name, this.config.tempDir, this.config.converterPaths);
+                }
             }
-            if (data && data.length)
-                return await imageUtils.normalizeForEpub(data, fileName, this.config.tempDir, this.config.converterPaths);
         }
-        return null;
+        return result;
     },
 
     //Индекс справок и портретов авторов строится один раз на поколение ресурсов библиотеки:

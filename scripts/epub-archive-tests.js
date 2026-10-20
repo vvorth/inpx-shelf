@@ -211,19 +211,19 @@ async function testEpubContainersPreserveResourcesAndOrdinaryEpubBytes() {
         assert.ok((await fs.readFile(second)).equals(first));
         const strippedZip = path.join(dir, 'stripped.epub');
         await archive(strippedZip, {...contents, 'FLibraryImageIndex.json': JSON.stringify([{id: 'OEBPS/image.png', num: 0}])});
-        await epubRestorer.restore(strippedZip, {}, async() => png);
+        await epubRestorer.restore(strippedZip, {}, async images => images.map(() => png));
         await inspectEpub(strippedZip);
         const heimdallZip = path.join(dir, 'heimdall.epub');
         await archive(heimdallZip, {...Object.fromEntries(Object.entries(contents).map(([name, value]) => [`12345/${name}`, value])),
             'FLibraryImageIndex.json': JSON.stringify([{id: 'OEBPS/cover.png', num: -1}, {id: 'OEBPS/image.png', num: 0}]),
         });
         const requested = [];
-        assert.strictEqual(await epubRestorer.restore(heimdallZip, {}, async(num, name) => {
-            requested.push({num, name});
-            return png;
+        assert.strictEqual(await epubRestorer.restore(heimdallZip, {}, async images => {
+            requested.push(images);
+            return images.map(() => png);
         }), true);
         const heimdallNames = await inspectEpub(heimdallZip);
-        assert.deepStrictEqual(requested, [{num: -1, name: 'OEBPS/cover.png'}, {num: 0, name: 'OEBPS/image.png'}]);
+        assert.deepStrictEqual(requested, [[{name: 'OEBPS/cover.png', num: -1}, {name: 'OEBPS/image.png', num: 0}]]);
         assert.ok(!heimdallNames.includes('FLibraryImageIndex.json'));
     });
 }
@@ -400,7 +400,7 @@ async function testSameFilenameEpubAndFb2KeepTheirOwnAssetsAndDownloads() {
             await fs.remove(path.join(source, 'images', 'usr-500000-504999.zip'));
             const missing = await fetch(coverUrl(records[1]));
             assert.strictEqual(missing.status, 404);
-            assert.strictEqual(await worker.getEpubImage('504942', 0, 'OEBPS/image.png', records[1].folder, source), null);
+            assert.deepStrictEqual(await worker.getEpubImages('504942', [{num: 0, name: 'OEBPS/image.png'}], records[1].folder, source), [null]);
             const fb2Cover = await fetch(coverUrl(records[0]));
             assert.ok(Buffer.from(await fb2Cover.arrayBuffer()).equals(png));
         } finally {
@@ -485,7 +485,68 @@ async function testEpubReusesImageArchiveReadersAndClosesOnFailure() {
     });
 }
 
+async function testExtractToFileWritesNestedEntryWithoutTempFiles() {
+    await temporary(async dir => {
+        const data = Buffer.from(Array.from({length: 300000}, (_, index) => (index * 7) % 251));
+        const archivePool = require('../server/core/archive/ArchivePool');
+        for (const format of ['zip', '7z']) {
+            const file = path.join(dir, `nested.${format}`);
+            await archive(file, {'dir/sub/book.fb2': data, 'other.fb2': 'other'}, format === '7z');
+            const outDir = path.join(dir, `out-${format}`);
+            await fs.ensureDir(outDir);
+            const reader = new ZipReader();
+            await reader.open(file, false);
+            try {
+                await reader.extractToFile('dir/sub/book.fb2', path.join(outDir, 'book'));
+                assert.ok((await fs.readFile(path.join(outDir, 'book'))).equals(data));
+                assert.strictEqual(await archivePool.call('extractToFile', file, 'missing.fb2', path.join(outDir, 'missing')), false);
+                await assert.rejects(reader.extractToFile('missing.fb2', path.join(outDir, 'missing')), /Entry not found/);
+            } finally { await reader.close(); }
+            assert.deepStrictEqual(await fs.readdir(outDir), ['book'], 'Temporary extraction dirs must be removed');
+        }
+    });
+}
+
+async function testBookImagesExtractOncePerArchive() {
+    await temporary(async dir => {
+        const source = path.join(dir, 'source');
+        const folder = 'collection.7z';
+        await archive(path.join(source, folder), {'12345.epub': 'book', '12345.fb2': 'book'}, true);
+        const images = Object.fromEntries(Array.from({length: 8}, (_, num) => [`12345/${num}`, png]));
+        await archive(path.join(source, 'images', folder), {...images, 'other/0': 'unrelated'}, true);
+        await archive(path.join(source, 'covers', folder), {12345: png}, true);
+        const worker = Object.create(require('../server/core/WebWorker').prototype);
+        worker.config = {libDir: source, tempDir: path.join(dir, 'tmp')};
+        await fs.ensureDir(worker.config.tempDir);
+        const archivePool = require('../server/core/archive/ArchivePool');
+        const call = archivePool.call;
+        let extractions = 0;
+        archivePool.call = (action, ...args) => {
+            if (action !== 'list') extractions++;
+            return call(action, ...args);
+        };
+        try {
+            const wanted = [{num: -1, name: 'cover.png'}, ...Object.keys(images).map((_, num) => ({num, name: `${num}.png`})), {num: 99, name: 'missing.png'}];
+            const result = await worker.getEpubImages('12345', wanted, folder, source);
+            assert.strictEqual(extractions, 2, 'One 7-Zip call per image archive, not per image');
+            assert.ok(result.slice(0, -1).every(Boolean));
+            assert.strictEqual(result[result.length - 1], null);
+            extractions = 0;
+            assert.strictEqual((await worker.getFblibraryImages(12345, source, folder)).length, 8);
+            assert.strictEqual(extractions, 1, 'FB2 images come from one 7-Zip call');
+            // A zip EPUB container is unpacked by one call too, not one per file.
+            const epub = path.join(dir, 'book.epub');
+            await archive(epub, {...contents, 'FLibraryImageIndex.json': JSON.stringify([{id: 'OEBPS/image.png', num: 0}])});
+            extractions = 0;
+            assert.strictEqual(await epubRestorer.restore(epub, worker.config, async list => list.map(() => png)), true);
+            assert.strictEqual(extractions, 1);
+        } finally {
+            archivePool.call = call;
+        }
+    });
+}
+
 module.exports = [testAtomicBookCacheFilesAndRecovery, testJxlCodestreamAndContainerImagesAreRecognized, testCompressedEpubDownloadsRestoreImagesAndInvalidateCache,
     testEpubContainersPreserveResourcesAndOrdinaryEpubBytes, testInvalidCompressedEpubDoesNotPublishPartialResults,
     testSameFilenameEpubAndFb2KeepTheirOwnAssetsAndDownloads, testSolidEpubExtractsAllChaptersOnce,
-    testEpubReusesImageArchiveReadersAndClosesOnFailure];
+    testEpubReusesImageArchiveReadersAndClosesOnFailure, testExtractToFileWritesNestedEntryWithoutTempFiles, testBookImagesExtractOncePerArchive];

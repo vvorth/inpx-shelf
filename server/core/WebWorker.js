@@ -1087,16 +1087,12 @@ class WebWorker {
                 }
             } else if (path.extname(libFile).toLowerCase() === '.epub') {
                 const libid = path.basename(libFile, path.extname(libFile));
-                const archiveCache = new Map();
-                const readerCache = new Map();
                 try {
                     await epubRestorer.restore(extractedFile, this.config,
-                        (num, name) => this.getEpubImage(libid, num, name, libFolder, sourceLibDir, archiveCache, readerCache));
+                        images => this.getEpubImages(libid, images, libFolder, sourceLibDir));
                 } catch (error) {
                     await fs.remove(extractedFile);
                     throw error;
-                } finally {
-                    await Promise.all([...readerCache.values()].map(reader => reader.close()));
                 }
             }
         }

@@ -63,6 +63,14 @@ class ZipReader {
         return Buffer.from(data);
     }
 
+    //Несколько записей одним вызовом 7-Zip (solid-блок распаковывается один раз): {имя: Buffer}, ненайденных нет
+    async extractMany(names) {
+        this.checkState();
+
+        const found = await archivePool.call('extract', this.archiveFile, names);
+        return Object.fromEntries(Object.entries(found).map(([name, data]) => [name, Buffer.from(data.buffer, data.byteOffset, data.length)]));
+    }
+
     async extractToFile(entryFilePath, outputFile) {
         this.checkState();
 
