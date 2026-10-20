@@ -85,7 +85,8 @@ function parseSync(xstr, options) {
         } else {
             let tag = '';
             let tail = '';
-            const firstSpace = tagData.indexOf(' ');
+            // Имя тега отделяется любым пробельным символом, не только пробелом
+            const firstSpace = tagData.search(/\s/);
             if (firstSpace >= 0) {
                 tail = tagData.substr(firstSpace);
                 tag = tagData.substr(0, firstSpace);
@@ -176,7 +177,7 @@ function getAttrsSync(tail, lowerCase = true) {
         const c = tail.charAt(i);
         if (c == ' ') {
             if (inValue) {
-                if (vOpen == '"')
+                if (vOpen == '"' || vOpen == "'")
                     value += c;
                 else
                     pushResult();
@@ -187,12 +188,14 @@ function getAttrsSync(tail, lowerCase = true) {
             waitEq = false;
             waitValue = true;
             inName = false;
-        } else if (c == '"') {
-            if (inValue) {
+        } else if (c == '"' || c == "'") {
+            if (inValue && vOpen == c) {
                 pushResult();
+            } else if (inValue) {
+                value += c;
             } else if (waitValue) {
                 inValue = true;
-                vOpen = '"';
+                vOpen = c;
             }
         } else if (inValue) {
             value += c;

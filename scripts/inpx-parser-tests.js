@@ -46,4 +46,19 @@ async function testInpxParserUidIsStable() {
     }
 }
 
-module.exports = [testInpxParserUidIsStable];
+// Пустая строка CRLF не превращается в пустую книгу.
+async function testInpxParserSkipsBlankCrlfLines() {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-parser-'));
+    try {
+        const file = path.join(dir, 'lib.inpx');
+        const row = ['Le Guin,Ursula,:', 'sf:', 'A Wizard of Earthsea', '', '', '1002', '2000', '1002', '0', 'epub', '2021-02-03', 'en', '', ''].join('\x04');
+        await writeZip(file, {'collection.info': 'Test', 'fb2-001.inp': `${row}\r\n\r\n\r\n`});
+        const books = [];
+        await new InpxParser().parse(file, null, async chunk => books.push(...chunk));
+        assert.strictEqual(books.length, 1);
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
+module.exports = [testInpxParserUidIsStable, testInpxParserSkipsBlankCrlfLines];

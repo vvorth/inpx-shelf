@@ -1,6 +1,7 @@
 const assert = require('assert');
 const XmlParser = require('../server/core/xml/XmlParser');
 const sax = require('../server/core/xml/sax');
+const Fb2Helper = require('../server/core/fb2/Fb2Helper');
 
 const parse = xml => new XmlParser().fromString(xml).toObject();
 
@@ -31,4 +32,20 @@ function testXmlParserTrickyInput() {
     assert.strictEqual(attrs.get('title').value, 'a>b');
 }
 
-module.exports = [testXmlParserTrickyInput];
+function testXmlParserWhitespaceAndSingleQuotes() {
+    //перевод строки и табуляция после имени тега
+    assert.deepStrictEqual(parse('<a\n x="1"><b\tid="s"/></a\n>'), {a: {'*ATTRS': {x: '1'}, b: {'*ATTRS': {id: 's'}}}});
+
+    //одинарные кавычки; другая кавычка внутри значения - обычный символ
+    const attrs = sax.getAttrsSync(` l:href='#c.jpg' t='say "hi" now' u="it's"`);
+    assert.strictEqual(attrs.get('l:href').value, '#c.jpg');
+    assert.strictEqual(attrs.get('t').value, 'say "hi" now');
+    assert.strictEqual(attrs.get('u').value, "it's");
+
+    //обложка с одинарными кавычками
+    const cover = new Fb2Helper().findCover(`<FictionBook xmlns:l='http://www.w3.org/1999/xlink'><description><title-info><coverpage><image l:href='#c'/></coverpage></title-info></description><binary id='c' content-type='image/png'>QUFB</binary></FictionBook>`);
+    assert.strictEqual(cover.cover.toString(), 'AAA');
+    assert.strictEqual(cover.coverExt, '.png');
+}
+
+module.exports = [testXmlParserTrickyInput, testXmlParserWhitespaceAndSingleQuotes];

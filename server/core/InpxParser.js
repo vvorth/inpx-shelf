@@ -127,12 +127,10 @@ class InpxParser {
         const structLen = structure.length;
 
         for (const row of rows) {
-            let line = row;
+            // \r снимаем до проверки: пустая строка CRLF не запись
+            const line = (row[row.length - 1] == '\x0D' ? row.substring(0, row.length - 1) : row);
             if (!line)
                 continue;
-
-            if (line[line.length - 1] == '\x0D')
-                line = line.substring(0, line.length - 1);
 
             const rec = {};
             //уникальный идентификатор записи
