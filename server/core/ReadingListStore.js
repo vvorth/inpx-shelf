@@ -436,11 +436,8 @@ class ReadingListStore {
         try {
             await fs.copy(this.file, backupFile, {overwrite: false});
         } catch (copyError) {
-            try {
-                await fs.copy(this.file, `${backupFile}-${crypto.randomBytes(3).toString('hex')}`, {overwrite: false});
-            } catch (e) {
-                // Keep loading usable even if the broken file cannot be backed up.
-            }
+            // No copy - no overwrite: the load fails and the file stays as it is.
+            await fs.copy(this.file, `${backupFile}-${crypto.randomBytes(3).toString('hex')}`, {overwrite: false});
         }
 
         if (error && error.message)

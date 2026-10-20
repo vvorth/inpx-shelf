@@ -3,6 +3,7 @@
 const fs = require('fs-extra');
 
 const {t} = require('../i18n');
+const {withFileTransaction, writeFileAtomic} = require('../FilePersistence');
 
 const endpoint = 'https://query.wikidata.org/sparql';
 
@@ -109,9 +110,9 @@ class WikidataTable {
         if (!entries.length)
             throw keyError('errors.wikidataNoNames');
 
-        const tmpFile = `${this.file}.tmp`;
-        await fs.writeJson(tmpFile, this.options.normalizeData({source: 'wikidata', updatedAt: new Date().toISOString(), entries}));
-        await fs.move(tmpFile, this.file, {overwrite: true});
+        const data = this.options.normalizeData({source: 'wikidata', updatedAt: new Date().toISOString(), entries});
+        // Тот же замок, что у восстановления из бэкапа: долгая загрузка не затрёт только что восстановленный файл.
+        await withFileTransaction(this.file, () => writeFileAtomic(this.file, JSON.stringify(data)));
         this.changed();
         return entries.length;
     }

@@ -226,6 +226,7 @@ module.exports = {
         } finally {
             await fs.remove(tempFile);
         }
+        await this.pruneBackups(backupDir, prefix);
 
         return {
             success: true,
@@ -233,6 +234,21 @@ module.exports = {
             link: `${String(this.config.rootPathStatic || '').replace(/\/$/, '')}/admin-backups/${encodeURIComponent(fileName)}`,
             createdAt: createdAt.toISOString(),
         };
+    },
+
+    // Оставляем 10 новых архивов этого вида и убираем оборванные *.zip.tmp; чужие файлы не трогаем.
+    // .zip.tmp моложе суток может писать параллельный бэкап.
+    async pruneBackups(backupDir, prefix) {
+        const names = (await fs.readdir(backupDir)).filter(name => name.startsWith(`${prefix}-`)).sort();
+        const dayAgo = Date.now() - 24*60*60*1000;
+        const temps = [];
+        for (const name of names.filter(name => name.endsWith('.zip.tmp'))) {
+            const stat = await fs.stat(path.join(backupDir, name)).catch(() => null);
+            if (stat && stat.mtimeMs < dayAgo)
+                temps.push(name);
+        }
+        const stale = names.filter(name => name.endsWith('.zip')).slice(0, -10).concat(temps);
+        await Promise.all(stale.map(name => fs.remove(path.join(backupDir, name))));
     },
 
     async importAdminBackup(userId = '', profileAccessToken = '', payload = {}, scope = '') {

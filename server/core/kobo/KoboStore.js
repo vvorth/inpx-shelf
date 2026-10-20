@@ -134,7 +134,8 @@ class KoboStore {
                 raw = JSON.parse(text);
             } catch (e) {
                 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-                await fs.copy(this.file, `${this.file}.broken-${stamp}`).catch(() => {});
+                // Без копии не затираем файл: загрузка падает, файл остаётся как есть.
+                await fs.copy(this.file, `${this.file}.broken-${stamp}`);
             }
         }
         return this.normalizeData(raw);

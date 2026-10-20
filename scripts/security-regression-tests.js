@@ -502,6 +502,68 @@ async function testStoreReadErrorKeepsData() {
     });
 }
 
+// A failed safety copy of a broken store must not end with the defaults written over it.
+async function testBrokenStoreWithoutCopyIsNotOverwritten() {
+    await temporary(async(dataDir) => {
+        const KoboStore = require('../server/core/kobo/KoboStore');
+        const stores = [new ReadingListStore({dataDir, adminPassword: 'fixture'}), new KoboStore({dataDir})];
+        const copy = fs.copy;
+        for (const store of stores) {
+            await fs.outputFile(store.file, '{broken');
+            fs.copy = async() => { throw Object.assign(new Error('ENOSPC: no space left on device'), {code: 'ENOSPC'}); };
+            try {
+                await assert.rejects(store.load(), /ENOSPC/);
+            } finally {
+                fs.copy = copy;
+            }
+            assert.strictEqual(await fs.readFile(store.file, 'utf8'), '{broken', `${path.basename(store.file)} must stay as it is`);
+        }
+    });
+}
+
+async function testBackupsKeepNewestTen() {
+    await temporary(async(dir) => {
+        const WebWorker = require('../server/core/WebWorker');
+        const config = {dataDir: dir, configFile: path.join(dir, 'config.json'), name: 'inpx-shelf', version: 'test'};
+        const worker = Object.assign(Object.create(WebWorker.prototype), {config, checkMyState() {}, requireAdmin: async() => true,
+            catalogSearch: {ready: false},
+            readingListStore: new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'})});
+        await fs.outputJson(config.configFile, {opds: {}});
+        const backups = path.join(dir, 'backups');
+        const old = [...Array(12).keys()].map(i => `inpx-shelf-backup-2020-01-${String(i + 1).padStart(2, '0')}T00-00-00-000Z-aaaa.zip`);
+        const staleTmp = 'inpx-shelf-backup-2020-01-01T00-00-00-000Z-aaaa.zip.tmp';
+        const runningTmp = 'inpx-shelf-backup-2020-01-02T00-00-00-000Z-bbbb.zip.tmp';
+        for (const name of [...old, staleTmp, runningTmp, 'notes.zip', 'inpx-shelf-author-names-2020-01-01.zip'])
+            await fs.outputFile(path.join(backups, name), 'x');
+        //.tmp старше суток - оборванный, свежий может писать параллельный бэкап
+        const twoDaysAgo = new Date(Date.now() - 2*24*60*60*1000);
+        await fs.utimes(path.join(backups, staleTmp), twoDaysAgo, twoDaysAgo);
+        const {fileName} = await worker.createAdminBackup('admin', 'token');
+        const left = (await fs.readdir(backups)).sort();
+        assert.deepStrictEqual(left, ['inpx-shelf-author-names-2020-01-01.zip', fileName, 'notes.zip', runningTmp, ...old.slice(3)].sort(),
+            'the newest 10 of this kind stay, old ones and the stale .tmp go, other files are not touched');
+    });
+}
+
+async function testWikidataDownloadWaitsForFileLock() {
+    await temporary(async(dir) => {
+        const AuthorNames = require('../server/core/search/AuthorNames');
+        const {withFileTransaction} = require('../server/core/FilePersistence');
+        const names = new AuthorNames({dataDir: dir, version: 'test'}, async(query) => ({results: {bindings:
+            (query.includes('wd:Q36180') && /OFFSET 0/.test(query) ? [{item: {value: 'Q1'}, ru: {value: 'Айзек Азимов'}, en: {value: 'Isaac Asimov'}}] : [])}}));
+        let release;
+        const held = withFileTransaction(names.file, () => new Promise(resolve => { release = resolve; }));
+        const download = names.download();
+        await new Promise(resolve => setTimeout(resolve, 200));
+        assert.strictEqual(await fs.pathExists(names.file), false, 'a restore holding the lock must not be overwritten');
+        release();
+        await held;
+        await download;
+        assert.deepStrictEqual((await fs.readJson(names.file)).entries, [['Айзек Азимов', 'Isaac Asimov']]);
+        assert.deepStrictEqual(await fs.readdir(dir), ['author-names.json'], 'no temporary files are left');
+    });
+}
+
 async function testStoreLoadCacheStaysCurrent() {
     await temporary(async(dataDir) => {
         const [first, second] = [new ReadingListStore({dataDir, adminPassword: 'fixture'}), new ReadingListStore({dataDir, adminPassword: 'fixture'})];
@@ -1079,6 +1141,6 @@ module.exports = [
     testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
-    testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
+    testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testBrokenStoreWithoutCopyIsNotOverwritten, testBackupsKeepNewestTen, testWikidataDownloadWaitsForFileLock, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,
     testDownloaderClosesFailedTransfers, testDownloaderVerifiesTlsCertificates, testHugePngIsRejectedBeforeDecoding, testGunzipBufferIsBounded, testRemoteLibVerifiesTlsCertificates];
