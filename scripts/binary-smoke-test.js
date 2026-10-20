@@ -27,9 +27,11 @@ async function createFixture(dir) {
     await fs.writeJson(path.join(dir, 'config.json'), {
         loggingEnabled: false,
         opds: {enabled: true},
-        adminPassword: 'local-smoke-fixture',
     });
 }
+
+//пароль администратора задаётся только окружением (adminPassword не читается из config.json)
+const adminPassword = 'local-smoke-fixture';
 
 async function unusedPort() {
     const server = net.createServer();
@@ -52,7 +54,7 @@ async function checkApi(url) {
     assert.match(cookie, /^inpx_web_session=/);
     const config = await configResponse.json();
     assert.strictEqual(config.profileAuthorized, false);
-    const login = await fetch(`${url}/api/login-user-profile`, {method: 'POST', body: JSON.stringify({login: 'admin', password: 'local-smoke-fixture'}),
+    const login = await fetch(`${url}/api/login-user-profile`, {method: 'POST', body: JSON.stringify({login: 'admin', password: adminPassword}),
         headers: {...headers, cookie, 'Content-Type': 'application/json', 'X-CSRF-Token': config.csrfToken}});
     const result = await login.json();
     assert.strictEqual(login.status, 200, JSON.stringify(result));
@@ -82,7 +84,7 @@ async function main() {
         if (target === '--image') {
             command = 'docker';
             args = ['run', '--rm', '--name', containerName,
-                '-p', `127.0.0.1:${port}:12380`, '--tmpfs', '/data',
+                '-p', `127.0.0.1:${port}:12380`, '--tmpfs', '/data', '-e', `INPX_ADMIN_PASSWORD=${adminPassword}`,
                 '--mount', `type=bind,source=${library},target=/library,readonly`, imageName,
                 'sh', '-c', 'cp /library/config.json /data/config.json && exec inpx-shelf --data-dir=/data --config=/data/config.json --lib-dir=/library --host=0.0.0.0 --port=12380'];
         } else {
@@ -91,7 +93,7 @@ async function main() {
                 `--config=${path.join(library, 'config.json')}`, '--host=127.0.0.1', `--port=${port}`];
         }
         const env = {...process.env, INPX_LIBRARY_SOURCES: '', LIBRARY_SOURCES: '',
-            INPX_REQUIRE_AUTH: 'false', INPX_AUTH_MODE: 'local', INPX_ENABLE_CONVERSION: 'false'};
+            INPX_REQUIRE_AUTH: 'false', INPX_AUTH_MODE: 'local', INPX_ENABLE_CONVERSION: 'false', INPX_ADMIN_PASSWORD: adminPassword};
         child = spawn(command, args, {env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
         exited = new Promise(resolve => {
             child.once('exit', resolve);
