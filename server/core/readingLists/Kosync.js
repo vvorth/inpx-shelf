@@ -56,6 +56,32 @@ module.exports = {
 
     async putKosyncProgress(userId = '', document = '', row = {}) {
         const {data, user} = await this.resolveUser(userId);
+        this.setKosyncRow(user, document, row);
+        await this.save(data);
+        return row;
+    },
+
+    // One KOReader push in one save: the row keeps the book it was first mapped to, and the percent goes
+    // to "continue reading". A reader progress error is returned, not thrown: the row is saved anyway.
+    async pushKosyncProgress(userId = '', document = '', row = {}, mappedBookUid = '') {
+        const {data, user} = await this.resolveUser(userId);
+        const rows = user.kosyncProgress || {};
+        const previous = (Object.hasOwn(rows, document) ? rows[document] : null);
+        const bookUid = (previous && previous.bookUid) || mappedBookUid;
+        this.setKosyncRow(user, document, Object.assign({}, row, {bookUid}));
+        let progressError = null;
+        if (bookUid) {
+            try {
+                this.mergeUserDeviceProgress(user, bookUid, row.percentage, new Date(row.timestamp*1000).toISOString());
+            } catch (e) {
+                progressError = e;
+            }
+        }
+        await this.save(data);
+        return {bookUid, progressError};
+    },
+
+    setKosyncRow(user, document = '', row = {}) {
         const rows = user.kosyncProgress = (user.kosyncProgress && typeof(user.kosyncProgress) === 'object' ? user.kosyncProgress : {});
         rows[document] = row;
         const keys = Object.keys(rows);
@@ -64,7 +90,5 @@ module.exports = {
             for (const key of keys.slice(0, keys.length - documentLimit))
                 delete rows[key];
         }
-        await this.save(data);
-        return row;
     },
 };

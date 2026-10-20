@@ -114,18 +114,13 @@ function init(app, config, worker, security) {
             || typeof(body.device) !== 'string' || typeof(body.device_id) !== 'string')
             return sendJson(res, {code: 2003, message: 'Invalid request'}, 403);
 
-        const userId = req.kosyncUser.id;
-        const previous = await store.getKosyncProgress(userId, document);
-        const bookUid = (previous && previous.bookUid) || worker.stateStore.getKosyncDocument(document);
         const timestamp = Math.floor(Date.now()/1000);
-        await store.putKosyncProgress(userId, document, {
+        const {bookUid, progressError} = await store.pushKosyncProgress(req.kosyncUser.id, document, {
             progress: body.progress.slice(0, 1024), percentage: Math.max(0, Math.min(1, percentage)),
-            device: body.device.slice(0, 128), device_id: body.device_id.slice(0, 128), timestamp, bookUid,
-        });
-        if (bookUid) {
-            await store.mergeDeviceProgress(userId, bookUid, percentage, new Date(timestamp*1000).toISOString())
-                .catch(e => log(LM_WARN, `KOReader sync: cannot update reader progress of ${bookUid}: ${e.message}`));
-        }
+            device: body.device.slice(0, 128), device_id: body.device_id.slice(0, 128), timestamp,
+        }, worker.stateStore.getKosyncDocument(document));
+        if (progressError)
+            log(LM_WARN, `KOReader sync: cannot update reader progress of ${bookUid}: ${progressError.message}`);
         sendJson(res, {document, timestamp});
     }));
 

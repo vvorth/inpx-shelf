@@ -705,7 +705,20 @@ async function testProfileComesFromHeadersOnly() {
     });
 }
 
+// The OPDS scope guard and the pages must pick the same profile: an id wins over another profile's equal login.
+async function testOpdsUserPrefersIdOverLogin() {
+    await fixture({}, async({worker, alice, bob}) => {
+        const store = worker.readingListStore;
+        const data = await store.load();
+        data.users.find(user => user.id === alice.id).login = bob.id;
+        await store.save(data);
+        assert.ok(data.users.findIndex(user => user.id === alice.id) < data.users.findIndex(user => user.id === bob.id));
+        assert.strictEqual((await store.getOpdsUser(bob.id)).id, bob.id);
+        assert.strictEqual((await store.resolveUser(bob.id)).user.id, bob.id);
+    });
+}
+
 module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromHeadersOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
     testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
-    testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];
+    testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials, testOpdsUserPrefersIdOverLogin];

@@ -161,9 +161,56 @@ async function testKosyncFindsServedCacheFile() {
     }
 }
 
+// One push is one store write: the KOReader row and "continue reading" are saved together.
+async function testKosyncPushIsOneStoreWrite() {
+    await fixture({}, async({dir, call, worker, store}) => {
+        const password = await store.createKosyncPassword('default');
+        const file = path.join(dir, 'book.epub');
+        await fs.writeFile(file, crypto.randomBytes(3000));
+        await kosync.rememberFile(worker, file, 'book-uid');
+        const document = await kosync.partialMd5(file);
+        const writeData = store.writeData;
+        let writes = 0;
+        store.writeData = function(...args) {
+            writes++;
+            return writeData.apply(this, args);
+        };
+        const push = async(doc, percentage) => {
+            writes = 0;
+            const res = await call('/syncs/progress', password, {method: 'PUT', body: JSON.stringify({
+                document: doc, progress: 'p', percentage, device: 'Clara', device_id: 'dev-1'})});
+            assert.strictEqual(res.status, 200);
+            return (await res.json()).timestamp;
+        };
+        const user = async() => (await store.load()).users.find(item => item.id === 'default');
+
+        const timestamp = await push(document, 0.42);
+        const saved = await user();
+        assert.deepStrictEqual(saved.kosyncProgress[document], {progress: 'p', percentage: 0.42,
+            device: 'Clara', device_id: 'dev-1', timestamp, bookUid: 'book-uid'});
+        assert.deepStrictEqual(saved.readerProgress['book-uid'], {percent: 0.42, sectionId: '', pageIndex: 0, textOffset: -1,
+            textSnippet: '', updatedAt: new Date(timestamp*1000).toISOString(), hidden: false, generation: 0});
+        assert.strictEqual(writes, 1, 'kosync row and reader progress in one write');
+
+        // A newer web position stays; the KOReader row still updates.
+        await store.updateReaderProgress('default', 'book-uid', {percent: 0.6, sectionId: 's2', updatedAt: new Date(Date.now() + 60000).toISOString(), generation: 0});
+        const web = (await user()).readerProgress['book-uid'];
+        await push(document, 0.5);
+        assert.deepStrictEqual((await user()).readerProgress['book-uid'], web);
+        assert.strictEqual((await user()).kosyncProgress[document].percentage, 0.5);
+        assert.strictEqual(writes, 1);
+
+        // A book not from inpx-shelf: only the KOReader row.
+        await push(md5('other'), 0.1);
+        assert.strictEqual((await user()).kosyncProgress[md5('other')].bookUid, '');
+        assert.strictEqual(writes, 1);
+    });
+}
+
 module.exports = [
     testKosyncPartialMd5MatchesKoreader,
     testKosyncProtocolAndWebProgress,
+    testKosyncPushIsOneStoreWrite,
     testKosyncFailedLoginsAreRateLimited,
     testKosyncChecksKeyBeforeReadingBody,
     testKosyncFindsServedCacheFile,

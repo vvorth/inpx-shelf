@@ -92,8 +92,15 @@ module.exports = {
     },
 
     async updateReaderProgress(userId = '', bookUid = '', patch = {}) {
-        const {data, user: target} = await this.resolveUser(userId);
+        const {data, user} = await this.resolveUser(userId);
+        const {progress, changed} = this.patchReaderProgress(user, bookUid, patch);
+        if (changed)
+            await this.save(data);
+        return progress;
+    },
 
+    // Changes the profile record in place; the caller saves when changed.
+    patchReaderProgress(target, bookUid = '', patch = {}) {
         const normalizedBookUid = this.requireBookUid(bookUid);
 
         if (!target.readerProgress || typeof(target.readerProgress) !== 'object')
@@ -119,9 +126,9 @@ module.exports = {
         const force = patch.force === true;
         if (patchGeneration !== generation) {
             if (Object.keys(current).length && Math.max(0, parseInt(current.generation, 10) || 0) === generation)
-                return Object.assign({}, current, {generationMismatch: true});
+                return {progress: Object.assign({}, current, {generationMismatch: true}), changed: false};
 
-            return {
+            return {changed: false, progress: {
                 percent: 0,
                 sectionId: '',
                 pageIndex: 0,
@@ -132,7 +139,7 @@ module.exports = {
                 reset: true,
                 resetAt,
                 generation,
-            };
+            }};
         }
         if (
             !force
@@ -141,7 +148,7 @@ module.exports = {
             && Number.isFinite(currentTime)
             && patchTime < currentTime
         )
-            return current;
+            return {progress: current, changed: false};
         const nextPercent = Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0;
         target.readerProgress[normalizedBookUid] = {
             percent: nextPercent,
@@ -156,22 +163,27 @@ module.exports = {
             ...(nextPercent >= READ_PERCENT ? percentBeforeRead(current) : {}),
         };
         target.updatedAt = this.nowIso();
-
-        await this.save(data);
-        return target.readerProgress[normalizedBookUid];
+        return {progress: target.readerProgress[normalizedBookUid], changed: true};
     },
 
     // Percent (0..1) read on an e-reader (Kobo, KOReader) goes to "continue reading" when it is newer than
     // the web position. Device locations can't be mapped onto the FB2 reader's pages: the reader opens at the percent.
     async mergeDeviceProgress(userId = '', bookUid = '', percent = 0, modified = '') {
+        const {data, user} = await this.resolveUser(userId);
+        if (this.mergeUserDeviceProgress(user, bookUid, percent, modified))
+            await this.save(data);
+    },
+
+    // mergeDeviceProgress on a loaded profile record: true when it changed and needs a save.
+    mergeUserDeviceProgress(user, bookUid = '', percent = 0, modified = '') {
         const value = Math.max(0, Math.min(1, Number(percent) || 0));
-        const {progress: current, progressGeneration} = await this.getReaderState(userId, bookUid);
+        const current = (user.readerProgress || {})[this.requireBookUid(bookUid)] || {};
         if (Math.abs((current.percent || 0) - value) < 0.0001 || (!current.updatedAt && value <= 0))
-            return;
-        await this.updateReaderProgress(userId, bookUid, {
+            return false;
+        return this.patchReaderProgress(user, bookUid, {
             percent: value, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '',
-            updatedAt: modified, generation: progressGeneration,
-        });
+            updatedAt: modified, generation: Math.max(0, parseInt(user.readerProgressGeneration, 10) || 0),
+        }).changed;
     },
 
     async deleteReaderProgress(userId = '', bookUid = '') {

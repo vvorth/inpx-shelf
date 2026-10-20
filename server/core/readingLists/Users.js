@@ -105,7 +105,8 @@ module.exports = {
             return null;
 
         const data = await this.load();
-        const user = data.users.find((item) => item.id === normalized || item.login === normalized);
+        // id first, as in resolveUser: the scope guard and the pages it lets through must see one profile
+        const user = data.users.find((item) => item.id === normalized) || data.users.find((item) => item.login === normalized);
         if (!user || user.opdsEnabled === false)
             return null;
 
