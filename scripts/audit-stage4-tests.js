@@ -7,7 +7,10 @@ const execFile = promisify(require('child_process').execFile);
 const passwords = require('../server/core/ProfilePassword');
 const ReadingListStore = require('../server/core/ReadingListStore');
 const transaction = require('../server/core/BackupTransaction');
+const http = require('http');
 const requestLimits = require('../server/core/RequestLimits');
+const Security = require('../server/core/Security');
+const {ApiTestClient, apiController, apiApp, listen} = require('./api-test-client');
 
 async function temporary(task) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-stage4-'));
@@ -58,138 +61,116 @@ async function testScryptMigrationAndOpds() {
     });
 }
 
-async function testWebSocketBoundsAndRecovery() {
-    const WebSocket = require('ws');
-    const Controller = require('../server/controllers/WebSocketController');
-    const controller = Object.create(Controller.prototype);
-    controller.config = {importLimitMb: 1, backupUploadLimitMb: 1};
-    controller.test = async(req, ws) => controller.send({ok: true}, req, ws);
-    const server = new WebSocket.Server({port: 0, host: '127.0.0.1', maxPayload: requestLimits.transportLimit(controller.config)});
-    server.on('connection', socket => {
-        socket.on('error', () => {});
-        socket.on('message', data => controller.onMessage(socket, data.toString()));
+// A JSON body is an object of at most apiMessageLimitMb; a malformed one is answered and the next request works.
+async function testApiBodyBoundsAndRecovery() {
+    await temporary(async(dir) => {
+        const config = {apiMessageLimitMb: 1, importLimitMb: 1, backupUploadLimitMb: 1, tempDir: path.join(dir, 'tmp'), rootPathStatic: ''};
+        const security = new Security(config);
+        security.secret = 'test-secret';
+        const controller = apiController({config, security, profileAccess: null, webWorker: {}, workerState: {getState: () => ({})},
+            updateReaderPreferences: async() => ({ok: true})});
+        const {base, close} = await listen(apiApp({config, security, controller, health: false}));
+        const api = ApiTestClient.forSession(base, security);
+        const post = body => api.request('POST', 'api/update-reader-preferences', {body,
+            headers: {'content-type': 'application/json', 'x-csrf-token': api.csrfToken}});
+        try {
+            for (const malformed of ['null', '[]', 'false', '"text"', '{'])
+                assert.strictEqual((await post(malformed)).status, 400, JSON.stringify(malformed));
+            const pad = size => JSON.stringify({preferences: {pad: 'x'.repeat(size - '{"preferences":{"pad":""}}'.length)}});
+            assert.deepStrictEqual((await post(pad(1024*1024))).body, {ok: true}, 'At the limit');
+            const large = await post(pad(1024*1024 + 1));
+            assert.strictEqual(large.status, 413);
+            assert.ok(large.body.error);
+            assert.strictEqual((await post(pad(7*1024*1024))).status, 413);
+            assert.deepStrictEqual((await post('{}')).body, {ok: true}, 'The server keeps answering');
+        } finally {
+            await close();
+        }
     });
-    await new Promise(resolve => server.on('listening', resolve));
-    const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}`);
-    await new Promise(resolve => socket.on('open', resolve));
-    const call = (message) => new Promise(resolve => {
-        const receive = data => {
-            const response = JSON.parse(data);
-            if (!response._rok) {
-                socket.off('message', receive);
-                resolve(response);
-            }
-        };
-        socket.on('message', receive);
-        socket.send(message);
-    });
-    try {
-        for (const malformed of ['null', '[]', 'false', '{'])
-            assert.ok((await call(malformed)).error);
-        assert.match((await call(JSON.stringify({action: 'test', data: 'x'.repeat(1024*1024)}))).error, /размер/);
-        assert.strictEqual((await call(JSON.stringify({action: 'test'}))).ok, true);
-        const closed = new Promise(resolve => socket.once('close', resolve));
-        socket.send('x'.repeat(7*1024*1024));
-        assert.strictEqual(await closed, 1009);
-    } finally {
-        socket.terminate();
-        for (const client of server.clients)
-            client.terminate();
-        await new Promise(resolve => server.close(resolve));
-    }
-    let release;
-    const gate = new Promise(resolve => release = resolve);
-    controller.test = async() => gate;
-    const fake = {readyState: WebSocket.OPEN, send() {}, close(code) { this.code = code; }};
-    const busy = Array.from({length: 8}, () => controller.onMessage(fake, '{"action":"test"}'));
-    await controller.onMessage(fake, '{"action":"test"}');
-    assert.strictEqual(fake.code, 1013);
-    release();
-    await Promise.all(busy);
-    assert.strictEqual(controller.activeRequests, 0);
-    assert.strictEqual(fake.activeRequests, 0);
-    requestLimits.checkRequest({action: 'update-reader-preferences'}, 1024*1024, controller.config);
-    assert.throws(() => requestLimits.checkRequest({action: 'update-reader-preferences'}, 1024*1024 + 1, controller.config), /размер/);
+    assert.strictEqual(requestLimits.limits({}).message, 1024*1024);
+    assert.strictEqual(requestLimits.limits({apiMessageLimitMb: 2}).message, 2*1024*1024);
+    assert.strictEqual(requestLimits.limits({apiMessageLimitMb: 99}).message, 16*1024*1024);
     assert.throws(() => requestLimits.checkImport({lists: Array.from({length: 1001}, () => ({}))}), /1000/);
     assert.throws(() => requestLimits.checkImport({lists: [{books: Array(100001).fill('book')}]}), /100000/);
 }
 
-// Files come over HTTP: the body is cut at the limit, and the request passes the same checks as a WebSocket one.
+// Files come as the body of POST api/<import action>: access is checked before the body is stored, the body is cut at
+// the action's limit, and a JSON request cannot name a file on the server.
 async function testHttpUploadsGoThroughRequestChecks() {
     await temporary(async(dir) => {
-        const express = require('express');
-        const http = require('http');
-        const Controller = require('../server/controllers/WebSocketController');
-        const controller = Object.create(Controller.prototype);
         const tempDir = path.join(dir, 'tmp');
-        controller.config = {importLimitMb: 1, backupUploadLimitMb: 1, tempDir};
-        let port = 0;
-        controller.security = {
-            sameOriginCheck: req => ({ok: !req.headers.origin || req.headers.origin === `http://127.0.0.1:${port}`}),
-            hasValidCsrf: (req, token) => token === 'csrf',
-            checkLoginRate() {}, recordLoginAttempt() {},
-        };
-        controller.profileAccess = null;
+        const config = {importLimitMb: 1, backupUploadLimitMb: 1, tempDir, rootPathStatic: ''};
+        const security = new Security(config);
+        security.secret = 'test-secret';
         const seen = [];
-        controller.webWorker = {
-            requireAuthorizedUser: async(userId) => {
-                if (userId === 'stranger')
-                    throw new Error('need_profile_login');
-                return {id: userId || 'default'};
+        const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})},
+            webWorker: {
+                requireAuthorizedUser: async(userId) => {
+                    if (userId === 'stranger')
+                        throw new Error('need_profile_login');
+                    return {id: userId || 'default'};
+                },
+                isProtectedProfile: async() => true,
+                importReadingLists: async(userId, data) => {
+                    seen.push(data);
+                    return {userId, lists: data.lists.length};
+                },
             },
             isProtectedProfile: async() => true,
-            importReadingLists: async(userId, data) => {
-                seen.push(data);
-                return {userId, lists: data.lists.length};
-            },
-        };
-        const app = express();
-        app.post('/upload', controller.uploadHandler());
-        const server = http.createServer(app);
-        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-        port = server.address().port;
-        const post = (body, headers = {}, action = 'import-reading-lists') => fetch(`http://127.0.0.1:${port}/upload?action=${action}`,
-            {method: 'POST', body, duplex: 'half', headers: Object.assign({'X-CSRF-Token': 'csrf', 'X-User-Id': 'reader'}, headers)})
-            .then(async response => ({status: response.status, body: await response.json()}));
+        });
+        const {base, close} = await listen(apiApp({config, security, controller, health: false}));
+        const port = new URL(base).port;
+        const api = ApiTestClient.forSession(base, security);
+        const post = (body, options = {}) => api.call('import-reading-lists', {}, Object.assign({body, userId: 'reader'}, options));
         try {
             //кто не прошёл проверки, ничего не пишет на диск: тело читается и отбрасывается
-            const stranger = await post(Buffer.alloc(512*1024), {'X-User-Id': 'stranger'});
-            assert.deepStrictEqual([stranger.status, stranger.body.error], [403, 'need_profile_login']);
+            const stranger = await post(Buffer.alloc(512*1024), {userId: 'stranger'});
+            assert.deepStrictEqual([stranger.status, stranger.body.error], [401, 'need_profile_login']);
             assert.strictEqual(await fs.pathExists(tempDir), false, 'nothing is stored before the checks pass');
             const ok = await post(JSON.stringify({lists: [{name: 'A', books: []}]}));
-            assert.deepStrictEqual(ok, {status: 200, body: {userId: 'reader', lists: 1}});
-            assert.strictEqual((await post('{}', {'X-CSRF-Token': 'stale'})).body.error, 'bad_csrf_token');
-            assert.strictEqual((await post('{}', {Origin: 'https://evil.example'})).status, 403);
-            assert.strictEqual((await post('{}', {}, 'test')).status, 404, 'only import actions take files');
+            assert.deepStrictEqual([ok.status, ok.body], [200, {userId: 'reader', lists: 1}]);
+            assert.strictEqual(ok.headers.get('cache-control'), 'no-store');
+            const stale = await post('{}', {csrfToken: 'stale'});
+            assert.deepStrictEqual([stale.status, stale.body.error], [403, 'bad_csrf_token']);
+            assert.strictEqual((await post('{}', {headers: {Origin: 'https://evil.example'}})).status, 403);
+            assert.strictEqual((await post(JSON.stringify({lists: []}), {headers: {Origin: base}})).status, 200, 'Same origin');
+            //файл принимают только действия загрузки, и только как application/octet-stream
+            assert.strictEqual((await api.request('POST', 'api/update-reader-preferences', {body: '{}',
+                headers: {'content-type': 'application/octet-stream', 'x-csrf-token': api.csrfToken}})).status, 415);
+            assert.strictEqual((await post('{}', {headers: {'content-type': 'application/json'}})).status, 415);
             assert.match((await post('{broken')).body.error, /JSON/);
             //слишком большой Content-Length - отказ сразу, тело не нужно
             const declared = await new Promise((resolve, reject) => {
-                const request = http.request({host: '127.0.0.1', port, method: 'POST', path: '/upload?action=import-reading-lists',
-                    headers: {'Content-Length': String(1024*1024 + 1)}}, response => resolve(response.statusCode));
+                const request = http.request({host: '127.0.0.1', port, method: 'POST', path: '/api/import-reading-lists',
+                    headers: {'Content-Length': String(1024*1024 + 1), 'Content-Type': 'application/octet-stream', 'X-Inpx-Api': '1',
+                        'X-CSRF-Token': api.csrfToken, 'X-User-Id': 'reader', cookie: api.cookie}}, response => {
+                    response.resume();
+                    resolve(response.statusCode);
+                });
                 request.on('error', reject);
                 request.flushHeaders();
             });
             assert.strictEqual(declared, 413);
             //без Content-Length тело обрывается на лимите
             const stream = new (require('stream').Readable)({read() {}});
-            const streamed = post(stream, {'Content-Type': 'application/octet-stream'});
+            const streamed = post(stream);
             for (let i = 0; i < 3; i++)
                 stream.push(Buffer.alloc(512*1024));
             stream.push(null);
             assert.strictEqual((await streamed).status, 413);
             assert.deepStrictEqual(await fs.readdir(tempDir), [], 'uploads are removed');
-            assert.strictEqual(seen.length, 1);
+            assert.strictEqual(seen.length, 2);
 
-            //WebSocket-сообщение не может указать файл на сервере
-            const responses = [];
-            const socket = {readyState: require('ws').OPEN, send: text => responses.push(JSON.parse(text)), close() {}};
-            await controller.onMessage(socket, JSON.stringify({action: 'import-reading-lists', csrfToken: 'csrf',
-                uploadFile: '/etc/passwd', data: {lists: []}}));
-            assert.match(responses.pop().error, /HTTP/);
-            assert.strictEqual(seen.length, 1);
+            //JSON-запрос не может указать файл на сервере: ни телом, ни параметром адреса
+            const named = await api.request('POST', 'api/import-reading-lists', {body: JSON.stringify({uploadFile: '/etc/passwd', data: {lists: []}}),
+                headers: {'content-type': 'application/json', 'x-csrf-token': api.csrfToken, 'x-user-id': 'reader'}});
+            assert.strictEqual(named.status, 415);
+            const query = await api.request('POST', 'api/import-reading-lists?uploadFile=%2Fetc%2Fpasswd', {body: '{"lists":[]}',
+                headers: {'content-type': 'application/octet-stream', 'x-csrf-token': api.csrfToken, 'x-user-id': 'reader'}});
+            assert.strictEqual(query.status, 400);
+            assert.strictEqual(seen.length, 2);
         } finally {
-            server.closeAllConnections();
-            await new Promise(resolve => server.close(resolve));
+            await close();
         }
     });
 }
@@ -296,5 +277,5 @@ async function testBackupRollbackAndCrashRecovery() {
     });
 }
 
-module.exports = [testScryptMigrationAndOpds, testWebSocketBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
+module.exports = [testScryptMigrationAndOpds, testApiBodyBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
     testBackupValidationBeforeMutation, testBackupRollbackAndCrashRecovery];

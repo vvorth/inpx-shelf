@@ -1,17 +1,15 @@
 const assert = require('assert');
 const fs = require('fs-extra');
-const http = require('http');
 const os = require('os');
 const path = require('path');
-const express = require('express');
-const WebSocket = require('ws');
+const apiRoutes = require('../shared/apiRoutes');
 const Security = require('../server/core/Security');
 const ProfileAccess = require('../server/core/ProfileAccess');
 const ReadingListStore = require('../server/core/ReadingListStore');
+const {ApiTestClient, apiController, apiApp, listen, fakeResponse, sampleParams} = require('./api-test-client');
 
 async function fixture(options, test) {
     const Worker = require('../server/core/WebWorker');
-    const Controller = require('../server/controllers/WebSocketController');
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-access-'));
     const config = Object.assign({dataDir: dir, rootPathStatic: '', bookPathStatic: '/book', libDir: dir, bookDir: path.join(dir, 'books'),
         publicDir: path.join(dir, 'public'), publicFilesDir: path.join(dir, 'public-files'), tempDir: path.join(dir, 'tmp'),
@@ -31,42 +29,26 @@ async function fixture(options, test) {
     const security = new Security(config);
     await security.init();
     const access = new ProfileAccess(config, worker, security);
-    const controller = Object.create(Controller.prototype);
-    Object.assign(controller, {config, security, webWorker: worker, profileAccess: access, activeRequests: 0,
+    const controller = apiController({config, security, webWorker: worker, profileAccess: access,
         workerState: {getState: () => ({state: 'normal', fileName: 'PRIVATE_LIBRARY_PATH'})}});
-    const app = express();
-    app.use(security.middleware());
-    app.use(security.requiredAuthMiddleware());
     await fs.outputFile(path.join(config.publicDir, 'index.html'), '<html>Login shell</html>');
     await fs.outputFile(path.join(config.bookDir, 'fixture.txt'), 'BOOK_FIXTURE');
     await fs.outputFile(path.join(config.dataDir, 'backups', 'fixture.zip'), 'BACKUP_FIXTURE');
-    app.post('/upload', controller.uploadHandler());
-    app.post('/session/rotate', security.sessionRotateHandler());
-    require('../server/static')(app, config, worker, security);
-    app.use('/opds', access.httpGuard({opds: true, guest: true}));
-    app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
-    app.get('/opds', (req, res) => res.json({user: req.query.user || ''}));
-    for (const [url, name] of [['/opds/reading-profiles', 'ReadingProfilesPage'], ['/opds/reading-lists/list', 'ReadingListPage']]) {
-        const page = Object.create(require(`../server/core/opds/${name}`).prototype);
-        Object.assign(page, {config, webWorker: worker, opdsRoot: '/opds', rootTag: 'feed', id: name, title: name});
-        app.get(url, async(req, res) => {
-            try { res.send(await page.body(req)); }
-            catch (error) { res.status(404).send(error.message); }
-        });
-    }
-    const server = http.createServer(app);
-    const wss = new WebSocket.Server({server, verifyClient: info => security.verifyWebSocket(info.req)});
-    wss.on('headers', (headers, req) => {
-        const cookie = security.upgradeCookie(req);
-        if (cookie)
-            headers.push(`Set-Cookie: ${cookie}`);
-    });
-    wss.on('connection', (socket, req) => {
-        socket.req = req;
-        socket.on('message', raw => controller.onMessage(socket, raw.toString()));
-    });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const app = apiApp({config, security, controller, health: false, after: app => {
+        require('../server/static')(app, config, worker, security);
+        app.use('/opds', access.httpGuard({opds: true, guest: true}));
+        app.use('/opds', require('../server/core/opds').scopeGuard(() => worker, security));
+        app.get('/opds', (req, res) => res.json({user: req.query.user || ''}));
+        for (const [url, name] of [['/opds/reading-profiles', 'ReadingProfilesPage'], ['/opds/reading-lists/list', 'ReadingListPage']]) {
+            const page = Object.create(require(`../server/core/opds/${name}`).prototype);
+            Object.assign(page, {config, webWorker: worker, opdsRoot: '/opds', rootTag: 'feed', id: name, title: name});
+            app.get(url, async(req, res) => {
+                try { res.send(await page.body(req)); }
+                catch (error) { res.status(404).send(error.message); }
+            });
+        }
+    }});
+    const {base, close} = await listen(app);
     const request = (url, headers = {}) => fetch(base + url, {headers, redirect: 'manual'});
     const session = (userId = '') => {
         const value = security.ensureSession({headers: {}});
@@ -74,48 +56,27 @@ async function fixture(options, test) {
             value.profileAccessToken = worker.createProfileSession(userId);
         return {value, cookie: `inpx_web_session=${security.packSessionId(value.id)}`};
     };
-    //cookie после входа: POST /session/rotate с токеном из ответа на вход, как в Api.vue
-    const rotate = async(token, headers = {}) => {
-        const response = await fetch(`${base}/session/rotate`, {method: 'POST', headers: {'x-session-rotate': String(token || ''), ...headers}});
-        return {status: response.status, cookie: String(response.headers.get('set-cookie') || '').split(';')[0]};
-    };
-    const sockets = new Set();
+    //клиент браузера: cookie обновляется из ответов (вход ставит новую), заголовки headers - в каждом запросе
+    const client = (headers = {}) => new ApiTestClient(base, {headers});
+    //запрос как от Api.vue: userId, profileAccessToken и csrfToken идут заголовками, остальное - параметры действия;
+    //ответ - тело (JSON), в том числе {error}
     const connect = async(headers = {}) => {
-        const socket = new WebSocket(base.replace('http', 'ws'), {headers});
-        sockets.add(socket);
-        await new Promise((resolve, reject) => {socket.once('open', resolve); socket.once('error', reject);});
-        let counter = 0;
-        return async(params) => {
-            const requestId = String(++counter);
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {socket.off('message', listener); reject(new Error('WebSocket request timed out'));}, 5000);
-                const listener = raw => {
-                    const result = JSON.parse(raw);
-                    if (result.requestId === requestId && !result._rok) {
-                        clearTimeout(timer);
-                        socket.off('message', listener);
-                        resolve(result);
-                    }
-                };
-                socket.on('message', listener);
-                socket.send(JSON.stringify({...params, requestId}));
-            });
-        };
+        const api = client(headers);
+        const call = async({action, userId, profileAccessToken, csrfToken, ...params}) =>
+            (await api.call(action, params, {userId, profileToken: profileAccessToken, csrfToken})).body;
+        call.api = api;
+        return call;
     };
     try {
-        await test({config, worker, security, access, alice, bob, request, session, connect, rotate, base});
+        await test({config, worker, security, access, alice, bob, request, session, client, connect, base});
     } finally {
-        for (const socket of sockets) socket.terminate();
-        for (const socket of wss.clients) socket.terminate();
-        await new Promise(resolve => wss.close(resolve));
-        server.closeAllConnections();
-        await new Promise(resolve => server.close(resolve));
+        await close();
         await fs.remove(dir);
     }
 }
 
 async function testProxyHeaderRequiredWithOldCookie() {
-    await fixture({requireAuth: true, authMode: 'proxy', trustProxy: true, trustedProxyCidrs: ['127.0.0.1/32']}, async({security, request, connect}) => {
+    await fixture({requireAuth: true, authMode: 'proxy', trustProxy: true, trustedProxyCidrs: ['127.0.0.1/32']}, async({security, request, client, connect}) => {
         // the cookie that older versions signed for a proxy user
         const issuedAt = Date.now();
         const cookie = `inpx_web_proxy_auth=alice.${issuedAt}.${security.sign(`proxy:alice:${issuedAt}`)}; broken=%ZZ`;
@@ -124,37 +85,38 @@ async function testProxyHeaderRequiredWithOldCookie() {
         assert.strictEqual(ok.status, 200);
         assert.ok(!(ok.headers.get('set-cookie') || '').includes('inpx_web_proxy_auth'));
         assert.strictEqual((await request('/', {cookie})).status, 401);
-        await assert.rejects(connect({cookie}), /401/);
+        assert.strictEqual((await client({cookie}).request('GET', 'api/ping')).status, 401, 'The API needs the proxy header too');
         assert.ok(!(await (await connect(headers))({action: 'test'})).error);
         security.trustedProxyRanges = new Security({trustedProxyCidrs: ['10.0.0.0/8']}).trustedProxyRanges;
         assert.strictEqual((await request('/', headers)).status, 403);
     });
 }
 
-async function testAnonymousAccessDisabledHttpAndWebSocket() {
+async function testAnonymousAccessDisabledHttpAndApi() {
     //the removed allowAnonymousAccess switch must not open anything
-    await fixture({allowAnonymousAccess: true}, async({worker, alice, bob, request, session, connect, rotate}) => {
+    await fixture({allowAnonymousAccess: true}, async({worker, security, alice, bob, request, session, connect}) => {
         assert.strictEqual((await request('/')).status, 200, 'Login shell stays reachable');
         for (const url of ['/book/fixture.txt', '/cover/by-uid?uid=x', '/opds'])
             assert.strictEqual((await request(url)).status, 401, url);
         const browser = session();
         const call = await connect({cookie: browser.cookie});
-        const config = await call({action: 'get-config', userId: bob.id, profileLoginRequired: false});
+        const config = await call({action: 'get-config', userId: bob.id});
         assert.strictEqual(config.profileLoginRequired, true);
         assert.deepStrictEqual(config.userProfiles, []);
         assert.strictEqual(config.dbConfig, undefined);
         const state = await call({action: 'get-worker-state', workerId: 'server_state'});
         assert.strictEqual(state.state, 'normal');
         assert.strictEqual(state.fileName, undefined);
-        for (const action of ['search', 'get-user-profiles', 'get-reading-lists', 'create-reading-list', 'get-admin-dashboard']) {
-            const response = await call({action, userId: bob.id, csrfToken: config.csrfToken});
-            assert.strictEqual(response.error, 'need_profile_login', action);
+        for (const action of ['catalog-search', 'get-user-profiles', 'get-reading-lists', 'create-reading-list', 'get-admin-dashboard']) {
+            const response = await call.api.call(action, {}, {userId: bob.id, csrfToken: config.csrfToken});
+            assert.deepStrictEqual([response.status, response.body.error], [401, 'need_profile_login'], action);
         }
         const bad = await call({action: 'login-user-profile', login: 'alice', password: 'wrong', csrfToken: config.csrfToken});
         assert.match(bad.error, /Неверный/);
         const login = await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken: config.csrfToken});
         assert.strictEqual(login.userId, alice.id);
-        browser.cookie = (await rotate(login.sessionRotateToken)).cookie;
+        assert.notStrictEqual(call.api.cookie, browser.cookie, 'The login response sets a new session cookie');
+        browser.cookie = call.api.cookie;
         const authed = await call({action: 'get-config', userId: bob.id});
         assert.strictEqual(authed.currentUserId, alice.id, 'Stale selection must be replaced');
         assert.strictEqual(authed.profileAuthorized, true);
@@ -164,8 +126,12 @@ async function testAnonymousAccessDisabledHttpAndWebSocket() {
         assert.strictEqual((await call({action: 'get-reading-lists', userId: bob.id})).error, 'need_profile_login');
         await call({action: 'logout-user-profile', csrfToken: config.csrfToken});
         assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401);
+        browser.cookie = call.api.cookie;
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401, 'The cookie after logout');
         assert.strictEqual((await call({action: 'get-reading-lists', userId: alice.id, profileAccessToken: login.profileAccessToken})).error, 'need_profile_login');
-        browser.value.profileAccessToken = worker.createProfileSession(alice.id);
+        const current = security.getSession({headers: {cookie: browser.cookie}});
+        current.profileAccessToken = worker.createProfileSession(alice.id);
+        assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 200);
         worker.revokeUserSessions(alice.id);
         assert.strictEqual((await request('/book/fixture.txt', {cookie: browser.cookie})).status, 401);
         const basic = {authorization: 'Basic ' + Buffer.from('alice:alice-opds-pass').toString('base64')};
@@ -192,7 +158,7 @@ async function testProxyProfileBindingAndIdentityChange() {
             assert.strictEqual(authed.userProfiles[0].requiresLogin, false);
             assert.strictEqual(authed.currentUserProfile.emailTo, 'alice@example.test');
             assert.strictEqual((await request('/admin-backups/fixture.zip', headers)).status, 403, 'Stale admin cookie cannot grant backup access');
-            const switched = await call({action: 'get-reading-lists', userId: bob.id, profileAccessToken: oldToken, profileBoundId: ''});
+            const switched = await call({action: 'get-reading-lists', userId: bob.id, profileAccessToken: oldToken});
             assert.match(switched.error, /закреплён/);
             const renamed = await call({action: 'update-user-profile', targetUserId: alice.id, profile: {login: 'changed'}, csrfToken: authed.csrfToken});
             assert.match(renamed.error, /закреплён/);
@@ -323,7 +289,7 @@ async function testOpenProfileCredentialsAdminOnly() {
 // Book delivery: one recipient, only from a profile with a password (or an admin), at most deliveryRateLimit sends an hour.
 async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     const options = {emailShareEnabled: true, smtpHost: '127.0.0.1', telegramShareEnabled: true, telegramBotToken: 'test', deliveryRateLimit: 2};
-    await fixture(options, async({worker, alice, bob, connect, session, base}) => {
+    await fixture(options, async({worker, security, alice, bob, connect, session, base}) => {
         worker.getPreparedBookFile = async() => { throw new Error('PREPARE_STUB'); };
         const call = await connect({cookie: session(bob.id).cookie});
         const {csrfToken} = await call({action: 'get-config'});
@@ -347,11 +313,10 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
             assert.match((await call({action, bookUid: 'book', ...asAlice})).error, /2 per hour|2 в час/, action);
 
         //a profile backup imported into an open profile brings no delivery addresses (nor Kobo tokens)
-        const browser = session(bob.id);
-        const imported = await fetch(`${base}/upload?action=import-reading-lists`, {method: 'POST', body: JSON.stringify({lists: [],
-            user: {emailTo: 'relay@example.test', telegramChatId: '42'}, kobo: {devices: []}}),
-        headers: {cookie: browser.cookie, 'x-csrf-token': browser.value.csrfToken, 'x-user-id': bob.id}});
-        assert.strictEqual(imported.status, 200, await imported.clone().text());
+        const uploader = ApiTestClient.forSession(base, security, session(bob.id).value);
+        const imported = await uploader.call('import-reading-lists', {}, {userId: bob.id, body: JSON.stringify({lists: [],
+            user: {emailTo: 'relay@example.test', telegramChatId: '42'}, kobo: {devices: []}})});
+        assert.strictEqual(imported.status, 200, imported.text);
         const stored = await worker.readingListStore.getUser(bob.id);
         assert.deepStrictEqual([stored.emailTo, stored.telegramChatId], ['bob@example.test', '']);
 
@@ -362,61 +327,62 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     });
 }
 
-// A cookie of a session the server no longer knows (restart) is replaced on the WebSocket upgrade.
-async function testStaleCookieReplacedOnUpgrade() {
-    await fixture({}, async({security, base}) => {
+// A cookie of a session the server no longer knows (restart) is replaced by the next API response.
+async function testStaleCookieReplacedByApi() {
+    await fixture({}, async({security, client}) => {
         const stale = `inpx_web_session=${security.packSessionId('gone')}`;
-        const socket = new WebSocket(base.replace('http', 'ws'), {headers: {cookie: stale}});
-        const upgrade = await new Promise((resolve, reject) => { socket.once('upgrade', resolve); socket.once('error', reject); });
-        socket.terminate();
-        assert.match(String(upgrade.headers['set-cookie']), /^inpx_web_session=/);
+        const api = client({cookie: stale});
+        const response = await api.request('GET', 'api/ping');
+        assert.strictEqual(response.status, 200);
+        assert.match(String(response.headers.get('set-cookie')), /^inpx_web_session=/);
+        assert.notStrictEqual(api.cookie, stale);
+        assert.ok(security.getSession({headers: {cookie: api.cookie}}), 'The new cookie names a known session');
+        const fresh = client();
+        assert.match(String((await fresh.request('GET', 'api/ping')).headers.get('set-cookie')), /^inpx_web_session=/, 'No cookie at all');
     });
 }
 
-// A login over the WebSocket moves the browser session to a new id: a cookie planted before it (session fixation) does
-// not get the login. The browser gets the new cookie with a one-time token; open sockets keep the session object.
+// A login moves the browser session to a new id and sets the new cookie in its own response: a cookie planted before it
+// (session fixation) does not get the login.
 async function testLoginRotatesSession() {
-    await fixture({}, async({security, alice, request, session, connect, rotate}) => {
+    await fixture({}, async({security, alice, request, session, connect}) => {
         const planted = session();
         const call = await connect({cookie: planted.cookie});
-        const otherTab = await connect({cookie: planted.cookie});
         const {csrfToken} = await call({action: 'get-config'});
         const sessions = security.sessions.size;
-        const signIn = () => call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture', csrfToken});
-        const login = await signIn();
-        assert.match(login.sessionRotateToken, /^[0-9a-f]{64}$/);
+        const login = await call.api.call('login-user-profile', {login: 'alice', password: 'alice-fixture'}, {csrfToken});
+        assert.strictEqual(login.status, 200, login.text);
+        assert.strictEqual(login.body.sessionRotateToken, undefined, 'No second request for the cookie');
+        const cookie = String(login.headers.get('set-cookie') || '').split(';')[0];
+        assert.match(cookie, /^inpx_web_session=/);
+        assert.notStrictEqual(cookie, planted.cookie);
+        assert.strictEqual(call.api.cookie, cookie);
         assert.strictEqual(security.sessions.size, sessions, 'The session is moved, not copied');
         assert.strictEqual((await request('/book/fixture.txt', {cookie: planted.cookie})).status, 401, 'The planted cookie');
         assert.strictEqual((await (await connect({cookie: planted.cookie}))({action: 'get-config'})).profileAuthorized, false);
-        assert.strictEqual((await call({action: 'get-config'})).profileAuthorized, true, 'The open socket keeps the login');
+        assert.strictEqual((await request('/book/fixture.txt', {cookie})).status, 200, 'The new cookie');
+        const reloaded = await (await connect({cookie}))({action: 'get-config'});
+        assert.deepStrictEqual([reloaded.profileAuthorized, reloaded.currentUserId], [true, alice.id], 'A reload stays signed in');
         assert.strictEqual((await call({action: 'get-config', profileAccessToken: 'stale-after-restart'})).profileAuthorized, true,
             'A stale token from an open tab falls back to the session');
-        assert.strictEqual((await otherTab({action: 'get-config'})).profileAuthorized, true, 'So does another tab on the same cookie');
 
-        const rotated = await rotate(login.sessionRotateToken);
-        assert.strictEqual(rotated.status, 204);
-        assert.notStrictEqual(rotated.cookie, planted.cookie);
-        assert.strictEqual((await request('/book/fixture.txt', {cookie: rotated.cookie})).status, 200, 'The new cookie');
-        const reloaded = await (await connect({cookie: rotated.cookie}))({action: 'get-config'});
-        assert.deepStrictEqual([reloaded.profileAuthorized, reloaded.currentUserId], [true, alice.id], 'A reload stays signed in');
-        assert.strictEqual((await rotate(login.sessionRotateToken)).status, 403, 'The token is single-use');
-        assert.strictEqual((await rotate('')).status, 403);
-        assert.strictEqual((await rotate((await signIn()).sessionRotateToken, {origin: 'http://evil.example'})).status, 403, 'Another site');
-        const late = (await signIn()).sessionRotateToken;
-        security.sessionRotations.get(late).expiresAt = Date.now() - 1;
-        assert.strictEqual((await rotate(late)).status, 403, 'An expired token');
-
-        //повторные входы не растят ни реестр сессий, ни таблицу токенов
+        //повторные входы не растят реестр сессий; вытесненная тем временем сессия возвращается в пределах лимита
+        const current = security.getSession({headers: {cookie}});
+        const size = security.sessions.size;
         for (let i = 0; i < 1100; i++)
-            security.rotateSession(planted.value);
-        assert.ok(security.sessionRotations.size <= 1000, String(security.sessionRotations.size));
+            security.rotateSession({headers: {}, securitySession: current}, fakeResponse());
+        assert.strictEqual(security.sessions.size, size);
+        const response = fakeResponse();
+        security.rotateSession({headers: {}, securitySession: current}, response);
+        assert.ok(String(response.getHeader('set-cookie')).includes(encodeURIComponent(security.packSessionId(current.id))),
+            'The new cookie goes to the response');
         const lifetime = require('../server/core/SessionLifetime');
         while (security.sessions.size < lifetime.maxSessions)
             security.ensureSession({headers: {}});
-        security.sessions.delete(planted.value.id);
-        security.rotateSession(planted.value);
+        security.sessions.delete(current.id);
+        security.rotateSession({headers: {}, securitySession: current}, fakeResponse());
         assert.strictEqual(security.sessions.size, lifetime.maxSessions, 'A session evicted meanwhile comes back within the limit');
-        assert.strictEqual(security.sessions.get(planted.value.id), planted.value);
+        assert.strictEqual(security.sessions.get(current.id), current);
     });
 }
 
@@ -602,8 +568,10 @@ async function testGuestAccessWeb() {
         assert.deepStrictEqual([shelves.section, shelves.userId, shelves.forceRefresh, shelves.externalSource], ['external', undefined, false, undefined]);
         assert.ok(!calls.some(item => item[0] === 'events'), 'Guest events are not stored');
         for (const action of ['get-user-profiles', 'get-reading-list', 'create-reading-list', 'get-reader-state', 'update-reader-progress',
-            'get-reading-now', 'update-discovery-preferences', 'get-admin-dashboard', 'update-admin-guest-access', 'search'])
-            assert.strictEqual((await call({action, listId: 'x', bookUid: 'a', name: 'n', ...asBob})).error, 'need_profile_login', action);
+            'get-reading-now', 'update-discovery-preferences', 'get-admin-dashboard', 'update-admin-guest-access']) {
+            const response = await call.api.call(action, sampleParams(action), {userId: bob.id, csrfToken: guestConfig.csrfToken});
+            assert.deepStrictEqual([response.status, response.body.error], [401, 'need_profile_login'], action);
+        }
 
         assert.strictEqual((await request('/book/fixture.txt')).status, 200);
         assert.notStrictEqual((await request('/cover/by-uid?uid=x')).status, 401);
@@ -665,7 +633,61 @@ async function testGuestAccessAdminToggle() {
     });
 }
 
-module.exports = [testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
-    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedOnUpgrade, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
-    testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndWebSocket,
+// Every route without a profile: the login bootstrap reaches its handler, a guest also the catalog, everything else
+// is 401 need_profile_login before the handler runs.
+async function testAnonymousAndGuestRoutes() {
+    const bootstrap = ['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile'];
+    const guest = bootstrap.concat(['get-author-book-list', 'get-author-info', 'get-series-book-list', 'get-genre-tree',
+        'get-discovery-shelves', 'get-book-link', 'get-author-aliases', 'catalog-names', 'catalog-search', 'catalog-suggest',
+        'get-book', 'get-book-info', 'get-book-states', 'get-reading-lists', 'record-discovery-events']);
+    const check = async(api, allowed) => {
+        for (const route of apiRoutes.routes) {
+            const response = await api.call(route.action, sampleParams(route.action), {body: (route.upload ? '{}' : undefined)});
+            if (allowed.includes(route.action))
+                assert.notStrictEqual(response.body.error, 'need_profile_login', route.action);
+            else
+                assert.deepStrictEqual([response.status, response.body.error], [401, 'need_profile_login'], route.action);
+        }
+    };
+    for (const guestAccess of [false, true]) {
+        await fixture({guestAccess}, async({worker, client}) => {
+            worker.getDiscoveryShelvesV2 = async() => ({shelves: []});
+            await check(client(), guestAccess ? guest : bootstrap);
+        });
+    }
+}
+
+// The profile is named only by the X-User-Id / X-Profile-Token headers and the session: the same fields in the body or
+// the query do not switch it.
+async function testProfileComesFromHeadersOnly() {
+    await fixture({}, async({worker, alice, bob, session, client}) => {
+        const store = worker.readingListStore;
+        const owns = async(user, name) => (await store.getLists(user.id)).some(list => list.name === name);
+        const asBob = client({cookie: session(bob.id).cookie});
+        const fromBody = await asBob.call('create-reading-list', {name: 'From body', userId: alice.id});
+        assert.ok([200, 400].includes(fromBody.status), fromBody.text);
+        assert.strictEqual(await owns(alice, 'From body'), false, 'A userId in the body');
+        assert.strictEqual(await owns(bob, 'From body'), fromBody.status === 200);
+        const fromHeader = await asBob.call('create-reading-list', {name: 'From header'}, {userId: alice.id});
+        assert.deepStrictEqual([fromHeader.status, fromHeader.body.error], [401, 'need_profile_login'], 'X-User-Id of another profile');
+        assert.strictEqual(await owns(alice, 'From header'), false);
+        assert.strictEqual((await asBob.request('GET', `api/reading-lists?userId=${alice.id}`)).status, 400, 'A userId in the query');
+
+        const aliceToken = worker.createProfileSession(alice.id);
+        const anonymous = client();
+        const bodyToken = await anonymous.call('create-reading-list', {name: 'Body token', profileAccessToken: aliceToken});
+        assert.notStrictEqual(bodyToken.status, 200, bodyToken.text);
+        assert.strictEqual(await owns(alice, 'Body token'), false, 'A profile token in the body');
+        assert.strictEqual((await anonymous.request('GET', `api/reading-lists?profileAccessToken=${aliceToken}`)).status, 400);
+        const headerToken = await anonymous.call('create-reading-list', {name: 'Header token'}, {profileToken: aliceToken});
+        assert.strictEqual(headerToken.status, 200, headerToken.text);
+        assert.strictEqual(await owns(alice, 'Header token'), true, 'X-Profile-Token');
+        const lists = await anonymous.call('get-reading-lists', {}, {profileToken: aliceToken});
+        assert.ok(lists.body.lists.some(list => list.name === 'Header token'));
+    });
+}
+
+module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromHeadersOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
+    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testInvalidStoredRowsAreRepairedNotDropped,
+    testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials];

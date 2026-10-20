@@ -6,7 +6,6 @@ const net = require('net');
 const {spawn, execFile} = require('child_process');
 const {promisify} = require('util');
 const {setTimeout: sleep} = require('timers/promises');
-const WebSocket = require('ws');
 const yazl = require('yazl');
 
 async function createFixture(dir) {
@@ -40,30 +39,29 @@ async function unusedPort() {
     return port;
 }
 
-async function checkWebSocket(url) {
-    await new Promise((resolve, reject) => {
-        const socket = new WebSocket(url.replace(/^http/, 'ws'));
-        const timer = setTimeout(() => finish(new Error('WebSocket response timed out')), 10000);
-        const finish = error => {
-            clearTimeout(timer);
-            socket.terminate();
-            if (error) reject(error);
-            else resolve();
-        };
-        socket.once('error', finish);
-        socket.once('open', () => socket.send(JSON.stringify({action: 'test', requestId: 'smoke'})));
-        socket.on('message', raw => {
-            try {
-                const response = JSON.parse(raw);
-                if (response._rok) return;
-                assert.ok(!response.error, response.error);
-                assert.match(response.message, /inpx-shelf/);
-                finish();
-            } catch (error) {
-                finish(error);
-            }
-        });
-    });
+// HTTP API end to end: the session cookie and CSRF token from GET api/config, a login that sets a new session cookie.
+async function checkApi(url) {
+    const headers = {'X-Inpx-Api': '1'};
+    const ping = await fetch(`${url}/api/ping`, {headers});
+    assert.strictEqual(ping.status, 200);
+    assert.match((await ping.json()).message, /inpx-shelf/);
+    const configResponse = await fetch(`${url}/api/config`, {headers});
+    assert.strictEqual(configResponse.status, 200);
+    assert.strictEqual(configResponse.headers.get('cache-control'), 'no-store');
+    const cookie = String(configResponse.headers.get('set-cookie') || '').split(';')[0];
+    assert.match(cookie, /^inpx_web_session=/);
+    const config = await configResponse.json();
+    assert.strictEqual(config.profileAuthorized, false);
+    const login = await fetch(`${url}/api/login-user-profile`, {method: 'POST', body: JSON.stringify({login: 'admin', password: 'local-smoke-fixture'}),
+        headers: {...headers, cookie, 'Content-Type': 'application/json', 'X-CSRF-Token': config.csrfToken}});
+    const result = await login.json();
+    assert.strictEqual(login.status, 200, JSON.stringify(result));
+    assert.strictEqual(result.userId, 'admin');
+    const signedIn = String(login.headers.get('set-cookie') || '').split(';')[0];
+    assert.match(signedIn, /^inpx_web_session=/);
+    assert.notStrictEqual(signedIn, cookie);
+    const after = await (await fetch(`${url}/api/config`, {headers: {...headers, cookie: signedIn}})).json();
+    assert.deepStrictEqual([after.profileAuthorized, after.currentUserId], [true, 'admin']);
 }
 
 async function main() {
@@ -125,8 +123,8 @@ async function main() {
         const opds = await fetch(`${url}/opds`);
         assert.strictEqual(opds.status, 401);
         assert.match(String(opds.headers.get('www-authenticate')), /^Basic/);
-        await checkWebSocket(url);
-        console.log(`ok packaged application: indexing, health, web UI, OPDS, WebSocket (${target === '--image' ? imageName : target})`);
+        await checkApi(url);
+        console.log(`ok packaged application: indexing, health, web UI, OPDS, HTTP API (${target === '--image' ? imageName : target})`);
     } finally {
         if (target === '--image')
             await promisify(execFile)('docker', ['rm', '-f', containerName], {windowsHide: true, timeout: 15000}).catch(() => {});

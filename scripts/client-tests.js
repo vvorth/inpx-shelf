@@ -50,7 +50,7 @@ async function testClientSha256MatchesNode() {
 async function loadClientModule(file, imports = {}) {
     let source = await fs.readFile(path.resolve(__dirname, '../client', file), 'utf8');
     const names = [];
-    source = source.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export (async function|function|const|let|class) (\w+)/gm, (m, kind, name) => {
+    source = source.replace(/^import\b[\s\S]*?['"][^'"\n]+['"];?[ \t]*$/gm, '').replace(/^export default /gm, '').replace(/^export (async function|function|const|let|class) (\w+)/gm, (m, kind, name) => {
         names.push(name);
         return `${kind} ${name}`;
     });
@@ -76,82 +76,117 @@ async function testBookLanguagesDefaultToAll() {
     assert.ok(!languageMatches({lang: 'en'}, chosen));
 }
 
-// Обрыв связи: ожидающие запросы получают ключ ошибки (у события браузера нет message), а не пустую строку;
-// события закрытого сокета не обрывают запросы нового; ответ без подтверждения не ждёт дольше заданного.
-async function testWebSocketConnectionReportsLostConnection() {
-    const WebSocket = require('ws');
-    const WebSocketConnection = require('../server/core/WebSocketConnection');
-    const server = new WebSocket.Server({host: '127.0.0.1', port: 0});
-    await new Promise(resolve => server.on('listening', resolve));
-    server.on('connection', (ws) => {
-        ws.on('message', (raw) => {
-            const req = JSON.parse(raw);
-            if (req.action === 'silent')
-                return;
-            ws.send(JSON.stringify({requestId: req.requestId, _rok: 1}));
-            if (req.action === 'echo')
-                ws.send(JSON.stringify({requestId: req.requestId, ok: 1}));
-            else if (req.action === 'drop')
-                setTimeout(() => ws.terminate(), 50);
-        });
-    });
-    const wsc = new WebSocketConnection(`ws://127.0.0.1:${server.address().port}`, 2, 30);
+// Ошибка запроса как строка: ключ ошибки клиента или 'no error'
+async function failure(promise) {
     try {
-        const dropped = wsc.message(await wsc.send({action: 'drop'}), 10);
-        await assert.rejects(dropped, {message: 'errors.wsClosed'});
-        assert.strictEqual((await wsc.message(await wsc.send({action: 'echo'}), 5)).ok, 1);
-
-        const pending = wsc.message(await wsc.send({action: 'hold'}), 10);
-        wsc.terminate();
-        await assert.rejects(pending, {message: 'errors.wsClosed'});
-        assert.strictEqual((await wsc.message(await wsc.send({action: 'echo'}), 5)).ok, 1);
-
-        const inFlight = wsc.message(await wsc.send({action: 'hold'}), 10);
-        const started = Date.now();
-        await assert.rejects(wsc.send({action: 'silent'}, 0.3), {message: 'errors.wsNoResponse'});
-        assert.ok(Date.now() - started < 2000);
-        await assert.rejects(inFlight, {message: 'errors.wsClosed'});
-    } finally {
-        wsc.close();
-        await new Promise(resolve => server.close(resolve));
+        await promise;
+    } catch (e) {
+        return String(e && e.message !== undefined ? e.message : e);
     }
+    return 'no error';
+}
+
+// HTTP API клиента: адрес и метод по shared/apiRoutes.js; обрыв связи, тайм-аут и не-JSON ответ (страница прокси) -
+// ключи ошибок, JSON-ответ сервера, в том числе с ошибкой, возвращается как есть.
+async function testApiConnectionMapsErrors() {
+    const apiRoutes = require('../shared/apiRoutes');
+    const requests = [];
+    let reply;
+    const location = {href: 'http://host/', origin: 'http://host', pathname: '/', protocol: 'http:', host: 'host'};
+    const {call} = await loadClientModule('components/Api/apiConnection.js', Object.assign({apiRoutes}, apiRoutes, {
+        fetch: (url, init = {}) => {
+            requests.push({url: String(url), method: init.method || 'GET', headers: new Headers(init.headers), body: init.body});
+            return reply(init);
+        },
+        AbortController, AbortSignal, DOMException, Headers, Response, URL, URLSearchParams, TextDecoder, setTimeout, clearTimeout,
+        console, window: {location}, location,
+    }));
+    const json = (status, body) => () => Promise.resolve(new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}}));
+    const plain = value => JSON.parse(JSON.stringify(value));
+
+    reply = json(200, {rows: [1]});
+    assert.deepStrictEqual(plain(await call('catalog-search', {q: 'x', limit: 5})), {rows: [1]});
+    let sent = requests.pop();
+    assert.strictEqual(sent.method, 'GET');
+    assert.match(sent.url, /(^|\/)api\/catalog\/search\?/);
+    assert.deepStrictEqual(Object.fromEntries(new URL(sent.url, 'http://host/').searchParams), {q: 'x', limit: '5'});
+    assert.strictEqual(sent.headers.get('x-inpx-api'), '1');
+    assert.ok(sent.body === undefined || sent.body === null);
+
+    reply = json(200, {ok: true});
+    const progress = {bookUid: 'uid', progress: {percent: 0.5}};
+    assert.strictEqual((await call('update-reader-progress', progress, {headers: {'X-CSRF-Token': 'csrf'}})).ok, true);
+    sent = requests.pop();
+    assert.strictEqual(sent.method, 'POST');
+    assert.match(sent.url, /(^|\/)api\/update-reader-progress$/);
+    assert.match(String(sent.headers.get('content-type')), /^application\/json/);
+    assert.strictEqual(sent.headers.get('x-csrf-token'), 'csrf');
+    assert.strictEqual(sent.headers.get('x-inpx-api'), '1');
+    assert.deepStrictEqual(JSON.parse(sent.body), progress);
+
+    //файл - тело запроса, скалярные параметры - в адресе
+    await call('import-admin-backup', {scope: 'all'}, {body: 'FILE'});
+    sent = requests.pop();
+    assert.strictEqual(sent.method, 'POST');
+    assert.match(sent.url, /(^|\/)api\/import-admin-backup\?scope=all$/);
+    assert.strictEqual(sent.headers.get('content-type'), 'application/octet-stream');
+    assert.strictEqual(sent.body, 'FILE');
+
+    reply = json(401, {error: 'need_profile_login'});
+    assert.strictEqual((await call('get-reading-lists', {})).error, 'need_profile_login', 'A JSON error passes through');
+
+    reply = () => Promise.reject(new TypeError('fetch failed'));
+    assert.strictEqual(await failure(call('test', {})), 'errors.apiConnectFailed');
+
+    //ответа нет: запрос прерывается по тайм-ауту
+    let aborted = false;
+    reply = init => new Promise((resolve, reject) => init.signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(new DOMException('This operation was aborted', 'AbortError'));
+    }));
+    const started = Date.now();
+    assert.strictEqual(await failure(call('test', {}, {timeoutSecs: 0.05})), 'errors.apiNoResponse');
+    assert.ok(aborted, 'The request is aborted');
+    assert.ok(Date.now() - started < 2000);
+
+    //страница ошибки прокси вместо JSON
+    reply = () => Promise.resolve(new Response('<html><body>502 Bad Gateway</body></html>', {status: 502, headers: {'Content-Type': 'text/html'}}));
+    assert.strictEqual(await failure(call('test', {})), 'errors.apiBadResponse');
+    reply = () => Promise.resolve(new Response('not json', {status: 200, headers: {'Content-Type': 'application/json'}}));
+    assert.strictEqual(await failure(call('test', {})), 'errors.apiBadResponse');
 }
 
 // Пауза переподключения растёт вдвое до 30 с и случайно уменьшается не больше чем вдвое.
 async function testConnectionErrorsAndReconnectDelay() {
-    const {isConnectionError, reconnectDelay} = await loadClientModule('share/connection.js');
-    assert.ok(isConnectionError(new Error('errors.wsClosed')));
-    assert.ok(isConnectionError('errors.wsNoResponse'));
+    const apiRoutes = require('../shared/apiRoutes');
+    const {isConnectionError, reconnectDelay} = await loadClientModule('share/connection.js', Object.assign({apiRoutes}, apiRoutes));
+    for (const key of ['errors.apiConnectFailed', 'errors.apiNoResponse', 'errors.apiBadResponse']) {
+        assert.ok(isConnectionError(new Error(key)), key);
+        assert.ok(isConnectionError(key), key);
+    }
     assert.ok(!isConnectionError(new Error('errors.bookNotFound')));
+    assert.ok(!isConnectionError(new Error('need_profile_login')));
     assert.ok(!isConnectionError(new Error('')));
     assert.deepStrictEqual([0, 1, 2, 3, 10].map(attempt => reconnectDelay(attempt, () => 1)), [1000, 2000, 4000, 8000, 30000]);
     assert.strictEqual(reconnectDelay(2, () => 0), 2000);
 }
 
-// После обрыва связи повторяется только чтение: список клиента не шире readOnlyActions сервера,
-// изменения не повторяются (кроме запроса, который не ушёл, потому что соединение не открылось).
+// После ошибки связи повторяется только GET: изменение могло дойти до сервера, повтор выполнил бы его дважды.
+// Список действий не ведётся отдельно - правило задаёт метод маршрута.
 async function testOnlyReadOnlyRequestsAreRetried() {
-    const actionList = (source, name) => {
-        const match = new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(source);
-        assert.ok(match, name);
-        return [...match[1].matchAll(/'([a-z-]+)'/g)].map(m => m[1]);
-    };
+    const apiRoutes = require('../shared/apiRoutes');
     const clientSource = await fs.readFile(path.resolve(__dirname, '../client/share/connection.js'), 'utf8');
-    const serverSource = await fs.readFile(path.resolve(__dirname, '../server/controllers/WebSocketController.js'), 'utf8');
-    const readOnly = new Set(actionList(serverSource, 'readOnlyActions'));
-    const retrySafe = actionList(clientSource, 'retrySafeActions');
-    assert.ok(retrySafe.length > 10);
-    for (const action of retrySafe)
-        assert.ok(readOnly.has(action), `${action} is retried but is not read-only on the server`);
-
-    const {canRetryRequest} = await loadClientModule('share/connection.js');
-    for (const error of ['errors.wsNoResponse', 'errors.wsClosed']) {
-        assert.ok(canRetryRequest('catalog-search', new Error(error)));
-        for (const action of ['update-reading-list-book', 'mark-reader-books-read', 'delete-reading-list', 'update-user-profile', 'login-user-profile'])
-            assert.ok(!canRetryRequest(action, new Error(error)), `${action} after ${error}`);
+    assert.doesNotMatch(clientSource, /retrySafeActions/);
+    const {canRetryRequest} = await loadClientModule('share/connection.js', Object.assign({apiRoutes}, apiRoutes));
+    for (const error of ['errors.apiConnectFailed', 'errors.apiNoResponse', 'errors.apiBadResponse']) {
+        for (const route of apiRoutes.routes)
+            assert.strictEqual(canRetryRequest(route.action, new Error(error)), route.method === 'GET', `${route.action} after ${error}`);
     }
-    assert.ok(canRetryRequest('update-reading-list-book', new Error('errors.wsConnectFailed')));
+    assert.ok(canRetryRequest('catalog-search', new Error('errors.apiNoResponse')));
+    for (const action of ['get-book-states', 'update-reading-list-book', 'login-user-profile', 'import-reading-lists'])
+        assert.ok(!canRetryRequest(action, new Error('errors.apiConnectFailed')), action);
     assert.ok(!canRetryRequest('catalog-search', new Error('errors.bookNotFound')));
+    assert.ok(!canRetryRequest('catalog-search', new Error('need_profile_login')));
 }
 
 // В localStorage попадают только настройки: без конфигурации сервера (csrfToken, профили) и токена профиля;
@@ -249,6 +284,6 @@ async function testReleaseVersionsCompareCalVer() {
 }
 
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
-    testWebSocketConnectionReportsLostConnection, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
+    testApiConnectionMapsErrors, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
     testReleaseVersionsCompareCalVer];

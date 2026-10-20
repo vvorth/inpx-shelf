@@ -10,6 +10,8 @@ const ReadingListStore = require('../server/core/ReadingListStore');
 const Security = require('../server/core/Security');
 const FileDownloader = require('../server/core/FileDownloader');
 const lifetime = require('../server/core/SessionLifetime');
+const apiRoutes = require('../shared/apiRoutes');
+const {ApiTestClient, apiController, apiApp, listen, fakeResponse, sampleParams, sampleUid} = require('./api-test-client');
 
 async function temporary(fn) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-security-test-'));
@@ -394,19 +396,6 @@ async function testCoverCacheWriteIsAtomic() {
     });
 }
 
-// One address cannot hold an unbounded number of WebSockets; behind a trusted proxy the client address counts.
-async function testWebSocketConnectionsCappedPerIp() {
-    const security = new Security({trustProxy: true, trustedProxyCidrs: ['10.0.0.1/32']});
-    security.secret = 'test-secret';
-    const direct = ip => ({headers: {}, socket: {remoteAddress: ip}});
-    const proxied = ip => ({headers: {'x-forwarded-for': ip}, socket: {remoteAddress: '10.0.0.1'}});
-    const clients = Array.from({length: 50}, () => ({req: proxied('192.0.2.1')}));
-    assert.strictEqual(security.verifyWebSocket(proxied('192.0.2.1'), clients), false);
-    assert.strictEqual(security.verifyWebSocket(proxied('192.0.2.2'), clients), true);
-    assert.strictEqual(security.verifyWebSocket(direct('10.0.0.1'), clients), true, 'The proxy address itself is not the client');
-    assert.strictEqual(security.verifyWebSocket(direct('192.0.2.1'), clients.slice(1)), true);
-}
-
 // OPDS pages call string methods on query values: bracket syntax must not reach them as arrays or objects.
 async function testOpdsQueryValuesAreStrings() {
     const req = {query: {author: ['a', 'b'], term: {x: '1'}, user: 'reader', list: [{}]}};
@@ -421,7 +410,8 @@ async function testMetricsReuseDirectorySizes() {
         dirSize: async() => { walks++; return {size: 1, files: 1}; }};
     const app = require('express')();
     const config = {metricsEnabled: true, metricsToken: 'metrics-fixture', server: {}};
-    require('../server/core/HealthRoutes')(app, config, worker, new Security(config));
+    const online = {getOnlineMetrics: () => ({clients: 3, users: 2, anonymousClients: 1})};
+    require('../server/core/HealthRoutes')(app, config, worker, new Security(config), online);
     const server = http.createServer(app);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     try {
@@ -429,7 +419,13 @@ async function testMetricsReuseDirectorySizes() {
         assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/metrics?token=metrics-fixture`)).status, 401, 'Header only');
         for (let i = 0; i < 3; i++) {
             const res = await fetch(`http://127.0.0.1:${server.address().port}/metrics`, {headers: {authorization: 'Bearer metrics-fixture'}});
-            assert.match(await res.text(), /inpx_web_cover_cache_files 1/);
+            const text = await res.text();
+            assert.match(text, /inpx_web_cover_cache_files 1/);
+            //активные клиенты HTTP API: сессии с запросом за последние 5 минут
+            assert.match(text, /^inpx_web_active_clients 3$/m);
+            assert.match(text, /^inpx_web_users_online 2$/m);
+            assert.match(text, /^inpx_web_anonymous_clients 1$/m);
+            assert.doesNotMatch(text, /inpx_web_ws_/);
         }
         assert.strictEqual(walks, 3, 'One walk per directory');
     } finally {
@@ -567,17 +563,7 @@ async function testBookByUidStatusAndHiddenPaths() {
     });
 }
 
-// Reads are listed; every other action, including one added later, needs the CSRF token.
-async function testWriteActionsNeedCsrf() {
-    const {WebSocketController} = require('../server/controllers');
-    const isProtected = action => WebSocketController.prototype.isCsrfProtectedAction(action);
-    for (const action of ['update-book-metadata', 'create-admin-backup', 'test-admin-integration', 'update-reader-progress', 'future-write'])
-        assert.strictEqual(isProtected(action), true, action);
-    for (const action of ['get-config', 'catalog-search', 'get-book'])
-        assert.strictEqual(isProtected(action), false, action);
-}
-
-// Anonymous callers of /api/index-status see only the indexing progress; WebSocket errors and the book cache keep server paths.
+// Anonymous callers of /api/index-status see only the indexing progress; API errors and the book cache keep server paths.
 async function testServerDetailsStayPrivate() {
     await temporary(async(dir) => {
         const config = {dataDir: dir, libDir: path.join(dir, 'library'), rootPathStatic: '', bookPathStatic: '/book', publicDir: path.join(dir, 'public'),
@@ -613,15 +599,18 @@ async function testServerDetailsStayPrivate() {
             await new Promise(resolve => server.close(resolve));
         }
 
-        const Controller = require('../server/controllers/WebSocketController');
-        const controller = Object.assign(Object.create(Controller.prototype), {config, activeRequests: 0});
-        controller.webWorker = {getBookLink: async() => { throw new Error(`archive not found: ${config.libDir}/fb2-000001.zip`); }};
-        const sent = [];
-        const ws = {readyState: 1, req: {headers: {}}, send: message => sent.push(JSON.parse(message))};
-        await controller.processMessage(ws, JSON.stringify({action: 'get-book-link', bookUid: 'x'}));
-        const error = sent.find(message => !message._rok).error;
-        assert.ok(error && !error.includes(dir), error);
-        assert.match(error, /журнале сервера|server log/);
+        const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})},
+            webWorker: {getBookLink: async() => { throw new Error(`archive not found: ${config.libDir}/fb2-000001.zip`); }}});
+        const api = await listen(apiApp({config, security, controller, health: false}));
+        try {
+            const response = await ApiTestClient.forSession(api.base, security).call('get-book-link', {bookUid: sampleUid});
+            assert.strictEqual(response.status, 400);
+            const error = response.body.error;
+            assert.ok(error && !error.includes(dir), error);
+            assert.match(error, /журнале сервера|server log/);
+        } finally {
+            await api.close();
+        }
     });
 }
 
@@ -702,7 +691,7 @@ async function testSignedInSessionsSurviveRestart() {
         const first = start();
         const session = first.security.ensureSession({headers: {}});
         session.profileAccessToken = first.worker.createProfileSession('alice');
-        first.security.rotateSession(session);
+        first.security.rotateSession({headers: {}, securitySession: session}, fakeResponse());
         const loginAt = session.createdAt;
         const cookie = {cookie: `inpx_web_session=${first.security.packSessionId(session.id)}`};
         const anonymous = first.security.ensureSession({headers: {}});
@@ -722,7 +711,7 @@ async function testSignedInSessionsSurviveRestart() {
         const third = start();
         const again = third.security.ensureSession({headers: {}});
         again.profileAccessToken = third.worker.createProfileSession('bob');
-        third.security.rotateSession(again);
+        third.security.rotateSession({headers: {}, securitySession: again}, fakeResponse());
         delete again.profileAccessToken;
         third.security.persistSession(again);
         assert.strictEqual(start().security.getSession({headers: {cookie: `inpx_web_session=${third.security.packSessionId(again.id)}`}}), null, 'Logout');
@@ -730,88 +719,219 @@ async function testSignedInSessionsSurviveRestart() {
     });
 }
 
-// The server-wide request cap rejects one message and keeps the socket.
-async function testWebSocketCapRejectsMessageNotSocket() {
-    const WebSocket = require('ws');
-    const Controller = require('../server/controllers/WebSocketController');
-    const controller = Object.assign(Object.create(Controller.prototype), {config: {}, activeRequests: 0});
-    let release;
-    const gate = new Promise(resolve => release = resolve);
-    controller.test = async(req, ws) => {
-        if (req.hold)
-            await gate;
-        controller.send({ok: true}, req, ws);
-    };
-    const server = new WebSocket.Server({port: 0, host: '127.0.0.1'});
-    server.on('connection', (socket, req) => {
-        socket.req = req;
-        socket.on('message', raw => controller.onMessage(socket, raw.toString()));
-    });
-    await new Promise(resolve => server.once('listening', resolve));
-    const sockets = [];
-    const open = async() => {
-        const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}`);
-        sockets.push(socket);
-        await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
-        return socket;
-    };
-    const answer = (socket, requestId, params) => new Promise(resolve => {
-        const receive = raw => {
-            const message = JSON.parse(raw);
-            if (message.requestId === requestId && !message._rok) {
-                socket.off('message', receive);
-                resolve(message);
-            }
-        };
-        socket.on('message', receive);
-        socket.send(JSON.stringify({requestId, action: 'test', ...params}));
-    });
-    try {
-        const reader = await open();
-        const held = [];
-        for (let i = 0; i < 8; i++) {
-            const socket = await open();
-            for (let j = 0; j < 8; j++)
-                held.push(answer(socket, j + 1, {hold: true}));
+// ApiController behind apiGuard with handler stubs (handlers): the transport rules without the application behind them.
+async function apiFixture({config: overrides = {}, worker: workerFields = {}, handlers = {}}, test) {
+    await temporary(async(dir) => {
+        const config = Object.assign({dataDir: dir, tempDir: path.join(dir, 'tmp'), rootPathStatic: '', bookPathStatic: '/book',
+            publicDir: path.join(dir, 'public'), bookDir: path.join(dir, 'book'), name: 'inpx-shelf', version: 'test',
+            apiMessageLimitMb: 1, server: {ready: true}}, overrides);
+        const security = new Security(config);
+        security.secret = 'test-secret';
+        const worker = Object.assign({getIndexStatus: async() => ({ready: true, state: 'normal', progress: 1})}, workerFields);
+        const controller = apiController(Object.assign({config, security, profileAccess: null, webWorker: worker,
+            workerState: {getState: () => ({state: 'normal'})}, test: async() => ({message: 'inpx-shelf project is awesome'})}, handlers));
+        await fs.outputFile(path.join(config.publicDir, 'index.html'), '<html>App</html>');
+        const {base: origin, close} = await listen(apiApp({config, security, controller,
+            after: app => require('../server/static')(app, config, worker, security)}));
+        const base = origin + String(config.rootPathStatic || '').replace(/\/$/, '');
+        try {
+            await test({config, security, controller, origin, base, api: ApiTestClient.forSession(base, security)});
+        } finally {
+            await close();
         }
-        while (controller.activeRequests < 64)
-            await new Promise(resolve => setTimeout(resolve, 10));
-        assert.strictEqual((await answer(reader, 2)).error, 'too_many_requests');
-        assert.strictEqual(reader.readyState, WebSocket.OPEN, 'The socket stays open');
-        release();
-        await Promise.all(held);
-        assert.strictEqual((await answer(reader, 3)).ok, true);
-    } finally {
-        release();
-        for (const socket of sockets)
-            socket.terminate();
-        await new Promise(resolve => server.close(resolve));
-    }
+    });
 }
 
-// Query logging must not write passwords and tokens; unknown actions share one metric label.
-async function testWebSocketLogHidesSecretsAndBoundsMetrics() {
-    const Controller = require('../server/controllers/WebSocketController');
+// Every /api request: X-Inpx-Api, same-origin Sec-Fetch-Site and Origin; every POST: a JSON body and the session's
+// CSRF token. Unknown routes, methods and parameters are JSON errors; nothing is cached.
+async function testApiRequestRules() {
+    const seen = [];
+    await apiFixture({handlers: {
+        updateReaderPreferences: async(req) => { seen.push(req); return {ok: true}; },
+        catalogSearch: async(req) => ({q: req.q, limit: req.limit, hideCopies: req.hideCopies, filters: req.filters}),
+    }}, async({origin, base, security, api}) => {
+        const answers = [];
+        const send = async(method, url, headers = {}, body) => {
+            const response = await api.request(method, url, {headers, body});
+            answers.push([method, url, response]);
+            return response;
+        };
+        const ping = headers => send('GET', 'api/ping', headers);
+        const json = (url, body = '{}', headers = {}) => send('POST', url, {'content-type': 'application/json', 'x-csrf-token': api.csrfToken, ...headers}, body);
+
+        //заголовок X-Inpx-Api не поставить ни ссылкой, ни формой, ни <img> с чужого сайта
+        const bare = await ping({'x-inpx-api': null});
+        assert.deepStrictEqual([bare.status, bare.body], [403, {error: 'Forbidden'}]);
+        assert.strictEqual((await ping({'x-inpx-api': '0'})).status, 403);
+        assert.strictEqual((await json('api/update-reader-preferences', '{}', {'x-inpx-api': null})).status, 403);
+        assert.deepStrictEqual((await ping()).body, {message: 'inpx-shelf project is awesome'});
+        for (const site of ['cross-site', 'same-site'])
+            assert.strictEqual((await ping({'sec-fetch-site': site})).status, 403, site);
+        for (const site of ['same-origin', 'none'])
+            assert.strictEqual((await ping({'sec-fetch-site': site})).status, 200, site);
+        for (const foreign of ['http://evil.example', 'null', `https://${new URL(origin).host}`])
+            assert.strictEqual((await ping({origin: foreign})).status, 403, foreign);
+        assert.strictEqual((await ping({origin})).status, 200);
+
+        //POST - только с CSRF-токеном своей сессии; GET токена не требует
+        const write = options => api.call('update-reader-preferences', {preferences: {fontSize: 20}}, options);
+        for (const csrfToken of [null, '', 'x'.repeat(64), security.ensureSession({headers: {}}).csrfToken]) {
+            const response = await write({csrfToken});
+            assert.deepStrictEqual([response.status, response.body.error], [403, 'bad_csrf_token'], String(csrfToken));
+        }
+        assert.strictEqual(seen.length, 0);
+        assert.deepStrictEqual((await write()).body, {ok: true});
+        assert.deepStrictEqual(seen[0].preferences, {fontSize: 20});
+        const search = await api.call('catalog-search', {q: 'x', limit: 5, hideCopies: true, filters: {lang: ['ru']}});
+        assert.deepStrictEqual([search.status, search.body], [200, {q: 'x', limit: 5, hideCopies: true, filters: {lang: ['ru']}}], 'Typed query');
+        for (const route of apiRoutes.routes.filter(item => item.method === 'POST')) {
+            const response = await api.call(route.action, sampleParams(route.action), {csrfToken: null, body: (route.upload ? '{}' : undefined)});
+            assert.deepStrictEqual([response.status, response.body.error], [403, 'bad_csrf_token'], route.action);
+        }
+
+        //тело POST - JSON (файл - только у действий загрузки)
+        for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', 'application/octet-stream'])
+            assert.strictEqual((await json('api/update-reader-preferences', '{}', {'content-type': type})).status, 415, type);
+        assert.strictEqual((await json('api/update-reader-preferences', '{}', {'content-type': 'application/json; charset=utf-8'})).status, 200);
+        assert.strictEqual(seen.length, 2);
+
+        //неизвестный адрес - JSON 404, а не страница приложения
+        for (const [method, url] of [['GET', 'api/nope'], ['GET', 'api/books/not-a-uid'], ['GET', 'api/ping/more'], ['GET', 'api/'],
+            ['POST', 'api/nope']]) {
+            const response = await (method === 'GET' ? send('GET', url) : json(url));
+            assert.strictEqual(response.status, 404, `${method} ${url}`);
+            assert.match(String(response.headers.get('content-type')), /^application\/json/, `${method} ${url}`);
+            assert.ok(response.body.error, `${method} ${url}`);
+        }
+        const post = await json('api/ping');
+        assert.strictEqual(post.status, 405);
+        assert.match(String(post.headers.get('allow')), /\bGET\b/);
+        const get = await send('GET', 'api/update-reader-preferences');
+        assert.strictEqual(get.status, 405);
+        assert.match(String(get.headers.get('allow')), /\bPOST\b/);
+        assert.strictEqual((await send('DELETE', 'api/ping')).status, 405);
+
+        //параметры адреса - только объявленные в shared/apiRoutes.js, по одному разу и своего типа
+        for (const query of ['q=x&zzz=1', 'q=a&q=b', 'limit=abc', 'limit=1.5', 'hideCopies=yes', 'filters=%7Bbroken', 'filters=1',
+            'userId=admin', 'csrfToken=x'])
+            assert.strictEqual((await send('GET', `api/catalog/search?${query}`)).status, 400, query);
+        assert.strictEqual((await json('api/update-reader-preferences?preferences=1')).status, 400, 'A POST takes no query');
+        assert.strictEqual((await send('GET', `api/catalog/search?q=${'x'.repeat(9000)}`)).status, 414);
+        assert.strictEqual(seen.length, 2, 'Rejected requests do not reach the handler');
+
+        for (const [method, url, response] of answers)
+            assert.strictEqual(response.headers.get('cache-control'), 'no-store', `${method} ${url} ${response.status}`);
+
+        //health-check не требует X-Inpx-Api, хотя путь начинается с /api
+        const status = await fetch(`${base}/api/index-status`);
+        assert.strictEqual(status.status, 200);
+        assert.strictEqual((await status.json()).ready, true);
+        //запрос без известной сессии получает cookie
+        const fresh = await new ApiTestClient(base).request('GET', 'api/ping');
+        assert.match(String(fresh.headers.get('set-cookie')), /^inpx_web_session=/);
+    });
+}
+
+// Under a root path the API lives at <root>/api, and the session cookie is scoped to the root.
+async function testApiUnderRootPath() {
+    await apiFixture({config: {rootPathStatic: '/lib', bookPathStatic: '/lib/book'}}, async({origin, base, api}) => {
+        assert.strictEqual(base, `${origin}/lib`);
+        assert.strictEqual((await api.request('GET', 'api/ping')).status, 200);
+        assert.notStrictEqual((await fetch(`${origin}/api/ping`, {headers: {'X-Inpx-Api': '1'}})).status, 200);
+        const fresh = await new ApiTestClient(base).request('GET', 'api/ping');
+        assert.match(String(fresh.headers.get('set-cookie')), /Path=\/lib(;|$)/);
+    });
+}
+
+// Startup lists <root>/api/ instead of the WebSocket, /upload and /session/rotate; the health path stays.
+function testExposedPathsListApi() {
+    const {exposedPaths, exposedPathsText} = require('../server/core/ExposedPaths');
+    for (const root of ['', '/lib']) {
+        const paths = exposedPaths({rootPathStatic: root}).map(item => item.path);
+        assert.ok(paths.includes(`${root}/api/`), paths.join());
+        assert.ok(!paths.some(item => /WebSocket|\/upload$|session\/rotate/.test(item)), paths.join());
+        assert.ok(paths.includes('/api/index-status'));
+    }
+    assert.doesNotMatch(exposedPathsText({rootPathStatic: ''}), /WebSocket/);
+    //в server/index.js health-маршруты стоят до /api: /api/index-status не проходит apiGuard
+    const index = require('fs').readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+    assert.ok(index.indexOf('initHealthRoutes(app') >= 0 && index.indexOf('initHealthRoutes(app') < index.indexOf('.router()'),
+        'HealthRoutes before the API router');
+    assert.doesNotMatch(index, /require\s*\(\s*'ws'\s*\)/);
+}
+
+// 8 active requests per session, 64 per server: one more gets 429 with Retry-After, other sessions keep working.
+async function testApiConcurrencyLimits() {
+    let release = () => {};
+    let gate = null;
+    let active = 0;
+    await apiFixture({handlers: {test: async() => {
+        if (gate) {
+            active++;
+            await gate;
+            active--;
+        }
+        return {ok: true};
+    }}}, async({base, security}) => {
+        const clients = Array.from({length: 9}, () => ApiTestClient.forSession(base, security));
+        const ping = client => client.request('GET', 'api/ping');
+        const waitFor = async count => {
+            const deadline = Date.now() + 10000;
+            while (active < count && Date.now() < deadline)
+                await new Promise(resolve => setTimeout(resolve, 10));
+            assert.strictEqual(active, count);
+        };
+        gate = new Promise(resolve => release = resolve);
+        const held = [];
+        try {
+            for (let i = 0; i < 8; i++)
+                held.push(ping(clients[0]));
+            await waitFor(8);
+            const over = await ping(clients[0]);
+            assert.deepStrictEqual([over.status, over.body.error], [429, 'too_many_requests']);
+            assert.strictEqual(over.headers.get('retry-after'), '1');
+            for (const client of clients.slice(1, 8)) {
+                for (let i = 0; i < 8; i++)
+                    held.push(ping(client));
+            }
+            await waitFor(64);
+            const global = await ping(clients[8]);
+            assert.deepStrictEqual([global.status, global.body.error], [429, 'too_many_requests'], 'The server-wide cap');
+            assert.strictEqual(global.headers.get('retry-after'), '1');
+        } finally {
+            gate = null;
+            release();
+        }
+        assert.ok((await Promise.all(held)).every(response => response.status === 200));
+        assert.strictEqual((await ping(clients[0])).status, 200);
+        assert.strictEqual((await ping(clients[8])).status, 200);
+    });
+}
+
+// Query logging writes method, path and body without passwords and tokens, never the header tokens;
+// unknown routes add no metric labels.
+async function testApiLogHidesSecretsAndBoundsMetrics() {
     const runtimeMetrics = require('../server/core/RuntimeMetrics');
     const logger = new (require('../server/core/AppLogger'))().logger;
-    const config = {logQueries: true};
-    const controller = Object.assign(Object.create(Controller.prototype), {config, activeRequests: 0});
-    controller.test = async(req, ws) => controller.send({ok: true, profileAccessToken: 'OUT_SECRET'}, req, ws);
-    const ws = {readyState: 1, req: {headers: {}}, send() {}};
     const lines = [];
-    const capture = {log: (type, message) => lines.push(message)};
-    logger.handlers.push(capture);
-    try {
-        await controller.processMessage(ws, JSON.stringify({action: 'test', password: 'IN_SECRET', accessToken: 'IN_SECRET',
-            profile: {password: 'IN_SECRET'}, csrfToken: 'IN_SECRET'}));
-        await controller.processMessage(ws, JSON.stringify({action: 'random-action-name'}));
-    } finally {
-        logger.handlers.splice(logger.handlers.indexOf(capture), 1);
-    }
-    assert.ok(lines.some(line => line.includes('WebSocket-IN')) && lines.some(line => line.includes('WebSocket-OUT')));
-    assert.ok(!lines.some(line => line.includes('_SECRET')), lines.join(''));
+    const capture = {log: (type, message) => lines.push(String(message))};
+    await apiFixture({config: {logQueries: true}, handlers: {
+        updateReaderPreferences: async() => ({ok: true, profileAccessToken: 'OUT_SECRET'}),
+    }}, async({api}) => {
+        logger.handlers.push(capture);
+        try {
+            const response = await api.call('update-reader-preferences', {password: 'IN_SECRET', accessToken: 'IN_SECRET',
+                profile: {password: 'IN_SECRET'}, preferences: {fontSize: 20}}, {profileToken: 'HEADER_SECRET', userId: 'reader'});
+            assert.strictEqual(response.status, 200);
+            await api.request('GET', 'api/random-action-name');
+        } finally {
+            logger.handlers.splice(logger.handlers.indexOf(capture), 1);
+        }
+        assert.ok(lines.some(line => line.includes('update-reader-preferences')), lines.join('\n'));
+        assert.ok(!lines.some(line => line.includes('_SECRET') || line.includes(api.csrfToken)), lines.join('\n'));
+    });
     const labels = [...runtimeMetrics.actionStats.keys()];
-    assert.ok(labels.includes('unknown') && !labels.includes('random-action-name'), labels.join());
+    assert.ok(!labels.includes('random-action-name'), labels.join());
 }
 
 // A PNG header claiming 20000x20000 is rejected before pngjs allocates the whole image.
@@ -838,9 +958,9 @@ async function testGunzipBufferIsBounded() {
 
 module.exports = [
     testSignedInSessionsSurviveRestart,
-    testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testWebSocketCapRejectsMessageNotSocket, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
-    testWebSocketConnectionsCappedPerIp, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebSocketLogHidesSecretsAndBoundsMetrics,
-    testWriteActionsNeedCsrf, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
+    testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testApiRequestRules, testApiUnderRootPath, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
+    testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
     testConcurrentStoreMutations, testAtomicConfigSave, testSessionLifetimeAndMalformedCookies, testProfileCredentialChangesRevokeSessions,

@@ -383,13 +383,13 @@ async function testBookMetadataEditsReachIndexInOrder() {
 
 //контроллер передаёт раздел и размеры персональных полок: иначе «ещё» у похожих книг ничего не меняет
 async function testDiscoveryRequestKeepsSectionAndPersonalLimits() {
-    const Controller = require('../server/controllers/WebSocketController');
+    const Controller = require('../server/controllers/ApiController');
     let options = null;
     const controller = Object.assign(Object.create(Controller.prototype), {
         webWorker: {getDiscoveryShelvesV2: async(value) => { options = value; return {shelves: []}; }},
-        send() {},
     });
-    await controller.getDiscoveryShelves({section: 'personal', personalLimit: 12, personalSimilarLimit: 24}, {});
+    const result = await controller.getDiscoveryShelves({section: 'personal', personalLimit: 12, personalSimilarLimit: 24}, {});
+    assert.deepStrictEqual(result, {shelves: []});
     assert.strictEqual(options.section, 'personal');
     assert.strictEqual(options.personalLimit, 12);
     assert.strictEqual(options.personalSimilarLimit, 24);
