@@ -10,7 +10,7 @@ const transaction = require('../server/core/BackupTransaction');
 const http = require('http');
 const requestLimits = require('../server/core/RequestLimits');
 const Security = require('../server/core/Security');
-const {ApiTestClient, apiController, apiApp, listen} = require('./api-test-client');
+const {ApiTestClient, apiController, apiApp, listen, rawPost} = require('./api-test-client');
 
 async function temporary(task) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-stage4-'));
@@ -82,6 +82,10 @@ async function testApiBodyBoundsAndRecovery() {
             assert.strictEqual(large.status, 413);
             assert.ok(large.body.error);
             assert.strictEqual((await post(pad(7*1024*1024))).status, 413);
+            //тело сверх лимита дочитывается и отбрасывается: соединение не рвётся посреди отправки, клиент получает 413
+            const sent = await rawPost(base, '/api/update-reader-preferences', {'Content-Type': 'application/json', 'X-Inpx-Api': '1',
+                'X-CSRF-Token': api.csrfToken, Cookie: api.cookie}, 7*1024*1024);
+            assert.deepStrictEqual([sent.status, sent.writeError && sent.writeError.code], [413, null]);
             assert.deepStrictEqual((await post('{}')).body, {ok: true}, 'The server keeps answering');
         } finally {
             await close();

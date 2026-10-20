@@ -182,4 +182,46 @@ function fakeResponse() {
     return response;
 }
 
-module.exports = {ApiTestClient, apiController, mountApi, apiApp, listen, fakeResponse, sampleParams, sampleUid};
+// POST с телом из bodySize байт по сырому сокету: тело отправляется целиком, как браузер с крупным файлом.
+// Ответ: {status, writeError} - writeError, если сервер закрыл соединение, не дочитав тело (Windows теряет при этом и ответ)
+function rawPost(base, path, headers, bodySize) {
+    const net = require('net');
+    const {hostname, port} = new URL(base);
+    return new Promise((resolve) => {
+        const socket = net.connect(Number(port), hostname);
+        let response = '';
+        let writeError = null;
+        let written = false;
+        const done = () => {
+            if (!written)
+                return;
+            const match = /^HTTP\/1\.1 (\d{3})/.exec(response);
+            socket.destroy();
+            resolve({status: match ? Number(match[1]) : 0, writeError});
+        };
+        socket.on('data', chunk => {
+            response += chunk.toString('latin1');
+            if (response.includes('\r\n\r\n'))
+                done();
+        });
+        socket.on('error', error => {
+            writeError = writeError || error;
+            written = true;
+            done();
+        });
+        socket.on('close', () => {
+            written = true;
+            done();
+        });
+        const head = Object.entries(Object.assign({Host: `${hostname}:${port}`, 'Content-Length': String(bodySize)}, headers))
+            .map(([name, value]) => `${name}: ${value}`).join('\r\n');
+        socket.write(`POST ${path} HTTP/1.1\r\n${head}\r\n\r\n`);
+        socket.write(Buffer.alloc(bodySize, 0x20), (error) => {
+            writeError = writeError || error || null;
+            written = true;
+            done();
+        });
+    });
+}
+
+module.exports = {ApiTestClient, rawPost, apiController, mountApi, apiApp, listen, fakeResponse, sampleParams, sampleUid};

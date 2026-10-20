@@ -19,6 +19,8 @@ const maxOnlineClients = 10000;
 const maxSessionRequests = 8;
 const maxServerRequests = 64;
 const maxUrlLength = 8*1024;
+//ненужное тело запроса дочитывается до этого размера, дальше соединение закрывается
+const maxDiscardedBody = 64*1024*1024;
 //приходят только заголовками или заполняются сервером (ProfileAccess): тело запроса их не задаёт
 const reservedParams = ['action', 'userId', 'profileAccessToken', 'csrfToken', 'uiLang', 'guest', 'profileBoundId', 'profileLoginRequired'];
 //ошибки в коде сервера, а не в запросе: 500, подробности - в журнал
@@ -26,7 +28,7 @@ const programmingErrors = [TypeError, ReferenceError, RangeError, SyntaxError];
 
 const httpError = (status, message) => Object.assign(new Error(message), {status});
 
-// The request body to `file`; stops reading at `limit` bytes (the caller answers 413 and closes the connection).
+// The request body to `file`; stops reading at `limit` bytes (the caller answers 413).
 function receiveFile(req, file, limit) {
     return new Promise((resolve, reject) => {
         const out = fs.createWriteStream(file, {mode: 0o600});
@@ -87,30 +89,19 @@ function receiveBody(req, limit) {
     });
 }
 
-// Reads what is left of the request body without keeping it; false if more than `max` bytes are left (the caller closes).
-function drain(req, max) {
-    return new Promise((resolve) => {
-        if (req.complete)
-            return resolve(true);
-        if (!max)
-            return resolve(false);
-        let size = 0;
-        const done = (ok) => {
-            req.removeListener('data', onData);
-            req.removeListener('end', onEnd);
-            resolve(ok);
-        };
-        const onData = (chunk) => {
-            size += chunk.length;
-            if (size > max)
-                done(false);
-        };
-        const onEnd = () => done(true);
-        req.on('data', onData);
-        req.on('end', onEnd);
-        req.once('error', () => done(false));
-        req.resume();
+// The rest of a request body that will not be used (refused before reading, or over the limit), read and dropped after
+// the reply: closing the connection while the client still sends makes it lose the reply too (always on Windows).
+// Over `max` bytes the connection is closed.
+function discardBody(req, max) {
+    let size = 0;
+    req.removeAllListeners('data');
+    req.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > max)
+            req.destroy();
     });
+    req.on('error', () => {});
+    req.resume();
 }
 
 //пароли и токены не попадают в журнал запросов
@@ -191,15 +182,12 @@ class ApiController {
             this.onlineClients.delete(this.onlineClients.keys().next().value);
     }
 
-    // The JSON reply. A body not read yet is drained (up to drainMax bytes) so the client gets the answer; a longer one
-    // closes the connection.
-    async reply(req, res, status, body, drainMax = 1024*1024) {
-        if (!await drain(req, drainMax)) {
-            res.set('Connection', 'close');
-            res.on('finish', () => req.destroy());
-        }
+    // The JSON reply; a body not read to the end is dropped (discardBody).
+    reply(req, res, status, body) {
         if (res.headersSent)
             return;
+        if (!req.complete)
+            discardBody(req, maxDiscardedBody);
         res.set('Cache-Control', 'no-store');
         res.status(status).json(body);
     }
@@ -332,8 +320,7 @@ class ApiController {
 
         if (this.isDevelopment || this.config.logQueries)
             log(`API-OUT: ${status} ${utils.cutString(JSON.stringify(result, hideSecrets))} ${Date.now() - startTime}ms`);
-        //тело сверх лимита не дочитывается
-        await this.reply(req, res, status, result, (status === 413 ? 0 : 1024*1024));
+        this.reply(req, res, status, result);
     }
 
     // Upload: the handler first checks who asks without the body (ctx.uploadCheck: profile, role), and only then the body
