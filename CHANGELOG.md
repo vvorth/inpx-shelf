@@ -1,6 +1,7 @@
 Unreleased
 
 - Docker images are multi-arch: every tag (`latest`, `<version>`, `dev` and their `-pdf` variants) now also runs on `linux/arm64` (Raspberry Pi 4/5, ARM servers, Apple Silicon with Docker Desktop); Docker picks the right one on its own.
+- Releases include a standalone archive for macOS on Apple Silicon: `inpx-shelf-<version>-macos-arm64.zip`. The `macos` archive stays for Intel Macs.
 
 26.10.0 / 2026-10-20
 

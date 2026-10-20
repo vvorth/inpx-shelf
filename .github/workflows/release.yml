@@ -146,6 +146,11 @@ jobs:
             target: macos
             fbc_asset: fbc-darwin-amd64.zip
             fbc_sha256: 1448e4b33974ffc31dbfdfc46cbfc7a6ad90b40b1dc2a82bc7d5685c1c78bad4
+          - os: macos-15
+            label: macOS arm64
+            target: macos-arm64
+            fbc_asset: fbc-darwin-arm64.zip
+            fbc_sha256: 19323b02cd99f765408a4afafaa6c87ef48d309f1a71a5853327669edb682273
     steps:
       - uses: actions/checkout@v5
         with:

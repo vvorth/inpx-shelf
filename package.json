@@ -16,8 +16,9 @@
     "build:win-tools": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bundle-windows-tools.ps1",
     "build:win-installer": "node build/windows-installer.js",
     "build:macos": "npm run build:client && node build/prepkg.js macos && pkg -t node24-macos-x64 -C GZip --options max-old-space-size=4096,expose-gc -o dist/macos/inpx-shelf .",
+    "build:macos-arm64": "npm run build:client && node build/prepkg.js macos-arm64 && pkg -t node24-macos-arm64 -C GZip --options max-old-space-size=4096,expose-gc -o dist/macos-arm64/inpx-shelf .",
     "build:client-dev": "webpack --config build/webpack.dev.config.js",
-    "build:all": "npm run build:linux && npm run build:win && npm run build:macos && npm run build:linux-arm64",
+    "build:all": "npm run build:linux && npm run build:win && npm run build:macos && npm run build:macos-arm64 && npm run build:linux-arm64",
     "test:release": "node scripts/release-smoke-tests.js",
     "test:i18n": "node --no-warnings scripts/i18n-check.js",
     "release": "npm run build:all && node build/release.js",
@@ -25,6 +26,7 @@
     "release:win": "npm run build:win && node build/release.js win",
     "release:win-installer": "npm run build:win && npm run build:win-tools && npm run build:win-installer",
     "release:macos": "npm run build:macos && node build/release.js macos",
+    "release:macos-arm64": "npm run build:macos-arm64 && node build/release.js macos-arm64",
     "release:arm64": "npm run build:linux-arm64 && node build/release.js linux-arm64",
     "postinstall": "npm run build:client-dev"
   },

@@ -28,7 +28,7 @@
 
 Этот раздел нужен только для ручной сборки standalone-бинарников. Если нужен готовый локальный запуск без сборки, проще взять assets из GitHub Releases. Для сборки и запуска текущей ветки из исходников требуется Node.js 24 или новее. Бинарники собираются через `@yao-pkg/pkg` со встроенным Node 24.
 
-Сборка на машине с архитектурой целевой платформы предпочтительна; CI использует отдельный ARM64 runner. Для кросс-сборки linux-arm64 на x64 потребуется [QEMU](https://wiki.debian.org/QemuUserEmulation). Linux-бинарники используют glibc; для Alpine используйте Docker-образ на Debian.
+Сборка на машине с архитектурой целевой платформы предпочтительна; CI собирает ARM64-архивы на ARM64 runner'ах. Для кросс-сборки linux-arm64 на x64 потребуется [QEMU](https://wiki.debian.org/QemuUserEmulation). Linux-бинарники используют glibc; для Alpine используйте Docker-образ на Debian.
 
 ```sh
 git clone https://github.com/vvorth/inpx-shelf.git
@@ -37,7 +37,7 @@ npm ci
 npm run release:linux
 ```
 
-Это пример сборки Linux x64; для упаковки архива нужна утилита `zip`. Для Linux ARM64 используйте `npm run build:linux-arm64 && node build/release.js linux-arm64`, для Windows — `npm run release:win`, для macOS Intel — `npm run release:macos`. Команда `npm run release` собирает все четыре платформы. Результат сборки будет доступен в каталоге `dist/release`.
+Это пример сборки Linux x64; для упаковки архива нужна утилита `zip`. Для Linux ARM64 используйте `npm run build:linux-arm64 && node build/release.js linux-arm64`, для Windows — `npm run release:win`, для macOS Intel — `npm run release:macos`, для macOS Apple Silicon — `npm run release:macos-arm64` (бинарник подписывается ad-hoc только при сборке на macOS). Команда `npm run release` собирает все пять платформ. Результат сборки будет доступен в каталоге `dist/release`.
 
 Для Windows дополнительно можно собрать полноценный установщик `.exe`. Он устанавливает приложение в профиль пользователя, добавляет ярлыки в меню «Пуск», опциональный ярлык на рабочий стол, отдельный ярлык `Open web interface` на `http://127.0.0.1:12380` и стандартный uninstaller. Инсталлятор не регистрирует Windows-службу: `inpx-shelf` запускается как обычный локальный сервер. Ярлыки запускают приложение с рабочими данными в `%LOCALAPPDATA%\inpx-shelf`.
 
