@@ -11,13 +11,16 @@ const {parentPort} = require('worker_threads');
 const CatalogIndex = require('./CatalogIndex');
 
 const index = new CatalogIndex();
+//ход импорта INPX - сообщением без requestId
+index.onProgress = progress => parentPort.postMessage({progress});
 
-parentPort.on('message', (mes) => {
+//importLibrary асинхронный (чтение INPX), остальные методы синхронные
+parentPort.on('message', async(mes) => {
     let result = {};
     try {
         if (typeof index[mes.action] !== 'function')
             throw new Error('Action not found: ' + mes.action);
-        result.result = index[mes.action](...(mes.args || []));
+        result.result = await index[mes.action](...(mes.args || []));
     } catch (e) {
         result = {error: e.message};
     }

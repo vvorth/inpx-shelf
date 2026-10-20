@@ -236,43 +236,52 @@ async function testMetadataEditKeepsAliasesSeriesAndOpdsGroups() {
     });
 }
 
-// The build thread skips repeated _uids and numbers books in order; an edit made during a rebuild
-// survives the file swap; a crashed library thread is restarted on the next request.
+// INPX is parsed in the build thread, never with the main thread's InpxParser; the build skips repeated INPX lines
+// (same _uid) and numbers books in order; metadata edits apply at build; an edit made during a rebuild survives
+// the file swap; a crashed library thread is restarted on the next request; closing the DB cancels a running build.
 async function testCatalogSearchRebuildEditsAndThreadRestart() {
     await withTempDir(async(dir) => {
         const InpxParser = require('../server/core/InpxParser');
         const CatalogSearch = require('../server/core/search/CatalogSearch');
-        const book = (n, uid) => ({_uid: uid, title: `Book ${n}`, author: 'Author A', series: '', serno: 0, genre: 'sf', lang: 'en', ext: 'fb2',
-            size: 1, date: '2026-01-01', librate: 0, del: 0, folder: 'a.zip', file: String(n), libid: String(n), insno: 0, keywords: ''});
+        const inpxFile = path.join(dir, 'x.inpx');
+        const lines = [['Author A', 'Book 1'], ['Author A', 'Book 2'], ['Author A', 'Book 3']].map(inpxLine);
+        await writeInpx(inpxFile, [], [lines[0], lines[1], lines[1], lines[2]]);
+        const [a, b, c] = lines.map(line => crypto.createHash('sha256').update(line).digest('base64'));
         let duringBuild = async() => {};
-        const parse = InpxParser.prototype.parse;
-        InpxParser.prototype.parse = async function(_file, _onFile, onChunk) {
-            this.info = {};
-            await onChunk([book(1, 'a'), book(2, 'b'), book(2, 'b')]);
-            await duringBuild();
-            await onChunk([book(2, 'b'), book(3, 'c')]);
-        };
-        const overrides = {};
+        const overrides = {[c]: {title: 'Renamed Before Build'}};
         const worker = {readingListStore: {getMetadataOverrides: async() => overrides},
             applyMetadataOverrideToBook: (row, all) => Object.assign(row, all[row._uid] || {})};
-        const search = new CatalogSearch({dataDir: dir, inpxFile: path.join(dir, 'x.inpx')}, worker);
-        search.authorNames = {readEntries: async() => ({entries: [], updatedAt: ''})};
+        const search = new CatalogSearch({dataDir: dir, inpxFile, libDir: dir}, worker);
+        //вызывается в сборке после чтения правок и до разбора INPX
+        search.authorNames = {readEntries: async() => {
+            await duringBuild();
+            return {entries: [], updatedAt: ''};
+        }};
         const ids = async uids => (await search.getBooksByUids(uids)).map(row => [row._uid, row.id]);
+        const parse = InpxParser.prototype.parse;
+        InpxParser.prototype.parse = async() => {
+            throw new Error('INPX parsed in the main thread');
+        };
         try {
             assert.strictEqual(await search.ensure('h1'), true);
-            assert.deepStrictEqual(await ids(['a', 'b', 'c']), [['a', 1], ['b', 2], ['c', 3]]);
+            assert.deepStrictEqual(await ids([a, b, c]), [[a, 1], [b, 2], [c, 3]]);
+            assert.deepStrictEqual((await search.call('search', {q: 'renamed'})).ids, [3]);
 
             duringBuild = async() => {
-                const [row] = await search.getBooksByUids(['a']);
-                overrides.a = {title: 'Edited Title'};
+                const [row] = await search.getBooksByUids([a]);
+                overrides[a] = {title: 'Edited Title'};
                 await search.updateBook(worker.applyMetadataOverrideToBook(row, overrides));
             };
-            assert.strictEqual(await search.ensure('h2', {keepReady: true}), true);
+            assert.strictEqual(await search.ensure('h2', {force: true, keepReady: true}), true);
             assert.deepStrictEqual((await search.call('search', {q: 'edited'})).ids, [1]);
 
             await search.thread.worker.terminate();
             await new Promise(resolve => setImmediate(resolve));
             assert.deepStrictEqual((await search.call('search', {q: 'edited'})).ids, [1]);
+
+            duringBuild = () => search.close();
+            assert.strictEqual(await search.ensure('h3', {force: true, keepReady: true}), false);
+            assert.deepStrictEqual((await fs.readdir(dir)).filter(name => name.endsWith('.tmp')), []);
         } finally {
             InpxParser.prototype.parse = parse;
             await search.close();
@@ -280,15 +289,38 @@ async function testCatalogSearchRebuildEditsAndThreadRestart() {
     });
 }
 
+// filter.json applies in the build thread: excluded authors, the JS filter (only with allowUnsafeFilter) and the collection name.
+async function testCatalogBuildAppliesInpxFilter() {
+    await withTempDir(async(dir) => {
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const inpxFile = path.join(dir, 'lib.inpx');
+        const inpxFilterFile = path.join(dir, 'filter.json');
+        await writeInpx(inpxFile, [['Тестов Автор', 'Первая книга'], ['Тестов Автор', 'Вторая книга'], ['Другой Писатель', 'Третья книга']]);
+        await fs.writeJson(inpxFilterFile, {excludeAuthors: ['Другой Писатель'], filter: '(rec) => rec.title !== \'Вторая книга\'', info: {collection: 'Отобранное'}});
+        const build = async(allowUnsafeFilter) => {
+            const search = new CatalogSearch({dataDir: dir, inpxFile, libDir: dir, inpxFilterFile, allowUnsafeFilter}, catalogWorker());
+            try {
+                return (await search.ensure('h1', {force: true}) ? [(await search.search({q: 'книга'})).books.map(book => book.title), search.libraryConfig().inpxInfo.collection] : null);
+            } finally {
+                await search.close();
+            }
+        };
+        assert.deepStrictEqual(await build(true), [['Первая книга'], 'Отобранное']);
+        assert.strictEqual(await build(false), null, 'JS filter needs allowUnsafeFilter');
+    });
+}
+
+// INPX line in the field order of writeInpx: [author, title], i - its number.
+const inpxLine = ([author, title], i) => [`${author.replace(' ', ',')}:`, 'sf:', title, '', '0', String(1000 + i), '100', String(1000 + i), '0', 'fb2',
+    '2026-10-01', 'ru', '0', ''].join('\x04');
+
 // INPX in a temp dir: rows [author, title] in the INPX field order.
-async function writeInpx(file, rows) {
+async function writeInpx(file, rows, lines = rows.map(inpxLine)) {
     const yazl = require('yazl');
     const {pipeline} = require('stream/promises');
-    const line = ([author, title], i) => [`${author.replace(' ', ',')}:`, 'sf:', title, '', '0', String(1000 + i), '100', String(1000 + i), '0', 'fb2',
-        '2026-10-01', 'ru', '0', ''].join('\x04');
     const zip = new yazl.ZipFile();
     const done = pipeline(zip.outputStream, fs.createWriteStream(file));
-    zip.addBuffer(Buffer.from(rows.map(line).join('\n') + '\n'), 'collection.inp');
+    zip.addBuffer(Buffer.from(lines.join('\n') + '\n'), 'collection.inp');
     zip.end();
     await done;
 }
@@ -491,7 +523,7 @@ function testSearchQueryIsCapped() {
     assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
 }
 
-module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb, testBroadSearchSkipsRanking,
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildAppliesInpxFilter, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb, testBroadSearchSkipsRanking,
     testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
     testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart,
     testWorkKeyMatchesEditionsOnly, testSearchGroupsEditions];

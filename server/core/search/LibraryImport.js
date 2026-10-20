@@ -1,6 +1,8 @@
 //Чтение INPX для БД библиотеки: фильтр filter.json и сведения о коллекции.
 //Порядок и отбор записей те же, что у прежнего DbCreator: id книг и их _uid не меняются.
 const fs = require('fs-extra');
+const InpxParser = require('../InpxParser');
+const utils = require('../utils');
 
 const emptyFieldValue = '?';
 
@@ -64,4 +66,46 @@ function makeInpxInfo(parserInfos, inpxFilter) {
     return inpxInfo;
 }
 
-module.exports = {loadInpxFilter, makeRecordFilter, makeInpxInfo};
+//Импорт всех библиотек в начатую сборку (index - CatalogIndex после beginBuild). Идёт в потоке сборки: разбор 700 тыс.
+//строк INPX не держит основной поток. Пропуск повторов _uid и порядок id - в insertBooks.
+//filterConfig - {inpxFilterFile, allowUnsafeFilter}; overrides - правки метаданных по _uid; onProgress(0..0.9)
+async function importLibrary(index, {sources, filterConfig, overrides}, onProgress = () => {}) {
+    const inpxFilter = await loadInpxFilter(filterConfig);
+    const filter = makeRecordFilter(filterConfig, inpxFilter);
+    const parserInfos = [];
+    let recsLoaded = 0;
+    for (const [i, source] of sources.entries()) {
+        let totalFiles = 0;
+        const onFile = async(state) => {
+            if (state.totalFiles)
+                totalFiles = state.totalFiles;
+            if (totalFiles)
+                onProgress(Math.min(0.9, (i + (state.current || 0) / totalFiles) / sources.length * 0.9));
+        };
+        const onChunk = async(chunk) => {
+            const rows = [];
+            for (const rec of chunk) {
+                rec.sourceId = source.id;
+                if (!filter(rec))
+                    continue;
+                const override = overrides[rec._uid];
+                if (override) {
+                    //как WebWorker.applyMetadataOverrideToBook: поля правки поверх полей INPX
+                    rec.shown = {};
+                    for (const field of ['title', 'author', 'series', 'serno'])
+                        rec.shown[field] = (utils.hasProp(override, field) ? override[field] : rec[field]);
+                }
+                rows.push(rec);
+            }
+            recsLoaded += chunk.length;
+            index.insertBooks(rows);
+        };
+
+        const parser = new InpxParser();
+        await parser.parse(source.inpx, onFile, onChunk);
+        parserInfos.push({id: source.id, name: source.name, inpx: source.inpx, libDir: source.libDir, info: parser.info});
+    }
+    return {recsLoaded, inpxInfo: JSON.stringify(makeInpxInfo(parserInfos, inpxFilter))};
+}
+
+module.exports = {loadInpxFilter, makeRecordFilter, makeInpxInfo, importLibrary};

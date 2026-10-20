@@ -8,7 +8,13 @@ class CatalogIndexThread {
         this.listeners = new Map();
         this.worker = new Worker(childCode, {eval: true});
 
+        this.onProgress = null;
         this.worker.on('message', (mes) => {
+            if (mes.progress !== undefined) {
+                if (this.onProgress)
+                    this.onProgress(mes.progress);
+                return;
+            }
             const listener = this.listeners.get(mes.requestId);
             if (listener) {
                 this.listeners.delete(mes.requestId);

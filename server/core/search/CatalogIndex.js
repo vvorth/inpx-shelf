@@ -358,6 +358,11 @@ class CatalogIndex {
         return b.count;
     }
 
+    //Разбор INPX в начатую сборку (LibraryImport.importLibrary); onProgress задаёт поток (CatalogIndexChild)
+    importLibrary(options) {
+        return require('./LibraryImport').importLibrary(this, options, this.onProgress);
+    }
+
     finishBuild(meta = {}) {
         const b = this.build;
         if (!b)

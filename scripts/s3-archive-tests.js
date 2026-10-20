@@ -151,6 +151,17 @@ function randomText(seed, size) {
         const parsed = [];
         await new InpxParser().parse('s3://lib/inpx/lib.inpx', null, async(chunk) => { parsed.push(...chunk); });
         assert.deepStrictEqual(parsed.map(book => [book.title, book.folder]), [['Мастер и Маргарита', 'fb2-000001.zip']]);
+        //БД библиотеки из INPX в S3: INPX читает поток сборки
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const search = new CatalogSearch({dataDir: dir, inpxFile: 's3://lib/inpx/lib.inpx', libDir: 's3://lib/inpx'},
+            {readingListStore: {getMetadataOverrides: async() => ({})}});
+        search.authorNames = {readEntries: async() => ({entries: [], updatedAt: ''})};
+        try {
+            assert.strictEqual(await search.ensure('h1'), true);
+            assert.deepStrictEqual((await search.call('search', {q: 'маргарита'})).ids, [1]);
+        } finally {
+            await search.close();
+        }
 
         //Библиотека fLibrary в S3: книга в books/ под другим расширением, обложка в covers/, отзывы в etc/reviews,
         //проверка источника в администрировании

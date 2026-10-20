@@ -7,9 +7,7 @@ const log = new (require('../AppLogger'))().log;//singleton
 const utils = require('../utils');
 const AuthorNames = require('./AuthorNames');
 const WorkTitles = require('./WorkTitles');
-const InpxParser = require('../InpxParser');
 const {getIndexedLibrarySources, getAllLibrarySources} = require('../LibrarySources');
-const {loadInpxFilter, makeRecordFilter, makeInpxInfo} = require('./LibraryImport');
 
 
 class CatalogSearch {
@@ -153,7 +151,7 @@ class CatalogSearch {
     }
 
     //Импорт всех библиотек из INPX во временный файл; готовый файл заменяет прежний.
-    //Отбор здесь, пропуск повторов _uid и порядок id - в потоке сборки (insertBooks), как у прежнего создания основной БД.
+    //Разбор INPX, отбор, пропуск повторов _uid и порядок id - в потоке сборки (LibraryImport.importLibrary).
     async rebuild(inpxHash, generation) {
         //строит отдельный поток: поток запросов продолжает отвечать по прежней БД до замены файла
         const CatalogIndexThread = require('./CatalogIndexThread');
@@ -173,49 +171,33 @@ class CatalogSearch {
             //выключенные библиотеки тоже в индексе, но после включённых: повтор книги (_uid) остаётся за включённой
             const indexed = await getIndexedLibrarySources(config);
             const sources = [...indexed.filter(source => source.enabled !== false), ...indexed.filter(source => source.enabled === false)];
-            const inpxFilter = await loadInpxFilter(config);
-            const filter = makeRecordFilter(config, inpxFilter);
             const overrides = await this.worker.readingListStore.getMetadataOverrides();
             const names = await this.authorNames.readEntries();
 
             const sourceRows = sources.map(source => ({id: source.id, name: source.name, libDir: source.libDir}));
             await thread.call('beginBuild', tmpFile, names.entries, sourceRows);
-            const parserInfos = [];
-            let recsLoaded = 0;
-            for (const [index, source] of sources.entries()) {
-                let totalFiles = 0;
-                const onFile = async(state) => {
-                    if (state.totalFiles)
-                        totalFiles = state.totalFiles;
-                    if (totalFiles)
-                        this.progress = Math.min(0.9, (index + (state.current || 0) / totalFiles) / sources.length * 0.9);
-                };
-                const onChunk = async(chunk) => {
-                    if (generation !== this.generation)
-                        throw new Error('build cancelled: library reloaded');
-                    const rows = [];
-                    for (const rec of chunk) {
-                        rec.sourceId = source.id;
-                        if (!filter(rec))
-                            continue;
-                        if (overrides[rec._uid]) {
-                            const shown = this.worker.applyMetadataOverrideToBook(Object.assign({}, rec), overrides);
-                            rec.shown = {title: shown.title, author: shown.author, series: shown.series, serno: shown.serno};
-                        }
-                        rows.push(rec);
-                    }
-                    recsLoaded += chunk.length;
-                    await thread.call('insertBooks', rows);
-                };
-
-                const parser = new InpxParser();
-                await parser.parse(source.inpxFile || source.inpx, onFile, onChunk);
-                parserInfos.push({id: source.id, name: source.name, inpx: source.inpxFile || source.inpx, libDir: source.libDir, info: parser.info});
+            //разбор, отбор и правки метаданных - в потоке сборки; закрытие БД останавливает поток: он занят разбором
+            let cancelled = false;
+            thread.onProgress = (progress) => {
+                this.progress = progress;
+                if (generation !== this.generation && !cancelled) {
+                    cancelled = true;
+                    thread.terminate().catch(() => {});
+                }
+            };
+            let imported;
+            try {
+                imported = await thread.call('importLibrary', {
+                    sources: sources.map(source => ({id: source.id, name: source.name, inpx: source.inpxFile || source.inpx, libDir: source.libDir})),
+                    filterConfig: {inpxFilterFile: config.inpxFilterFile, allowUnsafeFilter: config.allowUnsafeFilter},
+                    overrides,
+                });
+            } catch (e) {
+                throw (cancelled ? new Error('build cancelled: library reloaded') : e);
             }
 
             const counts = await thread.call('finishBuild', {
-                inpxHash, aliasesStamp: names.updatedAt, aliases: 0, recsLoaded,
-                inpxInfo: JSON.stringify(makeInpxInfo(parserInfos, inpxFilter)),
+                inpxHash, aliasesStamp: names.updatedAt, aliases: 0, recsLoaded: imported.recsLoaded, inpxInfo: imported.inpxInfo,
             });
             //в Linux и macOS открытая прежняя БД остаётся читаемой после замены файла: запросы не прерываются;
             //Windows не даёт заменить открытый файл: прежняя БД закрывается и, если замена не удалась, открывается снова

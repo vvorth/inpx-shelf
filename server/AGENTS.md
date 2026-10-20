@@ -13,7 +13,7 @@ Node.js 24 server. Entry: `index.js`.
   - `CacheCleaner.js` — book and cover cache cleaning (schedule maths in `CacheSchedule.js`).
   - `discovery/ExternalShelf.js` — discovery config, shelf cache, Wikidata awards shelf; `discovery/PersonalShelves.js` — personal shelves and reading stats.
 - `core/search/` — library database:
-  - `CatalogSearch.js` imports INPX (`LibraryImport.js`, `InpxParser.js`) into `library.sqlite` and is the main-thread API (`catalogSearch` on the worker).
+  - `CatalogSearch.js` builds `library.sqlite` and is the main-thread API (`catalogSearch` on the worker); INPX is parsed and filtered in the build thread (`LibraryImport.js`, `InpxParser.js`).
   - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).
 - `core/LibraryFs.js` — file access for library paths (INPX, archives, asset folders): `s3://bucket/prefix` goes to `core/S3Fs.js` (AWS SDK, cached listings), any other path to `fs`. `dataDir`, `tempDir` and caches stay on `fs`.
 - `core/ZipReader.js` — reads library archives (zip with any method, 7z) with 7-Zip compiled to WebAssembly in `core/archive/`: worker threads (`ArchivePool`), a fresh 7-Zip instance per call (`SevenZipEngine`). An `s3://` archive is a read-only file in 7-Zip's FS (`S3File`): reads block on a fetcher thread through `Atomics.wait`, with an LRU of 256 KiB blocks.
