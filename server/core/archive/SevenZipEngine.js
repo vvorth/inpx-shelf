@@ -192,7 +192,8 @@ async function extract(file, names = [], pattern = '') {
 //запись не копируется в память. Временный каталог рядом с outputFile - rename в пределах одной ФС.
 async function extractToFile(file, name, outputFile) {
     const sz = await load();
-    const tempDir = fs.mkdtempSync(`${outputFile}.`);
+    //resolve: на Windows путь с / вперемешку с \ не прошёл бы проверку startsWith ниже
+    const tempDir = path.resolve(fs.mkdtempSync(`${outputFile}.`));
     const point = mount(sz, tempDir);
     try {
         //-spd: имя без шаблонов, как в extract

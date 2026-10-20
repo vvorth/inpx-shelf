@@ -201,8 +201,10 @@ function rawPost(base, path, headers, bodySize) {
         let response = '';
         let writeError = null;
         let written = false;
+        let finished = false;
+        //ответ (или обрыв) и конец записи: колбэк записи приходит, когда тело ушло в ядро, а ответ может быть ещё в пути
         const done = () => {
-            if (!written)
+            if (!written || !(finished || response.includes('\r\n\r\n')))
                 return;
             const match = /^HTTP\/1\.1 (\d{3})/.exec(response);
             socket.destroy();
@@ -210,16 +212,15 @@ function rawPost(base, path, headers, bodySize) {
         };
         socket.on('data', chunk => {
             response += chunk.toString('latin1');
-            if (response.includes('\r\n\r\n'))
-                done();
+            done();
         });
         socket.on('error', error => {
             writeError = writeError || error;
-            written = true;
+            written = finished = true;
             done();
         });
         socket.on('close', () => {
-            written = true;
+            written = finished = true;
             done();
         });
         const head = Object.entries(Object.assign({Host: `${hostname}:${port}`, 'Content-Length': String(bodySize)}, headers))
