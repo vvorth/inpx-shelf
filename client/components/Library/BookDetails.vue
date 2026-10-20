@@ -292,7 +292,7 @@ class BookDetails {
                         return (text ? escapeHtml(text) : text);
                     },
                 });
-                this.contents = (this.info.contents && this.info.contents.length ? this.info.contents : this.extractContents(parser));
+                this.contents = this.info.contents || [];
             } catch (e) {
                 //повреждённый FB2: остаются сведения из INPX
             }
@@ -354,32 +354,6 @@ class BookDetails {
             const src = imageMap.get(String(ids[index]));
             return (src && /^data:image\/[\w.+-]+;base64,[\w+/=\s]+$/.test(src) ? `<img src="${src}" alt="">` : '');
         });
-    }
-
-    extractContents(parser) {
-        const result = [];
-        const nodeText = (node) => {
-            const parts = [];
-            node.eachDeepSelf((item) => {
-                if (item.type === parser.TEXT || item.type === parser.CDATA)
-                    parts.push(item.value);
-            });
-            return parts.join(' ').replace(/\s+/g, ' ').trim();
-        };
-        const walk = (sections, level = 0) => {
-            for (const section of sections) {
-                const titleNode = section.$$('/title/');
-                const title = (titleNode && titleNode.count ? nodeText(titleNode) : '');
-                if (title)
-                    result.push({title, level});
-                walk(section.$$array('/section'), level + 1);
-            }
-        };
-        for (const body of parser.$$array('/body')) {
-            if (String((body.attrs() || {}).name || '').trim().toLowerCase() !== 'notes')
-                walk(body.$$array('/section'));
-        }
-        return result.slice(0, 200);
     }
 
     openEditor() {

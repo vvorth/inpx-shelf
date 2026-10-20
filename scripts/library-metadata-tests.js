@@ -118,6 +118,53 @@ async function testBookInfoRefreshesChangedReviewsWithoutReparsingBook() {
     });
 }
 
+// Кеш описания книги (.i.json): без текста книги, испорченный файл пересобирается, первая сборка одна на всех
+async function testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation() {
+    await temporary(async dir => {
+        const config = {libDir: dir, bookDir: path.join(dir, 'book'), publicFilesDir: dir, bookPathStatic: '/book', branch: 'test'};
+        await fs.ensureDir(config.bookDir);
+        const fb2 = '<?xml version="1.0" encoding="utf-8"?><FictionBook xmlns:l="http://www.w3.org/1999/xlink"><description>' +
+            '<title-info><book-title>Fixture</book-title><annotation><p>Annotation text</p></annotation>' +
+            '<coverpage><image l:href="#cover.png"/></coverpage></title-info></description>' +
+            '<body><section><title><p>Chapter one</p></title><p>SECRET BODY TEXT</p></section></body>' +
+            `<binary id="cover.png" content-type="image/png">${png.toString('base64')}</binary>` +
+            '<binary id="pic.png" content-type="image/png">UElD</binary></FictionBook>';
+        await fs.writeFile(path.join(config.bookDir, 'hash'), require('zlib').gzipSync(fb2));
+        const book = {id: 1, _uid: 'fixture', folder: 'c.zip', file: '1', ext: 'fb2', sourceLibDir: dir};
+        const value = worker(config);
+        value.checkMyState = () => true;
+        value.catalogSearch = {getBooksByUids: async() => [book]};
+        value.getBookLink = async() => ({link: '/book/hash', downFileName: 'fixture.fb2'});
+        value.readingListStore = {getMetadataOverrides: async() => ({})};
+        value.fb2Helper = new (require('../server/core/fb2/Fb2Helper'))();
+        let parses = 0;
+        const getDescAndCover = value.fb2Helper.getDescAndCover.bind(value.fb2Helper);
+        value.fb2Helper.getDescAndCover = async file => { parses++; return getDescAndCover(file); };
+
+        const views = await Promise.all([value.getBookInfo('fixture'), value.getBookInfo('fixture')]);
+        assert.strictEqual(parses, 1, 'concurrent first views parse the book once');
+        const infoFile = path.join(config.bookDir, 'hash.i.json');
+        const disk = await fs.readFile(infoFile, 'utf8');
+        assert.ok(!disk.includes('SECRET BODY TEXT'), 'book text is not cached');
+        assert.ok(!disk.includes(png.toString('base64')), 'cover binary is served as a file, not cached');
+        for (const {bookInfo} of views) {
+            assert.deepStrictEqual(bookInfo.contents, [{title: 'Chapter one', level: 0}]);
+            assert.strictEqual(bookInfo.cover, '/book/hash.png');
+            const parser = new (require('../server/core/fb2/Fb2Parser'))(bookInfo.fb2);
+            assert.strictEqual(parser.bookInfo().titleInfo.annotationHtml, '<p>Annotation text</p>');
+            assert.deepStrictEqual(parser.$$array('/binary').map(node => node.attrs().id), ['pic.png']);
+        }
+        assert.ok(await fs.pathExists(path.join(dir, 'book', 'hash.png')));
+
+        await fs.writeFile(infoFile, disk.slice(0, 20));
+        const rebuilt = (await value.getBookInfo('fixture')).bookInfo;
+        assert.strictEqual(parses, 2, 'a truncated cache file is rebuilt');
+        assert.deepStrictEqual(rebuilt.contents, [{title: 'Chapter one', level: 0}]);
+        assert.deepStrictEqual(JSON.parse(await fs.readFile(infoFile, 'utf8')).contents, rebuilt.contents);
+        assert.deepStrictEqual((await fs.readdir(config.bookDir)).sort(), ['hash', 'hash.i.json', 'hash.png']);
+    });
+}
+
 async function testReindexReloadsAuthorAndArchiveCaches() {
     await temporary(async dir => {
         const config = {...require('../server/config/base'), dataDir: path.join(dir, 'data'),
@@ -187,4 +234,4 @@ async function testBooksExtractFromPpmdZipsAndCp866Names() {
 
 module.exports = [testLibraryReviewsAndRatingsAreOptionalAndSourceScoped,
     testBookInfoRefreshesChangedReviewsWithoutReparsingBook, testReindexReloadsAuthorAndArchiveCaches,
-    testBooksExtractFromPpmdZipsAndCp866Names];
+    testBooksExtractFromPpmdZipsAndCp866Names, testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation];

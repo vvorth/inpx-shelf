@@ -1269,12 +1269,16 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
 
                 // Исходный FB2 нужен только для разбора: в состоянии читалки его не держим
                 const info = ((bookResponse && bookResponse.bookInfo) || {});
-                if (!info.fb2)
+                if (!info.fb2 || !info.link)
                     throw new Error(t('common.builtReaderCurrentlySupports'));
+                // В описании книги нет текста: берём сам файл (сервер хранит его в UTF-8)
+                const fileResponse = await fetch(info.link);
+                if (!fileResponse.ok)
+                    throw new Error(`HTTP ${fileResponse.status} ${fileResponse.statusText}`.trim());
 
                 await this.applyReaderDocumentSource({
                     book: (info.book || {}),
-                    fb2: info.fb2 || '',
+                    fb2: await fileResponse.text(),
                     cover: info.cover || '',
                     stateResponse,
                 });

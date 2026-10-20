@@ -42,7 +42,7 @@ const stateToText = {
 const checkReleaseInterval = 7*60*60*1000;//каждые 7 часов
 const bookAssetVersion = 'fblibrary-assets-v5';
 const fb2AssetVersion = 'fb2-encoding-v6';
-const bookInfoVersion = 'fb2-encoding-v8';
+const bookInfoVersion = 'fb2-desc-only-v9';
 
 function assetVersionFor(ext) {
     return String(ext || '').toLowerCase() === 'fb2' ? fb2AssetVersion : bookAssetVersion;
@@ -1313,6 +1313,20 @@ class WebWorker {
         return result.slice(0, 200);
     }
 
+    //Странице книги нужны только <description> и картинки вкладки «Картинки» (до 18, без обложки):
+    //текст (<body>) не идёт ни в кеш, ни в ответ, читалка берёт сам файл книги
+    fb2InfoNodes(parser) {
+        const image = parser.$$('/description/title-info/coverpage/image');
+        const href = String((image.count && (image.attrs() || {})[`${parser.xlinkNS}:href`]) || '');
+        const coverId = (href[0] == '#' ? href.substring(1) : href);
+        let images = 0;
+        const keep = node => node[0] !== parser.NODE || (node[1] === 'binary'
+            ? new Map(node[2] || []).get('id') !== coverId && images++ < 18
+            : node[1] !== 'body');
+        return parser.rawNodes.map(node => (node[0] === parser.NODE && Array.isArray(node[3])
+            ? [node[0], node[1], node[2], node[3].filter(keep)] : node));
+    }
+
     extractFb2NodeText(node, parser) {
         if (!node)
             return '';
@@ -1517,7 +1531,7 @@ class WebWorker {
                 if (book.ext == 'fb2') {
                     const {fb2, cover, coverExt} = await this.fb2Helper.getDescAndCover(bookFile);
                     parser = fb2;
-                    result.fb2 = fb2.rawNodes;
+                    result.fb2 = this.fb2InfoNodes(fb2);
                     result.contents = this.extractFb2Contents(fb2);
                     result.annotationMeta = this.extractFb2AnnotationMeta(fb2);
 
@@ -1531,34 +1545,44 @@ class WebWorker {
 
                 Object.assign(info, result);
 
-                await fs.writeFile(bookFileInfo, JSON.stringify(info));
+                //обрезанный файл после сбоя или полного диска не должен ломать страницу книги
+                await writeFileAtomic(bookFileInfo, JSON.stringify(info));
 
                 if (this.config.branch === 'development') {
                     await fs.writeFile(`${bookFile}.dev`, `${JSON.stringify(info, null, 2)}\n\n${parser ? parser.toString({format: true}) : ''}`);
                 }
+                return info;
             };
 
-            if (!await fs.pathExists(bookFileInfo)) {
-                await restoreBookInfo(bookInfo);
-            } else {
+            let tmpInfo = null;
+            try {
+                tmpInfo = JSON.parse(await fs.readFile(bookFileInfo, 'utf-8'));
                 await utils.touchFile(bookFileInfo);
-                const info = await fs.readFile(bookFileInfo, 'utf-8');
-                const tmpInfo = JSON.parse(info);
+            } catch (e) {
+                //нет файла или он испорчен: пересоберём
+                if (e.code !== 'ENOENT' && !(e instanceof SyntaxError))
+                    throw e;
+            }
 
-                //проверим существование файла обложки, восстановим если нету
-                let coverFile = '';
-                if (tmpInfo.cover)
-                    coverFile = `${this.config.publicFilesDir}${tmpInfo.cover}`;
+            //проверим существование файла обложки, восстановим если нету
+            let coverFile = '';
+            if (tmpInfo && tmpInfo.cover)
+                coverFile = `${this.config.publicFilesDir}${tmpInfo.cover}`;
 
-                if (book.id != tmpInfo.book.id || tmpInfo.infoVersion !== bookInfoVersion || (coverFile && !await fs.pathExists(coverFile))) {
-                    await restoreBookInfo(bookInfo);
-                } else {
-                    bookInfo = tmpInfo;
-                    bookInfo.book = book;
-                    if (tmpInfo.reviewSignature !== reviewState.signature) {
-                        await refreshReviews(bookInfo);
-                        await fs.writeJson(bookFileInfo, bookInfo);
-                    }
+            if (!tmpInfo || !tmpInfo.book || book.id != tmpInfo.book.id || tmpInfo.infoVersion !== bookInfoVersion || (coverFile && !await fs.pathExists(coverFile))) {
+                //одновременные первые просмотры одной книги разбирают её один раз
+                if (!this.pendingBookInfos)
+                    this.pendingBookInfos = new Map();
+                const pending = this.pendingBookInfos;
+                if (!pending.has(bookFileInfo))
+                    pending.set(bookFileInfo, restoreBookInfo(bookInfo).finally(() => pending.delete(bookFileInfo)));
+                bookInfo = {...await pending.get(bookFileInfo), book};
+            } else {
+                bookInfo = tmpInfo;
+                bookInfo.book = book;
+                if (tmpInfo.reviewSignature !== reviewState.signature) {
+                    await refreshReviews(bookInfo);
+                    await writeFileAtomic(bookFileInfo, JSON.stringify(bookInfo));
                 }
             }
 
