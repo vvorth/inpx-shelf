@@ -22,10 +22,16 @@ function assertBadRequest(fn) {
 }
 
 function testApiRoutesCoverControllerActions() {
+    //обработчик действия - вызов из workerActions или метод контроллера с именем действия в camelCase (ApiController.dispatch)
     const source = fs.readFileSync(path.join(__dirname, '../server/controllers/ApiController.js'), 'utf8');
-    const actions = [...source.matchAll(/^\s*case '([a-z0-9-]+)':/gm)].map(m => m[1]);
-    assert.ok(actions.length > 80);
-    assert.deepStrictEqual([...apiRoutes.routes.map(route => route.action)].sort(), [...actions].sort());
+    const workerActions = [...source.matchAll(/^ {4}'([a-z0-9-]+)': /gm)].map(m => m[1]);
+    const ApiController = require('../server/controllers/ApiController');
+    const method = action => ApiController.prototype[action.replace(/-([a-z0-9])/g, (m, c) => c.toUpperCase())];
+    const actions = apiRoutes.routes.map(route => route.action);
+    assert.ok(actions.length > 80 && workerActions.length > 20);
+    assert.deepStrictEqual(workerActions.filter(action => !actions.includes(action)), []);
+    assert.deepStrictEqual(workerActions.filter(action => method(action)), [], 'One handler per action');
+    assert.deepStrictEqual(actions.filter(action => !workerActions.includes(action) && typeof method(action) !== 'function'), []);
     assert.strictEqual(new Set(actions).size, actions.length);
 
     //два маршрута одного метода с одинаковой формой пути неразличимы

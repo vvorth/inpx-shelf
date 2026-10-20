@@ -28,6 +28,38 @@ const programmingErrors = [TypeError, ReferenceError, RangeError, SyntaxError];
 
 const httpError = (status, message) => Object.assign(new Error(message), {status});
 
+//действия, которые только передают параметры в WebWorker (проверки доступа - в самом WebWorker)
+const workerActions = {
+    'get-author-info': (w, r) => w.getAuthorInfo(r.authorId, r.author),
+    'get-series-book-list': (w, r) => w.getSeriesBookList(r.series, r.query),
+    'get-genre-tree': w => w.getGenreTree(),
+    'update-discovery-preferences': (w, r) => w.updateDiscoveryPreferences(r.userId, r.profileAccessToken, r.preferences || {}),
+    'update-shared-discovery-config': (w, r) => w.updateSharedDiscoveryConfig(r.userId, r.profileAccessToken, r.discovery || {}),
+    'update-admin-integrations': (w, r) => w.updateAdminIntegrationConfig(r.userId, r.profileAccessToken, r.integrations || {}),
+    'test-admin-integration': (w, r) => w.testAdminIntegrationConfig(r.userId, r.profileAccessToken, r.kind),
+    'update-admin-opds': (w, r) => w.updateAdminOpdsConfig(r.userId, r.profileAccessToken, r.opds || {}),
+    'update-admin-guest-access': (w, r) => w.updateAdminGuestAccess(r.userId, r.profileAccessToken, r.guestAccess === true),
+    'get-admin-dashboard': (w, r) => w.getAdminDashboard(r.userId, r.profileAccessToken),
+    'get-admin-dashboard-metrics': (w, r) => w.getAdminDashboardMetrics(r.userId, r.profileAccessToken),
+    'get-admin-events': (w, r) => w.getAdminEvents(r.userId, r.profileAccessToken, r.options || {}),
+    'update-admin-event-log': (w, r) => w.updateAdminEventLog(r.userId, r.profileAccessToken, r.options || {}),
+    'add-admin-test-event': (w, r) => w.addAdminTestEvent(r.userId, r.profileAccessToken, r.level),
+    'update-admin-library-sources': (w, r) => w.updateAdminLibrarySources(r.userId, r.profileAccessToken, r.sources || []),
+    'admin-diagnose-library-source': (w, r) => w.diagnoseLibrarySource(r.userId, r.profileAccessToken, r.source || {}),
+    'get-remote-access': (w, r) => w.getRemoteAccess(r.userId, r.profileAccessToken),
+    'create-remote-access': (w, r) => w.createRemoteAccess(r.userId, r.profileAccessToken, r.access || {}),
+    'update-remote-access': (w, r) => w.updateRemoteAccess(r.userId, r.profileAccessToken, r.access || {}),
+    'delete-remote-access': (w, r) => w.deleteRemoteAccess(r.userId, r.profileAccessToken, r.id),
+    'admin-remote-library-sources': (w, r) => w.listRemoteLibrarySources(r.userId, r.profileAccessToken, r.remote || {}),
+    'update-admin-cache': (w, r) => w.updateAdminCacheConfig(r.userId, r.profileAccessToken, r.cache || {}),
+    'admin-clean-cache': (w, r) => w.runAdminCacheCleanKind(r.userId, r.profileAccessToken, r.kind || 'all'),
+    'admin-clean-broken-covers': (w, r) => w.cleanBrokenCoverCache(r.userId, r.profileAccessToken),
+    'admin-reindex': (w, r) => w.startAdminReindex(r.userId, r.profileAccessToken),
+    'export-admin-settings': (w, r) => w.exportAdminSettings(r.userId, r.profileAccessToken),
+    'create-admin-backup': (w, r) => w.createAdminBackup(r.userId, r.profileAccessToken, r.scope),
+    'update-book-metadata': (w, r) => w.updateBookMetadata(r.userId, r.profileAccessToken, r.bookUid, r.metadata),
+};
+
 // The request body to `file`; stops reading at `limit` bytes (the caller answers 413).
 function receiveFile(req, file, limit) {
     return new Promise((resolve, reject) => {
@@ -347,190 +379,15 @@ class ApiController {
         }
     }
 
-    // Only actions of the route table reach here (apiRoutes.match).
+    // Only actions of the route table reach here (apiRoutes.match): a WebWorker call from workerActions or the
+    // controller method named after the action in camelCase (looked up on the instance: tests stub handlers there).
     async dispatch(action, req, ctx) {
-        switch (action) {
-            case 'test':
-                return this.test(req, ctx);
-            case 'get-config':
-                return this.getConfig(req, ctx);
-            case 'get-worker-state':
-                return this.getWorkerState(req, ctx);
-            case 'get-author-book-list':
-                return this.getAuthorBookList(req, ctx);
-            case 'get-author-info':
-                return this.getAuthorInfo(req, ctx);
-            case 'get-series-book-list':
-                return this.getSeriesBookList(req, ctx);
-            case 'get-genre-tree':
-                return this.getGenreTree(req, ctx);
-            case 'get-discovery-shelves':
-                return this.getDiscoveryShelves(req, ctx);
-            case 'update-discovery-preferences':
-                return this.updateDiscoveryPreferences(req, ctx);
-            case 'record-discovery-events':
-                return this.recordDiscoveryEvents(req, ctx);
-            case 'update-shared-discovery-config':
-                return this.updateSharedDiscoveryConfig(req, ctx);
-            case 'update-admin-integrations':
-                return this.updateAdminIntegrations(req, ctx);
-            case 'test-admin-integration':
-                return this.testAdminIntegration(req, ctx);
-            case 'update-admin-opds':
-                return this.updateAdminOpds(req, ctx);
-            case 'update-admin-guest-access':
-                return this.updateAdminGuestAccess(req, ctx);
-            case 'get-admin-dashboard':
-                return this.getAdminDashboard(req, ctx);
-            case 'get-admin-dashboard-metrics':
-                return this.getAdminDashboardMetrics(req, ctx);
-            case 'get-admin-events':
-                return this.getAdminEvents(req, ctx);
-            case 'update-admin-event-log':
-                return this.updateAdminEventLog(req, ctx);
-            case 'add-admin-test-event':
-                return this.addAdminTestEvent(req, ctx);
-            case 'update-admin-library-sources':
-                return this.updateAdminLibrarySources(req, ctx);
-            case 'admin-diagnose-library-source':
-                return this.adminDiagnoseLibrarySource(req, ctx);
-            case 'get-remote-access':
-                return this.webWorker.getRemoteAccess(req.userId, req.profileAccessToken);
-            case 'create-remote-access':
-                return this.webWorker.createRemoteAccess(req.userId, req.profileAccessToken, req.access || {});
-            case 'update-remote-access':
-                return this.webWorker.updateRemoteAccess(req.userId, req.profileAccessToken, req.access || {});
-            case 'delete-remote-access':
-                return this.webWorker.deleteRemoteAccess(req.userId, req.profileAccessToken, req.id);
-            case 'admin-remote-library-sources':
-                return this.webWorker.listRemoteLibrarySources(req.userId, req.profileAccessToken, req.remote || {});
-            case 'update-admin-cache':
-                return this.updateAdminCache(req, ctx);
-            case 'admin-clean-cache':
-                return this.adminCleanCache(req, ctx);
-            case 'admin-clean-broken-covers':
-                return this.adminCleanBrokenCovers(req, ctx);
-            case 'admin-rebuild-cover':
-                return this.adminRebuildCover(req, ctx);
-            case 'admin-reindex':
-                return this.adminReindex(req, ctx);
-            case 'export-admin-settings':
-                return this.exportAdminSettings(req, ctx);
-            case 'import-admin-settings':
-                return this.importAdminSettings(req, ctx);
-            case 'create-admin-backup':
-                return this.createAdminBackup(req, ctx);
-            case 'import-admin-backup':
-                return this.importAdminBackup(req, ctx);
-            case 'update-book-metadata':
-                return this.updateBookMetadata(req, ctx);
-            case 'get-book-link':
-                return this.getBookLink(req, ctx);
-            case 'get-author-aliases':
-                return this.getAuthorAliases(req, ctx);
-            case 'admin-author-names-status':
-                return this.adminAuthorNamesStatus(req, ctx);
-            case 'admin-author-names-update':
-                return this.adminAuthorNamesUpdate(req, ctx);
-            case 'catalog-names':
-                return this.catalogNames(req, ctx);
-            case 'catalog-search':
-                return this.catalogSearch(req, ctx);
-            case 'catalog-suggest':
-                return this.catalogSuggest(req, ctx);
-            case 'get-book':
-                return this.getBook(req, ctx);
-            case 'get-book-states':
-                return this.getBookStates(req, ctx);
-            case 'get-book-info':
-                return this.getBookInfo(req, ctx);
-            case 'get-reader-state':
-                return this.getReaderState(req, ctx);
-            case 'get-user-reading-library':
-                return this.getUserReadingLibrary(req, ctx);
-            case 'get-reading-stats':
-                return this.getReadingStats(req, ctx);
-            case 'update-reader-progress':
-                return this.updateReaderProgress(req, ctx);
-            case 'delete-reader-progress':
-                return this.deleteReaderProgress(req, ctx);
-            case 'forget-books':
-                return this.forgetBooks(req, ctx);
-            case 'clear-reader-progress':
-                return this.clearReaderProgress(req, ctx);
-            case 'update-reader-preferences':
-                return this.updateReaderPreferences(req, ctx);
-            case 'add-reader-bookmark':
-                return this.addReaderBookmark(req, ctx);
-            case 'delete-reader-bookmark':
-                return this.deleteReaderBookmark(req, ctx);
-            case 'get-reading-lists':
-                return this.getReadingLists(req, ctx);
-            case 'get-user-profiles':
-                return this.getUserProfiles(req, ctx);
-            case 'login-user-profile':
-                return this.loginUserProfile(req, ctx);
-            case 'logout-user-profile':
-                return this.logoutUserProfile(req, ctx);
-            case 'create-user-profile':
-                return this.createUserProfile(req, ctx);
-            case 'update-user-profile':
-                return this.updateUserProfile(req, ctx);
-            case 'delete-user-profile':
-                return this.deleteUserProfile(req, ctx);
-            case 'get-reading-now':
-                return this.getReadingNow(req, ctx);
-            case 'get-reading-list':
-                return this.getReadingList(req, ctx);
-            case 'create-reading-list':
-                return this.createReadingList(req, ctx);
-            case 'rename-reading-list':
-                return this.renameReadingList(req, ctx);
-            case 'set-reading-list-visibility':
-                return this.setReadingListVisibility(req, ctx);
-            case 'delete-reading-list':
-                return this.deleteReadingList(req, ctx);
-            case 'export-reading-lists':
-                return this.exportReadingLists(req, ctx);
-            case 'import-reading-lists':
-                return this.importReadingLists(req, ctx);
-            case 'update-reading-list-book':
-                return this.updateReadingListBook(req, ctx);
-            case 'replace-listed-book':
-                return this.replaceListedBook(req, ctx);
-            case 'set-reading-list-book-read':
-                return this.setReadingListBookRead(req, ctx);
-            case 'mark-reader-books-read':
-                return this.markReaderBooksRead(req, ctx);
-            case 'mark-series-read':
-                return this.markSeriesRead(req, ctx);
-            case 'add-series-to-reading-list':
-                return this.addSeriesToReadingList(req, ctx);
-            case 'get-kobo-devices':
-                return this.getKoboDevices(req, ctx);
-            case 'create-kobo-device':
-                return this.createKoboDevice(req, ctx);
-            case 'update-kobo-device':
-                return this.updateKoboDevice(req, ctx);
-            case 'regenerate-kobo-device-token':
-                return this.regenerateKoboDeviceToken(req, ctx);
-            case 'reset-kobo-device':
-                return this.resetKoboDevice(req, ctx);
-            case 'refresh-kobo-device':
-                return this.refreshKoboDevice(req, ctx);
-            case 'delete-kobo-device':
-                return this.deleteKoboDevice(req, ctx);
-            case 'set-opds-password':
-                return this.setOpdsPassword(req, ctx);
-            case 'create-kosync-password':
-                return this.createKosyncPassword(req, ctx);
-            case 'send-book-telegram':
-                return this.sendBookTelegram(req, ctx);
-            case 'send-book-email':
-                return this.sendBookEmail(req, ctx);
-            default:
-                throw new Error(`Action not found: ${action}`);
-        }
+        if (Object.hasOwn(workerActions, action))
+            return workerActions[action](this.webWorker, req);
+        const handler = this[action.replace(/-([a-z0-9])/g, (m, c) => c.toUpperCase())];
+        if (typeof handler !== 'function')
+            throw new Error(`Action not found: ${action}`);
+        return handler.call(this, req, ctx);
     }
 
     async uploadAllowed(check) {
@@ -683,24 +540,6 @@ class ApiController {
         return result;
     }
 
-    async getAuthorInfo(req) {
-        const result = await this.webWorker.getAuthorInfo(req.authorId, req.author);
-
-        return result;
-    }
-
-    async getSeriesBookList(req) {
-        const result = await this.webWorker.getSeriesBookList(req.series, req.query);
-
-        return result;
-    }
-
-    async getGenreTree() {
-        const result = await this.webWorker.getGenreTree();
-
-        return result;
-    }
-
     async getDiscoveryShelves(req) {
         //гостю - общие полки из кеша: без персональных, без перезагрузки и без настроек источника администратора
         if (req.guest)
@@ -726,16 +565,6 @@ class ApiController {
         return result;
     }
 
-    async updateDiscoveryPreferences(req) {
-        const result = await this.webWorker.updateDiscoveryPreferences(
-            req.userId,
-            req.profileAccessToken,
-            req.preferences || {},
-        );
-
-        return result;
-    }
-
     async recordDiscoveryEvents(req) {
         if (req.guest)
             return {};
@@ -748,114 +577,11 @@ class ApiController {
         return result;
     }
 
-    async updateSharedDiscoveryConfig(req) {
-        const result = await this.webWorker.updateSharedDiscoveryConfig(
-            req.userId,
-            req.profileAccessToken,
-            req.discovery || {},
-        );
-
-        return result;
-    }
-
-    async updateAdminIntegrations(req) {
-        const result = await this.webWorker.updateAdminIntegrationConfig(
-            req.userId,
-            req.profileAccessToken,
-            req.integrations || {},
-        );
-
-        return result;
-    }
-
-    async testAdminIntegration(req) {
-        const result = await this.webWorker.testAdminIntegrationConfig(
-            req.userId,
-            req.profileAccessToken,
-            req.kind,
-        );
-
-        return result;
-    }
-
-    async updateAdminGuestAccess(req) {
-        const result = await this.webWorker.updateAdminGuestAccess(req.userId, req.profileAccessToken, req.guestAccess === true);
-        return result;
-    }
-
-    async updateAdminOpds(req) {
-        const result = await this.webWorker.updateAdminOpdsConfig(
-            req.userId,
-            req.profileAccessToken,
-            req.opds || {},
-        );
-        return result;
-    }
-
-    async getAdminDashboard(req) {
-        const result = await this.webWorker.getAdminDashboard(req.userId, req.profileAccessToken);
-        return result;
-    }
-
-    async getAdminDashboardMetrics(req) {
-        const result = await this.webWorker.getAdminDashboardMetrics(req.userId, req.profileAccessToken);
-        return result;
-    }
-
-    async getAdminEvents(req) {
-        const result = await this.webWorker.getAdminEvents(req.userId, req.profileAccessToken, req.options || {});
-        return result;
-    }
-
-    async updateAdminEventLog(req) {
-        const result = await this.webWorker.updateAdminEventLog(req.userId, req.profileAccessToken, req.options || {});
-        return result;
-    }
-
-    async addAdminTestEvent(req) {
-        const result = await this.webWorker.addAdminTestEvent(req.userId, req.profileAccessToken, req.level);
-        return result;
-    }
-
-    async updateAdminLibrarySources(req) {
-        const result = await this.webWorker.updateAdminLibrarySources(
-            req.userId,
-            req.profileAccessToken,
-            req.sources || [],
-        );
-        return result;
-    }
-
-    async adminDiagnoseLibrarySource(req) {
-        const result = await this.webWorker.diagnoseLibrarySource(req.userId, req.profileAccessToken, req.source || {});
-        return result;
-    }
-
-    async adminCleanCache(req) {
-        const result = await this.webWorker.runAdminCacheCleanKind(req.userId, req.profileAccessToken, req.kind || 'all');
-        return result;
-    }
-
-    async updateAdminCache(req) {
-        const result = await this.webWorker.updateAdminCacheConfig(req.userId, req.profileAccessToken, req.cache || {});
-        return result;
-    }
-
-    async adminCleanBrokenCovers(req) {
-        const result = await this.webWorker.cleanBrokenCoverCache(req.userId, req.profileAccessToken);
-        return result;
-    }
-
     async adminRebuildCover(req) {
         if (!utils.hasProp(req, 'bookUid'))
             throw new Error(`bookUid is empty`);
 
         const result = await this.webWorker.rebuildCoverCacheForBook(req.userId, req.profileAccessToken, req.bookUid);
-        return result;
-    }
-
-    async adminReindex(req) {
-        const result = await this.webWorker.startAdminReindex(req.userId, req.profileAccessToken);
         return result;
     }
 
@@ -1217,11 +943,6 @@ class ApiController {
         return result;
     }
 
-    async exportAdminSettings(req) {
-        const result = await this.webWorker.exportAdminSettings(req.userId, req.profileAccessToken);
-        return result;
-    }
-
     async importAdminSettings(req, ctx) {
         if (ctx.uploadCheck)
             return this.uploadAllowed(() => this.webWorker.requireAdmin(req.userId, req.profileAccessToken));
@@ -1229,20 +950,10 @@ class ApiController {
         return result;
     }
 
-    async createAdminBackup(req) {
-        const result = await this.webWorker.createAdminBackup(req.userId, req.profileAccessToken, req.scope);
-        return result;
-    }
-
     async importAdminBackup(req, ctx) {
         if (ctx.uploadCheck)
             return this.uploadAllowed(() => this.webWorker.requireAdmin(req.userId, req.profileAccessToken));
         const result = await this.webWorker.importAdminBackup(req.userId, req.profileAccessToken, {file: this.uploadedFile(ctx)}, req.scope);
-        return result;
-    }
-
-    async updateBookMetadata(req) {
-        const result = await this.webWorker.updateBookMetadata(req.userId, req.profileAccessToken, req.bookUid, req.metadata);
         return result;
     }
 
