@@ -10,7 +10,7 @@ Vue 3 + Quasar 2 web app, built by webpack (`npm run build:client`).
 - `components/Library/` — home, search, book, author and series pages. `BookCollection`, `BookCard`, `BookCover`, `BookQuickActions` are the only way to show books: reuse them so a change shows up everywhere.
 - `components/Lists/`, `Me/`, `Admin/`, `Login/`, `Reader/` — lists, profile, administration, sign-in, reader.
 - `components/Reader/` — `Reader.vue` keeps the reader state (class fields), lifecycle and book loading. Behaviour lives in methods-only layers `reader*.js` (paginator, progress sync, search, bookmarks, settings, navigation, input, viewport …) that `readerLayers()` stacks under `Reader`; one name in two layers throws. Template parts (`ReaderToolbar`, `ReaderFooter`, `ReaderDialogs`, `ReaderSettingsPanel`, `ReaderHome`) get the Reader instance as the `reader` prop and keep no state: reads and writes go through `reader.` (`reader.helpDialogOpen = false`). Pure logic goes to `client/share/reader*.js` with tests in `scripts/reader-tests.js`.
-- `components/Api/Api.vue` — WebSocket API calls, the busy dialog while the server builds the library.
+- `components/Api/Api.vue` — HTTP API calls (`request({action, ...params})`, URLs from `shared/apiRoutes.js` via `apiConnection.js`), the busy dialog while the server builds the library.
 - `components/App.vue` — global styles (`.page`, `.card`, `.tabs` …): use them instead of new one-off styles.
 - `share/` — client helpers (session, book actions, genres, languages, views, i18n). `store/` — vuex settings persisted in localStorage.
 
