@@ -17,55 +17,6 @@ let argv;
 let branch = '';
 const argvStrings = ['host', 'port', 'config', 'data-dir', 'app-dir', 'lib-dir', 'inpx', 'library-sources', 'admin-login', 'admin-password'];
 
-function applyEnvSecurityOverrides(targetConfig) {
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_PROXY_BIND_PROFILE'))
-        targetConfig.proxyBindProfile = process.env.INPX_PROXY_BIND_PROFILE === 'true';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_GUEST_ACCESS'))
-        targetConfig.guestAccess = process.env.INPX_GUEST_ACCESS === 'true';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_OPDS_GUEST_ACCESS'))
-        targetConfig.opds = Object.assign({}, targetConfig.opds, {guestAccess: process.env.INPX_OPDS_GUEST_ACCESS === 'true'});
-    for (const [field, variable] of Object.entries({
-        apiMessageLimitMb: 'INPX_API_MESSAGE_LIMIT_MB',
-        importLimitMb: 'INPX_IMPORT_LIMIT_MB',
-        backupUploadLimitMb: 'INPX_BACKUP_UPLOAD_LIMIT_MB',
-        backupExpandedLimitMb: 'INPX_BACKUP_EXPANDED_LIMIT_MB',
-        conversionConcurrency: 'INPX_CONVERSION_CONCURRENCY',
-        conversionQueueLimit: 'INPX_CONVERSION_QUEUE_LIMIT',
-        conversionTimeoutMs: 'INPX_CONVERSION_TIMEOUT_MS',
-        conversionQueueTimeoutMs: 'INPX_CONVERSION_QUEUE_TIMEOUT_MS',
-    })) {
-        if (Object.prototype.hasOwnProperty.call(process.env, variable))
-            targetConfig[field] = Number(process.env[variable]);
-    }
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_REQUIRE_AUTH'))
-        targetConfig.requireAuth = process.env.INPX_REQUIRE_AUTH === 'true';
-    if (process.env.INPX_AUTH_MODE)
-        targetConfig.authMode = String(process.env.INPX_AUTH_MODE || '').trim().toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_TRUST_PROXY'))
-        targetConfig.trustProxy = process.env.INPX_TRUST_PROXY === 'true';
-    if (process.env.INPX_PROXY_AUTH_HEADER)
-        targetConfig.proxyAuthHeader = process.env.INPX_PROXY_AUTH_HEADER;
-    if (process.env.INPX_TRUSTED_PROXY_CIDRS)
-        targetConfig.trustedProxyCidrs = String(process.env.INPX_TRUSTED_PROXY_CIDRS || '').split(',').map(item => item.trim()).filter(Boolean);
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_AUTH_EXEMPT_HEALTH'))
-        targetConfig.authExemptHealth = process.env.INPX_AUTH_EXEMPT_HEALTH !== 'false';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_ENABLED'))
-        targetConfig.metricsEnabled = process.env.INPX_METRICS_ENABLED === 'true';
-    if (process.env.INPX_METRICS_PATH)
-        targetConfig.metricsPath = process.env.INPX_METRICS_PATH;
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_TOKEN'))
-        targetConfig.metricsToken = process.env.INPX_METRICS_TOKEN || '';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_LOGIN_RATE_LIMIT_ENABLED'))
-        targetConfig.loginRateLimitEnabled = process.env.INPX_LOGIN_RATE_LIMIT_ENABLED !== 'false';
-}
-
-function applyEnvLibraryOverrides(targetConfig, argv = {}) {
-    if (!argv['lib-dir'] && process.env.LIBDIR)
-        targetConfig.libDir = process.env.LIBDIR;
-    if (!argv.inpx && process.env.INPX)
-        targetConfig.inpx = process.env.INPX;
-}
-
 function showHelp(defaultConfig) {
     console.log(utils.versionText(defaultConfig));
     console.log(
@@ -95,14 +46,14 @@ async function init() {
     const configFile = argv['config'];
 
     //config
-    const configManager = new (require('./config'))();//singleton
+    const ConfigManager = require('./config');
+    const configManager = new ConfigManager();//singleton
     await configManager.init(argvDataDir, configFile);
     const defaultConfig = configManager.config;
 
     await configManager.load();
     config = configManager.config;
-    applyEnvSecurityOverrides(config);
-    applyEnvLibraryOverrides(config, argv);
+    ConfigManager.applyEnvOverrides(config);
     require('./core/BookConverter').configure(config);
     branch = config.branch;
 
@@ -122,7 +73,8 @@ async function init() {
     config.logDir = config.logDir || `${config.dataDir}/log`;    
     config.publicDir = `${config.dataDir}/public`;
     config.publicFilesDir = `${config.cacheDir}/public-files`;
-    config.rootPathStatic = config.server.root || '';
+    //без завершающего '/': маршруты собираются как `${rootPathStatic}/...`, root "/" - это ""
+    config.rootPathStatic = String(config.server.root || '').replace(/\/+$/, '');
     config.bookPathStatic = `${config.rootPathStatic}/book`;
     config.bookDir = `${config.publicFilesDir}/book`;
     config.coverDir = `${config.publicFilesDir}/cover`;
@@ -168,11 +120,8 @@ async function init() {
         config.resetAdminPassword = true;
     }
 
-    if (argv['library-sources']) {
-        const {parseSourcesFromString} = require('./core/LibrarySources');
-        config.librarySources = parseSourcesFromString(argv['library-sources']);
-    }
-
+    //восстановление из бэкапа разбирает источники библиотек с теми же параметрами
+    configManager.argv = argv;
     await resolveLibrarySources(config, argv);
     await new (require('./core/RemoteLib'))(config).syncAll();
 

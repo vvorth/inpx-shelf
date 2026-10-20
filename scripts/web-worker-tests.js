@@ -165,22 +165,18 @@ async function testCleanDirSkipsVanishedFiles() {
 async function testLibrarySourcesRollBackWhenConfigSaveFails() {
     await temporary(async(dir) => {
         const ConfigManager = require('../server/config');
-        const save = ConfigManager.prototype.save;
-        const property = Object.getOwnPropertyDescriptor(ConfigManager.prototype, 'config');
+        const savePatch = ConfigManager.savePatch;
         const previous = [{id: 'main', name: 'Main', inpx: '/lib/main.inpx', inpxFile: '/lib/main.inpx', libDir: '/lib', enabled: true}];
         const worker = bareWorker({config: {configFile: path.join(dir, 'config.json'), librarySources: previous}});
         worker.requireAdmin = async() => {};
         worker.addAdminEvent = () => {};
-        //менеджер конфигурации - общий объект: на время теста он ничего не принимает и не пишет
-        Object.defineProperty(ConfigManager.prototype, 'config', {configurable: true, set() {}});
-        ConfigManager.prototype.save = async() => {
+        ConfigManager.savePatch = async() => {
             throw new Error('disk full');
         };
         try {
             await assert.rejects(worker.updateAdminLibrarySources('admin', '', [{name: 'Other', inpx: '/other/other.inpx', libDir: '/other'}]), /disk full/);
         } finally {
-            ConfigManager.prototype.save = save;
-            Object.defineProperty(ConfigManager.prototype, 'config', property);
+            ConfigManager.savePatch = savePatch;
         }
         assert.deepStrictEqual(worker.config.librarySources, previous);
     });

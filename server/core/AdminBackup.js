@@ -9,6 +9,7 @@ const {t, msg} = require('./i18n');
 const ConfigManager = require('../config');
 const log = new (require('./AppLogger'))().log;//singleton
 const BackupFiles = require('./BackupFiles');
+const {resolveLibrarySources} = require('./LibrarySources');
 
 // What a backup holds: the full one, or only the English author names (exported and imported next to their download)
 const scopes = {
@@ -271,8 +272,24 @@ module.exports = {
                     // an upstream inpx-web backup would point update checks at upstream.
                     const localKeys = ['dataDir', 'tempDir', 'logDir', 'converterPaths', 'allowUnsafeFilter', 'inpxFilterFile',
                         'latestReleaseLink', 'checkReleaseLink'];
-                    runtimePatch = Object.assign(_.omit(_.pick(decoded, ConfigManager.propsToSave), localKeys), _.pick(this.config, localKeys));
-                    const protectedConfig = await secretStore.protectConfig(runtimePatch);
+                    runtimePatch = _.omit(_.pick(decoded, ConfigManager.propsToSave), localKeys);
+                    //локальные ключи - из файла, а не из рабочего конфига: вычисленные пути и CLI в файл не попадают
+                    const fileLocal = _.pick(await ConfigManager.readFileConfig(this.config.configFile), localKeys);
+                    const protectedConfig = await secretStore.protectConfig(Object.assign({}, runtimePatch, fileLocal));
+                    //в памяти - как при запуске: умолчания, файл, переменные окружения; ключа нет в бэкапе - действует умолчание.
+                    //server (адрес, root, готовность) меняется только перезапуском
+                    const defaults = _.omit(new ConfigManager().defaults || {}, [...localKeys, 'server']);
+                    runtimePatch = ConfigManager.applyEnvOverrides(Object.assign(_.cloneDeep(defaults), _.omit(runtimePatch, 'server')));
+                    //источники библиотек - как при запуске; не находятся на этом сервере - работают прежние до перезапуска
+                    const libraryKeys = ['librarySources', 'libDir', 'inpx', 'inpxFile'];
+                    const library = Object.assign(_.cloneDeep(runtimePatch), _.pick(this.config, ['dataDir', 'execDir']));
+                    try {
+                        await resolveLibrarySources(library, new ConfigManager().argv || {});
+                        Object.assign(runtimePatch, _.pick(library, libraryKeys));
+                    } catch (e) {
+                        log(LM_WARN, `Library sources from the backup: ${e.message}`);
+                        Object.assign(runtimePatch, _.pick(this.config, libraryKeys));
+                    }
                     if (await fs.pathExists(path.join(folder, 'secret.key')))
                         content['secret.key'] = await fs.readFile(path.join(folder, 'secret.key'));
                     content['config.json'] = JSON.stringify(protectedConfig, null, 4);

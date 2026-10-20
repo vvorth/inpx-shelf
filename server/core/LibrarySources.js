@@ -140,7 +140,15 @@ async function normalizeSource(source, index, options = {}) {
     };
 }
 
+//источники библиотек поверх config.json: LIBDIR, INPX и параметры командной строки (при запуске и после восстановления из бэкапа)
 async function resolveLibrarySources(config, argv = {}) {
+    if (!argv['lib-dir'] && process.env.LIBDIR)
+        config.libDir = process.env.LIBDIR;
+    if (!argv.inpx && process.env.INPX)
+        config.inpx = process.env.INPX;
+    if (argv['library-sources'])
+        config.librarySources = parseSourcesFromString(argv['library-sources']);
+
     let sources = getConfiguredSources(config);
     if (!sources.length) {
         let libDir = argv['lib-dir'] || config.libDir || config.execDir;

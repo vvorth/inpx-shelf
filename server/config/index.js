@@ -99,6 +99,67 @@ async function resolveInstallMode(config = {}) {
     return 'native';
 }
 
+// Переменные окружения поверх config.json: действуют в памяти, в файл не пишутся.
+function applyEnvOverrides(targetConfig) {
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_PROXY_BIND_PROFILE'))
+        targetConfig.proxyBindProfile = process.env.INPX_PROXY_BIND_PROFILE === 'true';
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_GUEST_ACCESS'))
+        targetConfig.guestAccess = process.env.INPX_GUEST_ACCESS === 'true';
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_OPDS_GUEST_ACCESS'))
+        targetConfig.opds = Object.assign({}, targetConfig.opds, {guestAccess: process.env.INPX_OPDS_GUEST_ACCESS === 'true'});
+    for (const [field, variable] of Object.entries({
+        apiMessageLimitMb: 'INPX_API_MESSAGE_LIMIT_MB',
+        importLimitMb: 'INPX_IMPORT_LIMIT_MB',
+        backupUploadLimitMb: 'INPX_BACKUP_UPLOAD_LIMIT_MB',
+        backupExpandedLimitMb: 'INPX_BACKUP_EXPANDED_LIMIT_MB',
+        conversionConcurrency: 'INPX_CONVERSION_CONCURRENCY',
+        conversionQueueLimit: 'INPX_CONVERSION_QUEUE_LIMIT',
+        conversionTimeoutMs: 'INPX_CONVERSION_TIMEOUT_MS',
+        conversionQueueTimeoutMs: 'INPX_CONVERSION_QUEUE_TIMEOUT_MS',
+    })) {
+        if (Object.prototype.hasOwnProperty.call(process.env, variable))
+            targetConfig[field] = Number(process.env[variable]);
+    }
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_REQUIRE_AUTH'))
+        targetConfig.requireAuth = process.env.INPX_REQUIRE_AUTH === 'true';
+    if (process.env.INPX_AUTH_MODE)
+        targetConfig.authMode = String(process.env.INPX_AUTH_MODE || '').trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_TRUST_PROXY'))
+        targetConfig.trustProxy = process.env.INPX_TRUST_PROXY === 'true';
+    if (process.env.INPX_PROXY_AUTH_HEADER)
+        targetConfig.proxyAuthHeader = process.env.INPX_PROXY_AUTH_HEADER;
+    if (process.env.INPX_TRUSTED_PROXY_CIDRS)
+        targetConfig.trustedProxyCidrs = String(process.env.INPX_TRUSTED_PROXY_CIDRS || '').split(',').map(item => item.trim()).filter(Boolean);
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_AUTH_EXEMPT_HEALTH'))
+        targetConfig.authExemptHealth = process.env.INPX_AUTH_EXEMPT_HEALTH !== 'false';
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_ENABLED'))
+        targetConfig.metricsEnabled = process.env.INPX_METRICS_ENABLED === 'true';
+    if (process.env.INPX_METRICS_PATH)
+        targetConfig.metricsPath = process.env.INPX_METRICS_PATH;
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_TOKEN'))
+        targetConfig.metricsToken = process.env.INPX_METRICS_TOKEN || '';
+    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_LOGIN_RATE_LIMIT_ENABLED'))
+        targetConfig.loginRateLimitEnabled = process.env.INPX_LOGIN_RATE_LIMIT_ENABLED !== 'false';
+    return targetConfig;
+}
+
+// Значения config.json как есть (секреты зашифрованы).
+async function readFileConfig(configFile) {
+    return (await fs.pathExists(configFile) ? _.pick(await fs.readJson(configFile), propsToSave) : {});
+}
+
+// Ключ, заданный переменной окружения, сохраняет значение из файла (opds собирается из рабочего конфига целиком).
+function keepFileValues(data, file, overrides) {
+    for (const [key, value] of Object.entries(overrides)) {
+        if (_.isPlainObject(value) && _.isPlainObject(data[key]))
+            keepFileValues(data[key], (_.isPlainObject(file[key]) ? file[key] : {}), value);
+        else if (Object.prototype.hasOwnProperty.call(file, key))
+            data[key] = file[key];
+        else
+            delete data[key];
+    }
+}
+
 let instance = null;
 
 // Installs from before the rename to inpx-shelf keep their data under the inpx-web name.
@@ -187,6 +248,8 @@ class ConfigManager {
         }
 
         this._config = config;
+        //для восстановления из бэкапа: ключ, которого нет в бэкапе, получает значение по умолчанию
+        this.defaults = _.cloneDeep(_.pick(config, propsToSave));
 
         this.inited = true;
     }
@@ -243,7 +306,7 @@ class ConfigManager {
 
                 //сохраним конфиг, если не все атрибуты присутствуют в файле конфига
                 if (needsSave) {
-                    await this.save();
+                    await ConfigManager.savePatch(this._config, _.pick(config, ['latestReleaseLink', 'checkReleaseLink']));
                 } else if (config.allowConfigRewrite) {
                     for (const prop of propsToSave) {
                         if (!Object.prototype.hasOwnProperty.call(config, prop)) {
@@ -272,8 +335,21 @@ class ConfigManager {
             await writeFileAtomic(snapshot.configFile, JSON.stringify(dataToSave, null, 4));
         });
     }
+
+    // В файл - его собственные значения и patch: рабочий конфиг (env, CLI, вычисленные пути) в него не попадает.
+    static async savePatch(config, patch) {
+        await withFileTransaction(config.configFile, async() => {
+            const file = await readFileConfig(config.configFile);
+            const data = Object.assign({}, file, _.cloneDeep(_.pick(patch, propsToSave)));
+            keepFileValues(data, file, applyEnvOverrides({}));
+            const dataToSave = await new SecretStore(config).protectConfig(data);
+            await writeFileAtomic(config.configFile, JSON.stringify(dataToSave, null, 4));
+        });
+    }
 }
 
 ConfigManager.propsToSave = propsToSave;
+ConfigManager.applyEnvOverrides = applyEnvOverrides;
+ConfigManager.readFileConfig = readFileConfig;
 
 module.exports = ConfigManager;

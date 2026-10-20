@@ -622,19 +622,9 @@ module.exports = {
 
     async saveRuntimeConfigPatch(patch = {}) {
         return withFileTransaction(this.config.configFile, async() => {
-            const configManager = new ConfigManager();
-            const previous = _.cloneDeep(this.config);
-            try {
-                Object.assign(this.config, patch);
-                configManager.config = this.config;
-                await configManager.save();
-            } catch (error) {
-                for (const key of Object.keys(patch))
-                    delete this.config[key];
-                Object.assign(this.config, previous);
-                configManager.config = this.config;
-                throw error;
-            }
+            //в файл - только patch поверх его значений; в памяти patch действует после успешной записи
+            await ConfigManager.savePatch(this.config, patch);
+            Object.assign(this.config, patch);
         });
     },
 

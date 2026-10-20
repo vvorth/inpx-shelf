@@ -212,6 +212,8 @@ async function testBackupValidationBeforeMutation() {
 
         // Upstream inpx-web backups carry the discovery cache and upstream release links: neither is restored.
         worker.config.checkReleaseLink = 'https://api.github.com/repos/vvorth/inpx-shelf/releases/latest';
+        //локальные ключи восстановленного config.json берутся из текущего файла
+        await fs.writeJson(worker.config.configFile, {opds: {password: 'old'}, checkReleaseLink: worker.config.checkReleaseLink});
         const upstream = await archive({...base, 'config.json': {opds: {password: 'new'},
             checkReleaseLink: 'https://api.github.com/repos/AceAsket/inpx-web/releases/latest'},
         'discovery-cache.json': {stale: {time: 0, value: {}}}});

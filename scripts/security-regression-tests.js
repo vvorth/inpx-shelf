@@ -758,6 +758,84 @@ async function testRestoreAndAdminResetEndSavedLogins() {
     });
 }
 
+// An admin save writes the patch over config.json's own values: env overrides, CLI values and resolved paths stay out.
+async function testAdminSaveKeepsEnvOutOfConfigFile() {
+    await temporary(async(dir) => {
+        const ConfigManager = require('../server/config');
+        const WebWorker = require('../server/core/WebWorker');
+        const configFile = path.join(dir, 'config.json');
+        await fs.outputJson(configFile, {guestAccess: false, opds: {user: 'reader', guestAccess: false}, server: {root: '/lib/'}});
+        const manager = new ConfigManager();
+        const state = {inited: manager.inited, _config: manager._config};
+        const names = ['INPX_GUEST_ACCESS', 'INPX_OPDS_GUEST_ACCESS'];
+        const previous = names.map(name => process.env[name]);
+        names.forEach(name => { process.env[name] = 'true'; });
+        try {
+            const config = ConfigManager.applyEnvOverrides({dataDir: dir, configFile, tempDir: path.join(dir, 'tmp'),
+                guestAccess: false, opds: {user: 'reader', guestAccess: false}, server: {root: '/lib', port: 9999}});
+            const worker = Object.assign(Object.create(WebWorker.prototype), {config});
+            //менеджер конфигурации - как после запуска: рабочий конфиг с env у него в памяти
+            Object.assign(manager, {inited: true, _config: structuredClone(config)});
+            await worker.saveRuntimeConfigPatch({bookCacheSize: 123});
+            //patch opds собирается из рабочего opds, где guestAccess пришёл из env
+            await worker.saveRuntimeConfigPatch({opds: worker.normalizeAdminOpdsPatch({user: 'other'})});
+            assert.deepStrictEqual(await fs.readJson(configFile),
+                {guestAccess: false, opds: {user: 'other', guestAccess: false}, server: {root: '/lib/'}, bookCacheSize: 123});
+            assert.strictEqual(config.guestAccess, true);
+            assert.deepStrictEqual(config.opds, {user: 'other', guestAccess: true});
+            assert.strictEqual(config.bookCacheSize, 123);
+        } finally {
+            Object.assign(manager, state);
+            names.forEach((name, i) => (previous[i] === undefined ? delete process.env[name] : (process.env[name] = previous[i])));
+        }
+    });
+}
+
+// A restore of a backup without remoteAccess ends the old tokens; the next save does not write them back.
+// Library sources are resolved as at startup: LIBDIR stays in effect though config.json has no libDir.
+async function testRestoreResetsKeysMissingFromBackup() {
+    await temporary(async(dir) => {
+        const manager = new (require('../server/config'))();
+        const WebWorker = require('../server/core/WebWorker');
+        const configFile = path.join(dir, 'config.json');
+        const libDir = path.join(dir, 'library');
+        await fs.outputFile(path.join(libDir, 'books.inpx'), '');
+        const previousLibDir = process.env.LIBDIR;
+        process.env.LIBDIR = libDir;
+        const config = {dataDir: dir, tempDir: path.join(dir, 'tmp'), configFile, name: 'inpx-shelf', version: 'test', librarySources: [], opds: {}};
+        await require('../server/core/LibrarySources').resolveLibrarySources(config);
+        const worker = Object.assign(Object.create(WebWorker.prototype), {config, profileSessions: new Map(),
+            checkMyState() {}, requireAdmin: async() => true, addAdminEvent() {},
+            readingListStore: new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'})});
+        await fs.outputJson(configFile, {opds: {}});
+        const backup = await worker.createAdminBackup('admin', 'token');
+        await worker.saveRuntimeConfigPatch({remoteAccess: [{id: 'old', hash: 'hash'}]});
+        const defaults = manager.defaults;
+        manager.defaults = {remoteAccess: [], libDir: '', inpx: '', librarySources: []};
+        try {
+            await worker.importAdminBackup('admin', 'token', {file: path.join(dir, 'backups', backup.fileName)});
+        } finally {
+            manager.defaults = defaults;
+            (previousLibDir === undefined ? delete process.env.LIBDIR : (process.env.LIBDIR = previousLibDir));
+        }
+        assert.deepStrictEqual(config.remoteAccess, []);
+        assert.strictEqual(config.libDir, libDir);
+        assert.deepStrictEqual(config.librarySources.map(source => source.libDir), [libDir]);
+        await worker.saveRuntimeConfigPatch({bookCacheSize: 123});
+        assert.deepStrictEqual(await fs.readJson(configFile), {opds: {}, bookCacheSize: 123});
+    });
+}
+
+// server.root "/lib/" becomes "/lib": "/lib//cover/by-uid" would skip the guard on "/lib/cover".
+function testRootPathLosesTrailingSlash() {
+    const index = require('fs').readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+    const line = index.match(/config\.rootPathStatic = (.+);/);
+    const rootPath = root => new Function('config', `return ${line[1]};`)({server: {root}});
+    assert.strictEqual(rootPath('/lib/'), '/lib');
+    assert.strictEqual(rootPath('/'), '');
+    assert.strictEqual(rootPath(''), '');
+}
+
 // ApiController behind apiGuard with handler stubs (handlers): the transport rules without the application behind them.
 async function apiFixture({config: overrides = {}, worker: workerFields = {}, handlers = {}}, test) {
     await temporary(async(dir) => {
@@ -998,7 +1076,7 @@ async function testGunzipBufferIsBounded() {
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
     testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
-    testApiRequestRules, testApiUnderRootPath, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
+    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
