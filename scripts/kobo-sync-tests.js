@@ -1124,6 +1124,20 @@ async function testKoboRefreshResendsBooksInPlace() {
     });
 }
 
+async function testKoboRefreshWaitsForBusyConverter() {
+    await fixture({}, async({service, store, listA, sync, output}) => {
+        await store.addBooks('default', listA.id, ['fb2-uid']);
+        await sync({fresh: true});
+        const uuid = kobo.uuidv5('main:101');
+        output.suffix = ' (rebuilt)';
+        await service.refreshDevice('default', service.store.data.devices[0].id);
+        output.busy = new Set(['fb2-uid']);
+        assert.deepStrictEqual(entitlementIds((await sync()).items, 'ChangedEntitlement'), [], 'not while the converter is busy');
+        assert.strictEqual(service.store.data.devices[0].books[uuid].refresh, true);
+        assert.deepStrictEqual(entitlementIds((await sync()).items, 'ChangedEntitlement'), [uuid]);
+    });
+}
+
 async function testKoboRefreshWaitsForConversion() {
     await fixture({slowUid: 'late-uid'}, async({service, store, listA, sync}) => {
         await store.addBooks('default', listA.id, ['late-uid']);
@@ -1284,6 +1298,7 @@ module.exports = [
     testKoboTokensAreMaskedInLogs,
     testKoboPrewarmsBooksAddedToBoundLists,
     testKoboRetriesBusyConversionOnNextSync,
+    testKoboRefreshWaitsForBusyConverter,
     testKoboPreparedCacheStaysBounded,
     testKoboRekeysOrphansByLibid,
     testKoboFindsRecordsByStableKeyInDb,

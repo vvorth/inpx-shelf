@@ -740,7 +740,7 @@ class KoboService {
                 const prepared = await this.prepare(item, deadline, fingerprint || '');
                 if (prepared.ready)
                     row.fileAuthors = prepared.ready.authors || [];
-                else if (prepared.failed)
+                else if (prepared.failed && !prepared.busy)
                     row.fileAuthors = [];
             }
             let metaHash = this.metadataHash(item.book, row);
@@ -764,7 +764,7 @@ class KoboService {
                         row.revision = (row.revision || 0) + 1;
                     metaHash = this.metadataHash(item.book, row);
                     sync.refreshed++;
-                } else if (forced && !prepared.failed) {
+                } else if (forced && (!prepared.failed || prepared.busy)) {
                     // Still converting (or the converter is busy): the refresh goes out on a later sync.
                     continue;
                 } else if (!metaChanged && !forced) {
