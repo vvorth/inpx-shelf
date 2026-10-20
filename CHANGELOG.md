@@ -1,4 +1,4 @@
-Unreleased
+26.10.0 / 2026-10-20
 
 - Releases now ship when ready, without betas, and are numbered by date: `26.10.0`, `26.10.1`, … (year, month and the number of the release in that month). The `beta` Docker image is no longer updated: switch to `latest`. The `updateChannel` setting (`INPX_UPDATE_CHANNEL`) is gone: the update check always looks at the latest release. `dev` builds show a version with a commit mark, for example `26.10.0+dev.b95beaa`.
 - **Action required:** signing in to a profile is always required: without it only the app shell with the login form and the health checks (`/health`, `/ready`, `/api/index-status`) are open. `allowAnonymousAccess` and `INPX_ALLOW_ANONYMOUS_ACCESS` are removed. Without a web login, books, covers and OPDS open only with OPDS credentials; signed OPDS links and the remote library token no longer work without a login. A profile without a password opens only through SSO binding. Kobo and KOReader keep their own authentication, as before.
