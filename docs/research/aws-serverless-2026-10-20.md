@@ -8,14 +8,14 @@ measured; prices are us-east-1 list prices as known on this date, check them in 
 
 - Libraries can already live in S3 (`server/core/S3Fs.js`, see `s3-library-2026-10-16.md`).
 - The Fargate setup (`docs/docker.md`) keeps `DATA_DIR` on EFS and the cache on the task's ephemeral disk.
-- The rest assumes one long-lived process: a WebSocket API, in-process locks over JSON files, timers, a local
+- The rest assumes one long-lived process: a WebSocket API (replaced by HTTP in 26.10.0), in-process locks over JSON files, timers, a local
   disk cache.
 
 ## What breaks on Lambda and the replacement
 
 | Today | Problem on Lambda | Replacement |
 |---|---|---|
-| WebSocket API (`WebSocketController.js`, `WebSocketConnection.js`) | Lambda holds no long connection | HTTP `POST /api {action, ...}`. The protocol is already request/response (`requestId`), the server never pushes. API Gateway WebSocket API works too, but splits connection handling and adds resources |
+| WebSocket API (`WebSocketController.js`, `WebSocketConnection.js`) | Lambda holds no long connection | Done in 26.10.0: HTTP `<root>/api/` (`ApiController.js`, `shared/apiRoutes.js`). The protocol is already request/response (`requestId`), the server never pushes. API Gateway WebSocket API works too, but splits connection handling and adds resources |
 | `reading-lists.json`, `kobo-sync.json`, `config.json`, `secret.key` in `DATA_DIR`, guarded by an in-process lock | Several instances write at the same time | S3 backend for `FilePersistence` with conditional writes (`If-Match` ETag, retry on 412), cached copies revalidated by ETag; reserved concurrency of about 5 |
 | `state.sqlite` (sessions, prepared files, KOReader hashes) | Must not be opened by two instances | One DynamoDB table, on-demand |
 | `library.sqlite` | Read-only between rebuilds, rebuildable | Built by a separate import Lambda (about 90 s for 708k books, 15 min limit) and stored in S3; the app Lambda downloads it to `/tmp` (up to 10 GB) on cold start, roughly 5-15 s per GB |
@@ -84,6 +84,6 @@ weekly hour as well, which adds a few cheap invocations.
 
 ## Effort
 
-Medium: HTTP transport instead of WebSocket (useful without Lambda too), an S3 backend with conditional writes
+Medium: the HTTP transport is done (26.10.0); left are an S3 backend with conditional writes
 for user data, a DynamoDB backend for `state.sqlite`, the S3 cache with presigned redirects, the import Lambda
 split out, and the infrastructure template. Search and import code stay as they are.

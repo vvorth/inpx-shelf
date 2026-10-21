@@ -6,7 +6,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 
 | Path | What | Rules |
 |---|---|---|
-| `server/` | HTTP/WebSocket server, library DB, OPDS, Kobo, user data | [server/AGENTS.md](server/AGENTS.md) |
+| `server/` | HTTP server, library DB, OPDS, Kobo, user data | [server/AGENTS.md](server/AGENTS.md) |
 | `client/` | Web app (Vue 3, Quasar) | [client/AGENTS.md](client/AGENTS.md) |
 | `shared/` | Code used by both server and client | [shared/AGENTS.md](shared/AGENTS.md) |
 | `scripts/` | Tests and maintenance scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |
