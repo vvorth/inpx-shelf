@@ -2,7 +2,7 @@
 //Списки, прогресс и закладки хранят заметку о книге (название, автор, язык, серия, дата, libid): по ней пропавшая книга
 //показывается в списках и по ней ищутся возможные замены среди книг включённых библиотек.
 const {normalize} = require('./textNorm');
-const {sameAuthor} = require('./WorkTitles');
+const {sameAuthor, sameWorkAuthor} = require('./WorkTitles');
 
 function bookNote(book = {}) {
     return {
@@ -43,7 +43,7 @@ function rankReplacements(note = {}, candidates = [], work = {}) {
     const noteFirst = String(note.author).split(',')[0];
     const byAuthor = book => firstAuthor(book.author) === author
         || sameAuthor(book.author, noteFirst) || sameAuthor(noteFirst, String(book.author).split(',')[0])
-        || workAuthors.some(name => sameAuthor(book.author, name));
+        || workAuthors.some(name => sameWorkAuthor(book.author, name));
     const score = book => steps.reduce((total, step, index) => total + (step(note, book) ? 1 << (steps.length - 1 - index) : 0), 0);
     return candidates
         .filter(book => book && titles.has(normalize(book.title)) && byAuthor(book))

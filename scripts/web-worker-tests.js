@@ -667,6 +667,7 @@ async function testOtherEditionsAcrossLanguages() {
             book(13, 'Дойль Игнатий', 'Sherlock Holmes. The Complete Stories', 'en'),
             book(14, 'Толстой Лев Николаевич', 'Детство', 'ru'),
             book(15, 'Толстой Алексей', 'Детство', 'ru'),
+            book(21, 'Doyle Arthur Conan', 'The Hound of the Baskervilles', 'en'),
         ]);
         index.finishBuild({});
         index.open(file, []);
@@ -677,6 +678,7 @@ async function testOtherEditionsAcrossLanguages() {
                 [['Падение Гипериона', 'The Fall of Hyperion'], ['Дэн Симмонс', 'Dan Simmons']],
                 [['Гиперион', 'Hyperion'], ['Фридрих Гёльдерлин', 'Friedrich Hölderlin']],
                 [['Одно название'], ['Кто-то']],
+                [['Собака Баскервилей', 'The Hound of the Baskervilles'], ['Артур Конан Дойл', 'Arthur Conan Doyle']],
             ]}));
             const worker = bareWorker({catalogSearch: {workTitles, getBooksByTitles: async(titles) => index.getBooksByTitles(titles)},
                 applyMetadataOverridesToSearchResult: async() => {}});
@@ -691,6 +693,16 @@ async function testOtherEditionsAcrossLanguages() {
             assert.deepStrictEqual(await uids(book(10, 'Конан Дойль Артур', 'Sherlock Holmes. The Complete Stories', 'en')), ['b11', 'b12'],
                 'Doyle under another word order');
             assert.deepStrictEqual(await uids(book(16, 'Толстой Лев', 'Детство', 'ru')), ['b14'], 'a patronymic in one library only');
+            //в Wikidata «Дойл», в библиотеке «Дойль»
+            assert.deepStrictEqual(await uids(book(20, 'Конан Дойль Артур', 'Собака Баскервилей', 'ru')), ['b21'], 'Doyle without the soft sign');
+            const {sameWorkAuthor} = WorkTitles;
+            assert.ok(!sameWorkAuthor('Конан Дойль Артур', 'Адриан Конан Дойль'), 'the father is not the son');
+            assert.ok(!sameWorkAuthor('Ершов Пётр Сергеевич', 'Ершов, Пётр Павлович'), 'another patronymic');
+            assert.ok(!sameWorkAuthor('Джонатан Джонатан', 'Джонатан Франзен'), 'one name twice is one word');
+            assert.ok(sameWorkAuthor('Le Guin Ursula', 'Ursula K. Le Guin'));
+            assert.ok(sameWorkAuthor('Толстой Лев Николаевич', 'Лев Толстой'));
+            assert.ok(sameWorkAuthor('Tolkien J. R. R.', 'J. R. R. Tolkien'));
+            assert.ok(sameWorkAuthor('Иванов Валентин Д.', 'Иванов, Валентин Дмитриевич'), 'an initial');
             //без таблицы - как раньше: только то же название
             await fs.remove(workTitles.file);
             workTitles.changed();

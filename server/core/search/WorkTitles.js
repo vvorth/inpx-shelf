@@ -36,14 +36,24 @@ function normalizeData(raw = {}) {
     return {source: String(raw.source || 'wikidata'), updatedAt: String(raw.updatedAt || ''), entries};
 }
 
-const words = name => normalize(name).split(' ').filter(Boolean);
+//ь и ъ пишут не везде: «Дойль» и «Дойл»
+const words = name => [...new Set(normalize(name).replace(/[ьъ]/g, '').split(' ').filter(Boolean))];//i18n-ignore: данные поиска
 
-//Первый автор книги библиотеки («Симмонс Дэн» или «Simmons Dan»; авторы через запятую) - один из авторов произведения
-//(«Дэн Симмонс»): фамилия и имя в любом порядке, отчество и второе имя не обязательны
-function sameAuthor(libraryAuthor = '', workAuthor = '') {
+//Первый автор книги библиотеки («Симмонс Дэн» или «Simmons Dan»; авторы через запятую) - тот же, что в другой записи
+//(«Дэн Симмонс»): первые два слова в любом порядке, отчество и второе имя не обязательны
+function sameAuthor(libraryAuthor = '', otherAuthor = '') {
     const wanted = words(String(libraryAuthor).split(',')[0]).slice(0, 2);
-    const known = new Set(words(workAuthor));
+    const known = new Set(words(otherAuthor));
     return wanted.length > 1 && wanted.every(word => known.has(word));
+}
+
+//Первый автор книги библиотеки - автор произведения из Wikidata. Строже sameAuthor: первые два слова «Конан Дойль Артур» -
+//обе фамилия, и они есть у «Адриан Конан Дойль». Поэтому слова одного имени все есть в другом; инициал - начало слова
+function sameWorkAuthor(libraryAuthor = '', workAuthor = '') {
+    const own = words(String(libraryAuthor).split(',')[0]);
+    const known = words(workAuthor);
+    const inside = (some, all) => some.every(word => all.includes(word) || (word.length === 1 && all.some(other => other.startsWith(word))));
+    return sameAuthor(libraryAuthor, workAuthor) && (inside(own, known) || inside(known, own));
 }
 
 class WorkTitles extends WikidataTable {
@@ -95,7 +105,7 @@ class WorkTitles extends WikidataTable {
     //Названия той же книги на других языках: {titles: нормализованные названия, authors: имена авторов произведений}
     async sameWork(title = '', author = '') {
         const works = ((await this.byTitle()).get(normalize(title)) || [])
-            .filter(work => work.authors.some(name => sameAuthor(author, name)));
+            .filter(work => work.authors.some(name => sameWorkAuthor(author, name)));
         return {
             titles: [...new Set(works.flatMap(work => work.titles))],
             authors: [...new Set(works.flatMap(work => work.authors))],
@@ -106,3 +116,4 @@ class WorkTitles extends WikidataTable {
 module.exports = WorkTitles;
 module.exports.normalizeData = normalizeData;
 module.exports.sameAuthor = sameAuthor;
+module.exports.sameWorkAuthor = sameWorkAuthor;
