@@ -662,6 +662,11 @@ async function testOtherEditionsAcrossLanguages() {
             book(4, 'Гёльдерлин Иоганн Христиан Фридрих', 'Гиперион', 'ru'),
             book(5, 'Симмонс Дэн', 'Гиперион', 'uk'),
             book(6, 'Симмонс Дэн', 'Падение Гипериона', 'ru'),
+            book(11, 'Дойль Артур Конан', 'Sherlock Holmes. The Complete Stories', 'en'),
+            book(12, 'Дойль Артур', 'Sherlock Holmes. The Complete Stories', 'en'),
+            book(13, 'Дойль Игнатий', 'Sherlock Holmes. The Complete Stories', 'en'),
+            book(14, 'Толстой Лев Николаевич', 'Детство', 'ru'),
+            book(15, 'Толстой Алексей', 'Детство', 'ru'),
         ]);
         index.finishBuild({});
         index.open(file, []);
@@ -682,6 +687,10 @@ async function testOtherEditionsAcrossLanguages() {
                 'an English record under the Latin name finds the Russian ones');
             assert.deepStrictEqual(await uids(book(4, 'Гёльдерлин Иоганн Христиан Фридрих', 'Гиперион', 'ru')), [],
                 'Hölderlin has no other edition in the library');
+            //имя автора в другой библиотеке записано в другом порядке, отчество - не везде
+            assert.deepStrictEqual(await uids(book(10, 'Конан Дойль Артур', 'Sherlock Holmes. The Complete Stories', 'en')), ['b11', 'b12'],
+                'Doyle under another word order');
+            assert.deepStrictEqual(await uids(book(16, 'Толстой Лев', 'Детство', 'ru')), ['b14'], 'a patronymic in one library only');
             //без таблицы - как раньше: только то же название
             await fs.remove(workTitles.file);
             workTitles.changed();

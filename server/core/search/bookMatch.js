@@ -39,7 +39,11 @@ function rankReplacements(note = {}, candidates = [], work = {}) {
 
     const titles = new Set([title, ...(work.titles || [])]);
     const workAuthors = work.authors || [];
-    const byAuthor = book => firstAuthor(book.author) === author || workAuthors.some(name => sameAuthor(book.author, name));
+    //порядок слов имени в библиотеках разный: «Конан Дойль Артур» и «Дойль Артур Конан»
+    const noteFirst = String(note.author).split(',')[0];
+    const byAuthor = book => firstAuthor(book.author) === author
+        || sameAuthor(book.author, noteFirst) || sameAuthor(noteFirst, String(book.author).split(',')[0])
+        || workAuthors.some(name => sameAuthor(book.author, name));
     const score = book => steps.reduce((total, step, index) => total + (step(note, book) ? 1 << (steps.length - 1 - index) : 0), 0);
     return candidates
         .filter(book => book && titles.has(normalize(book.title)) && byAuthor(book))
