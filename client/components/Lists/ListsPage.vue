@@ -563,7 +563,7 @@ class ListsPage {
             return;
 
         try {
-            await this.api.renameReadingList(item.id, response.value);
+            await this.api.updateReadingList(item.id, {name: response.value});
             await this.load();
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
@@ -588,7 +588,7 @@ class ListsPage {
     async setOpds(item, enabled) {
         const visibility = (enabled ? 'opds' : 'private');
         try {
-            await this.api.setReadingListVisibility(item.id, visibility);
+            await this.api.updateReadingList(item.id, {visibility});
             item.visibility = visibility;
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
@@ -630,7 +630,7 @@ class ListsPage {
         }
         const list = this.selectedList;
         try {
-            await this.api.markReaderBooksRead([book.bookUid], read);
+            await this.api.setBookRead(book.bookUid, read);
             if (!!book.read !== !!read)
                 list.readCount = Math.max(0, (Number(list.readCount || 0) || 0) + (read ? 1 : -1));
             book.read = !!read;

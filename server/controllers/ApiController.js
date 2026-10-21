@@ -258,7 +258,7 @@ class ApiController {
         }
         const route = found.route;
         const messageLimit = RequestLimits.limits(this.config).message;
-        const json = route.method === 'POST' && !route.upload;
+        const json = apiRoutes.hasJsonBody(route);
         //крупное тело в памяти - одно на сервер; без Content-Length размер заранее неизвестен
         const large = json && !(Number(req.headers['content-length']) <= messageLimit/2);
 
@@ -308,7 +308,7 @@ class ApiController {
             params = apiRoutes.decode(route, found.pathParams, query, body);
             params.action = route.action;
 
-            //GET ничего не меняет и токена не требует, любой POST - с CSRF-токеном
+            //GET ничего не меняет и токена не требует, любой другой метод - с CSRF-токеном
             if (this.security && route.method !== 'GET' && !this.security.hasValidCsrf(req, header(req, 'x-csrf-token')))
                 throw httpError(403, 'bad_csrf_token');
 
@@ -894,22 +894,9 @@ class ApiController {
         return result;
     }
 
-    async renameReadingList(req) {
-        if (!utils.hasProp(req, 'listId'))
-            throw new Error('listId is empty');
-
+    async updateReadingList(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.renameReadingList(user.id, req.listId, req.name);
-        return result;
-    }
-
-    async setReadingListVisibility(req) {
-        if (!utils.hasProp(req, 'listId'))
-            throw new Error('listId is empty');
-
-        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.setReadingListVisibility(user.id, req.listId, req.visibility);
-        return result;
+        return await this.webWorker.updateReadingList(user.id, req.listId, _.pick(req, ['name', 'visibility']));
     }
 
     async deleteReadingList(req) {
@@ -958,23 +945,32 @@ class ApiController {
         return result;
     }
 
-    async updateReadingListBook(req) {
-        if (!utils.hasProp(req, 'listId'))
-            throw new Error('listId is empty');
-        if (!utils.hasProp(req, 'bookUid'))
-            throw new Error('bookUid is empty');
-
+    async addReadingListBook(req) {
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.updateReadingListBook(user.id, req.listId, req.bookUid, req.enabled);
-        return result;
+        return await this.webWorker.updateReadingListBook(user.id, req.listId, req.bookUid, true);
+    }
+
+    async removeReadingListBook(req) {
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        return await this.webWorker.updateReadingListBook(user.id, req.listId, req.bookUid, false);
     }
 
     async replaceListedBook(req) {
-        if (!req.fromUid || !req.toUid)
+        if (!req.toUid)
             throw new Error('bookUid is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        return await this.webWorker.replaceListedBook(user.id, req.fromUid, req.toUid);
+        return await this.webWorker.replaceListedBook(user.id, req.bookUid, req.toUid);
+    }
+
+    async markBookRead(req) {
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        return await this.webWorker.markReaderBooksRead(user.id, [req.bookUid], true);
+    }
+
+    async unmarkBookRead(req) {
+        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
+        return await this.webWorker.markReaderBooksRead(user.id, [req.bookUid], false);
     }
 
     async markReaderBooksRead(req) {

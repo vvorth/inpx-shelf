@@ -906,16 +906,10 @@ class WebWorker {
         };
     }
 
-    async renameReadingList(userId = '', listId, name) {
+    async updateReadingList(userId = '', listId, patch = {}) {
         this.checkMyState();
 
-        const item = await this.readingListStore.renameList(userId, listId, name);
-        return {list: await this.readingListStore.ownerListStats(item)};
-    }
-
-    async setReadingListVisibility(userId = '', listId, visibility) {
-        this.checkMyState();
-        const item = await this.readingListStore.setListVisibility(userId, listId, visibility);
+        const item = await this.readingListStore.updateList(userId, listId, patch);
         return {list: await this.readingListStore.ownerListStats(item)};
     }
 

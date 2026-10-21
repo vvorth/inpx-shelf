@@ -88,24 +88,18 @@ module.exports = {
         return item;
     },
 
-    async renameList(userId = '', listId, name) {
+    // patch: name and/or visibility
+    async updateList(userId = '', listId, patch = {}) {
         const {data, user} = await this.resolveUser(userId);
         const item = this.ownList(data, user, listId);
 
-        const normalized = this.validateName(name);
-        this.ensureUniqueListName(data.lists, user.id, normalized, item.id);
-        item.name = normalized;
-        item.updatedAt = this.nowIso();
-
-        await this.save(data);
-        return item;
-    },
-
-    async setListVisibility(userId = '', listId, visibility) {
-        const {data, user} = await this.resolveUser(userId);
-        const item = this.ownList(data, user, listId);
-
-        item.visibility = this.normalizeVisibility(visibility);
+        if (utils.hasProp(patch, 'name')) {
+            const normalized = this.validateName(patch.name);
+            this.ensureUniqueListName(data.lists, user.id, normalized, item.id);
+            item.name = normalized;
+        }
+        if (utils.hasProp(patch, 'visibility'))
+            item.visibility = this.normalizeVisibility(patch.visibility);
         item.updatedAt = this.nowIso();
 
         await this.save(data);

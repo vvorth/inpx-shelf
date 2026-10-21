@@ -232,7 +232,7 @@ async function testListReadMarksMoveToProgress() {
         assert.strictEqual(rows['book-3'], undefined);
 
         //после записи файла отметки остаются только в прогрессе
-        await store.renameList('reader', 'l1', 'Renamed');
+        await store.updateList('reader', 'l1', {name: 'Renamed'});
         const saved = await fs.readJson(store.file);
         assert.deepStrictEqual(saved.lists[0].books, [{bookUid: 'book-1'}, {bookUid: 'book-2'}, {bookUid: 'book-3'}]);
         rows = await progress();

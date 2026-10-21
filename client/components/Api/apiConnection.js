@@ -10,7 +10,7 @@ export async function call(action, params = {}, {timeoutSecs = 0, headers = {}, 
     if (apiRoutes.routeFor(action).upload) {
         init.headers['Content-Type'] = 'application/octet-stream';
         init.body = body;
-    } else if (request.method === 'POST') {
+    } else if (request.body) {
         init.headers['Content-Type'] = 'application/json';
         init.body = JSON.stringify(request.body);
     }

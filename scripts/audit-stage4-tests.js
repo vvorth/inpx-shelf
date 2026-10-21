@@ -71,7 +71,7 @@ async function testApiBodyBoundsAndRecovery() {
             updateReaderPreferences: async() => ({ok: true})});
         const {base, close} = await listen(apiApp({config, security, controller, health: false}));
         const api = ApiTestClient.forSession(base, security);
-        const post = body => api.request('POST', 'api/update-reader-preferences', {body,
+        const post = body => api.request('PATCH', 'api/me/reader-preferences', {body,
             headers: {'content-type': 'application/json', 'x-csrf-token': api.csrfToken}});
         try {
             for (const malformed of ['null', '[]', 'false', '"text"', '{'])
@@ -83,7 +83,7 @@ async function testApiBodyBoundsAndRecovery() {
             assert.ok(large.body.error);
             assert.strictEqual((await post(pad(7*1024*1024))).status, 413);
             //тело сверх лимита дочитывается и отбрасывается: соединение не рвётся посреди отправки, клиент получает 413
-            const sent = await rawPost(base, '/api/update-reader-preferences', {'Content-Type': 'application/json', 'X-Inpx-Api': '1',
+            const sent = await rawPost(base, '/api/me/discovery-events', {'Content-Type': 'application/json', 'X-Inpx-Api': '1',
                 'X-CSRF-Token': api.csrfToken, Cookie: api.cookie}, 7*1024*1024);
             assert.deepStrictEqual([sent.status, sent.writeError && sent.writeError.code], [413, null]);
             assert.deepStrictEqual((await post('{}')).body, {ok: true}, 'The server keeps answering');
@@ -142,13 +142,13 @@ async function testHttpUploadsGoThroughRequestChecks() {
             assert.strictEqual((await post('{}', {headers: {Origin: 'https://evil.example'}})).status, 403);
             assert.strictEqual((await post(JSON.stringify({lists: []}), {headers: {Origin: base}})).status, 200, 'Same origin');
             //файл принимают только действия загрузки, и только как application/octet-stream
-            assert.strictEqual((await api.request('POST', 'api/update-reader-preferences', {body: '{}',
+            assert.strictEqual((await api.request('PATCH', 'api/me/reader-preferences', {body: '{}',
                 headers: {'content-type': 'application/octet-stream', 'x-csrf-token': api.csrfToken}})).status, 415);
             assert.strictEqual((await post('{}', {headers: {'content-type': 'application/json'}})).status, 415);
             assert.match((await post('{broken')).body.error, /JSON/);
             //слишком большой Content-Length - отказ сразу, тело не нужно
             const declared = await new Promise((resolve, reject) => {
-                const request = http.request({host: '127.0.0.1', port, method: 'POST', path: '/api/import-reading-lists',
+                const request = http.request({host: '127.0.0.1', port, method: 'POST', path: '/api/me/import',
                     headers: {'Content-Length': String(1024*1024 + 1), 'Content-Type': 'application/octet-stream', 'X-Inpx-Api': '1',
                         'X-CSRF-Token': api.csrfToken, cookie: api.cookie}}, response => {
                     response.resume();
@@ -169,10 +169,10 @@ async function testHttpUploadsGoThroughRequestChecks() {
             assert.strictEqual(seen.length, 2);
 
             //JSON-запрос не может указать файл на сервере: ни телом, ни параметром адреса
-            const named = await api.request('POST', 'api/import-reading-lists', {body: JSON.stringify({uploadFile: '/etc/passwd', data: {lists: []}}),
+            const named = await api.request('POST', 'api/me/import', {body: JSON.stringify({uploadFile: '/etc/passwd', data: {lists: []}}),
                 headers: {'content-type': 'application/json', 'x-csrf-token': api.csrfToken}});
             assert.strictEqual(named.status, 415);
-            const query = await api.request('POST', 'api/import-reading-lists?uploadFile=%2Fetc%2Fpasswd', {body: '{"lists":[]}',
+            const query = await api.request('POST', 'api/me/import?uploadFile=%2Fetc%2Fpasswd', {body: '{"lists":[]}',
                 headers: {'content-type': 'application/octet-stream', 'x-csrf-token': api.csrfToken}});
             assert.strictEqual(query.status, 400);
             assert.strictEqual(seen.length, 2);

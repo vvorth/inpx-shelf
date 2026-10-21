@@ -11,9 +11,10 @@ export function isConnectionError(error) {
     return connectionErrors.has(errorKey(error));
 }
 
-//После обрыва повторяется только чтение (GET): изменение могло дойти до сервера, и повтор выполнил бы его дважды
+//После обрыва повторяются GET, PUT и DELETE: их повтор даёт тот же результат. POST и PATCH могли дойти до сервера,
+//и повтор выполнил бы их дважды
 export function canRetryRequest(action, error) {
-    return isConnectionError(error) && apiRoutes.isRead(String(action || ''));
+    return isConnectionError(error) && apiRoutes.isRetrySafe(String(action || ''));
 }
 
 //Пауза перед попыткой attempt (с 0): 1, 2, 4 … 30 с, со случайным разбросом, чтобы вкладки

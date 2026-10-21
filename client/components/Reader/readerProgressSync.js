@@ -283,7 +283,7 @@ export default class ReaderProgressSync {
         const bookUid = this.bookUid;
         try {
             // Сервер при отметке стирает место в книге, при снятии - весь прогресс: место сохраняем следом
-            await api.markReaderBooksRead([bookUid], read);
+            await api.setBookRead(bookUid, read);
             if (bookUid !== this.bookUid)
                 return;
 

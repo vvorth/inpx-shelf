@@ -588,12 +588,9 @@ class Api {
         return await this.request({action: 'create-reading-list', name, visibility}, 120);
     }
 
-    async renameReadingList(listId, name) {
-        return await this.request({action: 'rename-reading-list', listId, name}, 120);
-    }
-
-    async setReadingListVisibility(listId, visibility) {
-        return await this.request({action: 'set-reading-list-visibility', listId, visibility}, 120);
+    //patch: name и/или visibility
+    async updateReadingList(listId, patch) {
+        return await this.request(Object.assign({action: 'update-reading-list', listId}, patch), 120);
     }
 
     async deleteReadingList(listId) {
@@ -646,11 +643,15 @@ class Api {
 
     //замена недоступной книги в списках, прогрессе и закладках читателя
     async replaceListedBook(fromUid, toUid) {
-        return await this.request({action: 'replace-listed-book', fromUid, toUid}, 120);
+        return await this.request({action: 'replace-listed-book', bookUid: fromUid, toUid}, 120);
     }
 
     async updateReadingListBook(listId, bookUid, enabled) {
-        return await this.request({action: 'update-reading-list-book', listId, bookUid, enabled}, 120);
+        return await this.request({action: (enabled ? 'add-reading-list-book' : 'remove-reading-list-book'), listId, bookUid}, 120);
+    }
+
+    async setBookRead(bookUid, read = true) {
+        return await this.request({action: (read ? 'mark-book-read' : 'unmark-book-read'), bookUid}, 120);
     }
 
     async markReaderBooksRead(bookUids = [], read = true) {

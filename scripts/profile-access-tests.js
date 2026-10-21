@@ -8,6 +8,9 @@ const ProfileAccess = require('../server/core/ProfileAccess');
 const ReadingListStore = require('../server/core/ReadingListStore');
 const {ApiTestClient, sessionCookie, apiController, apiApp, listen, sampleParams} = require('./api-test-client');
 
+//bookUid в пути API - настоящий: base64 от SHA-256
+const bookUid = require('crypto').createHash('sha256').update('book').digest('base64');
+
 async function fixture(options, test) {
     const Worker = require('../server/core/WebWorker');
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-profile-access-'));
@@ -258,7 +261,7 @@ async function testOpenProfileCredentialsAdminOnly() {
         for (const profile of [{password: 'taken-over'}, {login: 'bobby'}, {login: 'bobby', password: 'taken-over'}, {login: ''}])
             assert.match((await update(profile)).error || '', /administrator|администратор/, JSON.stringify(profile));
         for (const action of ['create-kobo-device', 'regenerate-kobo-device-token', 'create-kosync-password'])
-            assert.match((await asBob({action})).error || '', /administrator|администратор/, action);
+            assert.match((await asBob(Object.assign({action}, sampleParams(action)))).error || '', /administrator|администратор/, action);
         const renamed = await update({name: 'Bobby', login: 'BOB'});
         assert.strictEqual(renamed.user && renamed.user.name, 'Bobby', JSON.stringify(renamed), 'Name and other settings stay editable');
         assert.strictEqual((await worker.readingListStore.getUser(bob.id)).passwordHash, '');
@@ -286,7 +289,7 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
         assert.strictEqual((await asBob({action: 'get-config'})).emailShareEnabled, false);
         assert.match((await update(bob.id, {emailTo: 'relay@example.test'}, asBob)).error, /password|паролем/);
         assert.match((await update(bob.id, {telegramChatId: '42'}, asBob)).error, /password|паролем/);
-        assert.match((await asBob({action: 'send-book-email', bookUid: 'book'})).error, /password|паролем/);
+        assert.match((await asBob({action: 'send-book-email', bookUid})).error, /password|паролем/);
         assert.strictEqual((await update(bob.id, {name: 'Bobby', emailTo: 'bob@example.test'}, asBob)).user.name, 'Bobby', 'Unchanged address is no change');
 
         const asAlice = await signIn('alice', 'alice-fixture');
@@ -295,9 +298,9 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
             assert.match((await update(alice.id, {emailTo}, asAlice)).error, /one email|один адрес/, emailTo);
         assert.strictEqual((await update(alice.id, {emailTo: 'alice2@example.test', telegramChatId: '42'}, asAlice)).user.emailTo, 'alice2@example.test');
         for (let i = 0; i < 2; i++)
-            assert.match((await asAlice({action: i ? 'send-book-telegram' : 'send-book-email', bookUid: 'book'})).error, /PREPARE_STUB/);
+            assert.match((await asAlice({action: i ? 'send-book-telegram' : 'send-book-email', bookUid})).error, /PREPARE_STUB/);
         for (const action of ['send-book-email', 'send-book-telegram'])
-            assert.match((await asAlice({action, bookUid: 'book'})).error, /2 per hour|2 в час/, action);
+            assert.match((await asAlice({action, bookUid})).error, /2 per hour|2 в час/, action);
 
         //a profile backup imported into an open profile brings no delivery addresses (nor Kobo tokens)
         const uploader = ApiTestClient.forSession(base, security, bob.id);

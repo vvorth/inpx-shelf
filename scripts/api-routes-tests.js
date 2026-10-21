@@ -38,10 +38,13 @@ function testApiRoutesCoverControllerActions() {
     const shapes = apiRoutes.routes.map(route => `${route.method} ${route.segments.map(s => (s[0] === ':' ? ':' : s)).join('/')}`);
     assert.strictEqual(new Set(shapes).size, shapes.length);
     for (const route of apiRoutes.routes) {
-        assert.ok(['GET', 'POST'].includes(route.method));
-        if (route.method === 'POST')
-            assert.strictEqual(route.path, route.action);
+        assert.ok(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(route.method));
+        //путь называет ресурс, а не действие
+        assert.notStrictEqual(route.path, route.action, route.action);
+        if (route.upload)
+            assert.strictEqual(route.method, 'POST');
         assert.strictEqual(apiRoutes.isRead(route.action), route.method === 'GET');
+        assert.strictEqual(apiRoutes.hasJsonBody(route), ['POST', 'PUT', 'PATCH'].includes(route.method) && !route.upload, route.action);
         assert.ok(Object.values(route.params).every(type => ['string', 'int', 'bool', 'json'].includes(type)), route.action);
     }
     assert.deepStrictEqual(apiRoutes.routes.filter(route => route.upload).map(route => route.action).sort(),
@@ -81,7 +84,11 @@ function testApiRoutesMatch() {
     assert.strictEqual(apiRoutes.match('GET', 'reading-lists/abc').route.action, 'get-reading-list');
     assert.strictEqual(apiRoutes.match('GET', '/admin/dashboard/metrics').route.action, 'get-admin-dashboard-metrics');
     assert.deepStrictEqual(apiRoutes.match('POST', 'ping'), {allow: ['GET']});
-    assert.deepStrictEqual(apiRoutes.match('GET', 'create-reading-list'), {allow: ['POST']});
+    assert.deepStrictEqual(apiRoutes.match('PUT', 'reading-lists/abc'), {allow: ['GET', 'PATCH', 'DELETE']});
+    assert.deepStrictEqual(apiRoutes.match('GET', 'session'), {allow: ['POST', 'DELETE']});
+    assert.strictEqual(apiRoutes.match('PATCH', 'reading-lists/abc').route.action, 'update-reading-list');
+    assert.strictEqual(apiRoutes.match('DELETE', 'reading-lists/abc').route.action, 'delete-reading-list');
+    assert.strictEqual(apiRoutes.match('POST', 'create-reading-list'), null, 'old action paths are gone');
     assert.strictEqual(apiRoutes.match('GET', 'nope'), null);
     assert.strictEqual(apiRoutes.match('GET', 'books'), null);
     assert.strictEqual(apiRoutes.match('GET', 'reading-lists/abc/'), null);
@@ -120,17 +127,29 @@ function testApiRoutesRejectBadParams() {
     assert.throws(() => apiRoutes.encode('nope', {}), /Action not found/);
 }
 
-function testApiRoutesPostAndUpload() {
-    const post = apiRoutes.encode('update-reading-list-book', {listId: 'l1', bookUid: uid, enabled: true});
-    assert.deepStrictEqual(post, {method: 'POST', path: 'update-reading-list-book', query: {}, body: {listId: 'l1', bookUid: uid, enabled: true}});
-    const found = apiRoutes.match('POST', post.path);
-    assert.deepStrictEqual(apiRoutes.decode(found.route, found.pathParams, {}, JSON.parse(JSON.stringify(post.body))), post.body);
+function testApiRoutesWritesAndUpload() {
+    //параметры пути уходят из тела; остальное - тело PUT/PATCH/POST
+    const put = apiRoutes.encode('add-reading-list-book', {listId: 'l1', bookUid: uid});
+    assert.strictEqual(put.method, 'PUT');
+    assert.ok(/^reading-lists\/l1\/books\/[A-Za-z0-9_-]{43}$/.test(put.path), put.path);
+    assert.deepStrictEqual(put.body, {});
+    assert.deepStrictEqual(roundtrip('add-reading-list-book', {listId: 'l1', bookUid: uid}), {listId: 'l1', bookUid: uid});
+    assert.deepStrictEqual(roundtrip('update-reader-progress', {bookUid: uid, progress: {percent: 0.5}}), {bookUid: uid, progress: {percent: 0.5}});
+    assert.deepStrictEqual(roundtrip('update-reading-list', {listId: 'l1', name: 'New'}), {listId: 'l1', name: 'New'});
+
+    //DELETE - без тела: всё нужное в пути, лишний параметр - ошибка клиента
+    const del = apiRoutes.encode('delete-reader-bookmark', {bookUid: uid, bookmarkId: 'b1'});
+    assert.deepStrictEqual([del.method, del.body, del.query], ['DELETE', undefined, {}]);
+    assert.deepStrictEqual(roundtrip('delete-reader-bookmark', {bookUid: uid, bookmarkId: 'b1'}), {bookUid: uid, bookmarkId: 'b1'});
+    assert.throws(() => apiRoutes.encode('delete-reading-list', {listId: 'l1', name: 'x'}), /Unknown parameter/);
+
+    const found = apiRoutes.match('POST', 'reading-lists');
     //__proto__ из JSON остаётся обычным полем
     const params = apiRoutes.decode(found.route, {}, {}, JSON.parse('{"__proto__": {"polluted": 1}}'));
     assert.strictEqual(params.polluted, undefined);
 
     const upload = apiRoutes.encode('import-admin-backup', {scope: 'author-names'});
-    assert.deepStrictEqual(upload, {method: 'POST', path: 'import-admin-backup', query: {scope: 'author-names'}, body: undefined});
+    assert.deepStrictEqual(upload, {method: 'POST', path: 'admin/backups/restore', query: {scope: 'author-names'}, body: undefined});
     const uploadRoute = apiRoutes.match('POST', upload.path).route;
     assert.strictEqual(uploadRoute.upload, true);
     assert.deepStrictEqual(apiRoutes.decode(uploadRoute, {}, upload.query), {scope: 'author-names'});
@@ -142,5 +161,5 @@ module.exports = [
     testApiRoutesRoundtrip,
     testApiRoutesMatch,
     testApiRoutesRejectBadParams,
-    testApiRoutesPostAndUpload,
+    testApiRoutesWritesAndUpload,
 ];

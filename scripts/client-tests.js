@@ -114,21 +114,28 @@ async function testApiConnectionMapsErrors() {
     assert.ok(sent.body === undefined || sent.body === null);
 
     reply = json(200, {ok: true});
-    const progress = {bookUid: 'uid', progress: {percent: 0.5}};
-    assert.strictEqual((await call('update-reader-progress', progress, {headers: {'X-CSRF-Token': 'csrf'}})).ok, true);
+    //bookUid - в пути (base64url), остальное - тело
+    const bookUid = require('crypto').createHash('sha256').update('book').digest('base64');
+    const progress = {progress: {percent: 0.5}};
+    assert.strictEqual((await call('update-reader-progress', Object.assign({bookUid}, progress), {headers: {'X-CSRF-Token': 'csrf'}})).ok, true);
     sent = requests.pop();
-    assert.strictEqual(sent.method, 'POST');
-    assert.match(sent.url, /(^|\/)api\/update-reader-progress$/);
+    assert.strictEqual(sent.method, 'PATCH');
+    assert.strictEqual(sent.url, `api/books/${bookUid.replace(/\+/g, '-').replace(/\//g, '_').slice(0, 43)}/progress`);
     assert.match(String(sent.headers.get('content-type')), /^application\/json/);
     assert.strictEqual(sent.headers.get('x-csrf-token'), 'csrf');
     assert.strictEqual(sent.headers.get('x-inpx-api'), '1');
     assert.deepStrictEqual(JSON.parse(sent.body), progress);
 
+    //DELETE - без тела
+    await call('delete-reading-list', {listId: 'l1'});
+    sent = requests.pop();
+    assert.deepStrictEqual([sent.method, sent.url, sent.body], ['DELETE', 'api/reading-lists/l1', undefined]);
+
     //файл - тело запроса, скалярные параметры - в адресе
     await call('import-admin-backup', {scope: 'all'}, {body: 'FILE'});
     sent = requests.pop();
     assert.strictEqual(sent.method, 'POST');
-    assert.match(sent.url, /(^|\/)api\/import-admin-backup\?scope=all$/);
+    assert.match(sent.url, /(^|\/)api\/admin\/backups\/restore\?scope=all$/);
     assert.strictEqual(sent.headers.get('content-type'), 'application/octet-stream');
     assert.strictEqual(sent.body, 'FILE');
 
@@ -171,20 +178,22 @@ async function testConnectionErrorsAndReconnectDelay() {
     assert.strictEqual(reconnectDelay(2, () => 0), 2000);
 }
 
-// После ошибки связи повторяется только GET: изменение могло дойти до сервера, повтор выполнил бы его дважды.
-// Список действий не ведётся отдельно - правило задаёт метод маршрута.
-async function testOnlyReadOnlyRequestsAreRetried() {
+// После ошибки связи повторяются GET, PUT и DELETE: их повтор даёт тот же результат. POST и PATCH могли дойти до сервера,
+// повтор выполнил бы их дважды. Список действий не ведётся отдельно - правило задаёт метод маршрута.
+async function testOnlyIdempotentRequestsAreRetried() {
     const apiRoutes = require('../shared/apiRoutes');
     const clientSource = await fs.readFile(path.resolve(__dirname, '../client/share/connection.js'), 'utf8');
     assert.doesNotMatch(clientSource, /retrySafeActions/);
     const {canRetryRequest} = await loadClientModule('share/connection.js', Object.assign({apiRoutes}, apiRoutes));
     for (const error of ['errors.apiConnectFailed', 'errors.apiNoResponse', 'errors.apiBadResponse']) {
         for (const route of apiRoutes.routes)
-            assert.strictEqual(canRetryRequest(route.action, new Error(error)), route.method === 'GET', `${route.action} after ${error}`);
+            assert.strictEqual(canRetryRequest(route.action, new Error(error)), ['GET', 'PUT', 'DELETE'].includes(route.method), `${route.action} after ${error}`);
     }
     assert.ok(canRetryRequest('catalog-search', new Error('errors.apiNoResponse')));
-    for (const action of ['get-book-states', 'update-reading-list-book', 'login-user-profile', 'import-reading-lists'])
+    for (const action of ['get-book-states', 'update-reading-list', 'login-user-profile', 'import-reading-lists'])
         assert.ok(!canRetryRequest(action, new Error('errors.apiConnectFailed')), action);
+    for (const action of ['add-reading-list-book', 'mark-book-read', 'delete-reading-list'])
+        assert.ok(canRetryRequest(action, new Error('errors.apiConnectFailed')), action);
     assert.ok(!canRetryRequest('catalog-search', new Error('errors.bookNotFound')));
     assert.ok(!canRetryRequest('catalog-search', new Error('need_profile_login')));
 }
@@ -284,6 +293,6 @@ async function testReleaseVersionsCompareCalVer() {
 }
 
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
-    testApiConnectionMapsErrors, testConnectionErrorsAndReconnectDelay, testOnlyReadOnlyRequestsAreRetried,
+    testApiConnectionMapsErrors, testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
     testReleaseVersionsCompareCalVer];

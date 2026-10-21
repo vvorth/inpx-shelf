@@ -98,15 +98,16 @@ class ApiTestClient {
         const encoded = apiRoutes.encode(action, params);
         const query = apiRoutes.queryString(encoded.query);
         const own = {};
-        if (encoded.method === 'POST') {
+        if (route.upload || encoded.body)
             own['content-type'] = (route.upload ? 'application/octet-stream' : 'application/json');
+        if (encoded.method !== 'GET') {
             const token = (csrfToken === undefined ? await this.csrf() : csrfToken);
             if (token !== null)
                 own['x-csrf-token'] = token;
         }
         return this.request(encoded.method, `api/${encoded.path}${query ? `?${query}` : ''}`, {
             headers: mergeHeaders(own, headers),
-            body: (encoded.method !== 'POST' ? undefined : (route.upload ? body : JSON.stringify(encoded.body))),
+            body: (route.upload ? body : (encoded.body ? JSON.stringify(encoded.body) : undefined)),
         });
     }
 }
@@ -125,7 +126,7 @@ function sampleParams(action) {
     const route = apiRoutes.routeFor(action);
     const ids = Object.fromEntries(route.segments.filter(segment => segment[0] === ':')
         .map(segment => [segment.slice(1), (segment === ':bookUid' ? sampleUid : 'x')]));
-    return (route.method === 'GET' || route.upload ? ids : {listId: 'x', bookUid: sampleUid, name: 'n'});
+    return (apiRoutes.hasJsonBody(route) ? Object.assign({listId: 'x', bookUid: sampleUid, name: 'n'}, ids) : ids);
 }
 
 //WebWorker - синглтон с фоновыми задачами, поэтому контроллер создаётся без конструктора: счётчики запросов - как в

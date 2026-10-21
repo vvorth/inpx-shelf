@@ -972,13 +972,13 @@ async function testApiRequestRules() {
             return response;
         };
         const ping = headers => send('GET', 'api/ping', headers);
-        const json = (url, body = '{}', headers = {}) => send('POST', url, {'content-type': 'application/json', 'x-csrf-token': api.csrfToken, ...headers}, body);
+        const json = (url, body = '{}', headers = {}, method = 'POST') => send(method, url, {'content-type': 'application/json', 'x-csrf-token': api.csrfToken, ...headers}, body);
 
         //заголовок X-Inpx-Api не поставить ни ссылкой, ни формой, ни <img> с чужого сайта
         const bare = await ping({'x-inpx-api': null});
         assert.deepStrictEqual([bare.status, bare.body], [403, {error: 'Forbidden'}]);
         assert.strictEqual((await ping({'x-inpx-api': '0'})).status, 403);
-        assert.strictEqual((await json('api/update-reader-preferences', '{}', {'x-inpx-api': null})).status, 403);
+        assert.strictEqual((await json('api/me/reader-preferences', '{}', {'x-inpx-api': null}, 'PATCH')).status, 403);
         assert.deepStrictEqual((await ping()).body, {message: 'inpx-shelf project is awesome'});
         for (const site of ['cross-site', 'same-site'])
             assert.strictEqual((await ping({'sec-fetch-site': site})).status, 403, site);
@@ -988,7 +988,7 @@ async function testApiRequestRules() {
             assert.strictEqual((await ping({origin: foreign})).status, 403, foreign);
         assert.strictEqual((await ping({origin})).status, 200);
 
-        //POST - только с CSRF-токеном своей сессии; GET токена не требует
+        //POST, PUT, PATCH, DELETE - только с CSRF-токеном своей сессии; GET токена не требует
         const write = options => api.call('update-reader-preferences', {preferences: {fontSize: 20}}, options);
         for (const csrfToken of [null, '', 'x'.repeat(64), security.getCsrfToken({headers: {}})]) {
             const response = await write({csrfToken});
@@ -999,15 +999,15 @@ async function testApiRequestRules() {
         assert.deepStrictEqual(seen[0].preferences, {fontSize: 20});
         const search = await api.call('catalog-search', {q: 'x', limit: 5, hideCopies: true, filters: {lang: ['ru']}});
         assert.deepStrictEqual([search.status, search.body], [200, {q: 'x', limit: 5, hideCopies: true, filters: {lang: ['ru']}}], 'Typed query');
-        for (const route of apiRoutes.routes.filter(item => item.method === 'POST')) {
+        for (const route of apiRoutes.routes.filter(item => item.method !== 'GET')) {
             const response = await api.call(route.action, sampleParams(route.action), {csrfToken: null, body: (route.upload ? '{}' : undefined)});
             assert.deepStrictEqual([response.status, response.body.error], [403, 'bad_csrf_token'], route.action);
         }
 
         //тело POST - JSON (файл - только у действий загрузки)
         for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', 'application/octet-stream'])
-            assert.strictEqual((await json('api/update-reader-preferences', '{}', {'content-type': type})).status, 415, type);
-        assert.strictEqual((await json('api/update-reader-preferences', '{}', {'content-type': 'application/json; charset=utf-8'})).status, 200);
+            assert.strictEqual((await json('api/me/reader-preferences', '{}', {'content-type': type}, 'PATCH')).status, 415, type);
+        assert.strictEqual((await json('api/me/reader-preferences', '{}', {'content-type': 'application/json; charset=utf-8'}, 'PATCH')).status, 200);
         assert.strictEqual(seen.length, 2);
 
         //неизвестный адрес - JSON 404, а не страница приложения
@@ -1021,16 +1021,16 @@ async function testApiRequestRules() {
         const post = await json('api/ping');
         assert.strictEqual(post.status, 405);
         assert.match(String(post.headers.get('allow')), /\bGET\b/);
-        const get = await send('GET', 'api/update-reader-preferences');
+        const get = await send('GET', 'api/me/reader-preferences');
         assert.strictEqual(get.status, 405);
-        assert.match(String(get.headers.get('allow')), /\bPOST\b/);
+        assert.match(String(get.headers.get('allow')), /\bPATCH\b/);
         assert.strictEqual((await send('DELETE', 'api/ping')).status, 405);
 
         //параметры адреса - только объявленные в shared/apiRoutes.js, по одному разу и своего типа
         for (const query of ['q=x&zzz=1', 'q=a&q=b', 'limit=abc', 'limit=1.5', 'hideCopies=yes', 'filters=%7Bbroken', 'filters=1',
             'userId=admin', 'csrfToken=x'])
             assert.strictEqual((await send('GET', `api/catalog/search?${query}`)).status, 400, query);
-        assert.strictEqual((await json('api/update-reader-preferences?preferences=1')).status, 400, 'A POST takes no query');
+        assert.strictEqual((await json('api/me/reader-preferences?preferences=1', '{}', {}, 'PATCH')).status, 400, 'A POST takes no query');
         assert.strictEqual((await send('GET', `api/catalog/search?q=${'x'.repeat(9000)}`)).status, 414);
         assert.strictEqual(seen.length, 2, 'Rejected requests do not reach the handler');
 
@@ -1142,7 +1142,7 @@ async function testApiLogHidesSecretsAndBoundsMetrics() {
         } finally {
             logger.handlers.splice(logger.handlers.indexOf(capture), 1);
         }
-        assert.ok(lines.some(line => line.includes('update-reader-preferences')), lines.join('\n'));
+        assert.ok(lines.some(line => line.includes('PATCH /me/reader-preferences')), lines.join('\n'));
         assert.ok(!lines.some(line => line.includes('_SECRET') || line.includes(api.csrfToken)), lines.join('\n'));
     });
     const labels = [...runtimeMetrics.actionStats.keys()];
