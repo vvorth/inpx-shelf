@@ -1,6 +1,6 @@
 const utils = require('../utils');
 const {t} = require('../i18n');
-const {READ_PERCENT} = require('../ReaderProgress');
+const {READ_PERCENT, readerProgressOf} = require('../ReaderProgress');
 
 // Доля прочитанного до отметки «прочитано» (setBooksRead): снятие отметки возвращает её вместе с местом в книге
 function percentBeforeRead(row = {}) {
@@ -10,6 +10,49 @@ function percentBeforeRead(row = {}) {
 
 // Reader progress, bookmarks and preferences of a profile. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
+    // Read is the profile's progress on the book reaching READ_PERCENT: lists keep no mark of their own.
+    isBookRead(user, bookUid = '') {
+        const row = readerProgressOf(user)[bookUid];
+        return !!row && (Number(row.percent) || 0) >= READ_PERCENT;
+    },
+
+    // Marks the books read or unread in the profile record in place; the caller saves.
+    //отметка не стирает место в книге: с ним можно перечитать, а снятие отметки возвращает долю прочитанного до неё
+    applyBooksRead(target, bookUids = [], read = true, updatedAt = this.nowIso()) {
+        if (!target.readerProgress || typeof(target.readerProgress) !== 'object')
+            target.readerProgress = {};
+
+        const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0);
+        const progress = this.normalizeReaderProgress(target.readerProgress);
+        for (const bookUid of bookUids) {
+            const current = (progress[bookUid] && progress[bookUid].generation === generation ? progress[bookUid] : null);
+            if (read) {
+                const before = (current && current.percent < READ_PERCENT ? {percentBeforeRead: current.percent} : {});
+                target.readerProgress[bookUid] = Object.assign(
+                    {sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: ''},
+                    current || {},
+                    {percent: 1, updatedAt, hidden: false, generation},
+                    before,
+                );
+            } else if (current && Object.prototype.hasOwnProperty.call(current, 'percentBeforeRead')) {
+                const {percentBeforeRead, ...place} = current;
+                target.readerProgress[bookUid] = Object.assign(place, {percent: percentBeforeRead, updatedAt});
+            } else {
+                delete target.readerProgress[bookUid];
+            }
+        }
+    },
+
+    // Read marks that list entries kept in older files and exports ({bookUid, read: true}) become the profile's progress.
+    applyListReadMarks(target, entries = [], updatedAt = '') {
+        const bookUids = (Array.isArray(entries) ? entries : [])
+            .filter((row) => row && typeof(row) === 'object' && row.read)
+            .map((row) => this.normalizeBookUid(row.bookUid || row.uid || row.id))
+            .filter((bookUid) => bookUid && !this.isBookRead(target, bookUid));
+        if (bookUids.length)
+            this.applyBooksRead(target, bookUids, true, updatedAt || this.nowIso());
+    },
+
     normalizeReaderProgress(value = {}) {
         const result = {};
         for (const [bookUid, row] of Object.entries(value || {})) {

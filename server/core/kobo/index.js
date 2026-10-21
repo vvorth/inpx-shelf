@@ -192,6 +192,7 @@ class KoboService {
     async collectWanted(device, rekey = true) {
         const store = this.worker.readingListStore;
         const {data, lists} = await this.boundLists(device.userId, device.listIds);
+        const user = data.users.find(item => item.id === device.userId);
         const overrides = data.metadataOverrides || {};
         const records = await this.worker.getBookRecordsByUids(lists.flatMap(list => store.normalizeEntries(list.books).map(entry => entry.bookUid)));
         const wanted = new Map();
@@ -202,7 +203,7 @@ class KoboService {
         const readUids = new Set();
         for (const list of lists) {
             for (const entry of store.normalizeEntries(list.books)) {
-                if (entry.read)
+                if (store.isBookRead(user, entry.bookUid))
                     readUids.add(entry.bookUid);
                 if (seenUids.has(entry.bookUid)) {
                     const known = seenUids.get(entry.bookUid);
@@ -786,7 +787,7 @@ class KoboService {
         }
     }
 
-    // 4) "read" ticked or unticked in the web UI since the last sync
+    // 4) marked read or unread since the last sync (web UI, reader, another device); listRead is what this device was told
     syncReadFlags(sync) {
         const {books, wanted, states, stateFor, now, results} = sync;
         for (const item of wanted.values()) {
@@ -870,8 +871,8 @@ class KoboService {
 
         const now = new Date().toISOString();
         const result = {EntitlementId: uuid};
-        // The reading list is updated before the device state, so a sync running meanwhile never sees
-        // this device's list flag flipped while the list still says unread (it would send ReadyToRead).
+        // The profile's read mark is set before the device state, so a sync running meanwhile never sees
+        // this device's listRead flipped while the profile still says unread (it would send ReadyToRead).
         const statusInfo = incoming.StatusInfo;
         const status = (statusInfo && ['ReadyToRead', 'Reading', 'Finished'].includes(statusInfo.Status) ? statusInfo.Status : '');
         const current = this.store.getState(device.userId, uuid);
@@ -914,8 +915,8 @@ class KoboService {
             state.priorityTimestamp = now;
             if (target.books[uuid]) {
                 target.books[uuid].status = state.status;
-                // This device already knows the list flag flipped. Other devices of the profile
-                // don't: they get Finished from the list flag on their next sync.
+                // This device already knows the book is read. Other devices of the profile
+                // don't: they get Finished from the read mark on their next sync.
                 if (markedRead)
                     target.books[uuid].listRead = true;
             }
@@ -946,7 +947,7 @@ class KoboService {
         }
     }
 
-    // True when the reading list now says read.
+    // True when the profile now says read.
     async markRead(userId, bookUid) {
         try {
             await this.worker.readingListStore.setBooksRead(userId, [bookUid], true);
@@ -958,7 +959,7 @@ class KoboService {
     }
 
     // Deleting on the device stops re-sending the book to it while it stays listed (unless the device
-    // has resendDeletedBooks); taking it off the list clears that. The list's read flag and web progress stay as they
+    // has resendDeletedBooks); taking it off the list clears that. The read mark and web progress stay as they
     // are: deleting a book to free space says nothing about having read it.
     async deleteBook(req, res, device, token) {
         const uuid = req.params.uuid;

@@ -46,15 +46,6 @@
 
                     <span v-if="row.visibility === 'opds'" class="atl-badge">OPDS</span>
 
-                    <q-toggle
-                        v-if="!series && row.checked"
-                        v-model="row.read"
-                        dense
-                        size="sm"
-                        :label="$t('common.read')"
-                        class="atl-read"
-                    />
-
                     <q-btn v-if="!series && book && book.series && !row.isNew" flat dense round size="sm" icon="la la-ellipsis-h" :aria-label="$t('book.more')">
                         <q-menu anchor="bottom right" self="top right">
                             <div class="atl-menu">
@@ -179,7 +170,7 @@ class AddToListDialog {
             return row.checked;
         if (this.series)
             return row.checked;
-        return row.checked !== row.inList || (row.checked && row.read !== row.wasRead) || (row.checked && row.addSeries);
+        return row.checked !== row.inList || (row.checked && row.addSeries);
     }
 
     rowMeta(row) {
@@ -202,10 +193,8 @@ class AddToListDialog {
             readCount: list.readCount,
             //состояние на сервере (пока неизвестно - считаем, что книги в списке нет)
             inList: false,
-            wasRead: false,
             //то, что выбрано в окне
             checked: false,
-            read: false,
             addSeries: false,
             touched: false,
             isNew: false,
@@ -234,15 +223,12 @@ class AddToListDialog {
             const rows = [];
             for (const list of (response.lists || [])) {
                 const row = byId.get(list.id) || this.makeRow(list);
-                const pristine = !row.touched && row.checked === row.inList && row.read === row.wasRead;
+                const pristine = !row.touched && row.checked === row.inList;
                 Object.assign(row, {name: list.name, visibility: list.visibility, bookCount: list.bookCount, readCount: list.readCount});
                 if (!this.series) {
                     row.inList = !!list.containsBook;
-                    row.wasRead = !!list.readBook;
-                    if (pristine) {
+                    if (pristine)
                         row.checked = row.inList;
-                        row.read = row.wasRead;
-                    }
                 }
                 rows.push(row);
             }
@@ -303,14 +289,10 @@ class AddToListDialog {
                     done.push(t('addToListDialog.removedFrom', {list: row.name}));
                     continue;
                 }
-                if (row.checked && row.read !== row.wasRead)
-                    await this.api.setReadingListBookRead(listId, uid, row.read);
                 if (row.checked && row.addSeries && series)
                     await this.api.addSeriesToReadingList(listId, series);
-                if (row.checked && (!row.inList || row.addSeries))
+                if (row.checked)
                     done.push(t('addToListDialog.addedTo', {list: row.name}));
-                else if (row.checked)
-                    done.push(t('addToListDialog.updatedIn', {list: row.name}));
             }
             if (done.length)
                 this.$root.notify.success(done.join(', '));
@@ -489,11 +471,6 @@ export default vueComponent(AddToListDialog);
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
-}
-
-.atl-read {
-    flex: none;
-    font-size: 13px;
 }
 
 .atl-menu {

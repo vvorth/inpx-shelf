@@ -60,7 +60,7 @@ const writes = [
     'update-reader-preferences', 'add-reader-bookmark', 'delete-reader-bookmark',
     'login-user-profile', 'logout-user-profile', 'create-user-profile', 'update-user-profile', 'delete-user-profile',
     'create-reading-list', 'rename-reading-list', 'set-reading-list-visibility', 'delete-reading-list',
-    'update-reading-list-book', 'replace-listed-book', 'set-reading-list-book-read', 'mark-reader-books-read',
+    'update-reading-list-book', 'replace-listed-book', 'mark-reader-books-read',
     'mark-series-read', 'add-series-to-reading-list',
     'create-kobo-device', 'update-kobo-device', 'regenerate-kobo-device-token', 'reset-kobo-device',
     'refresh-kobo-device', 'delete-kobo-device',

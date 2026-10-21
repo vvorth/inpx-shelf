@@ -1,15 +1,15 @@
 const utils = require('../utils');
 const {t} = require('../i18n');
 const {bookNote} = require('../search/bookMatch');
-const {READ_PERCENT} = require('../ReaderProgress');
 
 // Reading lists and their books, list export and import. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
-    countRead(entries) {
-        return this.normalizeEntries(entries).filter((item) => item.read).length;
+    countRead(entries, user) {
+        return this.normalizeEntries(entries).filter((item) => this.isBookRead(user, item.bookUid)).length;
     },
 
-    listStats(item, bookUid = '') {
+    // user: the list owner, whose progress says which books are read
+    listStats(item, user, bookUid = '') {
         const entries = this.normalizeEntries(item.books);
         const currentEntry = (bookUid ? this.findEntry(entries, bookUid) : null);
         return {
@@ -20,10 +20,14 @@ module.exports = {
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
             bookCount: entries.length,
-            readCount: this.countRead(entries),
+            readCount: this.countRead(entries, user),
             containsBook: !!currentEntry,
-            readBook: !!(currentEntry && currentEntry.read),
         };
+    },
+
+    async ownerListStats(item, bookUid = '') {
+        const {user} = await this.resolveUser(item.userId);
+        return this.listStats(item, user, bookUid);
     },
 
     async getLists(userId = '', options = {}) {
@@ -130,7 +134,7 @@ module.exports = {
 
         if (enabled) {
             if (!existing)
-                item.books.push({bookUid: normalizedBookUid, read: false});
+                item.books.push({bookUid: normalizedBookUid});
         } else {
             item.books = item.books.filter((row) => row.bookUid !== normalizedBookUid);
         }
@@ -140,24 +144,7 @@ module.exports = {
         return item;
     },
 
-    async setBookRead(userId = '', listId, bookUid, read) {
-        const {data, user} = await this.resolveUser(userId);
-        const item = this.ownList(data, user, listId);
-
-        const normalizedBookUid = this.requireBookUid(bookUid);
-
-        item.books = this.normalizeEntries(item.books);
-        const existing = item.books.find((row) => row.bookUid === normalizedBookUid);
-        if (!existing)
-            throw new Error(t('errors.bookNotInList'));
-
-        existing.read = !!read;
-        item.updatedAt = this.nowIso();
-        await this.save(data);
-        return item;
-    },
-
-    async setBooksRead(userId = '', bookUids = [], read = true, options = {}) {
+    async setBooksRead(userId = '', bookUids = [], read = true) {
         const {data, user: target} = await this.resolveUser(userId);
 
         const normalizedBookUids = Array.from(new Set((Array.isArray(bookUids) ? bookUids : [bookUids])
@@ -166,58 +153,8 @@ module.exports = {
         if (!normalizedBookUids.length)
             throw new Error('bookUids is empty');
 
-        const bookUidSet = new Set(normalizedBookUids);
-        const listIds = Array.isArray(options.listIds)
-            ? new Set(options.listIds.map((id) => String(id || '').trim()).filter(Boolean))
-            : null;
-
-        if (!target.readerProgress || typeof(target.readerProgress) !== 'object')
-            target.readerProgress = {};
-
         const updatedAt = this.nowIso();
-        const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0);
-        //отметка не стирает место в книге: с ним можно перечитать, а снятие отметки возвращает долю прочитанного до неё
-        const progress = this.normalizeReaderProgress(target.readerProgress);
-        for (const bookUid of normalizedBookUids) {
-            const current = (progress[bookUid] && progress[bookUid].generation === generation ? progress[bookUid] : null);
-            if (read) {
-                const before = (current && current.percent < READ_PERCENT ? {percentBeforeRead: current.percent} : {});
-                target.readerProgress[bookUid] = Object.assign(
-                    {sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: ''},
-                    current || {},
-                    {percent: 1, updatedAt, hidden: false, generation},
-                    before,
-                );
-            } else if (current && Object.prototype.hasOwnProperty.call(current, 'percentBeforeRead')) {
-                const {percentBeforeRead, ...place} = current;
-                target.readerProgress[bookUid] = Object.assign(place, {percent: percentBeforeRead, updatedAt});
-            } else {
-                delete target.readerProgress[bookUid];
-            }
-        }
-
-        const updatedLists = [];
-        for (const item of data.lists) {
-            if (item.userId !== target.id)
-                continue;
-            if (listIds && !listIds.has(String(item.id || '').trim()))
-                continue;
-
-            let changed = false;
-            item.books = this.normalizeEntries(item.books);
-            for (const entry of item.books) {
-                if (bookUidSet.has(entry.bookUid) && entry.read !== !!read) {
-                    entry.read = !!read;
-                    changed = true;
-                }
-            }
-
-            if (changed) {
-                item.updatedAt = updatedAt;
-                updatedLists.push(this.listStats(item));
-            }
-        }
-
+        this.applyBooksRead(target, normalizedBookUids, read, updatedAt);
         target.updatedAt = updatedAt;
         await this.save(data);
         return {
@@ -225,7 +162,6 @@ module.exports = {
             read: !!read,
             bookUids: normalizedBookUids,
             changedBooks: normalizedBookUids.length,
-            updatedLists,
         };
     },
 
@@ -236,7 +172,7 @@ module.exports = {
     },
 
     // A book's _uid changes when an INPX update rewrites its line. Move the profile's list entries
-    // (keeping order and the read flag), reader progress, bookmarks and the book's metadata edits
+    // (keeping order), reader progress, bookmarks and the book's metadata edits
     // from old to new uids.
     async rekeyBooks(userId = '', mapping = {}) {
         const {data, user: target} = await this.resolveUser(userId);
@@ -249,7 +185,7 @@ module.exports = {
         return {lists};
     },
 
-    // A replacement the reader chose for an unavailable book: the profile's list entries (with the read flag),
+    // A replacement the reader chose for an unavailable book: the profile's list entries,
     // reader progress and bookmarks move to the other book. Shared data (metadata edits, book notes) stays:
     // other profiles may still refer to the old book.
     async replaceBook(userId = '', fromUid = '', toUid = '') {
@@ -272,18 +208,14 @@ module.exports = {
             const entries = this.normalizeEntries(list.books);
             if (!entries.some((entry) => pairs.has(entry.bookUid)))
                 continue;
-            const byUid = new Map();
+            const seen = new Set();
             list.books = [];
             for (const entry of entries) {
                 const bookUid = pairs.get(entry.bookUid) || entry.bookUid;
-                const known = byUid.get(bookUid);
-                if (known) {
-                    known.read = known.read || entry.read;
+                if (seen.has(bookUid))
                     continue;
-                }
-                const row = {bookUid, read: entry.read};
-                byUid.set(bookUid, row);
-                list.books.push(row);
+                seen.add(bookUid);
+                list.books.push({bookUid});
             }
             list.updatedAt = this.nowIso();
             lists++;
@@ -376,7 +308,7 @@ module.exports = {
                 continue;
 
             existing.add(bookUid);
-            item.books.push({bookUid, read: false});
+            item.books.push({bookUid});
             added++;
         }
 
@@ -533,12 +465,13 @@ module.exports = {
 
             for (const entry of normalizedIncoming.books) {
                 if (!existing.has(entry.bookUid)) {
-                    existing.set(entry.bookUid, {bookUid: entry.bookUid, read: !!entry.read});
+                    existing.set(entry.bookUid, {bookUid: entry.bookUid});
                     importedBooks++;
-                } else if (entry.read) {
-                    existing.get(entry.bookUid).read = true;
                 }
             }
+            //в старом экспорте отметка «прочитано» - в записи списка: она становится прогрессом профиля
+            if (target)
+                this.applyListReadMarks(target, incoming.books, normalizedIncoming.updatedAt);
 
             item.books = Array.from(existing.values());
             item.updatedAt = this.nowIso();

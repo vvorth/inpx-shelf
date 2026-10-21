@@ -11,7 +11,7 @@ const RemoteLib = require('./RemoteLib');
 const {getEnabledLibrarySources} = require('./LibrarySources');
 const FileDownloader = require('./FileDownloader');
 const ReadingListStore = require('./ReadingListStore');
-const {withFileTransaction, writeFileAtomic} = require('./FilePersistence');
+const {writeFileAtomic} = require('./FilePersistence');
 const epubRestorer = require('./EpubRestorer');
 const bookConverter = require('./BookConverter');
 
@@ -806,9 +806,10 @@ class WebWorker {
         this.checkMyState();
 
         const lists = await this.readingListStore.getLists(userId, options);
+        const {user} = await this.readingListStore.resolveUser(userId);
         return {
             lists: lists
-                .map((item) => this.readingListStore.listStats(item, bookUid))
+                .map((item) => this.readingListStore.listStats(item, user, bookUid))
                 .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
         };
     }
@@ -821,13 +822,14 @@ class WebWorker {
             throw new Error(t('errors.listNotFound'));
 
         const listEntries = this.readingListStore.normalizeEntries(item.books);
+        const {user} = await this.readingListStore.resolveUser(item.userId);
         const books = [];
         //недоступные книги остаются в списке бледными (unavailable): их не подменяют, замену выбирает читатель
         const booksByUid = await this.getListedBookRecords(listEntries.map(entry => entry.bookUid));
         for (const entry of listEntries) {
             const book = booksByUid.get(entry.bookUid);
             if (book) {
-                book._readingListRead = !!entry.read;
+                book._readingListRead = this.readingListStore.isBookRead(user, entry.bookUid);
                 books.push(book);
             }
         }
@@ -854,7 +856,7 @@ class WebWorker {
                 createdAt: item.createdAt,
                 updatedAt: item.updatedAt,
                 bookCount: (item.books || []).length,
-                readCount: this.readingListStore.countRead(item.books),
+                readCount: this.readingListStore.countRead(item.books, user),
             },
             books,
         };
@@ -900,7 +902,7 @@ class WebWorker {
 
         const item = await this.readingListStore.createList(userId, name, visibility);
         return {
-            list: this.readingListStore.listStats(item),
+            list: await this.readingListStore.ownerListStats(item),
         };
     }
 
@@ -908,13 +910,13 @@ class WebWorker {
         this.checkMyState();
 
         const item = await this.readingListStore.renameList(userId, listId, name);
-        return {list: this.readingListStore.listStats(item)};
+        return {list: await this.readingListStore.ownerListStats(item)};
     }
 
     async setReadingListVisibility(userId = '', listId, visibility) {
         this.checkMyState();
         const item = await this.readingListStore.setListVisibility(userId, listId, visibility);
-        return {list: this.readingListStore.listStats(item)};
+        return {list: await this.readingListStore.ownerListStats(item)};
     }
 
     async deleteReadingList(userId = '', listId) {
@@ -978,35 +980,13 @@ class WebWorker {
         if (enabled && this.koboService)
             this.koboService.prewarmBooks(item.userId, item.id, [bookUid]);
         return {
-            list: this.readingListStore.listStats(item),
+            list: await this.readingListStore.ownerListStats(item),
             bookUid,
             enabled: !!enabled,
         };
     }
 
-    async setReadingListBookRead(userId = '', listId, bookUid, read) {
-        this.checkMyState();
-
-        //отметку можно ставить и недоступной книге: она есть в списке
-        //одна запись файла: setBooksRead с listIds сам ставит отметку в списке
-        return withFileTransaction(this.readingListStore.file, async() => {
-            const item = await this.readingListStore.getList(userId, listId);
-            if (!item)
-                throw new Error(t('errors.listNotFound'));
-            const normalizedBookUid = String(bookUid || '').trim();
-            if (!this.readingListStore.normalizeEntries(item.books).some(entry => entry.bookUid === normalizedBookUid))
-                throw new Error(t('errors.bookNotInList'));
-
-            const result = await this.readingListStore.setBooksRead(userId, [normalizedBookUid], read, {listIds: [item.id]});
-            return {
-                list: result.updatedLists.find(list => list.id === item.id) || this.readingListStore.listStats(item),
-                bookUid,
-                read: !!read,
-            };
-        });
-    }
-
-    async markReaderBooksRead(userId = '', bookUids = [], read = true, options = {}) {
+    async markReaderBooksRead(userId = '', bookUids = [], read = true) {
         this.checkMyState();
 
         const normalized = Array.from(new Set((Array.isArray(bookUids) ? bookUids : [bookUids])
@@ -1023,7 +1003,7 @@ class WebWorker {
         }))
             throw new Error(t('errors.fileNotFound'));
 
-        return await this.readingListStore.setBooksRead(userId, normalized, read, options);
+        return await this.readingListStore.setBooksRead(userId, normalized, read);
     }
 
     async markSeriesRead(userId = '', series = '', read = true) {
@@ -1056,7 +1036,7 @@ class WebWorker {
             this.koboService.prewarmBooks(added.item.userId, added.item.id, bookUids);
 
         return {
-            list: this.readingListStore.listStats(added.item),
+            list: await this.readingListStore.ownerListStats(added.item),
             series: seriesName,
             addedBooks: added.added,
         };

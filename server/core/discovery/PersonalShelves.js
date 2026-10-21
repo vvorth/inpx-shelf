@@ -46,23 +46,12 @@ function emptyPersonalShelf(id, title, subtitle, emptyMessage = msg('discovery.s
 // Персональные полки витрины: «Читаю сейчас», из списков, следующие книги серий и «Похожие»; статистика чтения.
 // Подмешивается в WebWorker.prototype: `this` - воркер.
 module.exports = {
-    getPersonalReadBookSet(user = null, lists = []) {
+    getPersonalReadBookSet(user = null) {
         const readBookUids = new Set();
-        const progressMap = readerProgressOf(user);
-
-        for (const [bookUid, progress] of Object.entries(progressMap)) {
+        for (const [bookUid, progress] of Object.entries(readerProgressOf(user))) {
             if ((Number(progress && progress.percent || 0) || 0) >= READ_PERCENT)
                 readBookUids.add(String(bookUid || '').trim());
         }
-
-        for (const list of (Array.isArray(lists) ? lists : [])) {
-            const entries = this.readingListStore.normalizeEntries(list.books);
-            for (const entry of entries) {
-                if (entry.read)
-                    readBookUids.add(String(entry.bookUid || '').trim());
-            }
-        }
-
         return readBookUids;
     },
 
@@ -70,7 +59,7 @@ module.exports = {
         const progressMap = (context && context.progressMap
             ? context.progressMap
             : readerProgressOf(user));
-        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, []));
+        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user));
 
         const rows = Object.entries(progressMap)
             .map(([bookUid, progress]) => ({
@@ -115,7 +104,7 @@ module.exports = {
             return emptyPersonalShelf('from-your-lists', msg('discovery.shelf.fromLists'), msg('discovery.shelf.fromListsUnreadSubtitle'));
 
         const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
-        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, lists));
+        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user));
         const candidates = [];
         let updatedAt = 0;
 
@@ -127,7 +116,7 @@ module.exports = {
             entries.forEach((entry, index) => {
                 candidates.push({
                     bookUid: entry.bookUid,
-                    read: !!entry.read,
+                    read: readBookUids.has(entry.bookUid),
                     updatedAt: String(list.updatedAt || list.createdAt || ''),
                     order: index,
                 });
@@ -159,7 +148,7 @@ module.exports = {
 
             seenBookUids.add(item.bookUid);
             items.push(Object.assign({}, book, {
-                discoveryRead: (item.read || readBookUids.has(item.bookUid)),
+                discoveryRead: item.read,
             }));
 
             if (items.length >= limit)
@@ -185,13 +174,9 @@ module.exports = {
         const progressMap = (context && context.progressMap
             ? context.progressMap
             : readerProgressOf(user));
-        const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
         const readBookUids = (context && context.readBookUids ? new Set(context.readBookUids) : new Set());
         const seriesState = new Map();
-        const booksByUid = await this.getBookRecordsByUids([
-            ...Object.keys(progressMap),
-            ...lists.flatMap(list => this.readingListStore.normalizeEntries(list.books).filter(entry => entry.read).map(entry => entry.bookUid)),
-        ]);
+        const booksByUid = await this.getBookRecordsByUids(Object.keys(progressMap));
 
         for (const [bookUid, progress] of Object.entries(progressMap)) {
             const book = booksByUid.get(String(bookUid || '').trim());
@@ -214,35 +199,6 @@ module.exports = {
 
             readBookUids.add(bookUid);
             seriesState.set(key, current);
-        }
-
-        for (const list of lists) {
-            const entries = this.readingListStore.normalizeEntries(list.books);
-            for (const entry of entries) {
-                if (!entry.read)
-                    continue;
-
-                readBookUids.add(entry.bookUid);
-                const book = booksByUid.get(entry.bookUid);
-                if (!book || !book.series || !book.serno)
-                    continue;
-
-                const key = String(book.series || '').trim().toLowerCase();
-                const current = seriesState.get(key) || {
-                    series: book.series,
-                    maxSerno: 0,
-                    updatedAt: '',
-                    lastTitle: '',
-                };
-
-                if (Number(book.serno || 0) >= current.maxSerno) {
-                    current.maxSerno = Number(book.serno || 0);
-                    current.updatedAt = String(list.updatedAt || list.createdAt || current.updatedAt || '');
-                    current.lastTitle = String(book.title || current.lastTitle || '');
-                }
-
-                seriesState.set(key, current);
-            }
         }
 
         const candidates = Array.from(seriesState.values())
@@ -421,7 +377,7 @@ module.exports = {
             for (const entry of this.readingListStore.normalizeEntries(list.books)) {
                 rememberSignal(
                     entry.bookUid,
-                    (entry.read ? 2.5 : 0.8),
+                    (this.readingListStore.isBookRead(user, entry.bookUid) ? 2.5 : 0.8),
                     list.updatedAt || list.createdAt,
                 );
             }
@@ -538,7 +494,7 @@ module.exports = {
             return emptyPersonalShelf('similar-books', msg('discovery.shelf.similar'), msg('discovery.shelf.similarSubtitle'));
 
         const lists = (context && Array.isArray(context.lists) ? context.lists : await this.readingListStore.getLists(user.id, {}));
-        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user, lists));
+        const readBookUids = (context && context.readBookUids ? context.readBookUids : this.getPersonalReadBookSet(user));
         const profile = await this.buildPersonalDiscoveryTasteProfile(user, Object.assign({}, context || {}, {lists}));
         const preferredAuthors = Object.fromEntries(profile.authorWeights);
         const preferredSeries = Object.fromEntries(profile.seriesWeights);
@@ -717,7 +673,7 @@ module.exports = {
         const context = {
             lists,
             progressMap: readerProgressOf(user),
-            readBookUids: this.getPersonalReadBookSet(user, lists),
+            readBookUids: this.getPersonalReadBookSet(user),
         };
 
         const shelves = [
@@ -745,7 +701,7 @@ module.exports = {
         if (cached && cached.signature === signature)
             return _.cloneDeep(await cached.value);
 
-        const entry = {signature, value: this.buildReadingStats(user, lists)};
+        const entry = {signature, value: this.buildReadingStats(user)};
         this.readingStatsCache.set(user.id, entry);
         try {
             return _.cloneDeep(await entry.value);
@@ -756,13 +712,11 @@ module.exports = {
         }
     },
 
-    //Прочитанные - как на витрине: прогресс до конца или отметка «прочитано» в списке.
-    //Дата окончания - updatedAt прогресса (отметка «прочитано» тоже ставит прогресс 100% с датой);
-    //у отметок без прогресса (например, из импорта) даты нет: они только в итогах, авторах и жанрах.
-    //Месяцы и годы считает браузер по датам, в своём часовом поясе.
-    async buildReadingStats(user, lists) {
+    //Прочитанные - как на витрине: прогресс до конца (отметка «прочитано» тоже ставит прогресс 100% с датой).
+    //Дата окончания - updatedAt прогресса. Месяцы и годы считает браузер по датам, в своём часовом поясе.
+    async buildReadingStats(user) {
         const progressMap = readerProgressOf(user);
-        const readBookUids = this.getPersonalReadBookSet(user, lists);
+        const readBookUids = this.getPersonalReadBookSet(user);
         readBookUids.delete('');
 
         const finishedAt = [];

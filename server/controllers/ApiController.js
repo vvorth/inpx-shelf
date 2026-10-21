@@ -977,23 +977,12 @@ class ApiController {
         return await this.webWorker.replaceListedBook(user.id, req.fromUid, req.toUid);
     }
 
-    async setReadingListBookRead(req) {
-        if (!utils.hasProp(req, 'listId'))
-            throw new Error('listId is empty');
-        if (!utils.hasProp(req, 'bookUid'))
-            throw new Error('bookUid is empty');
-
-        const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.setReadingListBookRead(user.id, req.listId, req.bookUid, req.read);
-        return result;
-    }
-
     async markReaderBooksRead(req) {
         if (!utils.hasProp(req, 'bookUids'))
             throw new Error('bookUids is empty');
 
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
-        const result = await this.webWorker.markReaderBooksRead(user.id, req.bookUids, req.read, req.options || {});
+        const result = await this.webWorker.markReaderBooksRead(user.id, req.bookUids, req.read);
         return result;
     }
 

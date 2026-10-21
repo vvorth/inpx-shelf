@@ -182,16 +182,19 @@ async function testLibrarySourcesRollBackWhenConfigSaveFails() {
     });
 }
 
-//отметка «прочитано» в списке пишет reading-lists.json один раз
-async function testReadingListBookReadSavesOnce() {
+//«прочитано» - отметка профиля, не списка: книга в двух списках прочитана в обоих сразу, файл пишется один раз
+async function testReadMarkIsTheProfiles() {
     await temporary(async(dataDir) => {
         const ReadingListStore = require('../server/core/ReadingListStore');
         const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
         await store.load();
-        const list = await store.createList('', 'Queue');
-        await store.setBookMembership('', list.id, 'book-1', true);
+        const a = await store.createList('', 'A');
+        const b = await store.createList('', 'B');
+        await store.addBooks('', a.id, ['book-1']);
+        await store.addBooks('', b.id, ['book-1', 'book-2']);
         const worker = bareWorker({checkMyState: () => {}, readingListStore: store});
-        worker.getBookRecordByUid = async(uid) => ({_uid: uid});
+        worker.getListedBookRecords = async(uids) => new Map(uids.map(uid => [uid, {_uid: uid, author: 'Автор'}]));
+        const readCounts = async() => (await worker.getReadingLists('', 'book-1')).lists.map(list => [list.name, list.readCount]);
 
         let saves = 0;
         const save = store.save.bind(store);
@@ -199,16 +202,46 @@ async function testReadingListBookReadSavesOnce() {
             saves++;
             return save(...args);
         };
-        const result = await worker.setReadingListBookRead('', list.id, 'book-1', true);
+        await worker.markReaderBooksRead('', ['book-1'], true);
         assert.strictEqual(saves, 1);
-        assert.strictEqual(result.read, true);
-        assert.strictEqual(result.list.readCount, 1);
-        const {user} = await store.resolveUser('');
-        assert.strictEqual(user.readerProgress['book-1'].percent, 1);
-        assert.strictEqual(store.normalizeEntries((await store.getList('', list.id)).books)[0].read, true);
+        assert.deepStrictEqual(await readCounts(), [['A', 1], ['B', 1]]);
 
-        await assert.rejects(worker.setReadingListBookRead('', list.id, 'book-2', true), error => error.message === require('../server/core/i18n').t('errors.bookNotInList'));
-        assert.strictEqual(saves, 1);
+        //снятая в одном списке отметка снята и в другом: раньше список B оставался «прочитано»
+        await worker.markReaderBooksRead('', ['book-1'], false);
+        assert.deepStrictEqual(await readCounts(), [['A', 0], ['B', 0]]);
+        assert.deepStrictEqual((await store.getList('', b.id)).books, [{bookUid: 'book-1'}, {bookUid: 'book-2'}], 'lists keep no read mark');
+    });
+}
+
+//старый файл и старый экспорт: отметка «прочитано» из записи списка становится прогрессом владельца, место в книге остаётся
+async function testListReadMarksMoveToProgress() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+        const reader = Object.assign(store.makeDefaultUser(), {id: 'reader', name: 'Reader', readerProgress: {
+            'book-2': {percent: 0.4, sectionId: 's', updatedAt: '2026-01-01T00:00:00.000Z'},
+        }});
+        await fs.outputJson(store.file, {version: 5, users: [reader], lists: [{id: 'l1', userId: 'reader', name: 'Old',
+            updatedAt: '2026-02-01T00:00:00.000Z', books: [{bookUid: 'book-1', read: true}, {bookUid: 'book-2', read: true}, {bookUid: 'book-3', read: false}]}]});
+
+        const progress = async() => (await store.resolveUser('reader')).user.readerProgress;
+        let rows = await progress();
+        assert.strictEqual(rows['book-1'].percent, 1);
+        assert.strictEqual(rows['book-1'].updatedAt, '2026-02-01T00:00:00.000Z', 'marked when the list last changed');
+        assert.deepStrictEqual([rows['book-2'].percent, rows['book-2'].percentBeforeRead, rows['book-2'].sectionId], [1, 0.4, 's']);
+        assert.strictEqual(rows['book-3'], undefined);
+
+        //после записи файла отметки остаются только в прогрессе
+        await store.renameList('reader', 'l1', 'Renamed');
+        const saved = await fs.readJson(store.file);
+        assert.deepStrictEqual(saved.lists[0].books, [{bookUid: 'book-1'}, {bookUid: 'book-2'}, {bookUid: 'book-3'}]);
+        rows = await progress();
+        assert.strictEqual(rows['book-1'].percent, 1);
+
+        await store.importData('reader', {lists: [{name: 'Exported', books: [{bookUid: 'book-4', read: true}, {bookUid: 'book-5'}]}]});
+        rows = await progress();
+        assert.strictEqual(rows['book-4'].percent, 1);
+        assert.strictEqual(rows['book-5'], undefined);
     });
 }
 
@@ -220,7 +253,7 @@ async function testForgetBooksClearsProfile() {
         await store.load();
         const list = await store.createList('', 'Queue');
         await store.addBooks('', list.id, ['gone', 'kept']);
-        await store.setBookRead('', list.id, 'gone', true);
+        await store.setBooksRead('', ['gone'], true);
         await store.updateReaderProgress('', 'gone', {percent: 0.3, hidden: true});
         await store.updateReaderProgress('', 'kept', {percent: 0.5});
         await store.addReaderBookmark('', 'gone', {title: 'b'});
@@ -260,11 +293,10 @@ async function testLibraryAssetCaches() {
     });
 }
 
-//статистика чтения: прочитанные из прогресса и списков, даты только у прогресса, авторы и жанры прочитанного, кеш до изменения
+//статистика чтения: прочитанные из прогресса, авторы и жанры прочитанного, кеш до изменения
 async function testReadingStats() {
     const store = Object.create(require('../server/core/ReadingListStore').prototype);
-    let lists = [{id: 'l1', books: [{bookUid: 'marked', read: true}, {bookUid: 'reading', read: false}]}];
-    store.getLists = async() => lists;
+    store.getLists = async() => [{id: 'l1', books: [{bookUid: 'marked'}, {bookUid: 'reading'}]}];
     let lookups = 0;
     const books = {
         done: {_uid: 'done', author: 'Лем Станислав', genre: 'sf,sf_social'},
@@ -277,6 +309,7 @@ async function testReadingStats() {
     };
     const user = {id: 'reader', readerProgress: {
         done: {percent: 1, updatedAt: '2026-03-05T10:00:00.000Z'},
+        marked: {percent: 1, updatedAt: '2026-03-07T10:00:00.000Z', percentBeforeRead: 0.1},
         reading: {percent: 0.4, updatedAt: '2026-04-01T10:00:00.000Z'},
         hidden: {percent: 0.2, hidden: true},
     }};
@@ -285,14 +318,14 @@ async function testReadingStats() {
     assert.deepStrictEqual(stats, {
         finished: 2,
         inProgress: 1,
-        finishedAt: ['2026-03-05T10:00:00.000Z'],
+        finishedAt: ['2026-03-05T10:00:00.000Z', '2026-03-07T10:00:00.000Z'],
         authors: [{name: 'Лем Станислав', count: 2}, {name: 'Стругацкий Аркадий', count: 1}],
         genres: [{name: 'sf', count: 2}, {name: 'sf_social', count: 1}],
     });
     await worker.getReadingStats(user);
     assert.strictEqual(lookups, 1, 'unchanged data comes from the cache');
-    lists = [{id: 'l1', books: [{bookUid: 'marked', read: true}, {bookUid: 'reading', read: true}]}];
-    assert.strictEqual((await worker.getReadingStats(user)).inProgress, 0, 'a book marked read in a list is not in progress');
+    user.readerProgress.reading = {percent: 1, updatedAt: '2026-04-02T10:00:00.000Z', percentBeforeRead: 0.4};
+    assert.strictEqual((await worker.getReadingStats(user)).inProgress, 0, 'a book marked read is not in progress');
     assert.strictEqual(lookups, 2);
 }
 
@@ -471,7 +504,6 @@ async function testListedBooksKeepUntilReaderReplacesThem() {
             //убрать и вернуть недоступную книгу можно
             await worker.updateReadingListBook('', list.id, 'old-gone', false);
             await worker.updateReadingListBook('', list.id, 'old-gone', true);
-            await worker.setReadingListBookRead('', list.id, 'old-gone', true);
 
             //замена, выбранная читателем: место в списке, прогресс; заметка старой книги остаётся у других профилей
             const result = await worker.replaceListedBook('', 'old-apples', 'new-apples');
@@ -671,7 +703,8 @@ module.exports = [
     testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing,
     testCleanDirSkipsVanishedFiles,
     testLibrarySourcesRollBackWhenConfigSaveFails,
-    testReadingListBookReadSavesOnce,
+    testReadMarkIsTheProfiles,
+    testListReadMarksMoveToProgress,
     testForgetBooksClearsProfile,
     testListedBooksKeepUntilReaderReplacesThem,
     testProfileBackupCarriesBookDetails,

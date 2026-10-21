@@ -1325,7 +1325,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
                 userId: 'reader-a',
                 name: 'Reading',
                 visibility: 'private',
-                books: [{bookUid: 'source:book:1', read: true}],
+                books: [{bookUid: 'source:book:1'}],
             }],
         });
 
@@ -1336,7 +1336,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(exported.user.readerProgress['source:book:1'].percent, 0.75);
         assert.strictEqual(exported.user.readerBookmarks['source:book:1'][0].id, 'bookmark-a');
         assert.deepStrictEqual(exported.user.discoveryPreferences.taste.genres, ['sf']);
-        assert.strictEqual(exported.lists[0].books[0].read, true);
+        assert.deepStrictEqual(exported.lists[0].books, [{bookUid: 'source:book:1'}]);
 
         const imported = await store.importData('reader-b', exported);
         assert.strictEqual(imported.importedLists, 1);

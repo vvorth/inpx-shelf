@@ -213,15 +213,9 @@ class ReadingListStore {
         for (const row of (Array.isArray(entries) ? entries : [])) {
             let entry;
             if (typeof(row) === 'string') {
-                entry = {
-                    bookUid: this.normalizeBookUid(row),
-                    read: false,
-                };
+                entry = {bookUid: this.normalizeBookUid(row)};
             } else {
-                entry = {
-                    bookUid: this.normalizeBookUid(row.bookUid || row.uid || row.id),
-                    read: !!row.read,
-                };
+                entry = {bookUid: this.normalizeBookUid(row.bookUid || row.uid || row.id)};
             }
 
             if (!entry.bookUid || seen.has(entry.bookUid))
@@ -319,6 +313,8 @@ class ReadingListStore {
             }
             if (!seenUserIds.has(normalized.userId))
                 normalized.userId = defaultUserId;
+            //раньше отметка «прочитано» хранилась в записи списка: она становится прогрессом владельца
+            this.applyListReadMarks(users.find((user) => user.id === normalized.userId), item.books, normalized.updatedAt);
             lists.push(normalized);
         }
 

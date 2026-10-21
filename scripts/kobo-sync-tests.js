@@ -183,6 +183,11 @@ async function testKoboSyncListsAndDownloads() {
     });
 }
 
+// Read is the profile's mark (its progress), not a list's
+async function isRead(store, bookUid, userId = 'default') {
+    return store.isBookRead((await store.resolveUser(userId)).user, bookUid);
+}
+
 async function testKoboReadStateBothWays() {
     await fixture({}, async({store, listA, call, sync}) => {
         await store.addBooks('default', listA.id, ['fb2-uid', 'epub-uid']);
@@ -209,8 +214,7 @@ async function testKoboReadStateBothWays() {
         const putBody = await put.json();
         assert.strictEqual(putBody.RequestResult, 'Success');
         assert.strictEqual(putBody.UpdateResults[0].StatusInfoResult.Result, 'Success');
-        const list = await store.getList('default', listA.id);
-        assert.strictEqual(list.books.find(entry => entry.bookUid === 'fb2-uid').read, true);
+        assert.strictEqual(await isRead(store, 'fb2-uid'), true);
         next = await sync();
         assert.ok(!next.items.some(item => item.ChangedReadingState), 'state from the device is not echoed');
 
@@ -220,7 +224,7 @@ async function testKoboReadStateBothWays() {
         assert.strictEqual(state[0].CurrentBookmark.Location.Value, 'kobo.1.1');
 
         // Unticking "read" on the web reopens the book on the device.
-        await store.setBookRead('default', listA.id, 'fb2-uid', false);
+        await store.setBooksRead('default', ['fb2-uid'], false);
         next = await sync();
         assert.strictEqual(next.items.find(item => item.ChangedReadingState).ChangedReadingState.ReadingState.StatusInfo.Status, 'ReadyToRead');
         assert.strictEqual((await call(`/v1/library/${kobo.uuidv5('x')}/state`, {method: 'PUT',
@@ -270,7 +274,7 @@ async function testKoboFinishedIsNotUndoneWhenTheListUpdateFails() {
             body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Finished'}}]})});
         store.setBooksRead = setBooksRead;
         assert.strictEqual(put.status, 200);
-        assert.strictEqual((await store.getList('default', listA.id)).books[0].read, false);
+        assert.strictEqual(await isRead(store, 'epub-uid'), false);
         assert.ok(!(await sync()).items.some(item => item.ChangedReadingState), 'the device keeps its Finished status');
     });
 }
@@ -285,7 +289,7 @@ async function testKoboDeleteOnDeviceAndKeepRemovedBooks() {
         // Deleting on the device stops re-sending the book, and leaves its read flag and progress alone.
         await store.updateReaderProgress('default', 'fb2-uid', {percent: 0.4, sectionId: 's1', updatedAt: new Date().toISOString()});
         assert.strictEqual((await call(`/v1/library/${fb2Uuid}`, {method: 'DELETE'})).status, 204);
-        assert.strictEqual((await store.getList('default', listA.id)).books.find(entry => entry.bookUid === 'fb2-uid').read, false);
+        assert.strictEqual(await isRead(store, 'fb2-uid'), false);
         assert.strictEqual((await store.getReaderState('default', 'fb2-uid')).progress.percent, 0.4);
         assert.deepStrictEqual(entitlementIds((await sync()).items, 'NewEntitlement'), []);
         assert.deepStrictEqual(entitlementIds((await sync({fresh: true})).items, 'NewEntitlement'), [epubUuid],
@@ -447,7 +451,7 @@ async function testKoboRefusesDevicesOfDeletedProfiles() {
         const put = await fetch(`${otherEndpoint}/v1/library/${kobo.uuidv5('main:102')}/state`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Finished'}}]})});
         assert.strictEqual(put.status, 401);
-        assert.strictEqual((await store.getList('default', listA.id)).books[0].read, false, 'the first profile is never touched');
+        assert.strictEqual(await isRead(store, 'epub-uid'), false, 'the first profile is never touched');
     });
 }
 
@@ -724,7 +728,6 @@ async function testKoboRekeysOrphansByLibid() {
     await fixture({}, async({service, store, worker, books, listA, listB, sync, call}) => {
         await store.addBooks('default', listA.id, ['epub-uid', 'fb2-uid', 'late-uid']);
         await store.addBooks('default', listB.id, ['fb2-uid']);
-        await store.setBookRead('default', listA.id, 'fb2-uid', true);
         await store.updateReaderProgress('default', 'fb2-uid', {percent: 0.4, sectionId: 's2', updatedAt: '2026-01-01T00:00:00.000Z', generation: 0});
         await store.addReaderBookmark('default', 'fb2-uid', {title: 'Глава 2', percent: 0.4});
         await store.updateMetadataOverride('fb2-uid', {title: 'Правка'});
@@ -752,8 +755,8 @@ async function testKoboRekeysOrphansByLibid() {
         assert.deepStrictEqual(lookups, [['main:101']], 'one scan, and only for books with a libid');
 
         const listAfter = await store.getList('default', listA.id);
-        assert.deepStrictEqual(listAfter.books, [{bookUid: 'epub-uid', read: false}, {bookUid: 'fb2-uid-new', read: true},
-            {bookUid: 'late-uid', read: false}], 'order and read flag kept; the libid-less orphan stays');
+        assert.deepStrictEqual(listAfter.books, [{bookUid: 'epub-uid'}, {bookUid: 'fb2-uid-new'}, {bookUid: 'late-uid'}],
+            'order kept; the libid-less orphan stays');
         assert.deepStrictEqual((await store.getList('default', listB.id)).books.map(entry => entry.bookUid), ['fb2-uid-new']);
         const user = (await store.load()).users.find(item => item.id === 'default');
         assert.strictEqual(user.readerProgress['fb2-uid-new'].percent, 0.4);

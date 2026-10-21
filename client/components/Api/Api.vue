@@ -653,12 +653,8 @@ class Api {
         return await this.request({action: 'update-reading-list-book', listId, bookUid, enabled}, 120);
     }
 
-    async setReadingListBookRead(listId, bookUid, read) {
-        return await this.request({action: 'set-reading-list-book-read', listId, bookUid, read}, 120);
-    }
-
-    async markReaderBooksRead(bookUids = [], read = true, options = {}) {
-        return await this.request({action: 'mark-reader-books-read', bookUids, read, options}, 120);
+    async markReaderBooksRead(bookUids = [], read = true) {
+        return await this.request({action: 'mark-reader-books-read', bookUids, read}, 120);
     }
 
     async markSeriesRead(series, read = true) {

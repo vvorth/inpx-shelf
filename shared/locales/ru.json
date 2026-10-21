@@ -12,7 +12,6 @@
         "removedFrom": "убрано из «{list}»",
         "seriesAddedTo": "серия добавлена в «{list}»",
         "theListAlreadyExists": "Список «{name}» уже есть",
-        "updatedIn": "обновлено в «{list}»",
         "updatingLists": "Обновляю списки..."
     },
     "admin": {
@@ -431,7 +430,6 @@
         "bookAuthorRequired": "Автор книги не должен быть пустым",
         "bookIdRequired": "Не указан идентификатор книги",
         "bookNotFound": "Книга не найдена",
-        "bookNotInList": "Книга не найдена в списке",
         "bookPrepareFailed": "Не удалось подготовить книгу, подробности в журнале сервера",
         "bookTitleRequired": "Название книги не должно быть пустым",
         "adminCredentialsRequired": "Администратору нужны логин и пароль",

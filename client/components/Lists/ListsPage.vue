@@ -412,7 +412,7 @@ class ListsPage {
                 serno: book.serno || '',
                 ext: book.ext || '',
                 size: Number(book.size || 0),
-                //в списке - его отметка «прочитано», в «Читаю сейчас» книги не дочитаны
+                //прочитана ли книга профилем; в «Читаю сейчас» книги не дочитаны
                 read: !!(book._readingListRead || book.read),
                 percent: Number(book._readerPercent !== undefined ? book._readerPercent : (this.states[bookUid(book)] || {}).percent) || 0,
                 //выключенная библиотека или книги больше нет: строка бледная, открывается только окно книги
@@ -445,7 +445,7 @@ class ListsPage {
     }
 
 
-    //состояния книг для карточек: прогресс и списки читателя; в открытом списке прочитанное - по его отметке
+    //состояния книг для карточек: прогресс и списки читателя; в открытом списке книга в нём
     get bookStates() {
         return Object.fromEntries(this.books.map((book) => {
             const state = Object.assign({}, this.states[book.bookUid] || {}, {percent: book.percent});
@@ -620,7 +620,7 @@ class ListsPage {
     }
 
     async toggleRead(book, read) {
-        //в «Читаю сейчас» отметка - общая «прочитано»: дочитанная книга оттуда уходит
+        //«прочитано» - отметка профиля, не списка: в «Читаю сейчас» дочитанная книга оттуда уходит
         if (this.isReadingNow) {
             if (await markBooksRead(this, [book.bookUid], read)) {
                 await this.api.updateConfig();
@@ -630,7 +630,7 @@ class ListsPage {
         }
         const list = this.selectedList;
         try {
-            await this.api.setReadingListBookRead(list.id, book.bookUid, read);
+            await this.api.markReaderBooksRead([book.bookUid], read);
             if (!!book.read !== !!read)
                 list.readCount = Math.max(0, (Number(list.readCount || 0) || 0) + (read ? 1 : -1));
             book.read = !!read;

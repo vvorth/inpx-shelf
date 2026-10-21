@@ -12,7 +12,6 @@
         "removedFrom": "removed from “{list}”",
         "seriesAddedTo": "series added to “{list}”",
         "theListAlreadyExists": "The list “{name}” already exists",
-        "updatedIn": "updated in “{list}”",
         "updatingLists": "Updating lists..."
     },
     "admin": {
@@ -427,7 +426,6 @@
         "bookAuthorRequired": "Book author must not be empty",
         "bookIdRequired": "Book id is not specified",
         "bookNotFound": "Book not found",
-        "bookNotInList": "Book not found in the list",
         "bookPrepareFailed": "Could not prepare the book, see the server log for details",
         "bookTitleRequired": "Book title must not be empty",
         "adminCredentialsRequired": "The administrator needs a login and password",
