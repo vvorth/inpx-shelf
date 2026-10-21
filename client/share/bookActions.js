@@ -180,17 +180,13 @@ export async function runBookAction(vm, book, action, format = '', options = {})
     return null;
 }
 
-export async function markBooksRead(vm, bookUids = [], read = true) {
-    const normalized = Array.from(new Set((Array.isArray(bookUids) ? bookUids : [bookUids])
-        .map(uid => String(uid || '').trim())
-        .filter(Boolean)));
-    if (!normalized.length)
+export async function markBookRead(vm, uid, read = true) {
+    if (!uid)
         return false;
 
     try {
-        const result = await vm.$root.api.markReaderBooksRead(normalized, read);
-        const count = (result && result.changedBooks) || normalized.length;
-        vm.$root.notify.success(read ? t('list.markedRead', {n: count}) : t('common.unmarked', {n: count}));
+        await vm.$root.api.setBookRead(uid, read);
+        vm.$root.notify.success(read ? t('list.markedRead', {n: 1}) : t('common.unmarked', {n: 1}));
         return true;
     } catch (e) {
         vm.$root.stdDialog.alert(e.message, t('common.error'));

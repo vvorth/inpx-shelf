@@ -654,10 +654,6 @@ class Api {
         return await this.request({action: (read ? 'mark-book-read' : 'unmark-book-read'), bookUid}, 120);
     }
 
-    async markReaderBooksRead(bookUids = [], read = true) {
-        return await this.request({action: 'mark-reader-books-read', bookUids, read}, 120);
-    }
-
     async markSeriesRead(series, read = true) {
         return await this.request({action: 'mark-series-read', series, read}, 120);
     }

@@ -283,7 +283,7 @@ import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tm} from '../../share/i18n';
 import {isSignedIn} from '../../share/session';
-import {runBookAction, markBooksRead, conversionFormats, bookAuthors, bookUid, canReadOnline, loadBookStates, librarySourceName} from '../../share/bookActions';
+import {runBookAction, markBookRead, conversionFormats, bookAuthors, bookUid, canReadOnline, loadBookStates, librarySourceName} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 import {myLanguages, languageMatches, bookLang} from '../../share/languages';
 
@@ -626,7 +626,7 @@ class BookPage {
 
     async toggleRead() {
         const read = !(this.progress >= 1);
-        if (await markBooksRead(this, [bookUid(this.book)], read))
+        if (await markBookRead(this, bookUid(this.book), read))
             await this.loadStates([this.book]);
     }
 

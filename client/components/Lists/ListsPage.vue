@@ -231,7 +231,7 @@ import AddToListDialog from '../Library/AddToListDialog.vue';
 import {t} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
-import {bookAuthors, bookUid, forgetBooks, loadBookStates, markBooksRead} from '../../share/bookActions';
+import {bookAuthors, bookUid, forgetBooks, loadBookStates, markBookRead} from '../../share/bookActions';
 import {bookViews, bookViewOptions} from '../../share/bookView';
 import {fasBookmark} from '@quasar/extras/fontawesome-v5';
 
@@ -622,7 +622,7 @@ class ListsPage {
     async toggleRead(book, read) {
         //«прочитано» - отметка профиля, не списка: в «Читаю сейчас» дочитанная книга оттуда уходит
         if (this.isReadingNow) {
-            if (await markBooksRead(this, [book.bookUid], read)) {
+            if (await markBookRead(this, book.bookUid, read)) {
                 await this.api.updateConfig();
                 await this.loadBooks();
             }
