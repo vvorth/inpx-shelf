@@ -89,9 +89,9 @@ function sendJson(res, data, status = 200) {
     res.status(status).type('application/json; charset=utf-8').send(JSON.stringify(data));
 }
 
-// Worker errors carry their HTTP meaning in a code (a busy converter) or a leading "404 ".
+// Worker errors carry their HTTP meaning in a code (a busy converter), a status (user data blocked) or a leading "404 ".
 function errorStatus(error) {
-    if (busyConversionCodes.has(error && error.code))
+    if (busyConversionCodes.has(error && error.code) || (error && error.status === 503))
         return 503;
     return (/^404\b/.test(String((error && error.message) || '')) ? 404 : 500);
 }
@@ -1136,6 +1136,12 @@ class KoboService {
                 await this.store.load();
             } catch (e) {
                 log(LM_ERR, `Kobo: cannot load ${this.store.file}: ${e.message}`);
+                return res.sendStatus(503);
+            }
+            // Файл устройств или профилей не читается, решение за администратором: устройство повторит запрос позже.
+            // Синхронизация с пустыми данными убрала бы с него книги, а отказ по токену - вход
+            if (this.store.blocked || this.worker.readingListStore.blocked) {
+                res.set('Retry-After', '600');
                 return res.sendStatus(503);
             }
             let device = this.store.findDeviceByToken(req.params.token);

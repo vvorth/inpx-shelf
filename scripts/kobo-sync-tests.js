@@ -1440,7 +1440,7 @@ async function testKoboRestoreSkipsHostileIds() {
 }
 
 // An unparsable kobo-sync.json is kept as a copy and reported at error level, which also puts it in the
-// admin event log: the store starts empty, and the next write replaces the file.
+// admin event log: the store starts empty and refuses writes, so the file is not replaced.
 async function testKoboBrokenStoreIsReported() {
     const KoboStore = require('../server/core/kobo/KoboStore');
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kobo-broken-'));
@@ -1458,10 +1458,72 @@ async function testKoboBrokenStoreIsReported() {
         assert.strictEqual(await fs.readFile(path.join(dir, copies[0]), 'utf8'), '{"devices": [');
         assert.strictEqual(events.filter(([level, message]) => level === LM_ERR && message.includes(copies[0])).length, 1,
             'one error naming the copy');
+        await assert.rejects(store.createDevice('u1', {}), error => error.status === 503 && error.message.includes('kobo-sync.json'));
+        assert.strictEqual(await fs.readFile(path.join(dir, 'kobo-sync.json'), 'utf8'), '{"devices": [');
+        assert.deepStrictEqual(store.blockedState(), {file: 'kobo-sync.json', copy: path.join(dir, copies[0])});
     } finally {
         appLogger.setEventListener(listener);
         await fs.remove(dir);
     }
+}
+
+// While kobo-sync.json is unreadable, devices get 503 (they retry later) and writes are refused; the profile store
+// stays writable. A full-backup restore or the admin's accept-reset unblocks it without a restart.
+async function testKoboBrokenStoreWaitsForAdminDecision() {
+    await fixture({}, async({config, service, store, call, base}) => {
+        const file = service.store.file;
+        const breakStore = async() => {
+            await fs.writeFile(file, '{"devices": [');
+            //как после перезапуска с испорченным файлом
+            service.store.data = null;
+            await service.store.load();
+        };
+        const req = {headers: {host: new URL(base).host}, socket: {}, protocol: 'http'};
+        await breakStore();
+        const put = await call(`/v1/library/${kobo.uuidv5('main:101')}/state`, {method: 'PUT', body: '{}'});
+        assert.strictEqual(put.status, 503, 'the device retries later, no 500 and no 401');
+        assert.ok(put.headers.get('retry-after'));
+        await assert.rejects(service.createDevice('default', {name: 'New'}, req), error => error.status === 503 && error.message.includes('kobo-sync.json'));
+        assert.strictEqual(await fs.readFile(file, 'utf8'), '{"devices": [');
+        await store.createList('default', 'Profiles stay writable');
+
+        const admin = Object.assign(Object.create(require('../server/core/WebWorker').prototype), {readingListStore: store,
+            config: Object.assign({}, config, {configFile: path.join(config.dataDir, 'config.json')}),
+            koboService: service, adminEvents: [], checkMyState() {}});
+        await assert.rejects(admin.acceptUserDataReset('default', admin.profileToken('default')), /администратор|administrator/i);
+        assert.ok(service.store.blockedState(), 'still blocked');
+
+        //полное восстановление
+        const zip = new yazl.ZipFile();
+        zip.addBuffer(Buffer.from('{}'), 'backup-info.json');
+        //полный бэкап - с файлом профилей
+        zip.addBuffer(await fs.readFile(store.file), 'reading-lists.json');
+        zip.addBuffer(Buffer.from(JSON.stringify({version: 1, devices: [], states: {}})), 'kobo-sync.json');
+        zip.end();
+        const chunks = [];
+        for await (const chunk of zip.outputStream)
+            chunks.push(chunk);
+        await admin.importAdminBackup('admin', admin.profileToken('admin'), {buffer: Buffer.concat(chunks)});
+        assert.strictEqual(service.store.blockedState(), null);
+        await service.createDevice('default', {name: 'After restore'}, req);
+
+        //начать без устройств: устройство, созданное после этого, синхронизируется
+        await breakStore();
+        assert.deepStrictEqual((await admin.acceptUserDataReset('admin', admin.profileToken('admin'))).reset, ['kobo-sync.json']);
+        assert.strictEqual(admin.adminEvents.at(-1).message.key, 'admin.userDataReset');
+        assert.deepStrictEqual(await fs.readJson(file), {version: 1, devices: [], states: {}});
+        const {endpoint} = await service.createDevice('default', {name: 'After reset'}, req);
+        assert.strictEqual((await fetch(`${endpoint}/v1/initialization`)).status, 200);
+
+        //профили не читаются: устройство тоже ждёт, синхронизация с пустыми списками убрала бы с него книги
+        const lists = await fs.readFile(store.file);
+        await fs.writeFile(store.file, '{broken');
+        await store.load();
+        assert.strictEqual((await fetch(`${endpoint}/v1/initialization`)).status, 503);
+        await fs.writeFile(store.file, lists);
+        await store.load();
+        assert.strictEqual((await fetch(`${endpoint}/v1/initialization`)).status, 200);
+    });
 }
 
 module.exports = [
@@ -1470,6 +1532,7 @@ module.exports = [
     testKoboStatesStayWithinProfileLimit,
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,
+    testKoboBrokenStoreWaitsForAdminDecision,
     testKoboReadStateBothWays,
     testKoboFinishedReachesOtherDevices,
     testKoboFinishedIsNotUndoneWhenTheListUpdateFails,

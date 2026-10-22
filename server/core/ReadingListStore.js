@@ -40,8 +40,31 @@ class ReadingListStore {
         await fs.ensureDir(path.dirname(this.file));
 
         if (!await fs.pathExists(this.file)) {
+            //испорченный файл удалили руками: это решение администратора, начинаем с пустых данных
+            this.blocked = null;
             await this.save(this.makeDefaultData());
         }
+    }
+
+    // Пока файл не читается и администратор не решил, что с ним делать: какой файл и где его копия
+    blockedState() {
+        return (this.blocked ? {file: path.basename(this.file), copy: this.blocked.copy} : null);
+    }
+
+    blockedError() {
+        return Object.assign(new Error(t('errors.userDataBlocked', {file: path.basename(this.file)})), {status: 503});
+    }
+
+    // Администратор согласился начать с пустых данных: в файл - то, что отдавалось на чтение
+    // (умолчания и профиль администратора: его сессия остаётся). False - файл уже не заблокирован
+    async acceptReset() {
+        await this.load();
+        if (!this.blocked)
+            return false;
+        const {data} = this.blocked;
+        this.blocked = null;
+        await this.writeData(data);
+        return true;
     }
 
     makeId() {
@@ -141,6 +164,9 @@ class ReadingListStore {
 
     async endAllSessions() {
         const data = await this.load();
+        //испорченный файл не переписываем: что с ним делать, решает администратор
+        if (this.blocked)
+            return;
         data.users.forEach(user => this.endSessions(user));
         await this.save(data);
     }
@@ -439,9 +465,12 @@ class ReadingListStore {
         const stamp = this.fileStamp(await fs.stat(this.file));
         if (this.loaded && this.loaded.stamp === stamp && !this.config.resetAdminPassword)
             return structuredClone(this.loaded.data);
+        if (this.blocked && this.blocked.stamp === stamp)
+            return structuredClone(this.blocked.data);
         this.loaded = null;
         let raw = null;
-        let reset = false;
+        let broken = false;
+        let copy = '';
         // A read error (EMFILE, EACCES, EIO) is not a broken file: let it fail this request
         // instead of replacing every profile with an empty store.
         const text = await fs.readFile(this.file, 'utf8');
@@ -451,21 +480,28 @@ class ReadingListStore {
                 throw new Error('reading-lists.json is empty');
             raw = JSON.parse(normalized);
         } catch (e) {
-            const backupFile = await this.backupBrokenStore(e);
-            //ошибка попадает и в журнал событий админки: профили и списки надо вернуть из копии или бэкапа
-            logMessage('LM_ERR', `reading-lists.json is unreadable (${e.message}): profiles and lists start empty, `
-                + `the broken file is saved as ${backupFile}; restore it from that copy or a backup`);
+            broken = true;
+            copy = await this.backupBrokenStore(e);
+            //ошибка попадает и в журнал событий админки
+            logMessage('LM_ERR', `reading-lists.json is unreadable (${e.message}): the broken file is saved as ${copy}; `
+                + 'profiles and lists are empty and changes are refused until an administrator restores a backup or starts with empty data');
             raw = this.makeDefaultData();
-            await this.save(raw);
-            reset = true;
         }
 
         const {data, changed} = await this.applyAdminBootstrap(raw);
+        // Файл не читается: умолчания отдаются на чтение, но не пишутся - следующая запись сделала бы потерю
+        // данных окончательной. Запись отклоняется, пока файл не сменится (бэкап, замена руками) или не будет acceptReset.
+        if (broken) {
+            this.config.resetAdminPassword = false;
+            this.blocked = {stamp, copy, data: structuredClone(data)};
+            return data;
+        }
+        this.blocked = null;
         if (changed)
             await this.writeData(data);
         this.config.resetAdminPassword = false;
         // After a write the stamp read above is stale: the next load reads the file again.
-        if (!changed && !reset)
+        if (!changed)
             this.persisted = this.loaded = {stamp, data: structuredClone(data)};
         return data;
     }
@@ -588,6 +624,8 @@ class ReadingListStore {
 
     // `data` is a private copy: it becomes what persistedData() compares the next save against.
     async writeDataNow(data) {
+        if (this.blocked)
+            throw this.blockedError();
         this.persisted = null;
         await writeFileAtomic(this.file, JSON.stringify(data));
         this.persisted = {stamp: this.fileStamp(await fs.stat(this.file)), data};
@@ -616,8 +654,9 @@ class ReadingListStore {
             Object.freeze(row);
         Object.freeze(overrides);
         // A load that had to write (bootstrap, repair) leaves no stamp: the next read loads again.
-        if (this.loaded)
-            this.overridesCache = {stamp: this.loaded.stamp, overrides};
+        const current = this.loaded || this.blocked;
+        if (current)
+            this.overridesCache = {stamp: current.stamp, overrides};
         return overrides;
     }
 

@@ -463,6 +463,10 @@ class Api {
         return await this.request({action: 'admin-reindex'}, 120);
     }
 
+    async adminAcceptUserDataReset() {
+        return await this.request({action: 'admin-accept-user-data-reset'}, 60);
+    }
+
     async exportAdminSettings() {
         return await this.request({action: 'export-admin-settings'}, 120);
     }

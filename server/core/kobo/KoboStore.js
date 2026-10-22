@@ -42,6 +42,7 @@ class KoboStore {
         this.config = config;
         this.file = path.join(config.dataDir, 'kobo-sync.json');
         this.data = null;
+        this.blocked = null;
         this.tokenIndex = new Map();
     }
 
@@ -145,6 +146,7 @@ class KoboStore {
 
     async readData() {
         let raw = null;
+        this.blocked = null;
         if (await fs.pathExists(this.file)) {
             // Only unparsable JSON is a broken file; a read error fails this request and the next one retries.
             const text = await fs.readFile(this.file, 'utf8');
@@ -155,17 +157,43 @@ class KoboStore {
                 const copy = `${this.file}.broken-${stamp}`;
                 // Без копии не затираем файл: загрузка падает, файл остаётся как есть.
                 await fs.copy(this.file, copy);
-                // At error level, so it also reaches the admin event log: the next write replaces the file.
-                log(LM_ERR, `Kobo: ${this.file} is not valid JSON (${e.message}); copied to ${copy}, starting with no devices`);
+                // Устройств нет, а файл не переписывается: запись отклоняется до решения администратора
+                // (восстановление бэкапа, acceptReset, замена файла и перезапуск).
+                this.blocked = {copy};
+                // At error level, so it also reaches the admin event log.
+                log(LM_ERR, `Kobo: ${this.file} is not valid JSON (${e.message}); copied to ${copy}, no devices `
+                    + 'and changes are refused until an administrator restores a backup or starts with empty data');
             }
         }
         return this.normalizeData(raw);
+    }
+
+    // Пока файл не читается и администратор не решил, что с ним делать: какой файл и где его копия
+    blockedState() {
+        return (this.blocked ? {file: path.basename(this.file), copy: this.blocked.copy} : null);
+    }
+
+    // Администратор согласился начать без устройств. False - файл уже не заблокирован
+    async acceptReset() {
+        await this.load();
+        return await withFileTransaction(this.file, async() => {
+            if (!this.blocked)
+                return false;
+            const data = this.makeDefaultData();
+            await writeFileAtomic(this.file, JSON.stringify(data, null, 2));
+            this.data = data;
+            this.blocked = null;
+            this.rebuildIndex();
+            return true;
+        });
     }
 
     // All mutations go through here so the in-memory copy and the file never diverge.
     async mutate(task) {
         await this.load();
         return await withFileTransaction(this.file, async() => {
+            if (this.blocked)
+                throw Object.assign(new Error(t('errors.userDataBlocked', {file: path.basename(this.file)})), {status: 503});
             try {
                 const result = await task(this.data);
                 this.rebuildIndex();

@@ -58,6 +58,7 @@ const workerActions = {
     'admin-clean-cache': (w, r) => w.runAdminCacheCleanKind(r.userId, r.profileAccessToken, r.kind || 'all'),
     'admin-clean-broken-covers': (w, r) => w.cleanBrokenCoverCache(r.userId, r.profileAccessToken),
     'admin-reindex': (w, r) => w.startAdminReindex(r.userId, r.profileAccessToken),
+    'admin-accept-user-data-reset': (w, r) => w.acceptUserDataReset(r.userId, r.profileAccessToken),
     'export-admin-settings': (w, r) => w.exportAdminSettings(r.userId, r.profileAccessToken),
     'create-admin-backup': (w, r) => w.createAdminBackup(r.userId, r.profileAccessToken, r.scope),
     'update-book-metadata': (w, r) => w.updateBookMetadata(r.userId, r.profileAccessToken, r.bookUid, r.metadata),

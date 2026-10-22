@@ -444,12 +444,19 @@ async function testBrokenReadingListsAreVisibleAndBadRowsSkipped() {
             const [copy] = (await fs.readdir(dataDir)).filter(name => /\.broken-[^.]+$/.test(name));
             assert.ok(copy, 'the broken file is kept');
             assert.ok(messages.some(message => message.startsWith('ERROR') && message.includes('unreadable') && message.includes(copy)), messages.join('\n'));
+            //файл не перезаписывается, пока администратор не решит, что с ним делать
+            await assert.rejects(store.createList('default', 'List'), error => error.status === 503 && error.message.includes('reading-lists.json'));
+            assert.strictEqual(await fs.readFile(store.file, 'utf8'), '{broken');
+            assert.deepStrictEqual(store.blockedState(), {file: 'reading-lists.json', copy: path.join(dataDir, copy)});
+
+            //файл заменили руками: читается без перезапуска, блокировки больше нет
 
             const uid = realUid('a');
             await fs.writeJson(store.file, {version: 5, users: [{id: 'admin', name: 'Admin', login: 'admin', isAdmin: true}],
                 lists: [{id: 'l1', userId: 'admin', name: 'List', books: [null, uid, 7]}],
                 metadataOverrides: {[uid]: {title: 'Kept'}, [realUid('b')]: {title: ' '}}});
             const data = await store.load();
+            assert.strictEqual(store.blockedState(), null);
             assert.deepStrictEqual(data.lists[0].books, [{bookUid: uid}]);
             assert.deepStrictEqual(Object.keys(await store.getMetadataOverrides()), [uid]);
             assert.ok(messages.some(message => message.includes('metadata override') && message.includes('skipped')), messages.join('\n'));
@@ -461,6 +468,68 @@ async function testBrokenReadingListsAreVisibleAndBadRowsSkipped() {
     });
 }
 
+// A broken reading-lists.json is never replaced without an admin decision: reads show empty data, every write is refused
+// with 503 and the file stays; only an admin accepts empty data (POST admin/user-data/accept-reset) or restores a backup.
+async function testBrokenReadingListsBlockWritesUntilAdminDecides() {
+    await temporary(async(dataDir) => {
+        const Worker = require('../server/core/WebWorker');
+        const ProfileAccess = require('../server/core/ProfileAccess');
+        const config = {dataDir, configFile: path.join(dataDir, 'config.json'), tempDir: path.join(dataDir, 'tmp'), rootPathStatic: '',
+            adminLogin: 'admin', adminPassword: 'admin-fixture', name: 'inpx-shelf', version: 'test', webConfigParams: ['name'], opds: {}};
+        const worker = Object.create(Worker.prototype);
+        const events = [];
+        Object.assign(worker, {config, checkMyState() {}, readingListStore: new ReadingListStore(config),
+            addAdminEvent: (level, category, message) => events.push(message.key)});
+        const store = worker.readingListStore;
+        const security = new Security(config);
+        await security.init();
+        const controller = apiController({config, security, webWorker: worker, profileAccess: new ProfileAccess(config, worker, security),
+            workerState: {getState: () => ({state: 'normal'})}});
+        const {base, close} = await listen(apiApp({config, security, controller, health: false}));
+        //ошибка о файле идёт в console.warn, пока журнал не запущен
+        const warn = console.warn;
+        console.warn = () => {};
+        try {
+            await fs.outputFile(store.file, '{broken');
+            const data = await store.load();
+            assert.deepStrictEqual([data.users.map(user => user.id).sort(), data.lists], [['admin', 'default'], []], 'reads give empty data');
+
+            //вход не пишет в файл: администратор входит с паролем из конфигурации
+            const admin = new ApiTestClient(base);
+            assert.strictEqual((await admin.call('login-user-profile', {login: 'admin', password: 'admin-fixture'})).status, 200);
+            const created = await admin.call('create-reading-list', {name: 'New'});
+            assert.strictEqual(created.status, 503);
+            assert.match(created.body.error, /reading-lists\.json/);
+            assert.strictEqual((await new ApiTestClient(base).call('admin-accept-user-data-reset')).status, 401, 'a guest is refused');
+            await assert.rejects(worker.acceptUserDataReset('default', worker.profileToken('default')), /администратор|administrator/i);
+            assert.strictEqual(await fs.readFile(store.file, 'utf8'), '{broken', 'the file on disk is untouched');
+
+            //администратор начинает с пустых данных: его сеанс остаётся, запись снова принимается
+            const reset = await admin.call('admin-accept-user-data-reset');
+            assert.deepStrictEqual([reset.status, reset.body.reset], [200, ['reading-lists.json']]);
+            assert.deepStrictEqual(events, ['admin.userDataReset']);
+            assert.deepStrictEqual((await fs.readJson(store.file)).lists, []);
+            assert.strictEqual(store.blockedState(), null);
+            assert.strictEqual((await admin.call('create-reading-list', {name: 'After reset'})).status, 200);
+            assert.deepStrictEqual((await admin.call('admin-accept-user-data-reset')).body.reset, [], 'nothing left to reset');
+
+            //снова испорчен - полное восстановление снимает блокировку без перезапуска
+            await fs.outputFile(store.file, '');
+            await store.load();
+            assert.ok(store.blockedState());
+            const backup = await archive({'backup-info.json': {version: 'test'},
+                'reading-lists.json': {users: [], lists: [{id: 'restored', userId: 'default', name: 'Restored'}]}});
+            await worker.importAdminBackup('admin', worker.profileToken('admin'), backup);
+            assert.strictEqual(store.blockedState(), null);
+            await store.createList('default', 'After restore');
+            assert.deepStrictEqual((await store.getLists('default')).map(list => list.name).sort(), ['After restore', 'Restored']);
+        } finally {
+            console.warn = warn;
+            await close();
+        }
+    });
+}
+
 module.exports = [testScryptMigrationAndOpds, testApiBodyBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
     testBackupValidationBeforeMutation, testRestoreSnapshotSecurityChangesAndKeyMismatch, testBackupRollbackAndCrashRecovery, testProfileDataCapsAndImportTrim,
-    testBrokenReadingListsAreVisibleAndBadRowsSkipped, testReaderProgressFromFutureClockIsClamped];
+    testBrokenReadingListsAreVisibleAndBadRowsSkipped, testBrokenReadingListsBlockWritesUntilAdminDecides, testReaderProgressFromFutureClockIsClamped];

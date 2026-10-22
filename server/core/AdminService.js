@@ -341,6 +341,8 @@ module.exports = {
         const state = this.wState.get() || {};
 
         return Object.assign({}, metrics, {
+            //файлы данных, которые не читаются: запись в них отклоняется до решения администратора
+            userDataBlocked: [this.readingListStore.blockedState(), this.koboService && this.koboService.store.blockedState()].filter(Boolean),
             sources,
             covers: {
                 dir: metrics.paths.coverCache,
@@ -609,6 +611,20 @@ module.exports = {
             removed: removed.length,
             coverUrl,
         };
+    },
+
+    //Файл данных не читается, и администратор решил начать с пустых данных вместо восстановления бэкапа;
+    //копия испорченного файла остаётся рядом с ним
+    async acceptUserDataReset(userId = '', profileAccessToken = '') {
+        await this.requireAdmin(userId, profileAccessToken);
+        const files = [];
+        if (await this.readingListStore.acceptReset())
+            files.push('reading-lists.json');
+        if (this.koboService && await this.koboService.store.acceptReset())
+            files.push('kobo-sync.json');
+        if (files.length)
+            this.addAdminEvent('warn', 'settings', msg('admin.userDataReset', {files: files.join(', ')}));
+        return {success: true, reset: files};
     },
 
     async startAdminReindex(userId = '', profileAccessToken = '') {

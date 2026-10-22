@@ -869,8 +869,10 @@ async function testDisabledLibrarySourceIsKept() {
         worker.buildAdminDashboardMetrics = async() => ({paths: {}, sizes: {coverCache: {}}, limits: {}});
         worker.wState = {get: () => ({})};
         worker.adminEvents = [];
+        worker.readingListStore = new (require('../server/core/ReadingListStore'))({dataDir: dir});
         const dashboard = await worker.getAdminDashboard();
         assert.deepStrictEqual(dashboard.sources.map(source => [source.id, source.enabled]), [['a', true], ['b', false]]);
+        assert.deepStrictEqual(dashboard.userDataBlocked, []);
 
         //выключение и включение уже проиндексированной библиотеки - без переиндексации
         const CatalogSearch = require('../server/core/search/CatalogSearch');

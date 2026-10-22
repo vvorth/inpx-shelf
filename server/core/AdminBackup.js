@@ -361,14 +361,16 @@ module.exports = {
                     if (this.catalogSearch)
                         this.catalogSearch[tables[name][0]].changed();
                 if (koboData && this.koboService) {
-                    // Restored devices and tokens take effect without a restart.
+                    // Restored devices and tokens take effect without a restart; the file is readable again.
                     this.koboService.store.data = koboData;
+                    this.koboService.store.blocked = null;
                     this.koboService.store.rebuildIndex();
                 }
                 if (runtimePatch)
                     Object.assign(this.config, runtimePatch);
                 //профили и пароли могли смениться - сеансы завершаются; одни имена авторов их не трогают.
-                //После записи файла: иначе sessionsValidAfter из бэкапа вернул бы сессии, завершённые после него
+                //После записи файла: иначе sessionsValidAfter из бэкапа вернул бы сессии, завершённые после него.
+                //Загрузка нового файла снимает и блокировку испорченного reading-lists.json
                 if (archive['config.json'] || archive['reading-lists.json'])
                     await this.readingListStore.endAllSessions();
                 const restored = Object.keys(content);
