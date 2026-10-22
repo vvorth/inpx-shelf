@@ -2077,7 +2077,7 @@ async function testWikidataAwardsShelf() {
         assert.deepStrictEqual(born.items.map(book => book.title), ['The Fifth Season', 'The Left Hand of Darkness']);
         assert.strictEqual(born.sourceUrl, '');
 
-        //все премии готовятся заранее, повторный прогрев берёт их из кеша
+        //все полки собираются из одного сопоставления: в кеше только лауреаты и сопоставление, прогрев берёт их из кеша
         const searches = [];
         const bookSearch = worker.bookSearch;
         worker.bookSearch = async(query) => {
@@ -2085,10 +2085,8 @@ async function testWikidataAwardsShelf() {
             return bookSearch(query);
         };
         await worker.warmExternalDiscoveryShelves();
-        assert.strictEqual(Array.from(worker.discoveryCache.keys()).filter(key => key.startsWith('discovery:test-hash:external:')).length, 10);
-        const warmSearches = searches.length;
-        await worker.warmExternalDiscoveryShelves();
-        assert.strictEqual(searches.length, warmSearches);
+        assert.deepStrictEqual(Array.from(worker.discoveryCache.keys()).map(key => key.split(':')[0]).sort(), ['wikidata-awards', 'wikidata-matches']);
+        assert.strictEqual(searches.length, 0);
         assert.strictEqual(queries.length, 2);
 
         //писатели месяца не загрузились: полки премий всё равно есть
@@ -2167,6 +2165,127 @@ async function testAwardsShelfEditionsAndOrder() {
     assert.ok(worker.externalDiscoverySearchQueries({title: 'Flowers for Algernon'}).every(query => query.del === '0'));
 }
 
+// One cached award matching per library serves every language and page; an expired one is served at once
+// and refreshed in the background, and a failed refresh keeps the previous shelf.
+async function testExternalShelfCacheIsSharedAndRefreshedInBackground() {
+    const axios = require('axios');
+    const CatalogIndex = require('../server/core/search/CatalogIndex');
+    const originalGet = axios.get;
+    const literal = value => ({type: 'literal', value});
+    let winners = [['Q1', 'Dune', 'Frank Herbert'], ['Q2', 'Solaris', 'Stanislaw Lem']];
+    let wikidataCalls = 0;
+    let gate = null;
+    let open = () => {};
+    axios.get = async(url, options) => {
+        wikidataCalls++;
+        await gate;
+        if (options.params.query.includes('P569'))
+            return {data: {results: {bindings: []}}};
+        return {data: {results: {bindings: winners.map(([id, title, author]) => ({work: {type: 'uri', value: `http://www.wikidata.org/entity/${id}`},
+            titleEn: literal(title), authorEn: literal(author), awards: literal('Q255032')}))}}};
+    };
+
+    try {
+        await withTempDir(async(dir) => {
+            const book = (id, title, author, lang) => ({id, _uid: `uid-${id}`, author, title, series: '', serno: 0, size: 1, librate: 0, del: 0,
+                sourceId: 'main', insno: 0, folder: 'a.zip', file: String(id), libid: String(id), ext: 'fb2', lang, date: '2010-01-01'});
+            const index = new CatalogIndex();
+            const file = path.join(dir, 'library.sqlite');
+            index.beginBuild(file, [], []);
+            index.insertBooks([book(1, 'Dune', 'Herbert Frank', 'en'), book(2, 'Dune', 'Herbert Frank', 'ru'),
+                book(3, 'Solaris', 'Lem Stanislaw', 'pl'), book(4, 'Solaris', 'Lem Stanislaw', 'ru')]);
+            index.finishBuild({});
+            index.open(file, []);
+
+            const worker = makeWorker({dataDir: dir, discovery: {externalSource: 'wikidata-awards', externalName: 'Awards'}});
+            worker.discoveryCache = new Map();
+            worker.getSharedDiscoveryConfig = async() => ({});
+            worker.dbConfig = async() => ({inpxHash: 'lib-hash'});
+            let searches = 0;
+            const findBooks = async(query) => {
+                searches++;
+                return index.withBooks('findBooks', query);
+            };
+            worker.catalogSearch = {findBooks};
+            const shelf = async(options) => (await worker.getDiscoveryShelvesV2(Object.assign({section: 'external', userId: 'reader'}, options))).shelves[0];
+            const uids = value => value.items.map(item => item._uid);
+            const persisted = async() => JSON.parse(await fs.readFile(path.join(dir, 'discovery-cache.json'), 'utf8'));
+            const settle = () => Promise.allSettled([...worker.discoveryPending.values()]);
+            const waitFor = async(check) => {
+                for (let i = 0; i < 100 && !check(); i++)
+                    await new Promise(resolve => setImmediate(resolve));
+            };
+
+            //разные языки и размеры страниц - один запрос к Викиданным, одно сопоставление и ни одной записи на читателя
+            const english = await shelf({externalLanguages: ['en'], externalLimit: 1});
+            assert.deepStrictEqual([uids(english), english.discoveryHasMore], [['uid-1'], false]);
+            const russianPage = await shelf({externalLanguages: ['ru'], externalLimit: 1});
+            assert.deepStrictEqual([uids(russianPage), russianPage.discoveryHasMore], [['uid-2'], true]);
+            const russian = await shelf({externalLanguages: ['ru', 'pl'], externalLimit: 24});
+            assert.deepStrictEqual(uids(russian), ['uid-2', 'uid-4', 'uid-3']);
+            assert.deepStrictEqual([russian.subtitle.params.inLibrary, english.subtitle.params.inLibrary], [2, 1]);
+            assert.strictEqual(wikidataCalls, 2, 'one awards query and one born-this-month query');
+            const matchedSearches = searches;
+            assert.deepStrictEqual(Object.keys(await persisted()).map(key => key.split(':')[0]).sort(), ['wikidata-awards', 'wikidata-matches']);
+            //выданные книги - копии: правка ответа не меняет кеш
+            russian.items[0].title = 'changed';
+            assert.strictEqual((await shelf({externalLanguages: ['ru']})).items[0].title, 'Dune');
+
+            //срок вышел: прежняя полка отдаётся сразу, одно обновление идёт в фоне, после него - новая
+            const expire = () => {
+                for (const entry of [...worker.discoveryCache.values(), ...Object.values(worker.discoveryDiskCache)])
+                    entry.time -= 2*24*60*60*1000;
+            };
+            expire();
+            winners = [...winners, ['Q3', 'Hyperion', 'Dan Simmons']];
+            gate = new Promise(resolve => {
+                open = resolve;
+            });
+            const prompt = promise => Promise.race([promise, new Promise((resolve, reject) =>
+                setTimeout(() => reject(new Error('the request waited for the refresh')), 2000).unref())]);
+            const staleFirst = await prompt(shelf({externalLanguages: ['en']}));
+            const staleSecond = await prompt(shelf({externalLanguages: ['ru']}));
+            assert.deepStrictEqual([uids(staleFirst), uids(staleSecond)], [['uid-1'], ['uid-2', 'uid-4']]);
+            assert.strictEqual(staleFirst.discoveryStale, false);
+            await waitFor(() => wikidataCalls > 2);
+            assert.strictEqual(worker.discoveryPending.size, 2, 'one matching refresh waiting for the awards query');
+            assert.strictEqual(wikidataCalls, 3);
+            open();
+            gate = null;
+            await settle();
+            const refreshed = await shelf({externalLanguages: ['en']});
+            assert.deepStrictEqual(refreshed.items.map(item => item.title), ['Dune', 'Hyperion']);
+            assert.strictEqual(refreshed.items[1].discoveryMissingLocal, true);
+            assert.ok(Object.values(await persisted()).every(entry => Date.now() - entry.time < 60*1000));
+
+            //обновление не удалось: остаётся прежняя полка с пометкой, повтора сразу нет
+            expire();
+            worker.catalogSearch = {findBooks: async() => {
+                throw new Error('library busy');
+            }};
+            assert.strictEqual((await shelf({externalLanguages: ['en']})).items.length, 2);
+            await settle();
+            const kept = await shelf({externalLanguages: ['en']});
+            assert.deepStrictEqual([kept.items.map(item => item.title), kept.discoveryStale], [['Dune', 'Hyperion'], true]);
+            assert.strictEqual(worker.discoveryPending.size, 0, 'no retry right after a failure');
+            const matchesEntry = Object.entries(await persisted()).find(([key]) => key.startsWith('wikidata-matches:'))[1];
+            assert.ok(Date.now() - matchesEntry.time > 24*60*60*1000, 'the failed refresh is not saved');
+
+            //админ обновляет сразу, без прежней полки
+            worker.catalogSearch = {findBooks};
+            const callsBefore = wikidataCalls;
+            const forced = await shelf({externalLanguages: ['en'], forceRefresh: true, userId: 'admin'});
+            assert.strictEqual(forced.discoveryStale, false);
+            assert.strictEqual(wikidataCalls, callsBefore + 2);
+            assert.ok(searches > matchedSearches);
+            index.close();
+        });
+    } finally {
+        open();
+        axios.get = originalGet;
+    }
+}
+
 async function testConfiguredConverterPathsHavePriority() {
     const externalTools = require('../server/core/ExternalTools');
     const bookConverter = require('../server/core/BookConverter');
@@ -2203,7 +2322,7 @@ async function testDiscoveryShelvesBuildOnlyRequestedSection() {
     };
     worker.rememberPersistedDiscovery = async() => {
         calls.push('external');
-        return {id: 'external', source: 'external', items: []};
+        return {items: []};
     };
 
     let result = await worker.getDiscoveryShelvesV2({section: 'personal'});
@@ -2213,7 +2332,7 @@ async function testDiscoveryShelvesBuildOnlyRequestedSection() {
     calls.length = 0;
     result = await worker.getDiscoveryShelvesV2({section: 'external'});
     assert.deepStrictEqual(calls, ['external']);
-    assert.deepStrictEqual(result.shelves.map(shelf => shelf.id), ['external']);
+    assert.deepStrictEqual(result.shelves.map(shelf => shelf.id), ['external-source']);
 }
 
 async function testPersonalDiscoveryCacheAndSingleFlight() {
@@ -2578,6 +2697,7 @@ const tests = [
     testExternalDiscoveryMultiSourceSearch,
     testWikidataAwardsShelf,
     testAwardsShelfEditionsAndOrder,
+    testExternalShelfCacheIsSharedAndRefreshedInBackground,
     testConfiguredConverterPathsHavePriority,
     testDiscoveryShelvesBuildOnlyRequestedSection,
     testOpdsIndexQueries,

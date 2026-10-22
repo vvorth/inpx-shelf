@@ -20,37 +20,36 @@ function bareWorker(fields = {}) {
     return Object.assign(Object.create(WebWorker.prototype), fields);
 }
 
-//кеш внешней витрины: один ключ на страницу клиента, без полок прежней библиотеки и просроченных записей
+//кеш витрины: без записей прежних форматов, версий, месяцев и библиотек, не больше 16 записей;
+//просроченная запись своего месяца остаётся (её отдают, пока идёт обновление)
 async function testDiscoveryCacheIsPruned() {
     await temporary(async(dataDir) => {
         const day = 24*60*60*1000;
         const worker = bareWorker({config: {dataDir}, discoveryCache: new Map()});
-        worker.discoveryDiskCache = {
-            'discovery:old-hash:external:v6:x': {time: Date.now(), ttl: day, value: {}},
-            'wikidata-matches:old-hash:v9': {time: Date.now(), ttl: day, value: {}},
-            'wikidata-awards:v5': {time: Date.now() - 2*day, ttl: day, value: {}},
-            'discovery:new-hash:legacy': {time: Date.now() - 8*day, value: {}},
-        };
-        const builds = [];
-        worker.buildExternalDiscoveryShelfV2 = async(limit) => {
-            builds.push(limit);
-            return {items: Array.from({length: limit}, (item, index) => ({_uid: String(index)})), discoveryHasMore: false};
-        };
-        const discovery = {externalSource: 'wikidata-awards', externalName: '', externalBrowseUrl: '', externalTtlMinutes: 1440};
+        worker.fetchWikidataAwardWinners = async() => ({items: []});
+        await worker.getWikidataAwardWinners({externalTtlMinutes: 1440});
+        const [awardsKey] = worker.discoveryCache.keys();
+        const [, version, month] = awardsKey.split(':');
+        const matchesKey = hash => `wikidata-matches:${hash}:${version}:${month}`;
+        const obsolete = [`discovery:new-hash:external:${version}:${month}:wikidata-awards::480:::1440:ru`, matchesKey('old-hash'),
+            `wikidata-awards:v5:${month}`, `wikidata-matches:new-hash:${version}:2000-01`];
+        for (const key of obsolete)
+            worker.discoveryDiskCache[key] = {time: Date.now(), ttl: day, value: {}};
+        worker.discoveryDiskCache[awardsKey].time -= 3*day;
+        worker.discoveryCache.get(awardsKey).time -= 3*day;
 
-        const first = await worker.rememberExternalDiscoveryShelf('new-hash', discovery, 30);
-        const second = await worker.rememberExternalDiscoveryShelf('new-hash', discovery, 40);
-        assert.deepStrictEqual(builds, [48]);
-        assert.strictEqual(first.items.length, 30);
-        assert.strictEqual(second.items.length, 40);
-        assert.strictEqual(second.discoveryHasMore, true);
-
+        await worker.rememberPersistedDiscovery(matchesKey('new-hash'), async() => ({items: []}), day);
         const text = await fs.readFile(path.join(dataDir, 'discovery-cache.json'), 'utf8');
         assert.ok(!text.includes('\n'));
-        const keys = Object.keys(JSON.parse(text));
-        assert.strictEqual(keys.length, 1);
-        assert.match(keys[0], /^discovery:new-hash:external:.*:48:/);
-        assert.deepStrictEqual(Array.from(worker.discoveryCache.keys()), keys);
+        assert.deepStrictEqual(Object.keys(JSON.parse(text)).sort(), [awardsKey, matchesKey('new-hash')].sort());
+
+        for (let i = 0; i < 40; i++)
+            await worker.rememberPersistedDiscovery(`wikidata-awards:extra-${i}:${version}:${month}`, async() => ({i}), day);
+        const keys = Object.keys(await fs.readJson(path.join(dataDir, 'discovery-cache.json')));
+        assert.strictEqual(keys.length, 16);
+        assert.ok(keys.includes(`wikidata-awards:extra-39:${version}:${month}`));
+        assert.ok(!keys.includes(`wikidata-awards:extra-0:${version}:${month}`));
+        assert.ok(worker.discoveryCache.size <= 16);
     });
 }
 
@@ -64,15 +63,15 @@ async function testExternalForceRefreshIsAdminOnly() {
             throw new Error('admin only');
     };
     const forced = [];
-    worker.rememberExternalDiscoveryShelf = async(inpxHash, discovery, limit, forceRefresh, refetch) => {
-        forced.push([forceRefresh, refetch]);
+    worker.buildExternalDiscoveryShelfV2 = async(limit, discovery, refetch) => {
+        forced.push(refetch);
         return {id: 'external-source', items: []};
     };
 
     await worker.getDiscoveryShelvesV2({section: 'external', forceRefresh: true, userId: 'reader'});
     await worker.getDiscoveryShelvesV2({section: 'external', forceRefresh: true, userId: 'admin'});
     await worker.getDiscoveryShelvesV2({section: 'external', userId: 'admin'});
-    assert.deepStrictEqual(forced, [[true, false], [true, true], [false, false]]);
+    assert.deepStrictEqual(forced, [false, true, false]);
 }
 
 //пересборки БД библиотеки не идут параллельно: во время сборки в очереди не больше одной следующей

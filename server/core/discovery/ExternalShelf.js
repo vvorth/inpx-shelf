@@ -13,11 +13,18 @@ const {t, msg} = require('../i18n');
 
 const discoveryCacheTtl = 15*60*1000;//15 minutes
 
-//наибольший срок обновления внешней витрины (externalTtlMinutes); записи без своего срока живут столько
-const discoveryCacheMaxTtl = 10080*60*1000;
+//столько записей самое большее держит кеш витрины (в памяти и в discovery-cache.json): обычно их две на библиотеку
+const discoveryCacheMaxEntries = 16;
 
-//смена версии сбрасывает сохранённые витрины: в них целые записи книг
+//смена версии сбрасывает сохранённый кеш (pruneDiscoveryCache): в нём целые записи книг
 const externalDiscoveryCacheVersion = 'v11';
+
+//значение кеша общее для всех запросов: пометка ставится на копии верхнего уровня
+function markDiscoveryStale(value, error = '') {
+    if (!value || typeof(value) !== 'object')
+        return value;
+    return Object.assign({}, value, {discoveryStale: true}, (error ? {discoveryRefreshError: error} : {}));
+}
 
 function buildExternalFeedIdentity(item = {}) {
     const title = normalizeDiscoveryText(item.title || '');
@@ -49,9 +56,6 @@ const shelfOptions = [...wikidataAwards, bornThisMonth];
 const bornThisMonthMinAge = 20;
 
 const wikidataEntityUrl = 'https://www.wikidata.org/wiki/';
-
-//столько книг клиент просит на первой странице вкладки (DiscoveryPage), такие полки готовятся заранее
-const externalShelfPageSize = 24;
 
 //столько книг полка отдаёт самое большее (все издания всех премий бывает больше)
 const externalShelfMaxLimit = 480;
@@ -235,6 +239,8 @@ module.exports = {
         }
 
         this.discoveryDiskCache = cache;
+        //записи прежних версий и форматов не держатся в памяти до первой записи файла
+        this.pruneDiscoveryCache();
         return cache;
     },
 
@@ -245,67 +251,95 @@ module.exports = {
             writeFileAtomic(this.discoveryDiskCacheFile, JSON.stringify(this.discoveryDiskCache || {})));
     },
 
-    //Убирает просроченные записи и записи прежних библиотек (хеш INPX - второе поле ключей discovery: и wikidata-matches:)
+    //Убирает записи прежних версий и других месяцев, записи прежних библиотек (хеш INPX - второе поле ключей wikidata-matches:)
+    //и самые давние сверх discoveryCacheMaxEntries. Просроченная запись своего месяца остаётся: её отдают, пока идёт обновление
     pruneDiscoveryCache(currentKey = '', now = Date.now()) {
-        const libraryOf = key => (/^(discovery|wikidata-matches):/.test(key) ? key.split(':')[1] : null);
+        const month = currentMonth(new Date(now));
+        const libraryOf = key => (key.startsWith('wikidata-matches:') ? key.split(':')[1] : null);
         const library = libraryOf(currentKey);
-        const stale = (key, entry) => !entry || now - entry.time >= (entry.ttl || discoveryCacheMaxTtl)
+        const stale = (key, entry) => !entry || !/^wikidata-(awards|matches):/.test(key)
+            || !key.split(':').includes(externalDiscoveryCacheVersion) || key.split(':').pop() !== month
             || (library !== null && libraryOf(key) !== null && libraryOf(key) !== library);
 
+        //в Map недавно прочитанные - в конце, в файле - недавно записанные
         for (const [key, entry] of this.discoveryCache) {
-            if (stale(key, entry))
+            if (stale(key, entry) || this.discoveryCache.size > discoveryCacheMaxEntries)
                 this.discoveryCache.delete(key);
         }
         const diskCache = this.discoveryDiskCache || {};
+        let extra = Object.keys(diskCache).filter(key => !stale(key, diskCache[key])).length - discoveryCacheMaxEntries;
         for (const key of Object.keys(diskCache)) {
-            if (stale(key, diskCache[key]))
+            if (stale(key, diskCache[key]) || extra-- > 0)
                 delete diskCache[key];
         }
     },
 
+    //Общий кеш витрины в памяти и в discovery-cache.json. Значение одно на ключ и отдаётся без копии: читатели его не меняют.
+    //Просроченное значение со staleWhileRevalidate отдаётся сразу и обновляется в фоне; ждёт только запрос без значения
+    //(и forceRefresh). Ошибка обновления оставляет прежнее значение с пометкой discoveryStale, повтор - не раньше discoveryCacheTtl
     async rememberPersistedDiscovery(key, loader, ttl = discoveryCacheTtl, options = {}) {
         const forceRefresh = !!(options && options.forceRefresh);
-        const cached = this.discoveryCache.get(key);
-        if (!forceRefresh && cached && Date.now() - cached.time < ttl)
-            return _.cloneDeep(cached.value);
-
-        const diskCache = await this.getDiscoveryDiskCache();
-        const persisted = diskCache[key];
-        if (!forceRefresh && persisted && Date.now() - persisted.time < ttl) {
-            this.discoveryCache.set(key, {time: persisted.time, ttl: persisted.ttl, value: _.cloneDeep(persisted.value)});
-            return _.cloneDeep(persisted.value);
+        let entry = this.discoveryCache.get(key);
+        if (!entry) {
+            const persisted = (await this.getDiscoveryDiskCache())[key];
+            entry = this.discoveryCache.get(key) || (persisted && {time: persisted.time, ttl: persisted.ttl, value: persisted.value});
+        }
+        if (entry) {
+            this.discoveryCache.delete(key);
+            this.discoveryCache.set(key, entry);
         }
 
-        //параллельный одинаковый запрос ждёт уже идущую загрузку
+        const now = Date.now();
+        if (!forceRefresh && entry && now - entry.time < ttl)
+            return entry.value;
+        if (!forceRefresh && entry && options.staleWhileRevalidate) {
+            if (!(entry.retryAt > now)) {
+                this.refreshPersistedDiscovery(key, loader, ttl)
+                    .catch(e => log(LM_WARN, `discovery refresh ${key}: ${e.message}`));
+            }
+            return (entry.retryAt ? markDiscoveryStale(entry.value) : entry.value);
+        }
+
+        try {
+            return await this.refreshPersistedDiscovery(key, loader, ttl);
+        } catch(e) {
+            if (entry)
+                return markDiscoveryStale(entry.value, e.message);
+            throw e;
+        }
+    },
+
+    //одна загрузка на ключ: параллельные запросы и фоновое обновление ждут её
+    refreshPersistedDiscovery(key, loader, ttl) {
         if (!this.discoveryPending)
             this.discoveryPending = new Map();
         if (this.discoveryPending.has(key))
-            return _.cloneDeep(await this.discoveryPending.get(key));
+            return this.discoveryPending.get(key);
 
-        const loading = loader();
-        this.discoveryPending.set(key, loading);
-        try {
-            const value = await loading;
-            const time = Date.now();
-            this.pruneDiscoveryCache(key, time);
-            this.discoveryCache.set(key, {time, ttl, value: _.cloneDeep(value)});
-            diskCache[key] = {time, ttl, value: _.cloneDeep(value)};
-            await this.saveDiscoveryDiskCache();
-            return value;
-        } catch(e) {
-            const fallback = cached || persisted;
-            if (fallback) {
-                const value = _.cloneDeep(fallback.value);
-                if (value && typeof(value) === 'object') {
-                    value.discoveryStale = true;
-                    value.discoveryRefreshError = e.message;
-                }
+        const loading = (async() => {
+            try {
+                //загрузчик начинается после записи в discoveryPending
+                const value = await Promise.resolve().then(loader);
+                const time = Date.now();
+                const diskCache = await this.getDiscoveryDiskCache();
+                this.discoveryCache.delete(key);
+                this.discoveryCache.set(key, {time, ttl, value});
+                delete diskCache[key];
+                diskCache[key] = {time, ttl, value};
+                this.pruneDiscoveryCache(key, time);
+                await this.saveDiscoveryDiskCache();
                 return value;
+            } catch(e) {
+                const entry = this.discoveryCache.get(key);
+                if (entry)
+                    entry.retryAt = Date.now() + discoveryCacheTtl;
+                throw e;
+            } finally {
+                this.discoveryPending.delete(key);
             }
-            throw e;
-        } finally {
-            this.discoveryPending.delete(key);
-        }
+        })();
+        this.discoveryPending.set(key, loading);
+        return loading;
     },
 
     externalDiscoverySearchQueries(item = {}, limit = 32) {
@@ -532,13 +566,15 @@ module.exports = {
         );
     },
 
+    //одно сопоставление на библиотеку и месяц: из него собираются полки всех премий, языков и страниц;
+    //просроченное отдаётся сразу, а заново лауреаты загружаются и сопоставляются в фоне
     async getWikidataAwardMatches(discovery = {}, forceRefresh = false) {
         const inpxHash = String((await this.dbConfig()).inpxHash || '');
         return this.rememberPersistedDiscovery(
             `wikidata-matches:${inpxHash}:${externalDiscoveryCacheVersion}:${currentMonth()}`,
             async() => this.matchExternalItems((await this.getWikidataAwardWinners(discovery, forceRefresh)).items),
             discovery.externalTtlMinutes * 60 * 1000,
-            {forceRefresh},
+            {forceRefresh, staleWhileRevalidate: true},
         );
     },
 
@@ -550,7 +586,8 @@ module.exports = {
         //издания на других языках отбрасываются до деления на страницы: иначе страница почти пустая
         const languages = readerLanguages(discovery.externalLanguages);
         const readable = book => (!languages.length || !book.lang || languages.includes(String(book.lang).trim().toLowerCase()));
-        const {items: matches} = await this.getWikidataAwardMatches(discovery, forceRefresh);
+        const found = await this.getWikidataAwardMatches(discovery, forceRefresh);
+        const matches = found.items;
         //сначала книги из библиотеки (новые премии первыми), лауреаты, которых в ней нет, - в конце
         const local = [];
         const missing = [];
@@ -589,31 +626,17 @@ module.exports = {
             sourceName,
             sourceUrl: (award && award !== bornThisMonth ? wikidataEntityUrl + award.id : ''),
             updatedAt: Date.now(),
-            discoveryStale: false,
+            discoveryStale: !!found.discoveryStale,
+            ...(found.discoveryRefreshError ? {discoveryRefreshError: found.discoveryRefreshError} : {}),
             discoveryHasMore: books.length > limit,
             genreOptions: shelfOptions.map(item => ({label: msg(item.label), value: optionValue(item)})),
-            items: books.slice(0, limit),
+            //записи книг - из общего кеша: наружу идёт копия
+            items: _.cloneDeep(books.slice(0, limit)),
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
     },
 
-    //forceRefresh пересобирает полку, refetch - ещё и заново загружает лауреатов и сопоставляет их с библиотекой
-    async rememberExternalDiscoveryShelf(inpxHash = '', discovery = {}, limit = externalShelfPageSize, forceRefresh = false, refetch = forceRefresh) {
-        //полка кешируется целыми страницами клиента: любой размер не даёт своего ключа
-        const pageLimit = Math.ceil(limit / externalShelfPageSize) * externalShelfPageSize;
-        const shelf = await this.rememberPersistedDiscovery(
-            `discovery:${inpxHash}:external:${externalDiscoveryCacheVersion}:${currentMonth()}:${discovery.externalSource}:${discovery.externalName}:${pageLimit}:${discovery.externalBrowseUrl}:${discovery.externalTtlMinutes}:${readerLanguages(discovery.externalLanguages).join(',')}`,
-            () => this.buildExternalDiscoveryShelfV2(pageLimit, discovery, refetch),
-            discovery.externalTtlMinutes * 60 * 1000,
-            {forceRefresh},
-        );
-        if (shelf && Array.isArray(shelf.items) && shelf.items.length > limit)
-            Object.assign(shelf, {items: shelf.items.slice(0, limit), discoveryHasMore: true});
-        return shelf;
-    },
-
-    //готовит первую страницу всех премий заранее, чтобы выбор премии открывался сразу;
-    //готовые и свежие полки берутся из кеша, поэтому повторный вызов ничего не делает
+    //сопоставление лауреатов с библиотекой готовится заранее, полки всех премий собираются из него сразу
     async warmExternalDiscoveryShelves() {
         if (this.externalDiscoveryWarming)
             return;
@@ -624,9 +647,7 @@ module.exports = {
             if (!shared.enabled || shared.externalSource === 'none')
                 return;
 
-            const inpxHash = String((await this.dbConfig()).inpxHash || '').trim();
-            for (const browseUrl of ['', ...shelfOptions.map(optionValue)])
-                await this.rememberExternalDiscoveryShelf(inpxHash, this.getDiscoveryConfig({externalBrowseUrl: browseUrl}));
+            await this.getWikidataAwardMatches(shared);
         } catch (e) {
             log(LM_ERR, `warmExternalDiscoveryShelves: ${e.message}`);
         } finally {
@@ -647,8 +668,6 @@ module.exports = {
         //главная просит только персональные полки, внешняя витрина - только свою
         const section = String(options.section || '');
 
-        const dbConfig = await this.dbConfig();
-        const inpxHash = String(dbConfig.inpxHash || '').trim();
         const shelves = [];
 
         if (section !== 'external') {
@@ -661,13 +680,11 @@ module.exports = {
         if (section !== 'personal' && discovery.externalSource !== 'none') {
             try {
                 //заново загрузить Викиданные и сопоставить книги может только админ, остальным полка собирается из кеша
-                const forceRefresh = options.forceRefresh === true;
-                const refetch = forceRefresh
+                const refetch = options.forceRefresh === true
                     && await this.requireAdmin(options.userId, options.profileAccessToken).then(() => true, () => false);
-                const externalShelf = await this.rememberExternalDiscoveryShelf(inpxHash, discovery, externalShelfLimit, forceRefresh, refetch);
+                const externalShelf = await this.buildExternalDiscoveryShelfV2(externalShelfLimit, discovery, refetch);
                 if (externalShelf)
                     shelves.push(externalShelf);
-                this.warmExternalDiscoveryShelves();//no await
             } catch (e) {
                 shelves.push({
                     id: 'external-error',
