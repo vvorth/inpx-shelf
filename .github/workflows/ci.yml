@@ -3,6 +3,8 @@ name: CI
 # Pull requests and pushes to dev and main: tests, binaries and Docker images. A push to dev
 # also publishes vvorth/inpx-shelf:dev and dev-<commit> (plus -pdf) once the Linux check and
 # the images pass; the Windows check runs alongside and only marks the commit red.
+# A check that already passed on this exact commit (a pull request merged into dev, dev
+# fast-forwarded to main) is not repeated: check runs are looked up by commit, not by branch.
 # Releases are in release.yml.
 on:
   push:
@@ -18,21 +20,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tested:
+    name: Checks already passed on this commit
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+    outputs:
+      linux: ${{ steps.runs.outputs.linux }}
+      win: ${{ steps.runs.outputs.win }}
+    steps:
+      - id: runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # a pull request runs on a merge commit; its check runs are filed under the head commit
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          passed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?per_page=100" \
+            --jq '.check_runs[] | select(.app.slug == "github-actions" and .conclusion == "success") | .name')
+          for target in linux win; do
+            if grep -qx ".*Test and package $target" <<<"$passed"; then
+              echo "$target=true" >> "$GITHUB_OUTPUT"
+              echo "Test and package $target: already passed on $SHA, skipped"
+            else
+              echo "$target=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
   check-linux:
+    needs: tested
+    if: needs.tested.outputs.linux != 'true'
     uses: ./.github/workflows/check.yml
     with:
       target: linux
 
   check-windows:
+    needs: tested
+    if: needs.tested.outputs.win != 'true'
     uses: ./.github/workflows/check.yml
     with:
       target: win
 
   docker:
     name: Docker images
-    needs: check-linux
+    needs: [tested, check-linux]
     # main gets commits already built on dev; its images are built by release.yml.
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/dev'
+    # A Linux check skipped as already passed counts as passed.
+    if: >-
+      ${{ !cancelled()
+      && (needs.check-linux.result == 'success' || (needs.check-linux.result == 'skipped' && needs.tested.outputs.linux == 'true'))
+      && (github.event_name == 'pull_request' || github.ref == 'refs/heads/dev') }}
     uses: ./.github/workflows/docker.yml
     with:
       publish: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && 'dev' || '' }}

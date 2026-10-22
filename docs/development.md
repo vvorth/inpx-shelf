@@ -77,7 +77,9 @@ msg('discovery.reason.series', {...}) // на сервере: описание �
 
 Рядом с архивами публикуется `SHA256SUMS.txt`, у каждого файла есть [attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) происхождения сборки. `npm audit` останавливает только релиз; в остальных проверках находки дают предупреждение, а еженедельный workflow Audit проверяет зависимости `dev`. Обновления зависимостей и actions присылает Dependabot (`.github/dependabot.yml`) в ветку `dev`; actions закреплены по SHA коммита.
 
-В `main` пишет только этот workflow. Если `main` защищена правилом, оно должно разрешать push из GitHub Actions, иначе релиз остановится до публикации.
+В `main` пишет только этот workflow. Правило защиты `main` может требовать линейную историю и запрещать force push и удаление, но не должно требовать проверок статуса: релизный коммит новый, проверок на нём ещё нет, и push из GitHub Actions остановится до публикации.
+
+Workflow CI (`.github/workflows/ci.yml`) запускается на pull request и на push в `dev` и `main`. Проверки, уже пройденные на этом же коммите (pull request, влитый в `dev`; `dev`, переведённый в `main`), не повторяются: первая задача ищет успешные check runs по SHA коммита и пропускает их; образы Docker при этом собираются как обычно.
 
 ## Релизные проверки
 
