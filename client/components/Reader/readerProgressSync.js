@@ -83,7 +83,8 @@ export default class ReaderProgressSync {
         return true;
     }
 
-    async persistProgress(bookUid = this.bookUid) {
+    //force - только после явного «Остаться здесь»: иначе более новую позицию с другого устройства не затираем
+    async persistProgress(bookUid = this.bookUid, {force = false} = {}) {
         if (!bookUid)
             return;
         if (
@@ -115,6 +116,7 @@ export default class ReaderProgressSync {
             textSnippet: requestProgress.textSnippet,
             updatedAt: requestProgress.updatedAt,
             generation: this.readerProgressGeneration,
+            ...(force ? {force: true} : {}),
         };
         let response = await api.updateReaderProgress(bookUid, progressPatch, {suppressProfileLogin: true});
         if (bookUid !== this.bookUid)
@@ -140,7 +142,14 @@ export default class ReaderProgressSync {
             return;
         }
 
-        if (!readerProgress.samePosition(rawResponseProgress, requestProgress)) {
+        const outcome = readerProgress.saveOutcome(requestProgress, rawResponseProgress);
+        if (outcome === 'keep')
+            return;
+        if (outcome === 'remote') {
+            this.reconcileRemoteProgress(bookUid, rawResponseProgress);
+            return;
+        }
+        if (outcome === 'force') {
             response = await api.updateReaderProgress(bookUid, Object.assign({}, progressPatch, {force: true}), {suppressProfileLogin: true});
             if (bookUid !== this.bookUid)
                 return;
@@ -158,8 +167,8 @@ export default class ReaderProgressSync {
         this.writeStoredReaderProgress();
     }
 
-    queuePersistProgress(bookUid = this.bookUid) {
-        const request = this.persistProgress(bookUid)
+    queuePersistProgress(bookUid = this.bookUid, options = {}) {
+        const request = this.persistProgress(bookUid, options)
             .catch(() => {})
             .finally(() => {
                 if (this.progressSavePromise === request)
@@ -193,16 +202,25 @@ export default class ReaderProgressSync {
         if (!remote || generation !== this.readerProgressGeneration)
             return;
 
+        this.reconcileRemoteProgress(bookUid, remote);
+    }
+
+    //Позиция с другого устройства новее и далеко - предложить перейти (одно и то же - один раз), своего места нет - перейти
+    reconcileRemoteProgress(bookUid = '', remote = {}) {
+        if (bookUid !== this.bookUid || this.loading || this.bookPreparing)
+            return;
+
         // Время своей позиции - последнее сохранение: перестройка страниц обновляет updatedAt без чтения
         const stored = this.readStoredReaderProgress();
         const local = Object.assign({}, this.progress, {
             sectionId: this.currentSectionId || this.progress.sectionId || '',
             updatedAt: (stored && stored.updatedAt) || this.progress.updatedAt,
         });
-        const choice = readerProgress.chooseRemote(local, remote, {generation});
-        if (choice.remote)
-            this.offerRemoteProgress(choice.remote);
-        else if (!this.hasReaderProgressPlace(local) && !readerProgress.samePosition(choice.progress, local))
+        const choice = readerProgress.chooseRemote(local, remote, {generation: this.readerProgressGeneration});
+        if (choice.remote) {
+            if (!this.offeredRemoteProgress || !readerProgress.samePosition(this.offeredRemoteProgress, choice.remote))
+                this.offerRemoteProgress(choice.remote);
+        } else if (!this.hasReaderProgressPlace(local) && !readerProgress.samePosition(choice.progress, local))
             this.goToRemoteProgress(bookUid, choice.progress);
     }
 
@@ -252,7 +270,7 @@ export default class ReaderProgressSync {
 
         this.progress = Object.assign({}, this.progress, {updatedAt: new Date().toISOString()});
         this.writeStoredReaderProgress();
-        this.queuePersistProgress(bookUid);// no await
+        this.queuePersistProgress(bookUid, {force: true});// no await
     }
 
     async toggleCurrentBookRead() {

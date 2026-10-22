@@ -242,7 +242,7 @@ import BookCollection from './BookCollection.vue';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
-import {isSignedIn, initials} from '../../share/session';
+import {isSignedIn, initials, profileKey} from '../../share/session';
 import {onBookKey} from '../../share/bookKeys';
 import {loadBookStates} from '../../share/bookActions';
 import {loadGenres, genreName} from '../../share/genres';
@@ -264,6 +264,11 @@ const componentOptions = {
         queryKey() {
             if (this.$route.path === '/search')
                 this.load();
+        },
+        //вход, выход или другой профиль: отметки прежнего не показываем (страница жива и в фоне)
+        profileKey() {
+            this.states = {};
+            this.loadStates(this.books);
         },
         '$store.state.config.catalogSearch.ready'(ready) {
             if (ready && this.notReady && this.$route.path === '/search')
@@ -311,6 +316,10 @@ class SearchPage {
 
     get config() {
         return this.$store.state.config;
+    }
+
+    get profileKey() {
+        return profileKey(this.config);
     }
 
     get settings() {

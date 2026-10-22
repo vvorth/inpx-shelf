@@ -3,6 +3,9 @@ const {t} = require('../i18n');
 const {READ_PERCENT, readerProgressOf} = require('../ReaderProgress');
 const limits = require('../RequestLimits').userData;
 
+// Насколько время позиции может быть впереди часов сервера (как deviceTime у Kobo)
+const FUTURE_TOLERANCE_MS = 5*60*1000;
+
 // Доля прочитанного до отметки «прочитано» (setBooksRead): снятие отметки возвращает её вместе с местом в книге
 function percentBeforeRead(row = {}) {
     const value = Number(row && row.percentBeforeRead);
@@ -189,7 +192,9 @@ module.exports = {
         const textOffset = Number(utils.hasProp(patch, 'textOffset') ? patch.textOffset : current.textOffset);
         const textSnippet = String(utils.hasProp(patch, 'textSnippet') ? patch.textSnippet : current.textSnippet || '').trim().slice(0, 240);
         const hidden = (utils.hasProp(patch, 'hidden') ? patch.hidden === true : current.hidden === true);
-        const patchUpdatedAt = String(utils.hasProp(patch, 'updatedAt') ? patch.updatedAt : '').trim();
+        const sentUpdatedAt = String(utils.hasProp(patch, 'updatedAt') ? patch.updatedAt : '').trim();
+        //часы устройства далеко впереди - время сервера: иначе все следующие сохранения окажутся «старее»
+        const patchUpdatedAt = (Date.parse(sentUpdatedAt) > Date.now() + FUTURE_TOLERANCE_MS ? this.nowIso() : sentUpdatedAt);
         const currentUpdatedAt = String(current.updatedAt || '').trim();
         const patchTime = Date.parse(patchUpdatedAt);
         const currentTime = Date.parse(currentUpdatedAt);

@@ -128,6 +128,25 @@ async function testReaderRemoteProgressChoice() {
     assert.strictEqual(readerProgress.shouldUpload(far.remote, stayed), true);
 }
 
+//Ответ на сохранение: более новую позицию с другого устройства не затираем, force - только если сервер оставил старее
+async function testReaderSaveOutcome() {
+    const readerProgress = require('../client/share/readerProgress');
+    const at = minutes => new Date(Date.UTC(2026, 0, 1, 12, minutes)).toISOString();
+    const sent = {percent: 0.2, sectionId: 'section-3', pageIndex: 20, updatedAt: at(10)};
+    const other = {percent: 0.63, sectionId: 'section-9', pageIndex: 63};
+
+    assert.strictEqual(readerProgress.saveOutcome(sent, Object.assign({}, sent, {updatedAt: at(11)})), 'saved');
+    assert.strictEqual(readerProgress.saveOutcome(sent, Object.assign({updatedAt: at(30)}, other)), 'remote', 'A newer position is not forced over');
+    assert.strictEqual(readerProgress.saveOutcome(sent, Object.assign({updatedAt: at(5)}, other)), 'force');
+    assert.strictEqual(readerProgress.saveOutcome(sent, Object.assign({updatedAt: at(10)}, other)), 'keep');
+
+    //без времени - не force: решает chooseRemote, а там позиция со временем новее
+    assert.strictEqual(readerProgress.saveOutcome(sent, Object.assign({updatedAt: 'broken'}, other)), 'remote');
+    assert.strictEqual(readerProgress.saveOutcome(Object.assign({}, sent, {updatedAt: ''}), Object.assign({updatedAt: at(5)}, other)), 'remote');
+    assert.strictEqual(readerProgress.saveOutcome(sent, {}), 'remote');
+    assert.strictEqual(readerProgress.chooseRemote(sent, Object.assign({updatedAt: ''}, other)).remote, null);
+}
+
 //Позиция при открытии: сервер, сводка профиля, копия в браузере; сброшенное позже не в счёт
 async function testReaderOpeningProgress() {
     const readerProgress = require('../client/share/readerProgress');
@@ -303,6 +322,7 @@ module.exports = [
     testReaderReadMarkKeepsPlace,
     testReaderStorageKeepsProgressPerUser,
     testReaderRemoteProgressChoice,
+    testReaderSaveOutcome,
     testReaderScrollAnchor,
     testReaderStorageKeepsForwardProgress,
 ];

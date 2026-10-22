@@ -86,7 +86,7 @@ import {onBookKey} from '../../share/bookKeys';
 import AddToListDialog from './AddToListDialog.vue';
 
 import {t, tm} from '../../share/i18n';
-import {isSignedIn} from '../../share/session';
+import {isSignedIn, profileKey} from '../../share/session';
 import {bookUid, bookAuthors, bookRoute, loadBookStates} from '../../share/bookActions';
 import {myLanguages, languageMatches} from '../../share/languages';
 import {bookView, bookViewOptions} from '../../share/bookView';
@@ -105,6 +105,11 @@ const componentOptions = {
         '$route.params.name'() {
             if (this.$route.path.startsWith('/series/'))
                 this.load();
+        },
+        //вход, выход или другой профиль: отметки прежнего не показываем (страница жива и в фоне)
+        profileKey() {
+            this.states = {};
+            this.loadStates();
         },
     },
 };
@@ -134,6 +139,10 @@ class SeriesPage {
 
     deactivated() {
         this.$root.removeKeyHook(this.keyHook);
+    }
+
+    get profileKey() {
+        return profileKey(this.$store.state.config);
     }
 
     get name() {

@@ -139,7 +139,7 @@ import {onBookKey, pageKey} from '../../share/bookKeys';
 import {bookView, bookViewOptions} from '../../share/bookView';
 
 import {t, tm} from '../../share/i18n';
-import {isSignedIn, initials} from '../../share/session';
+import {isSignedIn, initials, profileKey} from '../../share/session';
 import {bookUid, bookAuthors, loadBookStates} from '../../share/bookActions';
 import {myLanguages, bookLang, languageMatches} from '../../share/languages';
 
@@ -186,6 +186,11 @@ const componentOptions = {
             if (this.$route.path.startsWith('/author/'))
                 this.load();
         },
+        //вход, выход или другой профиль: отметки прежнего не показываем (страница жива и в фоне)
+        profileKey() {
+            this.states = {};
+            this.loadStates();
+        },
         grouping(value) {
             this.openState = (value === 'series' ? Object.assign({}, readSections()[this.name] || {}) : {});
             this.expandedGroups = {};
@@ -230,6 +235,10 @@ class AuthorPage {
 
     deactivated() {
         this.$root.removeKeyHook(this.keyHook);
+    }
+
+    get profileKey() {
+        return profileKey(this.$store.state.config);
     }
 
     get name() {

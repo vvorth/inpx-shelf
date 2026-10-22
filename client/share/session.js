@@ -20,6 +20,11 @@ export function isSignedIn(config = {}) {
     return !!config.profileAuthorized && !isGuest(config);
 }
 
+//Чьи отметки, прогресс и списки показывает страница ('' - гостя): меняется при входе, выходе и смене профиля
+export function profileKey(config = {}) {
+    return (isSignedIn(config) ? String(config.currentUserId || '') : '');
+}
+
 export function isAdmin(config = {}) {
     return isSignedIn(config) && !!currentProfile(config).isAdmin;
 }

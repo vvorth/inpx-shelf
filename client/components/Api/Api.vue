@@ -74,6 +74,9 @@ class Api {
     loginPageRequest = null;
     //'' - связь есть, 'lost' - потеряна, идёт переподключение, 'restored' - только что восстановлена
     connectionState = '';
+    //номер последнего запроса get-config и того, чей ответ уже показан
+    configSeq = 0;
+    configAppliedSeq = 0;
 
     created() {
         this.commit = this.$store.commit;
@@ -185,8 +188,13 @@ class Api {
     }
 
     async updateConfig(options = {}) {
+        //ответы приходят не по порядку: запоздавший ранний (гость при загрузке) не затирает конфиг после входа
+        const seq = ++this.configSeq;
         try {
             const config = await this.getConfig();
+            if (seq < this.configAppliedSeq)
+                return;
+            this.configAppliedSeq = seq;
             config.webAppVersion = packageJson.version;
             this.commit('setConfig', config);
             if (config.profileLoginRequired && !config.profileAuthorized) {

@@ -413,6 +413,21 @@ async function testProfileDataCapsAndImportTrim() {
 
 // A broken reading-lists.json is kept as a copy and reported at error level (and so in the admin event log); a bad row
 // of the file or of an import is skipped or refused with a user error, not a 500 on every request.
+// Reader position from a device whose clock runs a day ahead: stored with server time, so the next real save still wins.
+async function testReaderProgressFromFutureClockIsClamped() {
+    await temporary(async(dataDir) => {
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        const ahead = await store.updateReaderProgress('', 'book:1', {percent: 0.8, updatedAt: new Date(Date.now() + 86400000).toISOString()});
+        assert.ok(Date.parse(ahead.updatedAt) <= Date.now() + 5*60*1000, ahead.updatedAt);
+        assert.strictEqual(ahead.percent, 0.8);
+
+        //часы немного впереди (в пределах допуска) - время устройства остаётся
+        const near = new Date(Date.now() + 60000).toISOString();
+        const next = await store.updateReaderProgress('', 'book:1', {percent: 0.3, updatedAt: near});
+        assert.deepStrictEqual([next.percent, next.updatedAt], [0.3, near]);
+    });
+}
+
 async function testBrokenReadingListsAreVisibleAndBadRowsSkipped() {
     await temporary(async(dataDir) => {
         const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
@@ -448,4 +463,4 @@ async function testBrokenReadingListsAreVisibleAndBadRowsSkipped() {
 
 module.exports = [testScryptMigrationAndOpds, testApiBodyBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
     testBackupValidationBeforeMutation, testRestoreSnapshotSecurityChangesAndKeyMismatch, testBackupRollbackAndCrashRecovery, testProfileDataCapsAndImportTrim,
-    testBrokenReadingListsAreVisibleAndBadRowsSkipped];
+    testBrokenReadingListsAreVisibleAndBadRowsSkipped, testReaderProgressFromFutureClockIsClamped];

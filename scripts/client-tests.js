@@ -239,6 +239,77 @@ async function testApiRequestRefreshesCsrfTokenOnce() {
     assert.deepStrictEqual({calls, refreshes}, {calls: 2, refreshes: 1});
 }
 
+// Ответы get-config пришли не по порядку: запоздавший ранний (гость при загрузке) не затирает конфиг после входа.
+async function testApiDropsOutOfOrderConfig() {
+    const apiRoutes = require('../shared/apiRoutes');
+    const connection = await loadClientModule('share/connection.js', Object.assign({apiRoutes}, apiRoutes));
+    let Api = null;
+    await loadClientModule('components/Api/Api.vue', Object.assign({}, connection, {
+        vueComponent: cls => { Api = cls; },
+        packageJson: {version: 'test'},
+    }));
+    const pending = [];
+    const committed = [];
+    const api = Object.assign(Object.create(Api.prototype), {
+        configSeq: 0,
+        configAppliedSeq: 0,
+        $store: {state: {settings: {currentUserId: 'reader'}}},
+        $root: {stdDialog: {alert: message => { throw new Error(message); }}},
+        getConfig: () => new Promise(resolve => pending.push(resolve)),
+        commit: (name, value) => committed.push([name, value.currentUserId]),
+    });
+
+    const early = api.updateConfig();
+    const login = api.updateConfig();
+    pending[1]({currentUserId: 'reader', profileAuthorized: true});
+    await login;
+    pending[0]({currentUserId: 'guest', profileAuthorized: false});
+    await early;
+    assert.deepStrictEqual(committed, [['setConfig', 'reader']]);
+
+    //по порядку - применяются оба
+    const next = api.updateConfig();
+    pending[2]({currentUserId: 'reader', profileAuthorized: true});
+    await next;
+    assert.strictEqual(committed.length, 2);
+}
+
+// Страницы библиотеки живут в фоне (keep-alive): после входа, выхода или смены профиля они не показывают
+// прочитанное, прогресс и списки прежнего профиля, а запрашивают их заново.
+async function testLibraryPagesDropPreviousProfileStates() {
+    const session = await loadClientModule('share/session.js');
+    const signedIn = id => ({currentUserId: id, profileAuthorized: true, currentUserProfile: {id}});
+    assert.strictEqual(session.profileKey(signedIn('reader')), 'reader');
+    assert.strictEqual(session.profileKey({currentUserId: 'reader', profileAuthorized: false, currentUserProfile: {id: 'reader'}}), '');
+    assert.strictEqual(session.profileKey({currentUserId: 'guest', profileAuthorized: true, currentUserProfile: {id: 'guest', anonymousProfile: true}}), '');
+
+    for (const file of ['SearchPage', 'BookPage', 'AuthorPage', 'SeriesPage']) {
+        const source = await fs.readFile(path.resolve(__dirname, `../client/components/Library/${file}.vue`), 'utf8');
+        const imports = {};
+        for (const [, names] of source.matchAll(/^import\s+([\s\S]*?)\s+from\s/gm))
+            for (const name of names.replace(/[{}]/g, '').split(',').map(item => item.trim().split(/\s+as\s+/).pop()).filter(Boolean))
+                imports[name] = () => ({});
+        let Page = null;
+        await loadClientModule(`components/Library/${file}.vue`, Object.assign(imports, session, {vueComponent: cls => { Page = cls; }}));
+        const page = new Page();
+        const config = signedIn('second');
+        const getter = Object.getOwnPropertyDescriptor(Page.prototype, 'profileKey').get;
+        assert.strictEqual(getter.call({config, $store: {state: {config}}}), 'second', file);
+
+        const loaded = [];
+        const state = {
+            states: {old: {read: true}}, inLists: ['Old list'], book: {_uid: 'b'}, books: [], editions: [], replacements: [], related: [],
+            loadStates: async() => loaded.push('states'), loadLists: async() => loaded.push('lists'),
+        };
+        page._options.watch.profileKey.call(state);
+        //объекты из песочницы - другого realm: сравниваем содержимое, а не прототипы
+        assert.strictEqual(JSON.stringify(state.states), '{}', file);
+        assert.ok(loaded.includes('states'), file);
+        if (file === 'BookPage')
+            assert.deepStrictEqual([JSON.stringify(state.inLists), loaded.includes('lists')], ['[]', true]);
+    }
+}
+
 // Пауза переподключения растёт вдвое до 30 с и случайно уменьшается не больше чем вдвое.
 async function testConnectionErrorsAndReconnectDelay() {
     const apiRoutes = require('../shared/apiRoutes');
@@ -370,6 +441,7 @@ async function testReleaseVersionsCompareCalVer() {
 
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testServiceWorkerCachesOnlyBuildFiles,
     testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
-    testApiConnectionMapsErrors, testApiRequestRefreshesCsrfTokenOnce, testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
+    testApiConnectionMapsErrors, testApiRequestRefreshesCsrfTokenOnce, testApiDropsOutOfOrderConfig, testLibraryPagesDropPreviousProfileStates,
+    testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
     testReleaseVersionsCompareCalVer];

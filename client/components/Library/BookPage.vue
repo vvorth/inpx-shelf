@@ -282,7 +282,7 @@ import BookPeekDialog from './BookPeekDialog.vue';
 import Fb2Parser from '../../../server/core/fb2/Fb2Parser';
 
 import {t, tm} from '../../share/i18n';
-import {isSignedIn} from '../../share/session';
+import {isSignedIn, profileKey} from '../../share/session';
 import {runBookAction, markBookRead, conversionFormats, bookAuthors, bookUid, canReadOnline, loadBookStates, librarySourceName} from '../../share/bookActions';
 import {loadGenres, genreName, bookGenres} from '../../share/genres';
 import {myLanguages, languageMatches, bookLang} from '../../share/languages';
@@ -307,6 +307,15 @@ const componentOptions = {
         },
         dialogUid() {
             this.load();
+        },
+        //вход, выход или другой профиль: отметки и списки прежнего не показываем (страница жива и в фоне)
+        profileKey() {
+            this.states = {};
+            this.inLists = [];
+            if (!this.book)
+                return;
+            this.loadLists();
+            this.loadStates([this.book, ...this.editions, ...this.replacements, ...this.related]).catch(() => {});
         },
     },
 };
@@ -361,6 +370,10 @@ class BookPage {
 
     get config() {
         return this.$store.state.config;
+    }
+
+    get profileKey() {
+        return profileKey(this.config);
     }
 
     get signedIn() {

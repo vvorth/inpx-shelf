@@ -123,6 +123,25 @@ function chooseRemote(local = {}, remote = {}, options = {}) {
     return {progress: chosen, remote: null};
 }
 
+//Ответ на сохранение позиции (sent): что хранит сервер (saved). 'saved' - нашу позицию.
+//'force' - сервер оставил более старую: так быть не должно, повторить с force.
+//'keep' - другая позиция с тем же временем: ничего не делаем.
+//'remote' - новее или без времени: позиция с другого устройства, решает chooseRemote, затирать её нельзя
+function saveOutcome(sent = {}, saved = {}) {
+    if (samePosition(saved, sent))
+        return 'saved';
+
+    const sentTime = Date.parse(normalize(sent || {}).updatedAt || '');
+    const savedTime = Date.parse(normalize(saved || {}).updatedAt || '');
+    if (Number.isFinite(sentTime) && Number.isFinite(savedTime)) {
+        if (savedTime < sentTime)
+            return 'force';
+        if (savedTime === sentTime)
+            return 'keep';
+    }
+    return 'remote';
+}
+
 function shouldUpload(serverProgress = {}, restoredProgress = {}) {
     const server = normalize(serverProgress || {});
     const restored = normalize(restoredProgress || {});
@@ -201,4 +220,4 @@ function trimMap(map = {}, limit = 500) {
     return Object.fromEntries(entries.slice(0, limit));
 }
 
-module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, samePosition, chooseRemote, shouldUpload, afterReset, opening, trimMap};
+module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, samePosition, chooseRemote, saveOutcome, shouldUpload, afterReset, opening, trimMap};
