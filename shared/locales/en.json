@@ -1107,6 +1107,7 @@
     },
     "omnibox": {
         "authorsBooksSeries": "Authors, books, series",
+        "clearSearch": "Clear search",
         "didYouMean": "Did you mean:",
         "otherKeyboardLayout": "Other keyboard layout:",
         "searchEverythingFor": "Search everything for “{q}”",
