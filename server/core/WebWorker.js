@@ -196,6 +196,11 @@ class WebWorker {
 
         let progressTimer = null;
         try {
+            //удалённые библиотеки подтягиваются здесь, а не до listen: недоступный хост не должен ронять /health;
+            //не пришедший INPX подхватит periodicCheckInpx
+            if (firstLoad)
+                await this.remoteLib.syncAll({startup: true});
+
             const inpxHash = await this.inpxHashCreator.getHash();
 
             if (firstLoad) {

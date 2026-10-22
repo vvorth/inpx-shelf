@@ -186,6 +186,7 @@ async function testReindexReloadsAuthorAndArchiveCaches() {
         const value = worker(config);
         value.setMyState = state => { value.myState = state; };
         value.logServerStats = () => {};
+        value.remoteLib = {syncAll: async() => {}};
         value.inpxHashCreator = new (require('../server/core/InpxHashCreator'))(config);
         value.readingListStore = {getMetadataOverrides: async() => ({})};
         value.catalogSearch = new (require('../server/core/search/CatalogSearch'))(config, value);

@@ -123,7 +123,6 @@ async function init() {
     //восстановление из бэкапа разбирает источники библиотек с теми же параметрами
     configManager.argv = argv;
     await resolveLibrarySources(config, argv);
-    await new (require('./core/RemoteLib'))(config).syncAll();
 
     config.recreateDb = argv.recreate || false;
     config.inpxFilterFile = config.inpxFilterFile || `${path.dirname(config.configFile)}/filter.json`;

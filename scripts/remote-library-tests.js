@@ -252,10 +252,133 @@ async function testRemoteBookInfoWaitsForRequest() {
     assert.deepStrictEqual(links, ['remote-uid', 'local-uid', 'remote-uid']);
 }
 
+// A remote answer that is not a book or an INPX (cover, listing) is read with a cap: a larger or endless
+// body is dropped as soon as the cap is passed, the wrong type is refused before the body is read.
+async function testRemoteSmallResponsesAreBounded() {
+    const stats = {written: 0, closed: []};
+    // an endless body: it stops only when the client drops the connection
+    const endless = (res, type, head = '') => {
+        res.writeHead(200, {'content-type': type});
+        res.write(head);
+        let stop;
+        stats.closed.push(new Promise(resolve => {
+            stop = resolve;
+        }));
+        const timer = setInterval(() => {
+            if (res.writableLength < 1024*1024 && stats.written < 200*1024*1024) {
+                stats.written += 256*1024;
+                res.write(Buffer.alloc(256*1024, 'x'));
+            }
+        }, 1);
+        res.on('close', () => {
+            clearInterval(timer);
+            stop();
+        });
+    };
+    const png = Buffer.from('png');
+    const server = http.createServer((req, res) => {
+        const n = [1, 2, 3, 4, 5].find(i => req.url.endsWith(`/covers/${urlUid(i)}`));
+        if (n === 1)
+            return res.writeHead(200, {'content-type': 'image/png'}).end(png);
+        if (n === 2) {// the declared size is over the cap: the body is never sent
+            res.writeHead(200, {'content-type': 'image/png', 'content-length': 100*1024*1024});
+            res.flushHeaders();
+            stats.closed.push(new Promise(resolve => res.on('close', resolve)));
+            return;
+        }
+        if (n === 3)
+            return endless(res, 'image/png');
+        if (n === 4)
+            return endless(res, 'text/html');
+        if (n === 5)
+            return res.writeHead(200, {'content-type': 'image/png'}).end();
+        if (req.url.endsWith('/remote/sources'))
+            return endless(res, 'application/json', '{"sources":[');
+        res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+        const remote = {url: `http://127.0.0.1:${server.address().port}`, source: 'z', token: 't'};
+        const lib = new RemoteLib({});
+        const tooLarge = /too large|слишком большой/;
+        assert.deepStrictEqual(await lib.getCover(remote, uid(1)), {data: png, contentType: 'image/png'});
+        assert.strictEqual(await lib.getCover(remote, uid(5)), null, 'an empty image is no cover');
+
+        await assert.rejects(lib.getCover(remote, uid(2)), tooLarge);
+        await assert.rejects(lib.getCover(remote, uid(3)), tooLarge);
+        await assert.rejects(lib.getCover(remote, uid(4)), /content type text\/html/);
+        await assert.rejects(lib.listSources(remote), tooLarge);
+        // every endless body was dropped by the client, long before it could be buffered
+        await Promise.race([Promise.all(stats.closed), new Promise((resolve, reject) => setTimeout(() => reject(new Error('the client kept reading')), 5000))]);
+        assert.ok(stats.written < 64*1024*1024, `the client read ${stats.written} bytes`);
+    } finally {
+        server.closeAllConnections();
+        await new Promise(resolve => server.close(resolve));
+    }
+}
+
+// Startup waits for the response headers only briefly; a slow body is not cut by that timeout.
+async function testRemoteConnectTimeoutOnlyCoversHeaders() {
+    const sockets = [];
+    const blackHole = require('net').createServer(socket => sockets.push(socket));
+    const slow = http.createServer((req, res) => {
+        res.writeHead(200, {'content-type': 'text/plain'});
+        res.flushHeaders();
+        setTimeout(() => res.end('late body'), 400);
+    });
+    await Promise.all([blackHole, slow].map(item => new Promise(resolve => item.listen(0, '127.0.0.1', resolve))));
+    try {
+        const lib = new RemoteLib({});
+        const started = Date.now();
+        await assert.rejects(lib.request({url: `http://127.0.0.1:${blackHole.address().port}`, source: 'z'}, '', {}, 200), /unavailable|недоступна/);
+        assert.ok(Date.now() - started < 3000, 'the silent host is given up on after the connect timeout');
+        const response = await lib.request({url: `http://127.0.0.1:${slow.address().port}`, source: 'z'}, '', {}, 200);
+        assert.strictEqual(await response.text(), 'late body');
+    } finally {
+        sockets.forEach(socket => socket.destroy());
+        slow.closeAllConnections();
+        await Promise.all([blackHole, slow].map(item => new Promise(resolve => item.close(resolve))));
+    }
+}
+
+// First start: the remote INPX is fetched in the startup chain (after listen), and the library DB is built from it.
+async function testRemoteInpxIsSyncedBeforeFirstIndexing() {
+    await fixture(async({dir, base, token}) => {
+        const WebWorker = require('../server/core/WebWorker');
+        const inpxFile = path.join(dir, 'client', 'remote', 'friend-b.inpx');
+        const source = {id: 'friend-b', inpxFile, enabled: true, remote: {url: base, source: 'b', token}};
+        const config = {tempDir: path.join(dir, 'client', 'tmp'), maxPayloadSize: 1, librarySources: [source]};
+        await fs.ensureDir(config.tempDir);
+        const hashes = [];
+        const worker = Object.create(WebWorker.prototype);
+        Object.assign(worker, {
+            config,
+            remoteLib: new RemoteLib(config),
+            catalogSearch: {ready: false},
+            inpxHashCreator: {getHash: async() => ((await fs.pathExists(inpxFile)) ? 'with-remote-inpx' : 'no-inpx')},
+            setMyState: () => {},
+            logServerStats: () => {},
+            removeLegacyDb: async() => {},
+            trySyncListedBooks: async() => {},
+        });
+        worker.catalogSearch.ensure = async hash => {
+            hashes.push(hash);
+            worker.catalogSearch.ready = true;
+            return true;
+        };
+        await worker.loadOrCreateDbOnce();
+        assert.deepStrictEqual(hashes, ['with-remote-inpx']);
+        assert.strictEqual(await fs.readFile(inpxFile, 'utf8'), 'inpx of b');
+    });
+}
+
 module.exports = [
     testRemoteBookInfoWaitsForRequest,
     testRemoteApiTokenAndSources,
     testRemoteApiInpxBooksAndCovers,
     testRemoteSourceConfig,
     testRemoteAccessAdmin,
+    testRemoteSmallResponsesAreBounded,
+    testRemoteConnectTimeoutOnlyCoversHeaders,
+    testRemoteInpxIsSyncedBeforeFirstIndexing,
 ];
