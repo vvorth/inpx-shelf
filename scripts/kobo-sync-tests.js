@@ -523,6 +523,10 @@ async function testKoboStoreProxyToggle() {
             assert.strictEqual(get.headers.get('location'), `${storeUrl}/v1/products/featured/`);
             const unknownState = await call(`/v1/library/${kobo.uuidv5('store-only')}/state`, {method: 'PUT', body: '{}'});
             assert.strictEqual(unknownState.status, 202, 'store books keep their reading state in the store');
+            const hostile = await call('/v1/library/__proto__', {method: 'DELETE'});
+            assert.strictEqual(hostile.status, 202, 'an id that is not ours goes to the store as it came');
+            assert.ok(seen.some(item => item.method === 'DELETE' && item.path === '/v1/library/__proto__'));
+            assert.strictEqual(({}).deletedOnDevice, undefined);
             const cover = await call(`/${kobo.uuidv5('store-only')}/150/200/false/image.jpg`, {redirect: 'manual'});
             assert.ok(cover.headers.get('location').startsWith('https://cdn.kobo.com/book-images/'));
         });
@@ -579,8 +583,8 @@ async function testKoboResetDuringSyncIsKept() {
         await new Promise(resolve => setTimeout(resolve, 100));
         await service.store.resetDevice('default', device.id);
         await pendingSync;
-        assert.deepStrictEqual(service.store.data.devices[0].books, {});
-        assert.deepStrictEqual(service.store.data.devices[0].tags, {});
+        assert.deepStrictEqual(Object.keys(service.store.data.devices[0].books), []);
+        assert.deepStrictEqual(Object.keys(service.store.data.devices[0].tags), []);
         const next = entitlementIds((await sync()).items, 'NewEntitlement').sort();
         assert.deepStrictEqual(next, [kobo.uuidv5('late-uid'), kobo.uuidv5('main:102')].sort(), 'the reset device gets everything again');
     });
@@ -1280,6 +1284,124 @@ async function testKoboDevicesTravelWithProfileBackup() {
     });
 }
 
+// Ids from the device are keys of the per-device maps: `__proto__` and the like must stay unknown ids,
+// answered as before, and never write to Object.prototype (every `error.status` would read 'Finished').
+const hostileIds = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
+
+function prototypeSnapshot() {
+    return Object.getOwnPropertyNames(Object.prototype).sort();
+}
+
+function assertPrototypeClean(before) {
+    assert.deepStrictEqual(prototypeSnapshot(), before, 'Object.prototype gained no keys');
+    for (const field of ['status', 'deletedOnDevice', 'lastModified', 'priorityTimestamp', 'fileChanged', 'collectionRemoved'])
+        assert.strictEqual(({})[field], undefined, `({}).${field}`);
+}
+
+async function testKoboHostileIdsAreUnknown() {
+    await fixture({}, async({service, store, listA, call, sync}) => {
+        const before = prototypeSnapshot();
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        const known = kobo.uuidv5('main:102');
+        const tagA = kobo.uuidv5(`list:${listA.id}`);
+        const json = (method, body) => ({method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        const finished = {ReadingStates: [{StatusInfo: {Status: 'Finished'}, CurrentBookmark: {ProgressPercent: 100}}]};
+        const items = (...uuids) => ({Items: uuids.map(uuid => ({RevisionId: uuid, Type: 'ProductRevisionTagItem'}))});
+        const saved = JSON.stringify(service.store.data);
+
+        // A well-formed unknown id sets the answer every malformed one must get.
+        for (const id of [kobo.uuidv5('unknown-book'), ...hostileIds]) {
+            const answers = [
+                [`/v1/library/${id}/metadata`, {}, 404, '[]'],
+                [`/v1/library/${id}/state`, {}, 404, '[]'],
+                [`/v1/library/${id}/state`, json('PUT', finished), 404, '{"error":"Unknown book"}'],
+                [`/v1/library/${id}`, {method: 'DELETE'}, 204, ''],
+                [`/download/${id}/kepub`, {}, 404, 'Not Found'],
+                [`/${id}/150/200/false/image.jpg`, {}, 404, 'Not Found'],
+                [`/${id}/150/200/85/false/image.jpg`, {}, 404, 'Not Found'],
+                [`/v1/library/tags/${id}`, json('PUT', {Name: 'x'}), 200, ' '],
+                [`/v1/library/tags/${id}`, {method: 'DELETE'}, 200, ' '],
+                [`/v1/library/tags/${id}/items`, json('POST', items(known)), 201, ''],
+                [`/v1/library/tags/${id}/items/delete`, json('POST', items(known)), 200, ''],
+                [`/v1/library/tags/${tagA}/items/delete`, json('POST', items(id)), 200, ''],
+                [`/v1/library/tags/${tagA}/items`, json('POST', items(id)), 201, ''],
+            ];
+            for (const [suffix, init, status, body] of answers) {
+                const response = await call(suffix, init);
+                assert.strictEqual(response.status, status, `${init.method || 'GET'} ${suffix}`);
+                assert.strictEqual(await response.text(), body, `${init.method || 'GET'} ${suffix}`);
+            }
+            assertPrototypeClean(before);
+        }
+        assert.strictEqual(JSON.stringify(service.store.data), saved, 'nothing was stored');
+        assert.deepStrictEqual((await sync()).items, [], 'the known book and its collection are untouched');
+        assert.strictEqual((await call(`/v1/library/${known}/state`)).status, 200);
+
+        // The stored maps have no prototype, after a sync as well.
+        const device = service.store.data.devices[0];
+        assert.strictEqual(Object.getPrototypeOf(device.books), null);
+        assert.strictEqual(Object.getPrototypeOf(device.tags), null);
+        assert.strictEqual((await call(`/v1/library/${known}/state`, json('PUT', finished))).status, 200);
+        assert.strictEqual(Object.getPrototypeOf(service.store.data.states.default), null);
+        assertPrototypeClean(before);
+    });
+}
+
+// A backup comes from an admin, but its ids become keys too: only UUIDs are taken.
+async function testKoboRestoreSkipsHostileIds() {
+    await fixture({}, async({service}) => {
+        const before = prototypeSnapshot();
+        const known = kobo.uuidv5('main:102');
+        const entries = value => Object.fromEntries([...hostileIds, known].map(id => [id, value]));
+        // Through JSON, as a backup file is read: `__proto__` is an own key there.
+        const payload = JSON.parse(JSON.stringify({
+            devices: [{id: 'restored', name: 'Restored', tokenHash: 'a'.repeat(64), books: entries({bookUid: 'epub-uid', title: 'EPUB book'})}],
+            states: entries({status: 'Finished', lastModified: '2020-01-01T00:00:00.000Z'}),
+        }));
+        assert.ok(Object.hasOwn(payload.states, '__proto__'));
+        assert.deepStrictEqual(await service.store.importUser('default', payload), {devices: 1, states: 1});
+        const device = service.store.data.devices.find(item => item.id === 'restored');
+        assert.deepStrictEqual(Object.keys(device.books), [known]);
+        assert.deepStrictEqual(Object.keys(service.store.data.states.default), [known]);
+        for (const id of hostileIds)
+            assert.strictEqual(service.store.getState('default', id), null, id);
+        assertPrototypeClean(before);
+
+        // The file written from it loads back the same.
+        const KoboStore = require('../server/core/kobo/KoboStore');
+        const reloaded = new KoboStore(service.store.config);
+        await reloaded.load();
+        assert.deepStrictEqual(Object.keys(reloaded.data.devices.find(item => item.id === 'restored').books), [known]);
+        assert.strictEqual(reloaded.getState('default', known).status, 'Finished');
+    });
+}
+
+// An unparsable kobo-sync.json is kept as a copy and reported at error level, which also puts it in the
+// admin event log: the store starts empty, and the next write replaces the file.
+async function testKoboBrokenStoreIsReported() {
+    const KoboStore = require('../server/core/kobo/KoboStore');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kobo-broken-'));
+    const appLogger = new (require('../server/core/AppLogger'))();
+    const listener = appLogger.eventListener;
+    const events = [];
+    try {
+        await fs.writeFile(path.join(dir, 'kobo-sync.json'), '{"devices": [');
+        appLogger.setEventListener((level, message) => events.push([level, message]));
+        const store = new KoboStore({dataDir: dir});
+        await store.load();
+        assert.deepStrictEqual(store.data.devices, []);
+        const copies = (await fs.readdir(dir)).filter(name => name.startsWith('kobo-sync.json.broken-'));
+        assert.strictEqual(copies.length, 1);
+        assert.strictEqual(await fs.readFile(path.join(dir, copies[0]), 'utf8'), '{"devices": [');
+        assert.strictEqual(events.filter(([level, message]) => level === LM_ERR && message.includes(copies[0])).length, 1,
+            'one error naming the copy');
+    } finally {
+        appLogger.setEventListener(listener);
+        await fs.remove(dir);
+    }
+}
+
 module.exports = [
     testKoboChecksTokenBeforeReadingBody,
     testKoboDevicesTravelWithProfileBackup,
@@ -1315,6 +1437,9 @@ module.exports = [
     testKoboRefreshResendsBooksInPlace,
     testKoboRefreshWaitsForConversion,
     testKoboResendDeletedBooks,
+    testKoboHostileIdsAreUnknown,
+    testKoboRestoreSkipsHostileIds,
+    testKoboBrokenStoreIsReported,
 ];
 
 if (require.main === module) {

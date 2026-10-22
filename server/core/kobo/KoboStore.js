@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const {withFileTransaction, writeFileAtomic} = require('../FilePersistence');
 const {t} = require('../i18n');
+const {log, isKoboId, idMap, ownEntry} = require('./common');
 
 const storeVersion = 1;
 const maxDevicesPerUser = 16;
@@ -36,9 +37,9 @@ class KoboStore {
 
     normalizeDevice(item = {}) {
         const now = nowIso();
-        const books = {};
+        const books = idMap();
         for (const [uuid, row] of Object.entries(item.books || {})) {
-            if (!uuid || !row || typeof(row) !== 'object' || !row.bookUid)
+            if (!isKoboId(uuid) || !row || typeof(row) !== 'object' || !row.bookUid)
                 continue;
             books[uuid] = {
                 bookUid: String(row.bookUid),
@@ -82,7 +83,7 @@ class KoboStore {
             updatedAt: String(item.updatedAt || now),
             lastSyncAt: String(item.lastSyncAt || ''),
             books,
-            tags: (item.tags && typeof(item.tags) === 'object' ? item.tags : {}),
+            tags: idMap(item.tags && typeof(item.tags) === 'object' ? item.tags : {}),
         };
     }
 
@@ -98,10 +99,10 @@ class KoboStore {
             devices.push(device);
         }
 
-        const states = {};
+        const states = idMap();
         for (const [userId, rows] of Object.entries(source.states || {})) {
             if (rows && typeof(rows) === 'object')
-                states[userId] = rows;
+                states[userId] = idMap(Object.fromEntries(Object.entries(rows).filter(([uuid]) => isKoboId(uuid))));
         }
 
         return {version: storeVersion, devices, states};
@@ -134,8 +135,11 @@ class KoboStore {
                 raw = JSON.parse(text);
             } catch (e) {
                 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const copy = `${this.file}.broken-${stamp}`;
                 // Без копии не затираем файл: загрузка падает, файл остаётся как есть.
-                await fs.copy(this.file, `${this.file}.broken-${stamp}`);
+                await fs.copy(this.file, copy);
+                // At error level, so it also reaches the admin event log: the next write replaces the file.
+                log(LM_ERR, `Kobo: ${this.file} is not valid JSON (${e.message}); copied to ${copy}, starting with no devices`);
             }
         }
         return this.normalizeData(raw);
@@ -265,8 +269,8 @@ class KoboStore {
     async resetDevice(userId = '', deviceId = '') {
         const device = await this.mutate(async(data) => {
             const item = this.findOwnDevice(data, userId, deviceId);
-            item.books = {};
-            item.tags = {};
+            item.books = idMap();
+            item.tags = idMap();
             item.generation++;
             item.updatedAt = nowIso();
             return item;
@@ -343,12 +347,13 @@ class KoboStore {
                 })));
                 devices++;
             }
-            const rows = data.states[userId] || {};
+            const rows = data.states[userId] || idMap();
             const incoming = (payload.states && typeof(payload.states) === 'object' ? payload.states : {});
             for (const [uuid, state] of Object.entries(incoming)) {
-                if (!state || typeof(state) !== 'object')
+                if (!isKoboId(uuid) || !state || typeof(state) !== 'object')
                     continue;
-                if (rows[uuid] && String(rows[uuid].lastModified || '') >= String(state.lastModified || ''))
+                const current = ownEntry(rows, uuid);
+                if (current && String(current.lastModified || '') >= String(state.lastModified || ''))
                     continue;
                 rows[uuid] = state;
                 states++;
@@ -360,8 +365,7 @@ class KoboStore {
     }
 
     getState(userId = '', uuid = '') {
-        const rows = (this.data && this.data.states[userId]) || {};
-        return rows[uuid] || null;
+        return ownEntry(this.data && ownEntry(this.data.states, userId), uuid);
     }
 
     async saveSync(deviceId, patch) {

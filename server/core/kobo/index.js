@@ -7,7 +7,7 @@ const {t} = require('../i18n');
 const KoboStore = require('./KoboStore');
 const defaultResources = require('./resources');
 const {BookMetadata} = require('../BookMetadata');
-const {log, rootPath, syncTokenHeader, busyConversionCodes} = require('./common');
+const {log, rootPath, syncTokenHeader, busyConversionCodes, isKoboId, idMap, ownEntry} = require('./common');
 
 const syncItemLimit = 100;
 // Kobo sync requests must answer quickly; conversions that take longer finish
@@ -347,8 +347,8 @@ class KoboService {
     async copyReadingState(userId, from = {}, toBook = {}) {
         const target = uuidv5(stableKey(toBook));
         return await this.store.mutate((data) => {
-            const rows = data.states[userId] || {};
-            if (rows[target])
+            const rows = data.states[userId] || idMap();
+            if (ownEntry(rows, target))
                 return false;
             const sources = new Set();
             for (const device of data.devices.filter(item => item.userId === userId)) {
@@ -359,7 +359,7 @@ class KoboService {
             }
             if (from.libid)
                 sources.add(uuidv5(stableKey({libid: from.libid, sourceId: from.sourceId, _uid: from.bookUid})));
-            const source = [...sources].map(uuid => rows[uuid]).filter(Boolean)
+            const source = [...sources].map(uuid => ownEntry(rows, uuid)).filter(Boolean)
                 .sort((a, b) => String(b.lastModified || '').localeCompare(String(a.lastModified || '')))[0];
             if (!source)
                 return false;
@@ -815,7 +815,7 @@ class KoboService {
     async saveSyncResult({device, generation, books, startBooks, startTags, states, now}, tags) {
         await this.store.saveSync(device.id, (target, data) => {
             // Only states changed by this sync: a concurrent state PUT must not be overwritten.
-            data.states[device.userId] = Object.assign(data.states[device.userId] || {}, states);
+            data.states[device.userId] = Object.assign(data.states[device.userId] || idMap(), states);
             target.lastSyncAt = now;
             if (target.generation !== generation)
                 return;
@@ -835,15 +835,16 @@ class KoboService {
                 if (JSON.stringify((target.tags || {})[listId]) !== JSON.stringify(startTags[listId]))
                     delete tags[listId];
             }
-            target.books = books;
-            target.tags = tags;
+            // This sync worked on plain copies: the stored maps stay without a prototype.
+            target.books = idMap(books);
+            target.tags = idMap(tags);
         });
     }
 
     // ------------------------------------------------------------------ per-book endpoints
     async metadataRequest(req, res, device, token) {
         const uuid = req.params.uuid;
-        const row = device.books[uuid];
+        const row = ownEntry(device.books, uuid);
         const book = row && await this.bookRecord(row.bookUid);
         if (!book)
             return await this.storeOr(req, res, device, token, () => sendJson(res, [], 404));
@@ -852,7 +853,7 @@ class KoboService {
 
     async getState(req, res, device, token) {
         const uuid = req.params.uuid;
-        const row = device.books[uuid];
+        const row = ownEntry(device.books, uuid);
         if (!row)
             return await this.storeOr(req, res, device, token, () => sendJson(res, [], 404));
         const state = this.store.getState(device.userId, uuid) || this.emptyState(row.sentAt);
@@ -861,7 +862,7 @@ class KoboService {
 
     async putState(req, res, device, token) {
         const uuid = req.params.uuid;
-        const row = device.books[uuid];
+        const row = ownEntry(device.books, uuid);
         if (!row)
             return await this.storeOr(req, res, device, token, () => sendJson(res, {error: 'Unknown book'}, 404));
 
@@ -880,8 +881,8 @@ class KoboService {
         const markedRead = (finished && await this.markRead(device.userId, row.bookUid));
         let progress = null;
         const saved = await this.store.saveSync(device.id, (target, data) => {
-            const rows = data.states[target.userId] = data.states[target.userId] || {};
-            const state = rows[uuid] = rows[uuid] || this.emptyState(now);
+            const rows = data.states[target.userId] = data.states[target.userId] || idMap();
+            const state = rows[uuid] = ownEntry(rows, uuid) || this.emptyState(now);
             const bookmark = incoming.CurrentBookmark;
             if (bookmark && typeof(bookmark) === 'object') {
                 for (const field of ['ProgressPercent', 'ContentSourceProgressPercent']) {
@@ -913,12 +914,13 @@ class KoboService {
             }
             state.lastModified = now;
             state.priorityTimestamp = now;
-            if (target.books[uuid]) {
-                target.books[uuid].status = state.status;
+            const live = ownEntry(target.books, uuid);
+            if (live) {
+                live.status = state.status;
                 // This device already knows the book is read. Other devices of the profile
                 // don't: they get Finished from the read mark on their next sync.
                 if (markedRead)
-                    target.books[uuid].listRead = true;
+                    live.listRead = true;
             }
             return state;
         });
@@ -963,13 +965,14 @@ class KoboService {
     // are: deleting a book to free space says nothing about having read it.
     async deleteBook(req, res, device, token) {
         const uuid = req.params.uuid;
-        const row = device.books[uuid];
+        const row = ownEntry(device.books, uuid);
         if (!row)
             return await this.storeOr(req, res, device, token, () => res.sendStatus(204));
 
         await this.store.saveSync(device.id, (target) => {
-            if (target.books[uuid])
-                target.books[uuid].deletedOnDevice = true;
+            const live = ownEntry(target.books, uuid);
+            if (live)
+                live.deletedOnDevice = true;
         });
         res.sendStatus(204);
     }
@@ -984,7 +987,7 @@ class KoboService {
 
     tagItemUuids(req) {
         const items = (req.body && Array.isArray(req.body.Items) ? req.body.Items : []);
-        return items.map(item => String((item && item.RevisionId) || '')).filter(Boolean);
+        return items.map(item => String((item && item.RevisionId) || '')).filter(isKoboId);
     }
 
     async createTag(req, res, device, token) {
@@ -999,7 +1002,7 @@ class KoboService {
             // No stored signature: the next sync sends the collection again (ChangedTag, or NewTag after a delete).
             if (req.method === 'DELETE')
                 delete target.tags[listId];
-            else if (target.tags[listId])
+            else if (ownEntry(target.tags, listId))
                 target.tags[listId] = Object.assign({}, target.tags[listId], {signature: ''});
         });
         res.status(200).send(' ');
@@ -1012,7 +1015,7 @@ class KoboService {
         const uuids = new Set(this.tagItemUuids(req));
         await this.store.saveSync(device.id, (target) => {
             for (const uuid of uuids) {
-                const row = target.books[uuid];
+                const row = ownEntry(target.books, uuid);
                 if (!row)
                     continue;
                 const others = row.collectionRemoved.filter(id => id !== listId);
@@ -1024,7 +1027,7 @@ class KoboService {
     }
 
     async download(req, res, device) {
-        const row = device.books[req.params.uuid];
+        const row = ownEntry(device.books, req.params.uuid);
         if (!row)
             return res.sendStatus(404);
 
@@ -1050,8 +1053,9 @@ class KoboService {
         if (entry && entry.result)
             entry.result = Object.assign({}, entry.result, {size});
         await this.store.saveSync(device.id, (target) => {
-            if (target.books[uuid])
-                target.books[uuid].fileChanged = true;
+            const live = ownEntry(target.books, uuid);
+            if (live)
+                live.fileChanged = true;
         });
     }
 
@@ -1152,6 +1156,16 @@ class KoboService {
             }
             next();
         });
+
+        // An id that is not a UUID (`__proto__`, `constructor`) is never used as a key: it is answered as an
+        // unknown id, or forwarded to the store by the original URL.
+        for (const name of ['uuid', 'tagId']) {
+            router.param(name, (req, res, next, value) => {
+                if (!isKoboId(value))
+                    req.params[name] = '';
+                next();
+            });
+        }
 
         const handle = (fn) => async(req, res) => {
             try {

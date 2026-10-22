@@ -49,6 +49,9 @@ keep working (§9).
 | `GET <DownloadUrls[].Url>` | The book file. KEPUB is named `*.kepub.epub` |
 | `/v1/user/*`, `/v1/products/*`, `/v1/analytics/*`, `/v1/deals`, `/v1/affiliate`, `/v1/assets`, … | Not needed for a library: answer `{}` (or proxy them). `v1/user/loyalty/benefits` → `{Benefits:{}}`; `v1/analytics/gettests` → `{Result:"Success", TestKey:<x-kobo-userkey header>, Tests:{}}` |
 
+Book and collection ids in these paths and bodies are UUIDs: the server's own, the store's, or ones
+the device made for its collections. inpx-shelf answers any other id as an unknown one.
+
 The resource list from Kobo points most calls at `https://storeapi.kobo.com/…`. inpx-shelf rewrites
 every such URL to the device's `/kobo/<token>` base, so nothing leaves the server unless the device
 opted into store proxying.

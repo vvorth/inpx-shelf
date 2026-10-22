@@ -3,7 +3,7 @@ const fs = require('fs-extra');
 const {coverCacheKey} = require('../BookAssets');
 const imageUtils = require('../ImageUtils');
 const {writeFileAtomic} = require('../FilePersistence');
-const {log} = require('./common');
+const {log, ownEntry} = require('./common');
 
 const koboImageUrl = 'https://cdn.kobo.com/book-images';
 const coverMaxSide = 3000;
@@ -13,7 +13,7 @@ const coverCacheTypes = [['.jpg', 'image/jpeg'], ['.png', 'image/png'], ['.gif',
 // Covers in the sizes the device asks for. Mixed into KoboService.prototype: `this` is the service.
 module.exports = {
     async cover(req, res, device) {
-        const row = device.books[req.params.uuid];
+        const row = ownEntry(device.books, req.params.uuid);
         const book = row && await this.worker.getBookRecordByUid(row.bookUid);
         if (!book) {
             if (device.storeProxy && /^[0-9a-f-]{36}$/i.test(req.params.uuid)) {

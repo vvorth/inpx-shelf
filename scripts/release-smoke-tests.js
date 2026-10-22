@@ -1093,8 +1093,8 @@ async function testAdminBackupArchiveAndDownload() {
         await fs.writeJson(path.join(dataDir, 'kobo-sync.json'), {
             version: 1,
             devices: [{id: 'kobo-1', userId: 'reader', name: 'Clara', tokenHash: KoboStore.hashToken(koboToken), listIds: ['list-1'],
-                books: {'kobo-book': {bookUid: 'book:1', size: 10}}}],
-            states: {reader: {'kobo-book': {status: 'Reading'}}},
+                books: {'0b5c6f9e-3d0a-5c1e-9f6a-2b7d8e4c1a90': {bookUid: 'book:1', size: 10}}}],
+            states: {reader: {'0b5c6f9e-3d0a-5c1e-9f6a-2b7d8e4c1a90': {status: 'Reading'}}},
         });
         const backupSecretKey = require('crypto').randomBytes(32).toString('base64');
         await fs.writeFile(path.join(dataDir, 'secret.key'), backupSecretKey);
@@ -1246,7 +1246,7 @@ async function testAdminBackupArchiveAndDownload() {
             'English author names come back without a Wikidata download; malformed rows are dropped');
         const restoredKobo = await fs.readJson(path.join(restoreDataDir, 'kobo-sync.json'));
         assert.strictEqual(restoredKobo.devices[0].tokenHash, KoboStore.hashToken(koboToken), 'devices keep their token');
-        assert.strictEqual(restoredKobo.states.reader['kobo-book'].status, 'Reading');
+        assert.strictEqual(restoredKobo.states.reader['0b5c6f9e-3d0a-5c1e-9f6a-2b7d8e4c1a90'].status, 'Reading');
         assert.strictEqual(restoreKoboStore.findDeviceByToken(koboToken).id, 'kobo-1', 'the running service sees restored devices');
         const restoredSecrets = await new (require('../server/core/SecretStore'))({dataDir: restoreDataDir})
             .unprotectConfig(await fs.readJson(restoreConfigFile));
