@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 
+import { authorRoute, seriesRoute } from './share/bookActions';
+
 const Reader = () => import('./components/Reader/Reader.vue');
 const ReaderLab = () => import('./components/Reader/ReaderLab.vue');
 const SearchPage = () => import('./components/Library/SearchPage.vue');
@@ -16,14 +18,14 @@ const AdminPage = () => import('./components/Admin/AdminPage.vue');
 
 //Старые адреса каталога (/author?author=..., /books?genre=...) ведут в новый поиск.
 //«=Имя» в старом поиске означало точное совпадение - такие ссылки открывают страницу автора или серии.
-function legacyCatalog(to) {
+export function legacyCatalog(to) {
     const query = to.query || {};
     const exact = value => (String(value || '').startsWith('=') ? String(value).substring(1) : '');
-    //имя передаётся как есть: vue-router сам кодирует путь
+    //path разбирается как адрес и не кодируется: имя с / ? # % ломает его без encodeURIComponent
     if (exact(query.author))
-        return {path: `/author/${exact(query.author)}`, query: {}};
+        return {path: authorRoute(exact(query.author)), query: {}};
     if (exact(query.series))
-        return {path: `/series/${exact(query.series)}`, query: {}};
+        return {path: seriesRoute(exact(query.series)), query: {}};
 
     const result = {};
     const text = [query.author, query.series, query.title].map(value => String(value || '').replace(/^[=*#~]/, '').trim()).filter(Boolean);

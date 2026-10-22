@@ -2280,24 +2280,40 @@ async function testAwardsShelfEditionsAndOrder() {
     worker.bookSearch = async query => ({found: library.filter(book => (query.title[0] === '*'
         ? book.title.includes(query.title.slice(1)) : book.title === query.title.slice(1)))});
     const {items} = await worker.matchExternalItems([
-        {title: 'Новинка', author: 'Автор Новый', url: 'u:new', awards: ['Q255032'], alternates: []},//i18n-ignore: тестовые данные
-        {title: 'Нейромант', author: 'Уильям Гибсон', url: 'u:neuro', awards: ['Q255032'],//i18n-ignore: тестовые данные
+        {title: 'Новинка', author: 'Автор Новый', url: 'https://example.org/new', awards: ['Q255032'], alternates: []},//i18n-ignore: тестовые данные
+        {title: 'Нейромант', author: 'Уильям Гибсон', url: 'https://example.org/neuro', awards: ['Q255032'],//i18n-ignore: тестовые данные
             alternates: [{title: 'Neuromancer', author: 'William Gibson'}]},
     ]);
     assert.deepStrictEqual(items[1].books.map(book => book._uid).sort(), ['en', 'ru', 'ru-2', 'uk'], 'a longer title is another book');
     assert.deepStrictEqual(items[1].books.map(book => book.lang), ['ru', 'ru', 'en', 'uk']);
     //оригинал идёт перед переводами
-    const original = await worker.matchExternalItems([{title: 'Нейромант', author: 'Уильям Гибсон', url: 'u:neuro', langs: ['en'],//i18n-ignore: тестовые данные
+    const original = await worker.matchExternalItems([{title: 'Нейромант', author: 'Уильям Гибсон', url: 'https://example.org/neuro', langs: ['en'],//i18n-ignore: тестовые данные
         alternates: [{title: 'Neuromancer', author: 'William Gibson'}]}]);
     assert.deepStrictEqual(original.items[0].books.map(book => book.lang), ['en', 'ru', 'ru', 'uk']);
 
     worker.getWikidataAwardMatches = async() => ({items});
     const shelf = await worker.buildExternalDiscoveryShelfV2(5, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',
         externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032'}));
-    assert.deepStrictEqual(shelf.items.map(book => book.discoveryUrl), ['u:neuro', 'u:neuro', 'u:neuro', 'u:neuro', 'u:new'],
+    assert.deepStrictEqual(shelf.items.map(book => book.discoveryUrl), ['https://example.org/neuro', 'https://example.org/neuro', 'https://example.org/neuro', 'https://example.org/neuro', 'https://example.org/new'],
         'all copies in the library come before newer missing winners');
     assert.strictEqual(shelf.discoveryHasMore, false);
     assert.deepStrictEqual([shelf.subtitle.params.inLibrary, shelf.subtitle.params.notInLibrary], [1, 1]);
+
+    // discoveryUrl goes to an href: only http(s) survives, both for a fresh answer and for a cached one.
+    const poisoned = await worker.matchExternalItems([
+        {title: 'Новинка', author: 'Автор Новый', url: 'javascript:alert(1)', awards: ['Q255032']},//i18n-ignore: тестовые данные
+        {title: 'Нейромант', author: 'Уильям Гибсон', url: ' data:text/html,x', awards: ['Q255032']},//i18n-ignore: тестовые данные
+    ]);
+    const poisonedUrls = poisoned.items.flatMap(item => item.books.map(book => book.discoveryUrl));
+    assert.ok(poisonedUrls.length >= 2 && poisonedUrls.every(url => url === ''), 'a placeholder and library copies lose a bad link');
+    const urls = ['javascript:alert(1)', 'not a url', 'ftp://example.org/x', 'http://example.org/a', ' https://example.org/b?c#d '];
+    const awardMatches = worker.getWikidataAwardMatches;
+    worker.getWikidataAwardMatches = async() => ({items: urls.map((url, index) =>
+        ({awards: ['Q255032'], books: [{_uid: `cached-${index}`, title: 'Cached', discoveryUrl: url}]}))});
+    const cached = await worker.buildExternalDiscoveryShelfV2(10, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',
+        externalBrowseUrl: 'https://www.wikidata.org/wiki/Q255032'}));
+    assert.deepStrictEqual(cached.items.map(book => book.discoveryUrl), ['', '', '', 'http://example.org/a', 'https://example.org/b?c#d']);
+    worker.getWikidataAwardMatches = awardMatches;
 
     // Copies in other languages are dropped before paging, so a page is full of books the reader sees.
     const english = await worker.buildExternalDiscoveryShelfV2(1, worker.getDiscoveryConfig({externalSource: 'wikidata-awards',

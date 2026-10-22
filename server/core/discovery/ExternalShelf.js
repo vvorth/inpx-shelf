@@ -26,6 +26,16 @@ function markDiscoveryStale(value, error = '') {
     return Object.assign({}, value, {discoveryStale: true}, (error ? {discoveryRefreshError: error} : {}));
 }
 
+//Клиент подставляет discoveryUrl в href: из ответа Викиданных и из кеша на диске пропускаются только http(s)-адреса
+function httpUrlOrEmpty(value) {
+    try {
+        const url = new URL(String(value || '').trim());
+        return (url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '');
+    } catch (e) {
+        return '';
+    }
+}
+
 function buildExternalFeedIdentity(item = {}) {
     const title = normalizeDiscoveryText(item.title || '');
     if (!title)
@@ -467,7 +477,7 @@ module.exports = {
             del: false,
             libid: '',
             file: '',
-            discoveryUrl: String(item.url || '').trim(),
+            discoveryUrl: httpUrlOrEmpty(item.url),
             discoveryMissingLocal: true,
         };
     },
@@ -504,7 +514,7 @@ module.exports = {
             };
             const books = [...found.values()]
                 .sort((a, b) => (rank(a.book) - rank(b.book)) || (b.score - a.score))
-                .map(copy => Object.assign({}, copy.book, {discoveryUrl: item.url}));
+                .map(copy => Object.assign({}, copy.book, {discoveryUrl: httpUrlOrEmpty(item.url)}));
             result.push({
                 awards: item.awards || [],
                 books: (books.length ? books : [this.makeExternalDiscoveryPlaceholder(item, index)]),
@@ -630,8 +640,8 @@ module.exports = {
             ...(found.discoveryRefreshError ? {discoveryRefreshError: found.discoveryRefreshError} : {}),
             discoveryHasMore: books.length > limit,
             genreOptions: shelfOptions.map(item => ({label: msg(item.label), value: optionValue(item)})),
-            //записи книг - из общего кеша: наружу идёт копия
-            items: _.cloneDeep(books.slice(0, limit)),
+            //записи книг - из общего кеша: наружу идёт копия; адрес проверяется заново, кеш на диске мог быть записан и не этим кодом
+            items: _.cloneDeep(books.slice(0, limit)).map(book => Object.assign(book, {discoveryUrl: httpUrlOrEmpty(book.discoveryUrl)})),
             emptyMessage: msg('discovery.shelf.externalEmpty'),
         };
     },

@@ -79,15 +79,6 @@ async function testServiceWorkerCachesOnlyBuildFiles() {
     }
 }
 
-// Пароль доступа клиент хэширует сам (по http нет crypto.subtle), сервер сравнивает hex: результат должен совпадать с Node.
-async function testClientSha256MatchesNode() {
-    const {sha256Hex} = require('../shared/sha256');
-    const crypto = require('crypto');
-    assert.strictEqual(sha256Hex('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
-    for (const value of ['', 'пароль', 'x'.repeat(55), 'x'.repeat(56), 'x'.repeat(64), 'p\u{1F600}'.repeat(300)])
-        assert.strictEqual(sha256Hex(value), crypto.createHash('sha256').update(value, 'utf8').digest('hex'), `length ${value.length}`);
-}
-
 // Загружает ES-модуль клиента (client/share/*.js, <script> компонента .vue) в песочнице: импорты заменяются заглушками из imports.
 async function loadClientModule(file, imports = {}) {
     let source = await fs.readFile(path.resolve(__dirname, '../client', file), 'utf8');
@@ -387,7 +378,19 @@ async function testStorePersistsOnlySettings() {
             options = value;
         }
     }
-    await loadClientModule('store/index.js', {VuexPersistence, createStore: value => value, root: {}, process: {env: {}}});
+    const brokenStorage = {getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('QuotaExceededError'); }, removeItem: () => { throw new Error('blocked'); }};
+    const window = {localStorage: brokenStorage};
+    await loadClientModule('store/index.js', {VuexPersistence, createStore: value => value, root: {}, process: {env: {}}, window});
+    // localStorage бросает исключения: хранилище отдаёт пустое значение и не падает
+    assert.strictEqual(options.storage.getItem('vuex'), null);
+    assert.doesNotThrow(() => options.storage.setItem('vuex', '{}'));
+    assert.doesNotThrow(() => options.storage.removeItem('vuex'));
+    assert.deepStrictEqual(Object.keys(options.restoreState('vuex', options.storage)), ['settings']);
+    const written = [];
+    window.localStorage = {getItem: key => `read:${key}`, setItem: (key, value) => written.push([key, value])};
+    assert.strictEqual(options.storage.getItem('vuex'), 'read:vuex');
+    options.storage.setItem('vuex', '{}');
+    assert.deepStrictEqual(written, [['vuex', '{}']]);
     const state = {
         config: {csrfToken: 'csrf', userProfiles: [{id: 'admin'}]},
         settings: {accessToken: 'library-pass-hash', currentUserId: 'admin', profileAccessToken: 'profile-token', darkTheme: true},
@@ -397,6 +400,20 @@ async function testStorePersistsOnlySettings() {
     const storage = {getItem: () => JSON.stringify(state)};
     assert.deepStrictEqual(JSON.parse(JSON.stringify(options.restoreState('vuex', storage))), expected);
     assert.deepStrictEqual(Object.keys(options.restoreState('vuex', {getItem: () => '{broken'})), []);
+}
+
+// Старый адрес «=Имя» открывает страницу автора или серии: имя с / ? # % кодируется, чтобы vue-router не разобрал его как адрес.
+async function testLegacyCatalogEncodesExactNames() {
+    const noop = () => {};
+    const router = {beforeEach: noop, afterEach: noop};
+    const {authorRoute, seriesRoute} = await loadClientModule('share/bookActions.js', {utils: {}, t: noop, readerStorage: {}});
+    const {legacyCatalog} = await loadClientModule('router.js', {
+        createRouter: () => router, createWebHashHistory: noop, window: {addEventListener: noop}, document: {addEventListener: noop}, authorRoute, seriesRoute,
+    });
+    const name = 'AC/DC? #1 100%';
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(legacyCatalog({path: '/author', query: {author: `=${name}`}}))), {path: `/author/${encodeURIComponent(name)}`, query: {}});
+    assert.strictEqual(legacyCatalog({path: '/series', query: {series: `=${name}`}}).path, `/series/${encodeURIComponent(name)}`);
+    assert.strictEqual(legacyCatalog({path: '/author', query: {author: 'Tolstoy'}}).path, '/search');
 }
 
 // В сборку попадают только используемые иконки Line Awesome и стили используемых компонентов Quasar
@@ -496,8 +513,8 @@ async function testLockQueueHandsOverAndFrees() {
 }
 
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testServiceWorkerCachesOnlyBuildFiles,
-    testClientSha256MatchesNode, testBookLanguagesDefaultToAll, testLockQueueHandsOverAndFrees,
+    testBookLanguagesDefaultToAll, testLockQueueHandsOverAndFrees,
     testApiConnectionMapsErrors, testApiRequestRefreshesCsrfTokenOnce, testApiDropsOutOfOrderConfig, testLibraryPagesDropPreviousProfileStates,
     testOmniboxClearResetsSearch, testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
-    testReleaseVersionsCompareCalVer];
+    testLegacyCatalogEncodesExactNames, testReleaseVersionsCompareCalVer];

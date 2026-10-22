@@ -299,6 +299,12 @@ class StdDialog {
         this.$refs.dialog.hide();
     }
 
+    //Браузер предлагает сохранить пароль, когда форма исчезает вместе с переходом по истории. replaceState даёт такой переход,
+    //не добавляя запись (Назад не требует лишних нажатий) и не затирая state роутера: closeBookDialog читает из него back.
+    signalFormSubmitted() {
+        history.replaceState(history.state, '');
+    }
+
     //диалог один на всё приложение: каждый вызов ждёт закрытия предыдущего, иначе первый промис не разрешится
     enqueue(show) {
         const result = (this.queue || Promise.resolve()).then(() => new Promise(show));
@@ -369,7 +375,7 @@ class StdDialog {
 
             this.hideTrigger = () => {
                 if (this.ok) {
-                    history.pushState({}, null);
+                    this.signalFormSubmitted();
                     resolve({value: this.inputValue});
                 } else {
                     resolve(false);
@@ -394,7 +400,7 @@ class StdDialog {
 
             this.hideTrigger = () => {
                 if (this.ok) {
-                    history.pushState({}, null);
+                    this.signalFormSubmitted();
                     resolve({
                         login: String(this.inputValue || '').trim(),
                         password: String(this.profilePasswordValue || ''),

@@ -37,6 +37,10 @@ Unreleased
 - "Read" is one mark per profile and book, not a mark per reading list. A book in several lists is read or unread in all of them at once, and so on Kobo, in OPDS and on the discovery shelves; before, unticking it in one list left it read in the others and on Kobo. The "Read" switch is gone from the "Add to list" dialog: mark a book read on its page, in a list or in the reader. Read marks the lists already had move to the profile on the first start, keeping the place in the book; old list exports keep theirs on import too. "Clear reading progress" now also clears every read mark, since read is progress at 100%.
 - Docker images are multi-arch: every tag (`latest`, `<version>`, `dev` and their `-pdf` variants) now also runs on `linux/arm64` (Raspberry Pi 4/5, ARM servers, Apple Silicon with Docker Desktop); Docker picks the right one on its own.
 - Releases include a standalone archive for macOS on Apple Silicon: `inpx-shelf-<version>-macos-arm64.zip`. The `macos` archive stays for Intel Macs.
+- Old catalog links to an exact author or series (`/author?author==Name`) and the author links in reading statistics open the right page for names containing `/`, `?`, `#` or `%`.
+- Accepting the password or profile sign-in dialog no longer adds a browser history entry, so Back takes you where it did before the dialog.
+- The app keeps working when the browser refuses to store settings (full storage, private window, blocked site data); the settings are then just not remembered.
+- Discovery shelves open only `http` and `https` links from Wikidata answers; any other link is dropped.
 
 26.10.0 / 2026-10-20
 

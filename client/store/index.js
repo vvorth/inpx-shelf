@@ -13,7 +13,26 @@ function persisted(state = {}) {
     return {settings};
 }
 
+//localStorage бросает при переполнении квоты, в приватном окне и при заблокированных данных сайта:
+//без него приложение работает, просто настройки не сохраняются
+function safe(action, fallback) {
+    return (...args) => {
+        try {
+            return action(window.localStorage, ...args);
+        } catch (e) {
+            return fallback;
+        }
+    };
+}
+
+const safeStorage = {
+    getItem: safe((storage, key) => storage.getItem(key), null),
+    setItem: safe((storage, key, value) => storage.setItem(key, value)),
+    removeItem: safe((storage, key) => storage.removeItem(key)),
+};
+
 const vuexLocal = new VuexPersistence({
+    storage: safeStorage,
     reducer: persisted,
     //прежние версии сохраняли всё состояние: лишнее отбрасываем уже при чтении
     restoreState: (key, storage) => {
