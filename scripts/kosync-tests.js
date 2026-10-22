@@ -189,7 +189,7 @@ async function testKosyncPushIsOneStoreWrite() {
         assert.deepStrictEqual(saved.kosyncProgress[document], {progress: 'p', percentage: 0.42,
             device: 'Clara', device_id: 'dev-1', timestamp, bookUid: 'book-uid'});
         assert.deepStrictEqual(saved.readerProgress['book-uid'], {percent: 0.42, sectionId: '', pageIndex: 0, textOffset: -1,
-            textSnippet: '', updatedAt: new Date(timestamp*1000).toISOString(), hidden: false, generation: 0});
+            textSnippet: '', updatedAt: new Date(timestamp*1000).toISOString(), hidden: false, generation: 0, read: false});
         assert.strictEqual(writes, 1, 'kosync row and reader progress in one write');
 
         // A newer web position stays; the KOReader row still updates.
@@ -207,10 +207,38 @@ async function testKosyncPushIsOneStoreWrite() {
     });
 }
 
+// Reading past 95% in KOReader marks the book read; after an unmark, pages above 95% don't mark it again.
+async function testKosyncCrossingMarksRead() {
+    await fixture({}, async({dir, call, worker, store}) => {
+        const password = await store.createKosyncPassword('default');
+        const file = path.join(dir, 'book.epub');
+        await fs.writeFile(file, crypto.randomBytes(3000));
+        await kosync.rememberFile(worker, file, 'book-uid');
+        const document = await kosync.partialMd5(file);
+        const push = async(percentage) => {
+            const res = await call('/syncs/progress', password, {method: 'PUT', body: JSON.stringify({
+                document, progress: 'p', percentage, device: 'Clara', device_id: 'dev-1'})});
+            assert.strictEqual(res.status, 200);
+            //одна секунда - шаг времени KOReader: следующая позиция не старее
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return (await store.resolveUser('default')).user.readerProgress['book-uid'];
+        };
+
+        assert.strictEqual((await push(0.5)).read, false);
+        const finished = await push(0.96);
+        assert.deepStrictEqual([finished.read, finished.percent], [true, 0.96]);
+        await store.setBooksRead('default', ['book-uid'], false);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const unmarked = await push(0.99);
+        assert.deepStrictEqual([unmarked.read, unmarked.percent], [false, 0.99], 'no new mark above the threshold after an unmark');
+    });
+}
+
 module.exports = [
     testKosyncPartialMd5MatchesKoreader,
     testKosyncProtocolAndWebProgress,
     testKosyncPushIsOneStoreWrite,
+    testKosyncCrossingMarksRead,
     testKosyncFailedLoginsAreRateLimited,
     testKosyncChecksKeyBeforeReadingBody,
     testKosyncFindsServedCacheFile,

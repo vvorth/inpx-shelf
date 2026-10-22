@@ -11,7 +11,7 @@ export default class ReaderProgressSync {
     }
 
     get isBookMarkedRead() {
-        return this.progressPercent >= 100;
+        return readerProgress.isRead(this.progress);
     }
 
     get hasSavedProgress() {
@@ -129,6 +129,7 @@ export default class ReaderProgressSync {
         }
         if (this.handleReaderProgressGenerationResponse(rawResponseProgress))
             return;
+        this.takeServerReadMark(rawResponseProgress);
 
         const currentProgress = this.normalizeReaderProgress(this.progress);
         const requestTime = Date.parse(requestProgress.updatedAt || '');
@@ -163,8 +164,15 @@ export default class ReaderProgressSync {
 
         const savedProgress = this.mergeReaderProgress(this.progress, response && response.progress ? response.progress : {});
         this.progress = Object.assign({}, this.progress, savedProgress);
+        this.takeServerReadMark(rawResponseProgress);
         this.currentSectionId = String(this.progress.sectionId || this.currentSectionId || '').trim();
         this.writeStoredReaderProgress();
+    }
+
+    //Отметку «прочитано» решает сервер: чтение до порога её ставит, а снятая на другом устройстве не возвращается
+    takeServerReadMark(rawResponseProgress = {}) {
+        if (rawResponseProgress && typeof rawResponseProgress.read === 'boolean' && rawResponseProgress.read !== readerProgress.isRead(this.progress))
+            this.progress = Object.assign({}, this.progress, {read: rawResponseProgress.read});
     }
 
     queuePersistProgress(bookUid = this.bookUid, options = {}) {
@@ -277,16 +285,6 @@ export default class ReaderProgressSync {
         await this.setCurrentBookRead(!this.isBookMarkedRead);
     }
 
-    //Доля прочитанного по тому, что сейчас на экране: место, где читатель был до отметки «прочитано»
-    currentViewPercent() {
-        if (this.isPagedMode)
-            return (this.pagedProgressTotalPages > 1 ? this.currentPagedPageIndex / (this.pagedProgressTotalPages - 1) : 0);
-
-        const scroller = this.$refs.scroller;
-        const maxScroll = (scroller ? Math.max(0, scroller.scrollHeight - scroller.clientHeight) : 0);
-        return (maxScroll > 0 ? scroller.scrollTop / maxScroll : 0);
-    }
-
     async setCurrentBookRead(read = true, {undoable = true} = {}) {
         if (!this.bookUid)
             return;
@@ -300,24 +298,16 @@ export default class ReaderProgressSync {
 
         const bookUid = this.bookUid;
         try {
-            // Сервер при отметке стирает место в книге, при снятии - весь прогресс: место сохраняем следом
+            // Сервер меняет только отметку: место в книге остаётся и здесь, и на сервере
             await api.setBookRead(bookUid, read);
             if (bookUid !== this.bookUid)
                 return;
 
-            const place = Object.assign({}, this.progress, {sectionId: this.currentSectionId || this.progress.sectionId || ''});
-            const updatedAt = new Date().toISOString();
             this.progress = (read
-                ? readerProgress.markRead(place, updatedAt, this.readerProgressGeneration)
-                : readerProgress.unmarkRead(place, this.currentViewPercent(), updatedAt, this.readerProgressGeneration));
-            this.currentSectionId = this.progress.sectionId;
-            this.restoredScrollTop = ((!this.isPagedMode && this.$refs.scroller) ? this.$refs.scroller.scrollTop : -1);
-            if (this.hasReaderProgressPlace(this.progress)) {
+                ? readerProgress.markRead(this.progress, this.readerProgressGeneration)
+                : readerProgress.unmarkRead(this.progress, this.readerProgressGeneration));
+            if (this.hasReaderProgressPlace(this.progress))
                 this.writeStoredReaderProgress();
-                this.queuePersistProgress(bookUid);// no await
-            } else {
-                this.clearStoredReaderProgress(bookUid);
-            }
 
             const actions = (undoable
                 ? [{label: this.uiText.undo, color: 'primary', handler: () => this.setCurrentBookRead(!read, {undoable: false})}]

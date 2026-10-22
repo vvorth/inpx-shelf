@@ -228,9 +228,9 @@ async function testListReadMarksMoveToProgress() {
 
         const progress = async() => (await store.resolveUser('reader')).user.readerProgress;
         let rows = await progress();
-        assert.strictEqual(rows['book-1'].percent, 1);
+        assert.deepStrictEqual([rows['book-1'].read, rows['book-1'].percent], [true, 0], 'a book never opened is read at its start');
         assert.strictEqual(rows['book-1'].updatedAt, '2026-02-01T00:00:00.000Z', 'marked when the list last changed');
-        assert.deepStrictEqual([rows['book-2'].percent, rows['book-2'].percentBeforeRead, rows['book-2'].sectionId], [1, 0.4, 's']);
+        assert.deepStrictEqual([rows['book-2'].read, rows['book-2'].percent, rows['book-2'].sectionId], [true, 0.4, 's'], 'the place stays');
         assert.strictEqual(rows['book-3'], undefined);
 
         //после записи файла отметки остаются только в прогрессе
@@ -238,11 +238,11 @@ async function testListReadMarksMoveToProgress() {
         const saved = await fs.readJson(store.file);
         assert.deepStrictEqual(saved.lists[0].books, [{bookUid: 'book-1'}, {bookUid: 'book-2'}, {bookUid: 'book-3'}]);
         rows = await progress();
-        assert.strictEqual(rows['book-1'].percent, 1);
+        assert.strictEqual(rows['book-1'].read, true);
 
         await store.importData('reader', {lists: [{name: 'Exported', books: [{bookUid: realUid('book-4'), read: true}, {bookUid: realUid('book-5')}]}]});
         rows = await progress();
-        assert.strictEqual(rows[realUid('book-4')].percent, 1);
+        assert.strictEqual(rows[realUid('book-4')].read, true);
         assert.strictEqual(rows[realUid('book-5')], undefined);
     });
 }
@@ -310,24 +310,25 @@ async function testReadingStats() {
         return new Map(uids.filter(uid => books[uid]).map(uid => [uid, books[uid]]));
     };
     const user = {id: 'reader', readerProgress: {
-        done: {percent: 1, updatedAt: '2026-03-05T10:00:00.000Z'},
-        marked: {percent: 1, updatedAt: '2026-03-07T10:00:00.000Z', percentBeforeRead: 0.1},
-        reading: {percent: 0.4, updatedAt: '2026-04-01T10:00:00.000Z'},
+        done: {percent: 1, updatedAt: '2026-03-05T10:00:00.000Z', read: true},
+        marked: {percent: 0.1, updatedAt: '2026-03-07T10:00:00.000Z', read: true},
+        reading: {percent: 0.4, updatedAt: '2026-04-01T10:00:00.000Z', read: false},
+        unmarked: {percent: 1, updatedAt: '2026-04-01T10:00:00.000Z', read: false},
         hidden: {percent: 0.2, hidden: true},
     }};
 
     const stats = await worker.getReadingStats(user);
     assert.deepStrictEqual(stats, {
         finished: 2,
-        inProgress: 1,
+        inProgress: 2,
         finishedAt: ['2026-03-05T10:00:00.000Z', '2026-03-07T10:00:00.000Z'],
         authors: [{name: 'Лем Станислав', count: 2}, {name: 'Стругацкий Аркадий', count: 1}],
         genres: [{name: 'sf', count: 2}, {name: 'sf_social', count: 1}],
     });
     await worker.getReadingStats(user);
     assert.strictEqual(lookups, 1, 'unchanged data comes from the cache');
-    user.readerProgress.reading = {percent: 1, updatedAt: '2026-04-02T10:00:00.000Z', percentBeforeRead: 0.4};
-    assert.strictEqual((await worker.getReadingStats(user)).inProgress, 0, 'a book marked read is not in progress');
+    user.readerProgress.reading = {percent: 0.4, updatedAt: '2026-04-02T10:00:00.000Z', read: true};
+    assert.strictEqual((await worker.getReadingStats(user)).inProgress, 1, 'a book marked read is not in progress, whatever its percent');
     assert.strictEqual(lookups, 2);
 }
 

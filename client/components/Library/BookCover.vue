@@ -9,11 +9,11 @@
                 {{ shortAuthor }}
             </div>
         </template>
-        <div v-if="progress > 0 && progress < readPercent" class="book-cover-progress">
-            <i :style="{width: `${Math.round(progress * 100)}%`}" />
-        </div>
-        <div v-else-if="progress >= readPercent" class="book-cover-read" :title="$t('common.read')">
+        <div v-if="read" class="book-cover-read" :title="$t('common.read')">
             <q-icon name="la la-check" size="14px" />
+        </div>
+        <div v-else-if="progress > 0" class="book-cover-progress">
+            <i :style="{width: `${Math.round(progress * 100)}%`}" />
         </div>
     </div>
 </template>
@@ -40,12 +40,12 @@ class BookCover {
     _props = {
         book: {type: Object, required: true},
         progress: {type: Number, default: 0},
+        //отметка «прочитано» вместо доли: место в прочитанной книге может быть любым
+        read: Boolean,
         small: Boolean,
     };
 
     failed = false;
-    //как READ_PERCENT на сервере: книга дочитана, хотя до 100% не дошла
-    readPercent = 0.999;
 
     get src() {
         return coverUrl(this.$store.state.config, this.book);

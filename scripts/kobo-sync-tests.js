@@ -215,6 +215,7 @@ async function testKoboReadStateBothWays() {
         assert.strictEqual(putBody.RequestResult, 'Success');
         assert.strictEqual(putBody.UpdateResults[0].StatusInfoResult.Result, 'Success');
         assert.strictEqual(await isRead(store, 'fb2-uid'), true);
+        assert.strictEqual((await store.getReaderState('default', 'fb2-uid')).progress.percent, 1, 'the device position reaches the web too');
         next = await sync();
         assert.ok(!next.items.some(item => item.ChangedReadingState), 'state from the device is not echoed');
 
@@ -223,12 +224,53 @@ async function testKoboReadStateBothWays() {
         assert.strictEqual(state[0].Statistics.SpentReadingMinutes, 42);
         assert.strictEqual(state[0].CurrentBookmark.Location.Value, 'kobo.1.1');
 
-        // Unticking "read" on the web reopens the book on the device.
+        // Unticking "read" on the web reopens the book on the device; the web position stays.
         await store.setBooksRead('default', ['fb2-uid'], false);
         next = await sync();
         assert.strictEqual(next.items.find(item => item.ChangedReadingState).ChangedReadingState.ReadingState.StatusInfo.Status, 'ReadyToRead');
+        assert.strictEqual((await store.getReaderState('default', 'fb2-uid')).progress.percent, 1);
         assert.strictEqual((await call(`/v1/library/${kobo.uuidv5('x')}/state`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'}, body: '{}'})).status, 404);
+    });
+}
+
+// Reading past 95% on the Kobo marks the book read in the profile. The device reading its last pages is not told
+// Finished, other devices are; after an unmark, pages above 95% don't mark it again.
+async function testKoboProgressPastThresholdMarksRead() {
+    await fixture({}, async({service, store, listA, endpoint, call, sync}) => {
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        const {endpoint: secondEndpoint} = await service.createDevice('default', {name: 'Libra', listIds: [listA.id]},
+            {headers: {host: new URL(endpoint).host}, socket: {}, protocol: 'http'});
+        let secondToken = '';
+        const syncSecond = async() => {
+            const response = await fetch(`${secondEndpoint}/v1/library/sync`, {headers: secondToken ? {'x-kobo-synctoken': secondToken} : {}});
+            secondToken = response.headers.get('x-kobo-synctoken');
+            return await response.json();
+        };
+        await syncSecond();
+        const epubUuid = kobo.uuidv5('main:102');
+        const put = (percent, minutesAgo) => call(`/v1/library/${epubUuid}/state`, {method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ReadingStates: [{StatusInfo: {Status: 'Reading'},
+                CurrentBookmark: {ProgressPercent: percent, LastModified: new Date(Date.now() - minutesAgo*60000).toISOString()}}]})});
+
+        assert.strictEqual((await put(50, 10)).status, 200);
+        assert.strictEqual(await isRead(store, 'epub-uid'), false);
+        assert.strictEqual((await put(96, 9)).status, 200);
+        assert.strictEqual(await isRead(store, 'epub-uid'), true);
+        assert.strictEqual((await store.getReaderState('default', 'epub-uid')).progress.percent, 0.96);
+        assert.ok(!(await sync()).items.some(item => item.ChangedReadingState), 'the device reading the last pages is left alone');
+        const changed = (await syncSecond()).find(item => item.ChangedReadingState);
+        assert.strictEqual(changed.ChangedReadingState.ReadingState.StatusInfo.Status, 'Finished');
+
+        // Unmarked on the web: the reading device keeps its status, the one told Finished reopens it.
+        await store.setBooksRead('default', ['epub-uid'], false);
+        assert.ok(!(await sync()).items.some(item => item.ChangedReadingState));
+        const reopened = (await syncSecond()).find(item => item.ChangedReadingState);
+        assert.strictEqual(reopened.ChangedReadingState.ReadingState.StatusInfo.Status, 'ReadyToRead');
+        assert.strictEqual((await put(98, 0)).status, 200);
+        assert.strictEqual(await isRead(store, 'epub-uid'), false, 'no new mark above the threshold after an unmark');
+        assert.strictEqual((await store.getReaderState('default', 'epub-uid')).progress.percent, 0.98);
     });
 }
 
@@ -1408,6 +1450,7 @@ module.exports = [
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,
     testKoboReadStateBothWays,
+    testKoboProgressPastThresholdMarksRead,
     testKoboFinishedReachesOtherDevices,
     testKoboFinishedIsNotUndoneWhenTheListUpdateFails,
     testKoboDeleteOnDeviceAndKeepRemovedBooks,

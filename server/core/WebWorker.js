@@ -25,7 +25,7 @@ const Fb2Helper = require('./fb2/Fb2Helper');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {compareReleaseVersions} = require('../../shared/release');
-const {READ_PERCENT, isReadingInProgress, readerProgressOf} = require('./ReaderProgress');
+const {isProgressRead, isReadingInProgress, readerProgressOf} = require('./ReaderProgress');
 const {bookNote, rankReplacements, normalizeTitle} = require('./search/bookMatch');
 
 //server states
@@ -405,7 +405,7 @@ class WebWorker {
                 continue;
 
             const percent = (progress ? Math.max(0, Math.min(1, Number(progress.percent || 0) || 0)) : 0);
-            states[bookUid] = {percent, read: percent >= READ_PERCENT, hidden: !!progress && progress.hidden === true, inList};
+            states[bookUid] = {percent, read: isProgressRead(progress), hidden: !!progress && progress.hidden === true, inList};
         }
         return {states};
     }
@@ -640,12 +640,13 @@ class WebWorker {
                 const normalizedProgress = Object.assign({percent: 0, sectionId: '', updatedAt: '', hidden: false}, progress || {});
                 const percent = Math.max(0, Math.min(1, Number(normalizedProgress.percent || 0) || 0));
                 const hidden = normalizedProgress.hidden === true;
-                const rowState = hidden ? 'hidden' : (percent >= READ_PERCENT ? 'read' : 'reading');
+                const read = isProgressRead(normalizedProgress);
+                const rowState = hidden ? 'hidden' : (read ? 'read' : 'reading');
                 counters.all++;
                 counters[rowState]++;
                 return {
                     bookUid,
-                    progress: Object.assign(normalizedProgress, {percent, hidden}),
+                    progress: Object.assign(normalizedProgress, {percent, hidden, read}),
                     state: rowState,
                 };
             })
@@ -667,6 +668,7 @@ class WebWorker {
                 unavailable: !book,
                 percent: item.progress.percent,
                 hidden: item.progress.hidden === true,
+                read: item.progress.read,
                 state: item.state,
                 sectionId: String(item.progress.sectionId || '').trim(),
                 updatedAt: String(item.progress.updatedAt || '').trim(),
@@ -680,6 +682,8 @@ class WebWorker {
         }
 
         const compareText = (a, b, field) => String(a[field] || '').localeCompare(String(b[field] || ''), 'ru');
+        //прочитанная - как дочитанная до конца, где бы ни было место в ней
+        const progressOf = item => (item.read ? 1 : Number(item.percent || 0));
         items.sort((a, b) => {
             switch (sort) {
                 case 'updatedAsc':
@@ -689,9 +693,9 @@ class WebWorker {
                 case 'authorAsc':
                     return compareText(a, b, 'author') || compareText(a, b, 'title');
                 case 'progressDesc':
-                    return (Number(b.percent || 0) - Number(a.percent || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+                    return (progressOf(b) - progressOf(a)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
                 case 'progressAsc':
-                    return (Number(a.percent || 0) - Number(b.percent || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+                    return (progressOf(a) - progressOf(b)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
                 case 'updatedDesc':
                 default:
                     return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));

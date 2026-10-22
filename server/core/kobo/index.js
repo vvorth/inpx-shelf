@@ -802,8 +802,8 @@ class KoboService {
             const state = stateFor(item.uuid) || this.emptyState(now);
             const status = (item.read ? 'Finished' : 'ReadyToRead');
             // The state is shared by the profile's devices (another one may have set it already):
-            // what matters is the status this device was told.
-            if (row.status === status)
+            // what matters is the status this device was told. Unread only undoes Finished: a device still reading keeps its status.
+            if (row.status === status || (!item.read && row.status !== 'Finished'))
                 continue;
             this.setStatus(state, status, now);
             states[item.uuid] = state;
@@ -878,12 +878,16 @@ class KoboService {
         const status = (statusInfo && ['ReadyToRead', 'Reading', 'Finished'].includes(statusInfo.Status) ? statusInfo.Status : '');
         const current = this.store.getState(device.userId, uuid);
         const finished = (status === 'Finished' && (!current || current.status !== 'Finished'));
-        const markedRead = (finished && await this.markRead(device.userId, row.bookUid));
-        let progress = null;
+        const bookmark = incoming.CurrentBookmark;
+        const percent = Number(bookmark && typeof(bookmark) === 'object' ? bookmark.ProgressPercent : NaN);
+        // The web progress goes first: the read mark stamps the progress with the server time, and the device's
+        // position (older by its own clock) would then be turned away. Reading past READ_AUTO_PERCENT marks the book read.
+        const autoRead = (Number.isFinite(percent)
+            && await this.syncWebProgress(device.userId, row.bookUid, Math.max(0, Math.min(100, percent)), this.deviceTime(bookmark.LastModified, now)));
+        const markedRead = (finished && await this.markRead(device.userId, row.bookUid)) || autoRead;
         const saved = await this.store.saveSync(device.id, (target, data) => {
             const rows = data.states[target.userId] = data.states[target.userId] || idMap();
             const state = rows[uuid] = ownEntry(rows, uuid) || this.emptyState(now);
-            const bookmark = incoming.CurrentBookmark;
             if (bookmark && typeof(bookmark) === 'object') {
                 for (const field of ['ProgressPercent', 'ContentSourceProgressPercent']) {
                     const value = Number(bookmark[field]);
@@ -895,8 +899,6 @@ class KoboService {
                     state.bookmark.Location = {Value: String(location.Value || '').slice(0, 512), Type: String(location.Type || '').slice(0, 64), Source: String(location.Source || '').slice(0, 512)};
                 state.bookmark.lastModified = now;
                 result.CurrentBookmarkResult = {Result: 'Success'};
-                if (Number.isFinite(Number(bookmark.ProgressPercent)))
-                    progress = {percent: state.bookmark.ProgressPercent, modified: this.deviceTime(bookmark.LastModified, now)};
             }
             const statistics = incoming.Statistics;
             if (statistics && typeof(statistics) === 'object') {
@@ -917,17 +919,13 @@ class KoboService {
             const live = ownEntry(target.books, uuid);
             if (live) {
                 live.status = state.status;
-                // This device already knows the book is read. Other devices of the profile
-                // don't: they get Finished from the read mark on their next sync.
+                // This device finished the book itself or is reading its last pages: it is not told Finished.
+                // Other devices of the profile get Finished from the read mark on their next sync.
                 if (markedRead)
                     live.listRead = true;
             }
             return state;
         });
-
-        // Marking the book read already set the web progress to finished.
-        if (progress && !markedRead)
-            await this.syncWebProgress(device.userId, row.bookUid, progress.percent, progress.modified);
 
         result.LastModified = koboTime(saved ? saved.lastModified : now);
         result.PriorityTimestamp = koboTime(saved ? saved.priorityTimestamp : now);
@@ -940,12 +938,13 @@ class KoboService {
         return (Number.isFinite(time) && time <= Date.now() + 5*60*1000 ? new Date(time).toISOString() : now);
     }
 
-    // Kobo progress shows up in the web reader's "continue reading" when it is newer.
+    // Kobo progress shows up in the web reader's "continue reading" when it is newer. True when it marked the book read.
     async syncWebProgress(userId, bookUid, percent, modified) {
         try {
-            await this.worker.readingListStore.mergeDeviceProgress(userId, bookUid, percent / 100, modified);
+            return await this.worker.readingListStore.mergeDeviceProgress(userId, bookUid, percent / 100, modified);
         } catch (e) {
             log(LM_WARN, `Kobo: cannot update reader progress of ${bookUid}: ${e.message}`);
+            return false;
         }
     }
 

@@ -1,5 +1,6 @@
 //Выбор позиции чтения: сервер, сводка профиля или копия в браузере, сброс прогресса по поколению.
 //Без состояния читалки: поколение по умолчанию передаётся явно, чтобы правила проверялись тестом.
+const {reachesReadMark} = require('../../shared/readMark');
 
 function normalize(progress = {}, generationFallback = 0) {
     const percent = Number(progress && progress.percent);
@@ -19,30 +20,28 @@ function normalize(progress = {}, generationFallback = 0) {
         generation: Number.isFinite(generation)
             ? Math.max(0, Math.round(generation))
             : Math.max(0, Math.round(Number(generationFallback || 0) || 0)),
+        read: !!(progress && progress.read === true),
     };
 }
 
-//Как на сервере (server/core/ReaderProgress.js): от 99.9% книга прочитана
-const READ_PERCENT = 0.999;
-
+//«Прочитано» - флаг профиля (shared/readMark.js), не доля прочитанного
 function isRead(progress = {}) {
-    return normalize(progress || {}).percent >= READ_PERCENT;
+    return normalize(progress || {}).read;
 }
 
-//Отметка «прочитано»: percent 1, место в книге (глава, страница, текст) остаётся
-function markRead(progress = {}, updatedAt = '', generation = 0) {
-    return Object.assign(normalize(progress || {}, generation), {percent: 1, updatedAt});
+//Отметка и её снятие меняют только флаг: место в книге и доля прочитанного остаются
+function markRead(progress = {}, generation = 0) {
+    return Object.assign(normalize(progress || {}, generation), {read: true});
 }
 
-//Снятие отметки: то же место, доля прочитанного - по нему (viewPercent).
-//Места нет или оно в самом конце книги - начало, как у непрочитанной
-function unmarkRead(progress = {}, viewPercent = 0, updatedAt = '', generation = 0) {
-    const current = normalize(progress || {}, generation);
-    const percent = Math.max(0, Math.min(1, Number(viewPercent) || 0));
-    const placed = !!(current.sectionId || current.pageIndex > 0 || current.textOffset >= 0 || current.textSnippet);
-    if (!placed || percent >= READ_PERCENT)
-        return Object.assign(normalize({}, current.generation), {updatedAt});
-    return Object.assign(current, {percent, updatedAt});
+function unmarkRead(progress = {}, generation = 0) {
+    return Object.assign(normalize(progress || {}, generation), {read: false});
+}
+
+//Читатель дошёл до percent: переход через READ_AUTO_PERCENT снизу отмечает книгу, как на сервере
+function withPercent(progress = {}, percent = 0) {
+    const before = Number(progress && progress.percent) || 0;
+    return Object.assign({}, progress, {percent, read: !!(progress && progress.read === true) || reachesReadMark(before, percent)});
 }
 
 function hasPlace(progress = {}) {
@@ -202,7 +201,8 @@ function opening(state = {}, profileProgress = null, storedProgress = null) {
     const choice = chooseRemote(stored, remote, {generation});
     return {
         generation,
-        progress: choice.progress,
+        //отметка «прочитано» - с сервера: копия в браузере могла её не застать
+        progress: Object.assign({}, choice.progress, {read: normalize(stateProgress).read}),
         remote: choice.remote,
         upload: shouldUpload(normalize(stateProgress, generation), choice.progress),
         dropStored: !!(storedProgress && !stored),
@@ -220,4 +220,4 @@ function trimMap(map = {}, limit = 500) {
     return Object.fromEntries(entries.slice(0, limit));
 }
 
-module.exports = {normalize, isRead, markRead, unmarkRead, hasPlace, merge, samePosition, chooseRemote, saveOutcome, shouldUpload, afterReset, opening, trimMap};
+module.exports = {normalize, isRead, markRead, unmarkRead, withPercent, hasPlace, merge, samePosition, chooseRemote, saveOutcome, shouldUpload, afterReset, opening, trimMap};

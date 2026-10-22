@@ -327,7 +327,7 @@ module.exports = {
         const lists = await this.getLists(user.id);
 
         return {
-            version: 4,
+            version: 5,
             exportedAt: this.nowIso(),
             user: {
                 id: user.id,

@@ -1360,7 +1360,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
         });
 
         const exported = await store.exportData('reader-a');
-        assert.strictEqual(exported.version, 4);
+        assert.strictEqual(exported.version, 5);
         assert.strictEqual(exported.user.emailTo, 'reader@example.test');
         assert.strictEqual(exported.user.readerPreferences.theme, 'sepia');
         assert.strictEqual(exported.user.readerProgress[bookUid].percent, 0.75);
@@ -1423,8 +1423,9 @@ async function testProfileReadingSummaryLeavesOutReadBooks() {
     worker.catalogSearch = {getBooksByUids: async uids => uids.map(uid => ({_uid: uid, title: 'Книга', author: 'Автор', ext: 'fb2'}))};
     const summary = await worker.buildUserReadingSummary({readerProgress: {
         reading: {percent: 0.5},
-        finished: {percent: 1},
-        almost: {percent: 0.9995},
+        finished: {percent: 1, read: true},
+        //прочитана с середины: отметка, а не доля, убирает книгу из «Читаю сейчас»
+        marked: {percent: 0.6, read: true},
         hidden: {percent: 0.3, hidden: true},
     }}, 48);
     assert.deepStrictEqual(summary.items.map(book => book.bookUid), ['reading']);
@@ -1479,10 +1480,10 @@ async function testBookPageRecordAndReaderStates() {
     await worker.markNewerEditions(noNewer);
     assert.strictEqual(noNewer[0].newerEdition, false, 'an older edition or another language is not a newer edition');
 
-    const user = {readerProgress: {a: {percent: 0.4}, b: {percent: 1}, c: {percent: 0.2, hidden: true}}};
+    const user = {readerProgress: {a: {percent: 0.4}, b: {percent: 0.6, read: true}, c: {percent: 0.2, hidden: true}}};
     assert.deepStrictEqual(worker.getUserBookStates(user, ['a', 'b', 'c', 'missing', '']).states, {
         a: {percent: 0.4, read: false, hidden: false, inList: false},
-        b: {percent: 1, read: true, hidden: false, inList: false},
+        b: {percent: 0.6, read: true, hidden: false, inList: false},
         c: {percent: 0.2, read: false, hidden: true, inList: false},
     });
     assert.deepStrictEqual(worker.getUserBookStates(null, ['a']).states, {});
@@ -1695,7 +1696,7 @@ async function testReaderHomeKeepsUnavailableProgressVisible() {
     assert.strictEqual(JSON.stringify(user), saved, 'Reading the library must preserve saved progress');
 
     user.readerProgress.available = {percent: 0.5};
-    user.readerProgress.finished = {percent: 1};
+    user.readerProgress.finished = {percent: 0.42, read: true};
     user.readerProgress.hidden = {percent: 0.3, hidden: true};
     user.readerProgress['   '] = {percent: 0.2};
     const all = await worker.getUserReadingLibrary(user, {state: 'all', limit: 2});
@@ -1716,6 +1717,8 @@ async function testReaderHomeKeepsUnavailableProgressVisible() {
     });
     const xml = await page.body({query: {user: 'reader', state: 'all'}, originalUrl: '/opds/reading-progress?user=reader&state=all'});
     assert.match(xml, /Прогресс сохранён, но книга не найдена/);
+    assert.match(xml, /✓ /);
+    assert.doesNotMatch(xml, /42%/, 'a read book shows the mark, not its percent');
     assert.match(xml, /\/book\?uid=available/);
     assert.doesNotMatch(xml, /\/book\?uid=(?:missing-\d+|finished|hidden)/, 'Unavailable books must not expose broken acquisition links');
 }
@@ -1853,44 +1856,141 @@ async function testMarkReadKeepsReadingPlace() {
         const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'});
         const place = {sectionId: 's9', pageIndex: 41, textOffset: 120, textSnippet: 'Глава девятая'};
         await store.save({
-            version: 5,
+            version: 6,
             users: [{
                 id: 'reader',
                 name: 'Reader',
                 readerProgress: {
-                    'book:a': Object.assign({percent: 0.63, updatedAt: '2026-01-01T00:00:00.000Z'}, place),
-                    'book:b': {percent: 1, updatedAt: '2026-01-01T00:00:00.000Z'},
+                    'book:a': Object.assign({percent: 0.63, updatedAt: '2026-01-01T00:00:00.000Z', read: false}, place),
+                    'book:b': {percent: 1, updatedAt: '2026-01-01T00:00:00.000Z', read: true},
                 },
             }],
             lists: [],
         });
         const progress = async uid => (await store.load()).users.find(item => item.id === 'reader').readerProgress[uid];
+        const placeOf = row => [row.sectionId, row.pageIndex, row.textOffset, row.textSnippet];
 
+        //отметка - только флаг: доля и место остаются, читалка откроет книгу там же
         await store.setBooksRead('reader', ['book:a'], true);
         let row = await progress('book:a');
-        assert.strictEqual(row.percent, 1);
-        assert.deepStrictEqual([row.sectionId, row.pageIndex, row.textOffset, row.textSnippet], Object.values(place), 'The place stays');
+        assert.deepStrictEqual([row.read, row.percent], [true, 0.63]);
+        assert.deepStrictEqual(placeOf(row), Object.values(place), 'The place stays');
+        assert.strictEqual((await store.getReaderState('reader', 'book:a')).progress.percent, 0.63);
 
-        //читалка пересохраняет место отмеченной книги: доля до отметки не теряется
-        await store.updateReaderProgress('reader', 'book:a', Object.assign({percent: 1, updatedAt: '2026-02-01T00:00:00.000Z'}, place));
-        assert.strictEqual((await progress('book:a')).percentBeforeRead, 0.63);
-        //второе нажатие «прочитано» не затирает долю до первого
-        await store.setBooksRead('reader', ['book:a'], true);
+        //чтение дальше отметку не снимает
+        await store.updateReaderProgress('reader', 'book:a', Object.assign({}, place, {percent: 0.7, updatedAt: new Date(Date.now() + 1000).toISOString()}));
+        assert.deepStrictEqual([(await progress('book:a')).read, (await progress('book:a')).percent], [true, 0.7]);
 
         await store.setBooksRead('reader', ['book:a'], false);
         row = await progress('book:a');
-        assert.strictEqual(row.percent, 0.63, 'Unmarking returns to the share read before the mark');
-        assert.strictEqual(row.pageIndex, 41);
-        assert.ok(!Object.hasOwn(row, 'percentBeforeRead'));
+        assert.deepStrictEqual([row.read, row.percent, row.pageIndex], [false, 0.7, 41], 'Unmarking keeps the position');
 
-        //книга прочитана до конца без отметки: снятие отметки сбрасывает её, как раньше
+        //дочитанная до конца: после снятия отметки остаётся её место
         await store.setBooksRead('reader', ['book:b'], false);
-        assert.strictEqual(await progress('book:b'), undefined);
+        assert.deepStrictEqual([(await progress('book:b')).read, (await progress('book:b')).percent], [false, 1]);
 
-        //читатель ушёл с отмеченной книги назад: доля до отметки больше не нужна
-        await store.setBooksRead('reader', ['book:a'], true);
-        await store.updateReaderProgress('reader', 'book:a', {percent: 0.4, updatedAt: new Date(Date.now() + 60000).toISOString()});
-        assert.ok(!Object.hasOwn(await progress('book:a'), 'percentBeforeRead'));
+        //не открытая книга: отметка без места, снятие отметки убирает пустую запись
+        await store.setBooksRead('reader', ['book:c'], true);
+        assert.deepStrictEqual([(await progress('book:c')).read, (await progress('book:c')).percent], [true, 0]);
+        await store.setBooksRead('reader', ['book:c'], false);
+        assert.strictEqual(await progress('book:c'), undefined);
+    });
+}
+
+//Чтение до 95% само отмечает книгу; только переход снизу: снятая на 96% отметка не возвращается
+async function testReadMarkCrossingRule() {
+    await withTempDir(async(dir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'});
+        await store.load();
+        //каждое сохранение новее предыдущего и отметки (в пределах 5 минут, что сервер принимает от часов устройства)
+        let step = 0;
+        const at = () => new Date(Date.now() + (++step) * 1000).toISOString();
+        const go = async percent => await store.updateReaderProgress('', 'book:d', {percent, updatedAt: at()});
+
+        assert.strictEqual((await go(0.3)).read, false);
+        assert.strictEqual((await go(0.94)).read, false);
+        assert.strictEqual((await go(0.95)).read, true, 'reaching 95% marks the book');
+        assert.strictEqual((await go(0.5)).read, true, 'going back keeps the mark');
+        await go(0.96);
+
+        await store.setBooksRead('', ['book:d'], false);
+        assert.strictEqual((await store.getReaderState('', 'book:d')).progress.percent, 0.96);
+        assert.strictEqual((await go(0.97)).read, false, 'no new mark above the threshold after an unmark');
+        await go(0.6);
+        assert.strictEqual((await go(0.99)).read, true, 'crossing again marks again');
+
+        //скачок через порог за одно сохранение
+        assert.strictEqual((await store.updateReaderProgress('', 'book:e', {percent: 0.3, updatedAt: at()})).read, false);
+        assert.strictEqual((await store.updateReaderProgress('', 'book:e', {percent: 0.98, updatedAt: at()})).read, true);
+        //отметку не снимает и «скрыть»
+        assert.strictEqual((await store.updateReaderProgress('', 'book:e', {hidden: true, percent: 0.98})).read, true);
+    });
+}
+
+//Старые файлы: «прочитано» было долей от 99.9%, отметка ставила 100% и запоминала долю до неё
+async function testLegacyReadProgressMigrates() {
+    await withTempDir(async(dir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'});
+        const place = {sectionId: 's2', pageIndex: 12, textOffset: 40, textSnippet: 'Глава'};
+        const legacy = {
+            marked: Object.assign({percent: 1, percentBeforeRead: 0.35, updatedAt: '2026-01-02T00:00:00.000Z'}, place),
+            finished: {percent: 1, updatedAt: '2026-01-03T00:00:00.000Z'},
+            almost: {percent: 0.9995, updatedAt: '2026-01-04T00:00:00.000Z'},
+            reading: {percent: 0.97, updatedAt: '2026-01-05T00:00:00.000Z'},
+        };
+        await fs.writeJson(store.file, {version: 5, users: [{id: 'reader', name: 'Reader', readerProgress: legacy}], lists: []});
+        const rows = (await store.resolveUser('reader')).user.readerProgress;
+        assert.deepStrictEqual([rows.marked.read, rows.marked.percent], [true, 0.35], 'the old mark keeps its place and percent');
+        assert.deepStrictEqual([rows.marked.sectionId, rows.marked.pageIndex], ['s2', 12]);
+        assert.deepStrictEqual(Object.keys(rows).map(uid => [uid, rows[uid].read]),
+            [['marked', true], ['finished', true], ['almost', true], ['reading', false]], 'without a flag, 99.9% is read');
+        assert.ok(Object.values(rows).every(row => !Object.hasOwn(row, 'percentBeforeRead')));
+
+        //старый экспорт проходит ту же нормализацию
+        const book = require('crypto').createHash('sha256').update('old export').digest('base64');
+        await store.importData('reader', {lists: [], user: {readerProgress: {[book]: {percent: 1, percentBeforeRead: 0.2, updatedAt: '2026-02-01T00:00:00.000Z'}}}});
+        const imported = (await store.resolveUser('reader')).user.readerProgress[book];
+        assert.deepStrictEqual([imported.read, imported.percent], [true, 0.2]);
+
+        //поле read - решающее: снятая отметка у дочитанной до конца книги не возвращается
+        await store.setBooksRead('reader', ['finished'], false);
+        const saved = await fs.readJson(store.file);
+        assert.strictEqual(saved.version, 6);
+        assert.strictEqual(saved.users.find(user => user.id === 'reader').readerProgress.finished.read, false);
+        assert.strictEqual((await store.resolveUser('reader')).user.readerProgress.finished.read, false);
+    });
+}
+
+//«Сбросить прогресс» сбрасывает позиции и оставляет отметки «прочитано»; «Забыть» убирает запись целиком
+async function testClearProgressKeepsReadMarks() {
+    await withTempDir(async(dir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir: dir, adminLogin: 'admin', adminPassword: 'admin'});
+        await store.load();
+        await store.updateReaderProgress('', 'book:r', {percent: 0.6, sectionId: 's', pageIndex: 9, updatedAt: '2026-03-01T00:00:00.000Z'});
+        await store.setBooksRead('', ['book:r'], true);
+        const readAt = (await store.getReaderState('', 'book:r')).progress.updatedAt;
+        await store.updateReaderProgress('', 'book:u', {percent: 0.4, updatedAt: '2026-03-01T00:00:00.000Z'});
+
+        const result = await store.clearReaderProgress('');
+        assert.deepStrictEqual(result.bookUids.sort(), ['book:r', 'book:u']);
+        const {user} = await store.resolveUser('');
+        assert.deepStrictEqual(Object.keys(user.readerProgress), ['book:r']);
+        const row = user.readerProgress['book:r'];
+        assert.deepStrictEqual([row.read, row.percent, row.sectionId, row.pageIndex, row.generation, row.updatedAt],
+            [true, 0, '', 0, result.generation, readAt], 'the mark stays, the position goes');
+        assert.strictEqual(store.isBookRead(user, 'book:r'), true);
+
+        //позиции читалки до сброса (старое поколение) не возвращаются, новая - сохраняется при отметке
+        const stale = await store.updateReaderProgress('', 'book:r', {percent: 0.6, updatedAt: new Date().toISOString(), generation: 0});
+        assert.strictEqual(stale.generationMismatch, true);
+        const fresh = await store.updateReaderProgress('', 'book:r', {percent: 0.1, updatedAt: new Date().toISOString(), generation: result.generation});
+        assert.deepStrictEqual([fresh.read, fresh.percent], [true, 0.1]);
+
+        await store.forgetBooks('', ['book:r']);
+        assert.strictEqual((await store.resolveUser('')).user.readerProgress['book:r'], undefined);
     });
 }
 
@@ -2711,6 +2811,9 @@ const tests = [
     testReaderProgressChoice,
     testReaderProgressResetAndHiddenState,
     testMarkReadKeepsReadingPlace,
+    testReadMarkCrossingRule,
+    testLegacyReadProgressMigrates,
+    testClearProgressKeepsReadMarks,
     testProfileReadingSummaryLeavesOutReadBooks,
     testReaderHomeKeepsUnavailableProgressVisible,
     testBookPageRecordAndReaderStates,

@@ -1,27 +1,34 @@
 const utils = require('../utils');
 const {t} = require('../i18n');
-const {READ_PERCENT, readerProgressOf} = require('../ReaderProgress');
+const {reachesReadMark, isProgressRead, readerProgressOf} = require('../ReaderProgress');
 const limits = require('../RequestLimits').userData;
 
 // Насколько время позиции может быть впереди часов сервера (как deviceTime у Kobo)
 const FUTURE_TOLERANCE_MS = 5*60*1000;
 
-// Доля прочитанного до отметки «прочитано» (setBooksRead): снятие отметки возвращает её вместе с местом в книге
-function percentBeforeRead(row = {}) {
-    const value = Number(row && row.percentBeforeRead);
-    return (Number.isFinite(value) && value >= 0 && value < READ_PERCENT ? {percentBeforeRead: value} : {});
+// Записи без поля read - из прежних версий: там «прочитано» было долей от 99.9%, а отметка ставила 100%,
+// запомнив долю до неё в percentBeforeRead
+const LEGACY_READ_PERCENT = 0.999;
+
+function legacyPercentBeforeRead(row) {
+    const value = Number(row.percentBeforeRead);
+    return (Number.isFinite(value) && value >= 0 && value < LEGACY_READ_PERCENT ? value : null);
+}
+
+// Есть ли место в книге: без него снятая отметка оставила бы пустую запись в «Читаю сейчас»
+function hasPlace(row) {
+    return (row.percent > 0.0001 || row.pageIndex > 0 || !!row.sectionId || row.textOffset >= 0 || !!row.textSnippet);
 }
 
 // Reader progress, bookmarks and preferences of a profile. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
-    // Read is the profile's progress on the book reaching READ_PERCENT: lists keep no mark of their own.
+    // Read is the profile's flag on the book's progress row, whatever the percent: lists keep no mark of their own.
     isBookRead(user, bookUid = '') {
-        const row = readerProgressOf(user)[bookUid];
-        return !!row && (Number(row.percent) || 0) >= READ_PERCENT;
+        return isProgressRead(readerProgressOf(user)[bookUid]);
     },
 
     // Marks the books read or unread in the profile record in place; the caller saves.
-    //отметка не стирает место в книге: с ним можно перечитать, а снятие отметки возвращает долю прочитанного до неё
+    //отметка и её снятие меняют только флаг (и время): место в книге и доля прочитанного остаются
     applyBooksRead(target, bookUids = [], read = true, updatedAt = this.nowIso()) {
         if (!target.readerProgress || typeof(target.readerProgress) !== 'object')
             target.readerProgress = {};
@@ -31,16 +38,13 @@ module.exports = {
         for (const bookUid of bookUids) {
             const current = (progress[bookUid] && progress[bookUid].generation === generation ? progress[bookUid] : null);
             if (read) {
-                const before = (current && current.percent < READ_PERCENT ? {percentBeforeRead: current.percent} : {});
                 target.readerProgress[bookUid] = Object.assign(
-                    {sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: ''},
+                    {percent: 0, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: ''},
                     current || {},
-                    {percent: 1, updatedAt, hidden: false, generation},
-                    before,
+                    {read: true, updatedAt, hidden: false, generation},
                 );
-            } else if (current && Object.prototype.hasOwnProperty.call(current, 'percentBeforeRead')) {
-                const {percentBeforeRead, ...place} = current;
-                target.readerProgress[bookUid] = Object.assign(place, {percent: percentBeforeRead, updatedAt});
+            } else if (current && hasPlace(current)) {
+                target.readerProgress[bookUid] = Object.assign({}, current, {read: false, updatedAt});
             } else {
                 delete target.readerProgress[bookUid];
             }
@@ -65,7 +69,8 @@ module.exports = {
             if (!normalizedBookUid || !row || typeof(row) !== 'object')
                 continue;
 
-            const percent = Number(row.percent);
+            const legacyBefore = (utils.hasProp(row, 'read') ? null : legacyPercentBeforeRead(row));
+            const percent = (legacyBefore !== null ? legacyBefore : Number(row.percent));
             const pageIndex = Number(row.pageIndex);
             const textOffset = Number(row.textOffset);
             result[normalizedBookUid] = {
@@ -77,7 +82,9 @@ module.exports = {
                 updatedAt: String(row.updatedAt || '').trim(),
                 hidden: (row.hidden === true),
                 generation: Math.max(0, parseInt(row.generation, 10) || 0),
-                ...percentBeforeRead(row),
+                read: (utils.hasProp(row, 'read')
+                    ? row.read === true
+                    : legacyBefore !== null || (Number(row.percent) || 0) >= LEGACY_READ_PERCENT),
             };
         }
         //позиций в профиле не больше предела: самые старые (по updatedAt) уходят, как события витрин
@@ -154,7 +161,7 @@ module.exports = {
 
         return {
             preferences: this.normalizeReaderPreferences(user.readerPreferences),
-            progress: Object.assign({percent: 0, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '', updatedAt: '', hidden: false}, user.readerProgress[normalizedBookUid] || {}),
+            progress: Object.assign({percent: 0, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '', updatedAt: '', hidden: false, read: false}, user.readerProgress[normalizedBookUid] || {}),
             progressGeneration: Math.max(0, parseInt(user.readerProgressGeneration, 10) || 0),
             progressResetAt: String(user.readerProgressResetAt || '').trim(),
             bookmarks: (user.readerBookmarks && Array.isArray(user.readerBookmarks[normalizedBookUid]) ? user.readerBookmarks[normalizedBookUid] : []),
@@ -231,6 +238,8 @@ module.exports = {
         )
             return {progress: current, changed: false};
         const nextPercent = Number.isFinite(percent) ? Math.max(0, Math.min(1, percent)) : 0;
+        //позиция отметку не снимает; дочитанная до порога (переход снизу) книга отмечается сама
+        const markedRead = (current.read !== true && reachesReadMark(current.percent, nextPercent));
         target.readerProgress[normalizedBookUid] = {
             percent: nextPercent,
             sectionId,
@@ -240,31 +249,33 @@ module.exports = {
             updatedAt: patchUpdatedAt || this.nowIso(),
             hidden,
             generation,
-            //читалка сохраняет место отмеченной книги: доля до отметки нужна, пока книга считается прочитанной
-            ...(nextPercent >= READ_PERCENT ? percentBeforeRead(current) : {}),
+            read: current.read === true || markedRead,
         };
         target.updatedAt = this.nowIso();
-        return {progress: target.readerProgress[normalizedBookUid], changed: true};
+        return {progress: target.readerProgress[normalizedBookUid], changed: true, markedRead};
     },
 
     // Percent (0..1) read on an e-reader (Kobo, KOReader) goes to "continue reading" when it is newer than
     // the web position. Device locations can't be mapped onto the FB2 reader's pages: the reader opens at the percent.
+    // True when this position marked the book read (it crossed READ_AUTO_PERCENT).
     async mergeDeviceProgress(userId = '', bookUid = '', percent = 0, modified = '') {
         const {data, user} = await this.resolveUser(userId);
-        if (this.mergeUserDeviceProgress(user, bookUid, percent, modified))
+        const result = this.mergeUserDeviceProgress(user, bookUid, percent, modified);
+        if (result.changed)
             await this.save(data);
+        return result.markedRead === true;
     },
 
-    // mergeDeviceProgress on a loaded profile record: true when it changed and needs a save.
+    // mergeDeviceProgress on a loaded profile record: {changed, markedRead}, the caller saves when changed.
     mergeUserDeviceProgress(user, bookUid = '', percent = 0, modified = '') {
         const value = Math.max(0, Math.min(1, Number(percent) || 0));
         const current = (user.readerProgress || {})[this.requireBookUid(bookUid)] || {};
         if (Math.abs((current.percent || 0) - value) < 0.0001 || (!current.updatedAt && value <= 0))
-            return false;
+            return {changed: false};
         return this.patchReaderProgress(user, bookUid, {
             percent: value, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '',
             updatedAt: modified, generation: Math.max(0, parseInt(user.readerProgressGeneration, 10) || 0),
-        }).changed;
+        });
     },
 
     async deleteReaderProgress(userId = '', bookUid = '') {
@@ -290,7 +301,13 @@ module.exports = {
         const count = bookUids.length;
         const resetAt = this.nowIso();
         const generation = Math.max(0, parseInt(target.readerProgressGeneration, 10) || 0) + 1;
-        target.readerProgress = {};
+        //сбрасываются позиции, отметки «прочитано» остаются: запись без места с прежним временем
+        target.readerProgress = Object.fromEntries(Object.entries(this.normalizeReaderProgress(current))
+            .filter(([, row]) => row.read)
+            .map(([bookUid, row]) => [bookUid, {
+                percent: 0, sectionId: '', pageIndex: 0, textOffset: -1, textSnippet: '',
+                updatedAt: row.updatedAt, hidden: false, generation, read: true,
+            }]));
         target.readerProgressGeneration = generation;
         target.readerProgressResetAt = resetAt;
         target.updatedAt = resetAt;
@@ -298,7 +315,7 @@ module.exports = {
         return {success: true, count, resetAt, generation, bookUids};
     },
 
-    // Everything the profile knows about the books: progress (and so the hidden mark), bookmarks,
+    // Everything the profile knows about the books: progress (and so the hidden and read marks), bookmarks,
     // discovery history, KOReader sync rows and entries in the profile's own lists.
     async forgetBooks(userId = '', bookUids = []) {
         const {data, user: target} = await this.resolveUser(userId);

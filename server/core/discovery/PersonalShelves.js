@@ -3,7 +3,7 @@ const _ = require('lodash');
 
 const log = new (require('../AppLogger'))().log;//singleton
 const {msg} = require('../i18n');
-const {READ_PERCENT, isReadingInProgress, readerProgressOf} = require('../ReaderProgress');
+const {isProgressRead, isReadingInProgress, readerProgressOf} = require('../ReaderProgress');
 
 const personalDiscoveryCacheTtl = 10*60*1000;
 
@@ -49,7 +49,7 @@ module.exports = {
     getPersonalReadBookSet(user = null) {
         const readBookUids = new Set();
         for (const [bookUid, progress] of Object.entries(readerProgressOf(user))) {
-            if ((Number(progress && progress.percent || 0) || 0) >= READ_PERCENT)
+            if (isProgressRead(progress))
                 readBookUids.add(String(bookUid || '').trim());
         }
         return readBookUids;
@@ -368,7 +368,8 @@ module.exports = {
                 continue;
             rememberSignal(
                 normalizedBookUid,
-                this.getPersonalDiscoveryProgressWeight(progress.percent),
+                //прочитанная весит как дочитанная, где бы ни было место в ней
+                this.getPersonalDiscoveryProgressWeight(isProgressRead(progress) ? 1 : progress.percent),
                 progress.updatedAt,
             );
         }
@@ -712,7 +713,7 @@ module.exports = {
         }
     },
 
-    //Прочитанные - как на витрине: прогресс до конца (отметка «прочитано» тоже ставит прогресс 100% с датой).
+    //Прочитанные - как на витрине: отметка «прочитано» в прогрессе (ставит её и чтение до 95%).
     //Дата окончания - updatedAt прогресса. Месяцы и годы считает браузер по датам, в своём часовом поясе.
     async buildReadingStats(user) {
         const progressMap = readerProgressOf(user);
@@ -722,7 +723,7 @@ module.exports = {
         const finishedAt = [];
         for (const bookUid of readBookUids) {
             const progress = progressMap[bookUid];
-            const time = (progress && Number(progress.percent) >= READ_PERCENT ? Date.parse(String(progress.updatedAt || '')) : NaN);
+            const time = (progress ? Date.parse(String(progress.updatedAt || '')) : NaN);
             if (Number.isFinite(time))
                 finishedAt.push(new Date(time).toISOString());
         }

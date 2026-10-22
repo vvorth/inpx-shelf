@@ -129,7 +129,7 @@
                     :key="book.bookUid"
                     class="reader-home-book"
                 >
-                    <BookCover class="reader-home-cover" :book="reader.readerHomeCoverBook(book)" :progress="book.percent" small />
+                    <BookCover class="reader-home-cover" :book="reader.readerHomeCoverBook(book)" :progress="book.percent" :read="!!book.read" small />
                     <div class="reader-home-book-main">
                         <div class="reader-home-book-title">{{ book.title || reader.uiText.untitledBook }}</div>
                         <div v-if="book.author" class="reader-home-book-meta">{{ book.author }}</div>
@@ -139,7 +139,10 @@
                         <div v-if="book.unavailable" class="reader-home-book-meta">
                             {{ reader.uiText.readerHomeUnavailableText }}
                         </div>
-                        <div class="reader-home-progress">
+                        <div v-if="book.read" class="reader-home-progress">
+                            <span class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ reader.uiText.readerHomeFilterRead }}</span>
+                        </div>
+                        <div v-else class="reader-home-progress">
                             <div class="reader-home-progress-bar">
                                 <div class="reader-home-progress-fill" :style="{width: `${reader.formatReaderHomePercent(book.percent)}%`}"></div>
                             </div>
@@ -504,6 +507,11 @@ export default vueComponent(ReaderHome);
     color: var(--reader-muted);
     font-size: 12px;
     font-weight: 800;
+}
+
+/* цвет отметки - из темы читалки */
+.reader-home-progress .read-mark {
+    color: var(--reader-accent);
 }
 
 .reader-home-progress-bar {

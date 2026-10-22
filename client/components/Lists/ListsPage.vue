@@ -181,7 +181,8 @@
                                                 {{ fileMeta(book) }}
                                             </td>
                                             <td class="col-progress hide-narrow">
-                                                <template v-if="book.percent > 0">
+                                                <span v-if="book.read && isHidden" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
+                                                <template v-else-if="book.percent > 0 && !book.read">
                                                     <div class="progress">
                                                         <i :style="{width: `${percent(book.percent)}%`}" />
                                                     </div>
@@ -247,7 +248,8 @@ const sortKeys = {
     //книги без серии - в конце
     series: book => [book.series ? 0 : 1, book.series, Number(book.serno) || 0, book.title],
     file: book => [book.ext, book.size],
-    progress: book => [book.percent],
+    //прочитанная - как дочитанная, где бы ни было место в ней
+    progress: book => [book.read ? 1 : book.percent],
 };
 
 const componentOptions = {
@@ -412,8 +414,8 @@ class ListsPage {
                 serno: book.serno || '',
                 ext: book.ext || '',
                 size: Number(book.size || 0),
-                //прочитана ли книга профилем; в «Читаю сейчас» книги не дочитаны
-                read: !!(book._readingListRead || book.read),
+                //прочитана ли книга профилем; в «Читаю сейчас» прочитанных нет
+                read: !!(book._readingListRead || book.read || (this.states[bookUid(book)] || {}).read),
                 percent: Number(book._readerPercent !== undefined ? book._readerPercent : (this.states[bookUid(book)] || {}).percent) || 0,
                 //выключенная библиотека или книги больше нет: строка бледная, открывается только окно книги
                 unavailable: book.unavailable || '',
@@ -448,9 +450,9 @@ class ListsPage {
     //состояния книг для карточек: прогресс и списки читателя; в открытом списке книга в нём
     get bookStates() {
         return Object.fromEntries(this.books.map((book) => {
-            const state = Object.assign({}, this.states[book.bookUid] || {}, {percent: book.percent});
+            const state = Object.assign({}, this.states[book.bookUid] || {}, {percent: book.percent, read: book.read});
             if (this.selectedList)
-                Object.assign(state, {read: book.read, percent: (book.read ? 1 : book.percent), inList: true});
+                state.inList = true;
             return [book.bookUid, state];
         }));
     }

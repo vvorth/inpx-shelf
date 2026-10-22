@@ -18,7 +18,7 @@
             <template v-else-if="book">
                 <section class="book-hero">
                     <div class="book-hero-cover">
-                        <BookCover :book="book" :progress="progress" />
+                        <BookCover :book="book" :progress="progress" :read="read" />
                     </div>
 
                     <div class="book-hero-main">
@@ -48,7 +48,10 @@
                             <span>{{ $t('book.deletedNotice') }}</span>
                         </div>
 
-                        <div v-if="progress > 0 && progress < 1" class="book-progress">
+                        <div v-if="read" class="book-progress">
+                            <span class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
+                        </div>
+                        <div v-else-if="progress > 0 && progress < 1" class="book-progress">
                             <div class="progress">
                                 <i :style="{width: `${percent}%`}" />
                             </div>
@@ -111,8 +114,8 @@
                                 </q-menu>
                             </q-btn>
 
-                            <q-btn v-if="signedIn" flat color="primary" no-caps :icon="progress >= 1 ? 'la la-undo' : 'la la-check'" @click="toggleRead">
-                                {{ progress >= 1 ? $t('book.markAsUnread') : $t('book.markAsRead') }}
+                            <q-btn v-if="signedIn" flat color="primary" no-caps :icon="read ? 'la la-undo' : 'la la-check'" @click="toggleRead">
+                                {{ read ? $t('book.markAsUnread') : $t('book.markAsRead') }}
                             </q-btn>
                         </div>
 
@@ -175,7 +178,7 @@
                     <ol v-if="shownReplacements.length" class="replacements">
                         <li v-for="item in shownReplacements" :key="item._uid" class="replacement">
                             <button type="button" class="replacement-cover" :aria-label="$t('book.view')" @click="peekUid = item._uid">
-                                <BookCover :book="item" :progress="stateOf(item).percent || 0" small />
+                                <BookCover :book="item" :progress="stateOf(item).percent || 0" :read="!!stateOf(item).read" small />
                             </button>
                             <div class="replacement-main">
                                 <button type="button" class="replacement-title" @click="peekUid = item._uid">
@@ -257,6 +260,7 @@
                             :key="item._uid"
                             :book="item"
                             :progress="stateOf(item).percent"
+                            :read="!!stateOf(item).read"
                             :prefix="book.series && item.serno ? `#${item.serno}` : ''"
                             :meta="book.series ? '' : String(item.date || '').slice(0, 4)"
                         />
@@ -400,12 +404,16 @@ class BookPage {
         return Math.round(this.progress * 100);
     }
 
+    get read() {
+        return !!this.stateOf(this.book || {}).read;
+    }
+
     get readLabel() {
         if (!canReadOnline(this.config, this.book || {}))
             return t('common.readBook');
-        if (this.progress > 0 && this.progress < 1)
-            return t('book.continue', {n: this.percent});
-        return this.progress >= 1 ? t('book.readAgain') : t('common.readBook');
+        if (this.read || this.progress >= 1)
+            return t('book.readAgain');
+        return (this.progress > 0 ? t('book.continue', {n: this.percent}) : t('common.readBook'));
     }
 
     get originalLabel() {
@@ -638,7 +646,7 @@ class BookPage {
     }
 
     async toggleRead() {
-        const read = !(this.progress >= 1);
+        const read = !this.read;
         if (await markBookRead(this, bookUid(this.book), read))
             await this.loadStates([this.book]);
     }

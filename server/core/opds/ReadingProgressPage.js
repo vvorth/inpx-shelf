@@ -68,11 +68,12 @@ class ReadingProgressPage extends BasePage {
 
         for (const book of response.items || []) {
             const percent = Math.max(0, Math.min(100, Math.round((Number(book.percent || 0) || 0) * 100)));
-            const title = `${book.state === 'read' ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')}${book.ext ? ` (${book.ext})` : ''}`;
+            //у прочитанной - отметка вместо доли: место в книге может быть любым
+            const title = `${book.read ? '✓ ' : ''}${book.serno ? `${book.serno}. ` : ''}${book.title || t('common.untitled')}${book.ext ? ` (${book.ext})` : ''}`;
             const subtitle = [
                 this.bookAuthor(book.author),
                 book.series ? t('common.seriesWithName', {name: book.series}) : '',
-                `${percent}%`,
+                book.read ? '' : `${percent}%`,
                 book.hidden ? t('opds.hidden') : '',
                 book.unavailable ? t('opds.progressSavedButBook') : '',
             ].filter(Boolean).join(' · ');

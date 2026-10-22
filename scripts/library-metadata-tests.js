@@ -222,7 +222,9 @@ async function testBookInfoParsesAreLimited() {
             return {fb2: parser};
         }};
         await Promise.all([value.getBookInfo('a'), value.getBookInfo('b')]);
-        assert.deepStrictEqual(order, ['start hash-a', 'end hash-a', 'start hash-b', 'end hash-b']);
+        //по одному: вторая книга начинается после конца первой; какая из них успела первой, не важно
+        const [first, second] = (order[0] === 'start hash-a' ? ['hash-a', 'hash-b'] : ['hash-b', 'hash-a']);
+        assert.deepStrictEqual(order, [`start ${first}`, `end ${first}`, `start ${second}`, `end ${second}`]);
     });
 }
 

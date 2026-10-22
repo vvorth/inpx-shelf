@@ -390,9 +390,8 @@ export default class ReaderPaginator {
 
         this.currentPageIndex = safeIndex;
         this.currentSectionId = sectionId;
-        this.progress = Object.assign({}, this.progress, {
-            // Отметка «прочитано» снимается, только когда читатель сам листает (save), а не при перестройке страниц
-            percent: ((!save && readerProgress.isRead(this.progress)) ? 1 : percent),
+        // Отметку «прочитано» ставит только чтение (save), а не перестройка страниц
+        this.progress = Object.assign((save ? readerProgress.withPercent(this.progress, percent) : Object.assign({}, this.progress, {percent})), {
             sectionId,
             pageIndex: safeIndex,
             textOffset: Number.isFinite(textOffset) ? textOffset : -1,

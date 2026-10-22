@@ -217,6 +217,7 @@ import ReaderHome from './ReaderHome.vue';
 import ReaderDialogs from './ReaderDialogs.vue';
 const fb2ToReaderHtml = require('./fb2ToReaderHtml');
 const readerTextAnchors = require('./readerTextAnchors');
+const readerProgress = require('../../share/readerProgress');
 import cloneDeep from 'lodash/cloneDeep';
 import debounce from 'lodash/debounce';
 import {t, tm} from '../../share/i18n';
@@ -353,6 +354,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         textOffset: -1,
         textSnippet: '',
         updatedAt: '',
+        read: false,
     };
     restorePending = false;
     restoreFromSavedProgress = false;
@@ -1539,8 +1541,7 @@ class Reader extends readerLayers(ReaderPaginator, ReaderProgressSync, ReaderSea
         if (this.restoredScrollTop >= 0 && Math.abs(currentScroll - this.restoredScrollTop) < scroller.clientHeight / 2)
             return;
         this.restoredScrollTop = -1;
-        this.progress = Object.assign({}, this.progress, {
-            percent,
+        this.progress = Object.assign(readerProgress.withPercent(this.progress, percent), {
             sectionId: this.currentSectionId || '',
             updatedAt: new Date().toISOString(),
         });

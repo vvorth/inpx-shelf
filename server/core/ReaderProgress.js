@@ -1,14 +1,17 @@
 // Прогресс чтения из профиля (user.readerProgress): прочитана ли книга, читается ли сейчас
+const {reachesReadMark} = require('../../shared/readMark');
 
-// A book read to 99.9% or more counts as read, not in progress.
-const READ_PERCENT = 0.999;
+function isProgressRead(progress) {
+    return !!progress && progress.read === true;
+}
 
+// A read book is not in progress, whatever its percent.
 function isReadingInProgress(progress) {
-    return !!progress && progress.hidden !== true && !((Number(progress.percent) || 0) >= READ_PERCENT);
+    return !!progress && progress.hidden !== true && !isProgressRead(progress);
 }
 
 function readerProgressOf(user) {
     return (user && user.readerProgress && typeof(user.readerProgress) === 'object' ? user.readerProgress : {});
 }
 
-module.exports = {READ_PERCENT, isReadingInProgress, readerProgressOf};
+module.exports = {reachesReadMark, isProgressRead, isReadingInProgress, readerProgressOf};

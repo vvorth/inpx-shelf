@@ -6,6 +6,7 @@
                 :key="keyOf(book)"
                 :book="book"
                 :progress="stateOf(book).percent || 0"
+                :read="!!stateOf(book).read"
                 :prefix="showSerno && book.serno ? `#${book.serno}` : ''"
                 :meta="coverMeta ? coverMeta(book) : [editionsText(book), authorsOf(book).join(', ')].filter(Boolean).join(' · ')"
                 @open="$emit('interaction', {book, type: 'open'})"

@@ -1,6 +1,6 @@
 <template>
     <component :is="external ? 'a' : 'router-link'" class="book-card" :class="{'book-card--unavailable': book.unavailable}" v-bind="linkAttrs" @click="$emit('open', book)">
-        <BookCover :book="book" :progress="progress" />
+        <BookCover :book="book" :progress="progress" :read="read" />
         <span class="book-card-title">
             <span v-if="prefix" class="book-card-prefix">{{ prefix }}</span>{{ book.title || $t('common.untitled') }}
         </span>
@@ -30,6 +30,7 @@ class BookCard {
     _props = {
         book: {type: Object, required: true},
         progress: {type: Number, default: 0},
+        read: Boolean,
         meta: {type: String, default: ''},
         prefix: {type: String, default: ''},
     };

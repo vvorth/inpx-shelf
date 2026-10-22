@@ -76,26 +76,45 @@ async function testReaderStorageKeepsProgressPerUser() {
     }
 }
 
-//Отметка «прочитано» не стирает место, снятие отметки возвращает к нему
+//Отметка «прочитано» - отдельный флаг: место и доля не меняются ни при отметке, ни при снятии
 async function testReaderReadMarkKeepsPlace() {
     const readerProgress = require('../client/share/readerProgress');
-    const place = {percent: 0.42, sectionId: 'section-7', pageIndex: 84, textOffset: 1200, textSnippet: 'Глава седьмая', generation: 2};
+    const place = {percent: 0.42, sectionId: 'section-7', pageIndex: 84, textOffset: 1200, textSnippet: 'Глава седьмая', updatedAt: 't0', generation: 2};
 
-    const read = readerProgress.markRead(place, 't1');
-    assert.strictEqual(read.percent, 1);
+    const read = readerProgress.markRead(place);
     assert.strictEqual(readerProgress.isRead(read), true);
-    assert.deepStrictEqual([read.sectionId, read.pageIndex, read.textOffset, read.textSnippet, read.generation, read.updatedAt],
-        ['section-7', 84, 1200, 'Глава седьмая', 2, 't1']);
+    assert.deepStrictEqual(read, Object.assign(readerProgress.normalize(place), {read: true}), 'only the flag changes');
+    assert.strictEqual(readerProgress.isRead(place), false);
+    assert.strictEqual(readerProgress.isRead({percent: 1}), false, 'percent alone is not a read mark');
 
-    const unread = readerProgress.unmarkRead(read, 0.42, 't2');
-    assert.deepStrictEqual(unread, Object.assign({}, readerProgress.normalize(place), {updatedAt: 't2'}));
+    const unread = readerProgress.unmarkRead(read);
+    assert.deepStrictEqual(unread, Object.assign(readerProgress.normalize(place), {read: false}));
     assert.strictEqual(readerProgress.isRead(unread), false);
 
-    //место в самом конце книги или без места - снова с начала
-    const fromEnd = readerProgress.unmarkRead(read, 1, 't3');
-    assert.deepStrictEqual([fromEnd.percent, fromEnd.pageIndex, fromEnd.sectionId, fromEnd.textOffset, fromEnd.generation, fromEnd.updatedAt],
-        [0, 0, '', -1, 2, 't3']);
-    assert.strictEqual(readerProgress.hasPlace(readerProgress.unmarkRead({percent: 1}, 0.5, 't4')), false);
+    //книга без места: отметка не создаёт его
+    assert.strictEqual(readerProgress.hasPlace(readerProgress.markRead({}, 3)), false);
+    assert.strictEqual(readerProgress.markRead({}, 3).generation, 3);
+
+    //отметку при открытии берём с сервера: копия в браузере могла её не застать
+    const opened = readerProgress.opening({progress: Object.assign({}, place, {read: true}), progressGeneration: 2}, null,
+        Object.assign({}, place, {pageIndex: 85, read: false}));
+    assert.deepStrictEqual([opened.progress.read, opened.progress.percent], [true, 0.42]);
+}
+
+//Чтение до 95% ставит отметку только переходом снизу, как на сервере (shared/readMark.js)
+async function testReaderReadMarkCrossing() {
+    const readerProgress = require('../client/share/readerProgress');
+    const {READ_AUTO_PERCENT, reachesReadMark} = require('../shared/readMark');
+    assert.strictEqual(READ_AUTO_PERCENT, 0.95);
+    assert.deepStrictEqual([reachesReadMark(0.94, 0.95), reachesReadMark(0.3, 0.98), reachesReadMark(0.96, 0.97), reachesReadMark(0.5, 0.94)],
+        [true, true, false, false]);
+
+    const progress = {percent: 0.9, pageIndex: 90, read: false};
+    const finished = readerProgress.withPercent(progress, 0.96);
+    assert.deepStrictEqual([finished.percent, finished.read, finished.pageIndex], [0.96, true, 90]);
+    assert.strictEqual(readerProgress.withPercent(finished, 0.5).read, true, 'going back keeps the mark');
+    const unmarked = readerProgress.unmarkRead(finished);
+    assert.strictEqual(readerProgress.withPercent(unmarked, 0.99).read, false, 'no new mark above the threshold after an unmark');
 }
 
 //Позиция с другого устройства: новее и далеко - спросить, без своего места - перейти, рядом - без вопроса
@@ -320,6 +339,7 @@ module.exports = [
     testReaderPagedStageMustMatchSignature,
     testReaderProgressMapIsCapped,
     testReaderReadMarkKeepsPlace,
+    testReaderReadMarkCrossing,
     testReaderStorageKeepsProgressPerUser,
     testReaderRemoteProgressChoice,
     testReaderSaveOutcome,
