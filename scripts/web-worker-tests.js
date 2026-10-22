@@ -248,7 +248,7 @@ async function testReadMarkIsTheProfiles() {
         //снятая в одном списке отметка снята и в другом: раньше список B оставался «прочитано»
         await worker.markReaderBooksRead('', ['book-1'], false);
         assert.deepStrictEqual(await readCounts(), [['A', 0], ['B', 0]]);
-        assert.deepStrictEqual((await store.getList('', b.id)).books, [{bookUid: 'book-1'}, {bookUid: 'book-2'}], 'lists keep no read mark');
+        assert.deepStrictEqual((await store.getList('', b.id)).books.map(entry => Object.keys(entry).sort()), [['addedAt', 'bookUid'], ['addedAt', 'bookUid']], 'lists keep no read mark');
     });
 }
 
@@ -281,6 +281,48 @@ async function testListReadMarksMoveToProgress() {
         rows = await progress();
         assert.strictEqual(rows[realUid('book-4')].read, true);
         assert.strictEqual(rows[realUid('book-5')], undefined);
+    });
+}
+
+//запись списка помнит, когда книгу добавили: дата ставится при добавлении, переживает смену _uid, экспорт и импорт,
+//а мусор вместо даты отбрасывается; страница списка получает её как _listAddedAt
+async function testListEntriesRememberWhenAdded() {
+    await temporary(async(dataDir) => {
+        const ReadingListStore = require('../server/core/ReadingListStore');
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin'});
+        await store.load();
+        //импорт принимает только идентификаторы каталога
+        const uid = (char) => `${char.repeat(43)}=`;
+        const list = await store.createList('', 'Queue');
+        const before = Date.now() - 1000;
+        await store.addBooks('', list.id, [uid('a'), uid('b')]);
+        await store.setBookMembership('', list.id, uid('c'), true);
+        const entries = async() => store.normalizeEntries((await store.getList('', list.id)).books);
+        for (const entry of await entries())
+            assert.ok(Date.parse(entry.addedAt) >= before, `${entry.bookUid} is stamped`);
+        const [first] = await entries();
+
+        //старая запись без даты и запись с мусором вместо даты остаются без неё
+        assert.deepStrictEqual(store.normalizeEntries([{bookUid: 'old'}, {bookUid: 'bad', addedAt: 'yesterday'}, 'plain']),
+            [{bookUid: 'old'}, {bookUid: 'bad'}, {bookUid: 'plain'}]);
+
+        //новая запись INPX: книга та же, дата добавления тоже
+        await store.rekeyBooks('', {[uid('a')]: uid('A')});
+        assert.deepStrictEqual((await entries())[0], {bookUid: uid('A'), addedAt: first.addedAt});
+
+        const exported = await store.exportData('');
+        assert.strictEqual(exported.lists[0].books[0].addedAt, first.addedAt);
+        const other = new ReadingListStore({dataDir: path.join(dataDir, 'other'), adminLogin: 'admin', adminPassword: 'admin'});
+        await other.load();
+        await other.importData('', exported);
+        const imported = (await other.getLists('')).find(item => item.name === 'Queue');
+        assert.strictEqual(other.normalizeEntries(imported.books)[0].addedAt, first.addedAt);
+
+        const worker = bareWorker({checkMyState: () => {}, readingListStore: store, markNewerEditions: async() => {},
+            catalogSearch: {authorAliasesOf: async() => ({})}});
+        worker.getListedBookRecords = async(uids) => new Map(uids.map(item => [item, {_uid: item, title: item}]));
+        const {books} = await worker.getReadingList('', list.id);
+        assert.deepStrictEqual(books.map(book => book._listAddedAt), (await entries()).map(entry => entry.addedAt));
     });
 }
 
@@ -792,4 +834,5 @@ module.exports = [
     testMetadataOverridesCacheFollowsWrites,
     testBookMetadataEditsReachIndexInOrder,
     testTelegramCaptionFitsBotApiLimit,
+    testListEntriesRememberWhenAdded,
 ];

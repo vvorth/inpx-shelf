@@ -172,13 +172,18 @@
                                                     </template>
                                                 </div>
                                             </td>
-                                            <td class="hide-narrow">
-                                                <router-link v-if="book.series" :to="seriesLink(book.series)">
-                                                    {{ book.series }}
-                                                </router-link><span v-if="book.series && book.serno" class="num"> #{{ book.serno }}</span>
+                                            <td class="hide-narrow col-series">
+                                                <div class="clip" :title="seriesMeta(book)">
+                                                    <router-link v-if="book.series" :to="seriesLink(book.series)">
+                                                        {{ book.series }}
+                                                    </router-link><span v-if="book.series && book.serno" class="num"> #{{ book.serno }}</span>
+                                                </div>
                                             </td>
                                             <td class="hide-narrow book-meta num col-file">
                                                 {{ fileMeta(book) }}
+                                            </td>
+                                            <td v-if="selectedList" class="hide-narrow book-meta num col-added">
+                                                {{ addedMeta(book) }}
                                             </td>
                                             <td class="col-progress hide-narrow">
                                                 <span v-if="book.read && isHidden" class="read-mark"><q-icon name="la la-check-circle" size="16px" />{{ $t('common.read') }}</span>
@@ -229,7 +234,7 @@ import vueComponent from '../vueComponent.js';
 
 import BookCollection from '../Library/BookCollection.vue';
 import AddToListDialog from '../Library/AddToListDialog.vue';
-import {t} from '../../share/i18n';
+import {t, formatDateTime} from '../../share/i18n';
 import {isSignedIn, currentProfile} from '../../share/session';
 import {setReadingLists} from '../../share/readingLists';
 import {bookAuthors, bookUid, forgetBooks, loadBookStates, markBookRead} from '../../share/bookActions';
@@ -250,6 +255,8 @@ const sortKeys = {
     file: book => [book.ext, book.size],
     //прочитанная - как дочитанная, где бы ни было место в ней
     progress: book => [book.read ? 1 : book.percent],
+    //ISO-строки сравниваются как текст; записи без даты (до её появления) идут первыми по возрастанию
+    added: book => [book.addedAt],
 };
 
 const componentOptions = {
@@ -414,6 +421,8 @@ class ListsPage {
                 serno: book.serno || '',
                 ext: book.ext || '',
                 size: Number(book.size || 0),
+                //когда книгу добавили в список (ISO); пусто у записей до появления даты и в «Читаю сейчас»
+                addedAt: String(book._listAddedAt || ''),
                 //прочитана ли книга профилем; в «Читаю сейчас» прочитанных нет
                 read: !!(book._readingListRead || book.read || (this.states[bookUid(book)] || {}).read),
                 percent: Number(book._readerPercent !== undefined ? book._readerPercent : (this.states[bookUid(book)] || {}).percent) || 0,
@@ -463,6 +472,8 @@ class ListsPage {
             {key: 'author', label: t('search.author'), class: 'hide-narrow'},
             {key: 'series', label: t('common.series'), class: 'hide-narrow'},
             {key: 'file', label: t('opds.file'), class: 'hide-narrow'},
+            //дата добавления есть только у настоящих списков, не у «Читаю сейчас» и скрытых
+            ...(this.selectedList ? [{key: 'added', label: t('lists.added'), class: 'hide-narrow col-added'}] : []),
             {key: 'progress', label: t('lists.progress'), class: 'hide-narrow col-progress'},
         ];
     }
@@ -522,8 +533,15 @@ class ListsPage {
 
     bookMeta(book) {
         const author = String(book.author || '').split(',').filter(Boolean).join(', ');
-        const series = book.series ? `${book.series}${book.serno ? ` #${book.serno}` : ''}` : '';
-        return [author, series].filter(Boolean).join(' · ');
+        return [author, this.seriesMeta(book)].filter(Boolean).join(' · ');
+    }
+
+    seriesMeta(book) {
+        return (book.series ? `${book.series}${book.serno ? ` #${book.serno}` : ''}` : '');
+    }
+
+    addedMeta(book) {
+        return (book.addedAt ? formatDateTime(book.addedAt, {year: 'numeric', month: '2-digit', day: '2-digit'}) : '');
     }
 
     fileMeta(book) {
@@ -821,9 +839,19 @@ export default vueComponent(ListsPage);
     max-width: 0;
 }
 
-.col-authors .clip {
+.col-series {
+    width: 20%;
+    max-width: 0;
+}
+
+.col-authors .clip,
+.col-series .clip {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.col-added {
     white-space: nowrap;
 }
 

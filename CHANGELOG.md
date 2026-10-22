@@ -46,6 +46,7 @@ Unreleased
 - Telegram: a caption longer than Telegram's 1024-character limit is cut with `…` instead of failing the send.
 - Windows: saving data files retries for a moment when an indexer or antivirus holds the file, instead of failing the change.
 - S3 libraries: a single read of more than 32 MB from an archive (large books, big solid blocks) no longer fails, and is fetched in parts of at most 16 MB.
+- Lists remember when each book was added. The table view has an "Added" column with that date, sortable like the others; the column is empty for books added before this version. Long series names in the table are cut with an ellipsis and shown in full on hover, like authors; before, a long series name made the row tall. Profile backups carry the dates.
 - OPDS: the books of one title are listed 100 per page with a next-page link instead of the first 1000 on one page, and books whose title differs only in case, `ё` or punctuation are listed too, as the catalog count promised. A book search by word that hits its limit of 120 matches in titles, series or authors ends with a line saying the list is incomplete.
 
 26.10.0 / 2026-10-20

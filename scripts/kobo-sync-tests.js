@@ -872,7 +872,7 @@ async function testKoboRekeysOrphansByLibid() {
         assert.deepStrictEqual(lookups, [['main:101']], 'one scan, and only for books with a libid');
 
         const listAfter = await store.getList('default', listA.id);
-        assert.deepStrictEqual(listAfter.books, [{bookUid: 'epub-uid'}, {bookUid: 'fb2-uid-new'}, {bookUid: 'late-uid'}],
+        assert.deepStrictEqual(listAfter.books.map(entry => entry.bookUid), ['epub-uid', 'fb2-uid-new', 'late-uid'],
             'order kept; the libid-less orphan stays');
         assert.deepStrictEqual((await store.getList('default', listB.id)).books.map(entry => entry.bookUid), ['fb2-uid-new']);
         const user = (await store.load()).users.find(item => item.id === 'default');

@@ -144,7 +144,7 @@ module.exports = {
         if (enabled) {
             if (!existing) {
                 this.checkListRoom(data, user, item);
-                item.books.push({bookUid: normalizedBookUid});
+                item.books.push(this.listEntry(normalizedBookUid, this.nowIso()));
             }
         } else {
             item.books = item.books.filter((row) => row.bookUid !== normalizedBookUid);
@@ -226,7 +226,7 @@ module.exports = {
                 if (seen.has(bookUid))
                     continue;
                 seen.add(bookUid);
-                list.books.push({bookUid});
+                list.books.push(this.listEntry(bookUid, entry.addedAt));
             }
             list.updatedAt = this.nowIso();
             lists++;
@@ -314,7 +314,8 @@ module.exports = {
         const newUids = [...new Set(bookUids.map((rawUid) => this.normalizeBookUid(rawUid)))]
             .filter((bookUid) => bookUid && !existing.has(bookUid));
         this.checkListRoom(data, user, item, newUids.length);
-        newUids.forEach((bookUid) => item.books.push({bookUid}));
+        const now = this.nowIso();
+        newUids.forEach((bookUid) => item.books.push(this.listEntry(bookUid, now)));
         const added = newUids.length;
 
         item.updatedAt = this.nowIso();
@@ -491,7 +492,7 @@ module.exports = {
                     trimmed.books++;
                     continue;
                 }
-                existing.set(entry.bookUid, {bookUid: entry.bookUid});
+                existing.set(entry.bookUid, this.listEntry(entry.bookUid, entry.addedAt));
                 usage.books++;
                 importedBooks++;
             }

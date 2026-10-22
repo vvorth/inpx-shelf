@@ -252,6 +252,12 @@ class ReadingListStore {
         };
     }
 
+    // Запись списка: книга и когда её добавили (ISO; у записей до появления даты её нет).
+    listEntry(bookUid, addedAt = '') {
+        const time = String(addedAt || '').trim();
+        return (time && !Number.isNaN(Date.parse(time)) ? {bookUid, addedAt: time} : {bookUid});
+    }
+
     normalizeEntries(entries) {
         const result = [];
         const seen = new Set();
@@ -261,7 +267,7 @@ class ReadingListStore {
             if (typeof(row) === 'string') {
                 entry = {bookUid: this.normalizeBookUid(row)};
             } else if (row && typeof(row) === 'object') {
-                entry = {bookUid: this.normalizeBookUid(row.bookUid || row.uid || row.id)};
+                entry = this.listEntry(this.normalizeBookUid(row.bookUid || row.uid || row.id), row.addedAt);
             } else {
                 continue;
             }

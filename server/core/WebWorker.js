@@ -838,6 +838,8 @@ class WebWorker {
             const book = booksByUid.get(entry.bookUid);
             if (book) {
                 book._readingListRead = this.readingListStore.isBookRead(user, entry.bookUid);
+                //когда книгу добавили в список: колонка таблицы списка
+                book._listAddedAt = entry.addedAt || '';
                 books.push(book);
             }
         }

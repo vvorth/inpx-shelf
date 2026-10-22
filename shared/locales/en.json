@@ -978,6 +978,7 @@
         "markedRead": "Marked as read: {n}"
     },
     "lists": {
+        "added": "Added",
         "asTable": "As a table",
         "booksRead": "{read} / {total} books read",
         "booksWithSavedProgress": "Books with saved progress. A removed book comes back when you open it again.",
