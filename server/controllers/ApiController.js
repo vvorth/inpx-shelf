@@ -1,6 +1,5 @@
 const _ = require('lodash');
 
-const WorkerState = require('../core/WorkerState');//singleton
 const WebWorker = require('../core/WebWorker');//singleton
 const log = new (require('../core/AppLogger'))().log;//singleton
 const utils = require('../core/utils');
@@ -58,6 +57,7 @@ const workerActions = {
     'admin-clean-cache': (w, r) => w.runAdminCacheCleanKind(r.userId, r.profileAccessToken, r.kind || 'all'),
     'admin-clean-broken-covers': (w, r) => w.cleanBrokenCoverCache(r.userId, r.profileAccessToken),
     'admin-reindex': (w, r) => w.startAdminReindex(r.userId, r.profileAccessToken),
+    'admin-accept-user-data-reset': (w, r) => w.acceptUserDataReset(r.userId, r.profileAccessToken),
     'export-admin-settings': (w, r) => w.exportAdminSettings(r.userId, r.profileAccessToken),
     'create-admin-backup': (w, r) => w.createAdminBackup(r.userId, r.profileAccessToken, r.scope),
     'update-book-metadata': (w, r) => w.updateBookMetadata(r.userId, r.profileAccessToken, r.bookUid, r.metadata),
@@ -162,7 +162,6 @@ class ApiController {
         this.isDevelopment = (config.branch == 'development');
         this.security = security;
 
-        this.workerState = new WorkerState();
         this.webWorker = new WebWorker(config);
         this.profileAccess = security ? new (require('../core/ProfileAccess'))(config, this.webWorker, security) : null;
 
@@ -509,14 +508,16 @@ class ApiController {
     }
 
     async getWorkerState(req) {
+        //состояние есть только у сервера: workerId server_state
+        const serverState = (this.webWorker && this.webWorker.serverState) || {};
         if (req.profileLoginRequired || req.guest) {
-            const state = this.workerState.getState('server_state') || {};
+            const state = serverState;
             return {state: state.state || 'normal', serverMessage: state.state === 'normal' ? '' : i18n.t('server.preparingLibrary')};
         }
         if (!req.workerId)
             throw new Error(`key 'workerId' is empty`);
 
-        const state = this.workerState.getState(req.workerId);
+        const state = (req.workerId === 'server_state' ? serverState : null);
         //сообщения состояния хранятся как ключи/описания переводов и переводятся на языке запроса
         return (state ? Object.assign({}, state, {
             serverMessage: i18n.render(state.serverMessage),

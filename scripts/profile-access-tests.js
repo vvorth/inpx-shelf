@@ -31,8 +31,8 @@ async function fixture(options, test) {
     const security = new Security(config);
     await security.init();
     const access = new ProfileAccess(config, worker, security);
-    const controller = apiController({config, security, webWorker: worker, profileAccess: access,
-        workerState: {getState: () => ({state: 'normal', fileName: 'PRIVATE_LIBRARY_PATH'})}});
+    worker.serverState = {state: 'normal', fileName: 'PRIVATE_LIBRARY_PATH'};
+    const controller = apiController({config, security, webWorker: worker, profileAccess: access});
     await fs.outputFile(path.join(config.publicDir, 'index.html'), '<html>Login shell</html>');
     await fs.outputFile(path.join(config.bookDir, 'fixture.txt'), 'BOOK_FIXTURE');
     await fs.outputFile(path.join(config.dataDir, 'backups', 'fixture.zip'), 'BACKUP_FIXTURE');

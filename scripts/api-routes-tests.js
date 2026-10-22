@@ -83,6 +83,9 @@ function testApiRoutesMatch() {
     assert.strictEqual(apiRoutes.match('GET', 'reading-lists/export').route.action, 'export-reading-lists');
     assert.strictEqual(apiRoutes.match('GET', 'reading-lists/abc').route.action, 'get-reading-list');
     assert.strictEqual(apiRoutes.match('GET', '/admin/dashboard/metrics').route.action, 'get-admin-dashboard-metrics');
+    //команда - POST, с CSRF-токеном, как любое изменение
+    assert.strictEqual(apiRoutes.match('POST', 'admin/user-data/accept-reset').route.action, 'admin-accept-user-data-reset');
+    assert.deepStrictEqual(apiRoutes.match('GET', 'admin/user-data/accept-reset'), {allow: ['POST']});
     assert.deepStrictEqual(apiRoutes.match('POST', 'ping'), {allow: ['GET']});
     assert.deepStrictEqual(apiRoutes.match('PUT', 'reading-lists/abc'), {allow: ['GET', 'PATCH', 'DELETE']});
     assert.deepStrictEqual(apiRoutes.match('GET', 'session'), {allow: ['POST', 'DELETE']});

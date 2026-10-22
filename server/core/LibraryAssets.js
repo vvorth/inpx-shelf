@@ -12,6 +12,7 @@ const utils = require('./utils');
 const libraryFs = require('./LibraryFs');
 const {getEnabledLibrarySources, getSourceLibDir} = require('./LibrarySources');
 const {stripHtml, normalizeAuthorText} = require('./HtmlText');
+const {t} = require('./i18n');
 
 function decodeArchiveText(data) {
     let text = iconv.decode(data, 'utf8');
@@ -43,6 +44,19 @@ function archiveNameCandidates(file = '') {
     return [file];
 }
 
+//Путь из полей INPX (folder, file) не выходит за каталог библиотеки: иначе «файл не найден» без пути сервера в ответе,
+//а в журнал - значение из INPX, один раз
+const reportedPaths = new Set();
+function checkInsideLibrary(libDir, target, value) {
+    if (libraryFs.insideDir(libDir, target))
+        return;
+    if (!reportedPaths.has(value) && reportedPaths.size < 1000) {
+        reportedPaths.add(value);
+        log(LM_WARN, `INPX path outside the library folder: ${JSON.stringify(value)}`);
+    }
+    throw Object.assign(new Error(t('errors.fileNotFound')), {status: 404});
+}
+
 //Каталог ресурсов библиотеки (covers, images, etc/authors...): внутри каталога библиотеки или рядом с ним
 function libraryAssetDirCandidates(subDir = '', libDir = '') {
     const normalizedSubDir = String(subDir || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
@@ -70,6 +84,7 @@ module.exports = {
         const libDir = sourceLibDir || this.config.libDir;
 
         const file = libFile;
+        checkInsideLibrary(libDir, `${libDir}/${libFolder}`, libFolder);
         const resolveFolder = async() => {
             const folder = `${libDir}/${libFolder}`;
 
@@ -79,6 +94,7 @@ module.exports = {
         const folder = await resolveFolder();
         
         const fullPath = `${folder}/${file}`;
+        checkInsideLibrary(libDir, fullPath, `${libFolder}/${file}`);
 
         if (!file || await libraryFs.pathExists(fullPath)) {// файл есть на диске
             
@@ -347,6 +363,7 @@ module.exports = {
         if (this.bookAssetArchives.has(cacheKey))
             return this.bookAssetArchives.get(cacheKey);
 
+        checkInsideLibrary(libDir, `${libDir}/${libFolder}`, libFolder);
         const bookArchive = await this.resolveLibraryArchivePath(`${libDir}/${libFolder}`, libDir);
         const baseName = path.basename(bookArchive, path.extname(bookArchive));
         const dirs = Array.from(new Set([

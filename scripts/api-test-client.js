@@ -130,7 +130,7 @@ function sampleParams(action) {
 }
 
 //WebWorker - синглтон с фоновыми задачами, поэтому контроллер создаётся без конструктора: счётчики запросов - как в
-//конструкторе ApiController, остальные поля задаёт тест (config, security, profileAccess, webWorker, workerState, заглушки обработчиков)
+//конструкторе ApiController, остальные поля задаёт тест (config, security, profileAccess, webWorker, заглушки обработчиков)
 function apiController(fields) {
     const ApiController = require('../server/controllers/ApiController');
     return Object.assign(Object.create(ApiController.prototype), {activeRequests: 0, clientRequests: new Map(),

@@ -109,6 +109,7 @@ const writes = [
     ['admin-clean-cache', 'POST', 'admin/cache/clean'],
     ['admin-clean-broken-covers', 'POST', 'admin/cache/clean-broken-covers'],
     ['admin-reindex', 'POST', 'admin/reindex'],
+    ['admin-accept-user-data-reset', 'POST', 'admin/user-data/accept-reset'],
     ['admin-author-names-update', 'POST', 'admin/author-names/:table/update'],
     //чтение с токеном в теле: POST
     ['admin-diagnose-library-source', 'POST', 'admin/library-sources/diagnose'],

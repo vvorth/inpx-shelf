@@ -51,6 +51,25 @@
                     </div>
                 </div>
 
+                <div v-if="userDataBlocked.length" class="admin-index-status admin-data-blocked" role="alert">
+                    <q-icon name="la la-exclamation-triangle" size="22px" />
+                    <div class="admin-index-status-copy">
+                        <div class="admin-index-status-title">{{ $t('settings.admin.userDataBlockedTitle') }}</div>
+                        <div v-for="item in userDataBlocked" :key="item.file" class="admin-data-blocked-file">
+                            {{ $t('settings.admin.userDataBlockedFile', {file: item.file, copy: item.copy}) }}
+                        </div>
+                        <div class="admin-index-status-text">{{ $t('settings.admin.userDataBlockedHint') }}</div>
+                        <div class="admin-data-blocked-actions">
+                            <q-btn outline color="primary" dense no-caps icon="la la-archive" to="/admin/backups">
+                                {{ $t('settings.admin.userDataRestore') }}
+                            </q-btn>
+                            <q-btn outline color="negative" dense no-caps icon="la la-broom" :loading="userDataResetLoading" @click="acceptUserDataReset">
+                                {{ $t('settings.admin.userDataReset') }}
+                            </q-btn>
+                        </div>
+                    </div>
+                </div>
+
                     <AdminOverview v-if="section === 'overview'" :admin="adminContext" />
 
                     <AdminUsers v-else-if="section === 'users'" />
@@ -59,7 +78,7 @@
 
                     <AdminStorage v-else-if="section === 'storage'" :admin="adminContext" />
 
-                    <AdminBackups v-else-if="section === 'backups'" @restored="loadSettings" />
+                    <AdminBackups v-else-if="section === 'backups'" @restored="onBackupRestored" />
 
                     <AdminLog v-else-if="section === 'log'" :admin="adminContext" />
 
@@ -123,6 +142,7 @@ class AdminPage {
     adminCleanCoverCacheLoading = false;
     adminCacheSaveLoading = false;
     adminReindexLoading = false;
+    userDataResetLoading = false;
     adminSourcesLoading = false;
     adminBrokenCoversLoading = false;
     adminCoverRebuildLoading = false;
@@ -491,6 +511,11 @@ class AdminPage {
     get adminIndexBusy() {
         const state = String(this.adminIndex.state || '');
         return state === 'db_creating' || state === 'db_loading' || (this.adminReindexInProgress && this.adminIndex.ready !== true);
+    }
+
+    //файлы данных, которые не читаются: запись в них отклоняется, пока администратор не решит, что делать
+    get userDataBlocked() {
+        return (this.adminDashboard && this.adminDashboard.userDataBlocked) || [];
     }
 
     get adminIndexStatusVisible() {
@@ -879,6 +904,30 @@ class AdminPage {
         }
     }
 
+    onBackupRestored() {
+        this.loadSettings();
+        //восстановленный файл снимает предупреждение о нечитаемых данных
+        this.refreshAdminDashboard(false).catch(() => {});
+    }
+
+    async acceptUserDataReset() {
+        const files = this.userDataBlocked.map(item => item.file).join(', ');
+        const caption = t('settings.admin.userDataReset');
+        if (!await this.$root.stdDialog.confirm(t('settings.admin.userDataResetConfirm', {files}), caption, {okLabel: caption}))
+            return;
+
+        this.userDataResetLoading = true;
+        try {
+            await this.api.adminAcceptUserDataReset();
+            await this.refreshAdminDashboard(false);
+            this.$root.notify.success(t('settings.admin.userDataResetDone'));
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
+        } finally {
+            this.userDataResetLoading = false;
+        }
+    }
+
     async reindexAdmin() {
         //на время перестройки библиотека недоступна всем читателям
         if (!await this.$root.stdDialog.confirm(t('settings.admin.reindexConfirm'), t('settings.admin.reindex'), {okLabel: t('settings.admin.reindex')}))
@@ -946,5 +995,26 @@ export default vueComponent(AdminPage);
 
 .admin-index-status :deep(.q-linear-progress) {
     margin-top: 8px;
+}
+
+.admin-data-blocked {
+    border-color: var(--app-danger);
+    background: color-mix(in srgb, var(--app-danger) 8%, var(--app-surface));
+}
+
+.admin-data-blocked > .q-icon {
+    color: var(--app-danger);
+}
+
+.admin-data-blocked-file {
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+}
+
+.admin-data-blocked-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
 }
 </style>

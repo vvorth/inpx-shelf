@@ -36,7 +36,7 @@ import vueComponent from '../vueComponent.js';
 import {call} from './apiConnection';
 import apiRoutes from '../../../shared/apiRoutes.js';
 import * as utils from '../../share/utils';
-import LockQueue from '../../../server/core/LockQueue';
+import LockQueue from '../../../shared/LockQueue.js';
 import packageJson from '../../../package.json';
 import {t, tm, getLang} from '../../share/i18n';
 import {isConnectionError, canRetryRequest, reconnectDelay} from '../../share/connection';
@@ -461,6 +461,10 @@ class Api {
 
     async adminReindex() {
         return await this.request({action: 'admin-reindex'}, 120);
+    }
+
+    async adminAcceptUserDataReset() {
+        return await this.request({action: 'admin-accept-user-data-reset'}, 60);
     }
 
     async exportAdminSettings() {

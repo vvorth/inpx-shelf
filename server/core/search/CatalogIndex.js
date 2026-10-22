@@ -1221,11 +1221,15 @@ class CatalogIndex {
         return {authors: names.authors, series: names.series, books, corrected: text.corrected || '', layout: !!text.layout};
     }
 
-    //Правка метаданных одной книги без полной пересборки
+    //Правка метаданных одной книги без полной пересборки. Книга ищется по _uid в открытом здесь файле:
+    //id из записи, прочитанной раньше, после замены БД при пересборке может указывать на другую книгу
     updateBook(file, row) {
         const db = new DatabaseSync(file);
         try {
-            const id = Number(row.id);
+            const found = db.prepare('SELECT id FROM book WHERE uid = ?').get(String(row._uid || ''));
+            if (!found)
+                return false;
+            const id = found.id;
             const title = String(row.title || '');
             const author = String(row.author || '');
             const series = String(row.series || '');
@@ -1307,6 +1311,7 @@ class CatalogIndex {
         }
         //названия и серии изменились: кэш групп и масок OPDS строится заново
         this.queryMasks = null;
+        return true;
         //язык и оценка правкой не меняются: колонки в памяти остаются верными
         //shortcut: книга остаётся в прежней группе изданий до следующей сборки БД; пересчитывать группу здесь, если правки станут частыми
     }

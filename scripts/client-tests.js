@@ -439,8 +439,31 @@ async function testReleaseVersionsCompareCalVer() {
     assert.strictEqual(compareReleaseVersions('v26.10.0', '1.1.1-dev'), 1);
 }
 
+// Блокировка окна «сервер занят»: второй get() ждёт ret() первого; после errAll() и ret() она свободна для следующего
+async function testLockQueueHandsOverAndFrees() {
+    const LockQueue = require('../shared/LockQueue');
+    const lock = new LockQueue(1);
+    const order = [];
+    await lock.get();
+    const second = lock.get().then(() => order.push('second'));
+    await assert.rejects(lock.get(), /too long/);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(order, [], 'the second caller waits while the lock is held');
+    lock.ret();
+    await second;
+    assert.deepStrictEqual(order, ['second']);
+
+    const rejected = lock.get();
+    lock.errAll();
+    await assert.rejects(rejected, /rejected/);
+    lock.ret();
+    assert.strictEqual(lock.freed, true);
+    await lock.get();
+    assert.strictEqual(lock.freed, false);
+}
+
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testServiceWorkerCachesOnlyBuildFiles,
-    testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
+    testClientSha256MatchesNode, testBookLanguagesDefaultToAll, testLockQueueHandsOverAndFrees,
     testApiConnectionMapsErrors, testApiRequestRefreshesCsrfTokenOnce, testApiDropsOutOfOrderConfig, testLibraryPagesDropPreviousProfileStates,
     testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,

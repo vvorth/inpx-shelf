@@ -404,11 +404,11 @@ class CatalogSearch {
     async updateBook(row) {
         if (row && row._uid && this.editedDuringBuild)
             this.editedDuringBuild.add(row._uid);
-        if (!this.ready || !row || !row.id)
+        if (!this.ready || !row || !row._uid)
             return;
         try {
             await this.getThread().call('updateBook', this.file, {
-                id: row.id, title: row.title, author: row.author, series: row.series, serno: row.serno,
+                _uid: row._uid, title: row.title, author: row.author, series: row.series, serno: row.serno,
                 lang: row.lang, librate: row.librate, keywords: row.keywords,
             });
         } catch (e) {

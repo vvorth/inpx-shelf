@@ -5,7 +5,7 @@ const log = new (require('./AppLogger'))().log;//singleton
 const utils = require('./utils');
 const {t, msg} = require('./i18n');
 const {
-    cleanDirInterval, cleanDirNextAlignedDelay, parseCleanDirCron, cleanDirSchedule, cleanDirNextScheduledDelay,
+    cleanDirNextAlignedDelay, parseCleanDirCron, cleanDirSchedule, cleanDirNextScheduledDelay,
     cleanDirMaxSize, cleanDirTargetRatio, cleanDirTargetSize,
 } = require('./CacheSchedule');
 
@@ -103,8 +103,8 @@ module.exports = {
     },
 
     scheduleCacheClean(reason = 'deferred', delay = 10*60*1000) {
-        const interval = cleanDirInterval(this.config);
-        if (!interval || this.cacheCleanTimer)
+        //очистка включена интервалом или cron-расписанием: при одном расписании интервал равен 0
+        if (this.cacheCleanTimer || this.cacheCleanNextScheduledDelay() === null)
             return;
 
         this.cacheCleanTimer = setTimeout(async() => {

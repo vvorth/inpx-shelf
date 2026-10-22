@@ -4,6 +4,7 @@
 //так не нужны ни индекс по жанрам, ни соединения с book_genre.
 const {normalize} = require('./textNorm');
 const {checkSearchRegExp} = require('../utils');
+const {t} = require('../i18n');
 
 const maxLimit = 1000;
 const maxChar = '￿';
@@ -27,6 +28,52 @@ function regExpFor(pattern) {
         regExps.set(pattern, re);
     }
     return re;
+}
+
+//Буквальное начало RegExp после «^»: строка, с которой обязано начинаться совпадение, или '' если её нет.
+//Символ перед необязательным квантификатором (?, *, {) в начало не входит; «|» вне групп снимает привязку к началу
+function regExpPrefix(source) {
+    if (source[0] !== '^')
+        return '';
+    let prefix = '';
+    for (let i = 1; i < source.length;) {
+        let char = source[i];
+        let length = 1;
+        if (char === '\\') {
+            //\d, \w, \u0041 и т.п. - классы и коды, экранированная пунктуация - сам символ
+            char = source[i + 1];
+            if (!char || /[\p{L}\p{N}]/u.test(char))
+                break;
+            length = 2;
+        } else if ('.^$*+?()[]{}|'.includes(char)) {
+            break;
+        }
+        const next = source[i + length];
+        if (next === '?' || next === '*' || next === '{')
+            break;
+        prefix += char;
+        i += length;
+        if (next === '+')
+            break;
+    }
+
+    let depth = 0;
+    for (let i = 0, inClass = false; i < source.length; i++) {
+        const char = source[i];
+        if (char === '\\')
+            i++;
+        else if (inClass)
+            inClass = (char !== ']');
+        else if (char === '[')
+            inClass = true;
+        else if (char === '(')
+            depth++;
+        else if (char === ')')
+            depth--;
+        else if (char === '|' && depth <= 0)
+            return '';
+    }
+    return prefix;
 }
 
 function requireDb(index) {
@@ -59,8 +106,13 @@ function valueCondition(field, value, params) {
 
     if (mode === '~') {
         regExpFor(text);
-        params.push(text);
-        return `catalog_re(?, ${raw})`;
+        //RegExp проверяется функцией JS по каждой строке: без начала из двух символов это обход всех имён
+        //(миллион авторов) в потоке библиотеки, поэтому проверяем только диапазон нормализованных имён с этим началом
+        const prefix = normalize(regExpPrefix(text));
+        if (Array.from(prefix).length < 2)
+            throw new Error(t('errors.regexNeedsPrefix'));
+        params.push(prefix, prefix + maxChar, text);
+        return `(${norm} >= ? AND ${norm} < ? AND catalog_re(?, ${raw}))`;
     }
     if (mode === '=') {
         params.push(normalize(text));

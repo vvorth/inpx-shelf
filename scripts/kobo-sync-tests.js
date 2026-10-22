@@ -595,6 +595,37 @@ async function testKoboSyncKeepsChangesMadeDuringConversion() {
     });
 }
 
+// The sync copies a reading state, then waits for a conversion; a state PUT landing meanwhile keeps its bookmark
+// and statistics, and the status the sync set goes on top.
+async function testKoboSyncKeepsStatePutDuringConversion() {
+    await fixture({slowUid: 'late-uid'}, async({service, store, listA, call, sync}) => {
+        const json = body => ({method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ReadingStates: [body]})});
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        const epubUuid = kobo.uuidv5('main:102');
+        assert.strictEqual((await call(`/v1/library/${epubUuid}/state`, json({CurrentBookmark: {ProgressPercent: 10}}))).status, 200);
+        await store.setBooksRead('default', ['epub-uid'], true);
+        await store.addBooks('default', listA.id, ['late-uid']);
+        service.prepareBudgetMs = 2000;
+        // A full sync announces the read book (status Finished from its saved state), then waits for late-uid.
+        const pendingSync = sync({fresh: true});
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.strictEqual((await call(`/v1/library/${epubUuid}/state`, json({
+            CurrentBookmark: {ProgressPercent: 55, Location: {Value: 'kobo.5.1', Type: 'KoboSpan', Source: 'ch5.xhtml'}},
+            Statistics: {SpentReadingMinutes: 42},
+        }))).status, 200);
+        const {items} = await pendingSync;
+        const announced = items.find(item => item.NewEntitlement && item.NewEntitlement.BookEntitlement.Id === epubUuid);
+        assert.strictEqual(announced.NewEntitlement.ReadingState.StatusInfo.Status, 'Finished');
+        const state = service.store.getState('default', epubUuid);
+        assert.strictEqual(state.bookmark.ProgressPercent, 55);
+        assert.strictEqual(state.bookmark.Location.Value, 'kobo.5.1');
+        assert.strictEqual(state.statistics.SpentReadingMinutes, 42);
+        assert.strictEqual(state.status, 'Finished');
+        assert.ok(state.lastModified >= state.statistics.lastModified, 'the state is as new as its newest part');
+    });
+}
+
 // Each request checks the profile without cloning the store; a sync loads it once and asks for all books at once.
 async function testKoboSyncLoadsProfileStoreOnce() {
     await fixture({}, async({store, listA, listB, sync, lookups}) => {
@@ -1326,6 +1357,37 @@ async function testKoboDevicesTravelWithProfileBackup() {
     });
 }
 
+// Reading states are capped per profile like web positions: past the cap the oldest go, on import and on load.
+async function testKoboStatesStayWithinProfileLimit() {
+    const {userData} = require('../server/core/RequestLimits');
+    const KoboStore = require('../server/core/kobo/KoboStore');
+    const limit = userData.progressPerProfile;
+    userData.progressPerProfile = 3;
+    try {
+        await fixture({}, async({service, worker}) => {
+            const WebWorker = require('../server/core/WebWorker');
+            Object.assign(worker, {checkMyState() {}, koboService: service, trySyncListedBooks: async() => {}});
+            const uuids = [1, 2, 3, 4, 5].map(n => kobo.uuidv5(`book-${n}`));
+            const states = Object.fromEntries(uuids.map((uuid, i) => [uuid, {status: 'Reading', lastModified: `2020-01-0${i + 1}T00:00:00.000Z`}]));
+            const backup = JSON.parse(JSON.stringify(await WebWorker.prototype.exportReadingLists.call(worker, 'default')));
+            backup.kobo.states = states;
+            const result = await WebWorker.prototype.importReadingLists.call(worker, 'default', backup);
+            assert.strictEqual(result.importedKoboStates, 5);
+            assert.strictEqual(result.trimmed.progress, 2, 'dropped states are reported');
+            assert.deepStrictEqual(Object.keys(service.store.data.states.default).sort(), uuids.slice(2).sort(), 'the newest stay');
+
+            // A stored file over the cap loads trimmed; a malformed state is dropped, not fatal.
+            const file = path.join(service.store.config.dataDir, 'kobo-sync.json');
+            await fs.writeJson(file, {devices: [], states: {default: Object.assign({[kobo.uuidv5('broken')]: null}, states)}});
+            const reloaded = new KoboStore(service.store.config);
+            await reloaded.load();
+            assert.deepStrictEqual(Object.keys(reloaded.data.states.default).sort(), uuids.slice(2).sort());
+        });
+    } finally {
+        userData.progressPerProfile = limit;
+    }
+}
+
 // Ids from the device are keys of the per-device maps: `__proto__` and the like must stay unknown ids,
 // answered as before, and never write to Object.prototype (every `error.status` would read 'Finished').
 const hostileIds = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
@@ -1402,7 +1464,7 @@ async function testKoboRestoreSkipsHostileIds() {
             states: entries({status: 'Finished', lastModified: '2020-01-01T00:00:00.000Z'}),
         }));
         assert.ok(Object.hasOwn(payload.states, '__proto__'));
-        assert.deepStrictEqual(await service.store.importUser('default', payload), {devices: 1, states: 1});
+        assert.deepStrictEqual(await service.store.importUser('default', payload), {devices: 1, states: 1, trimmed: 0});
         const device = service.store.data.devices.find(item => item.id === 'restored');
         assert.deepStrictEqual(Object.keys(device.books), [known]);
         assert.deepStrictEqual(Object.keys(service.store.data.states.default), [known]);
@@ -1420,7 +1482,7 @@ async function testKoboRestoreSkipsHostileIds() {
 }
 
 // An unparsable kobo-sync.json is kept as a copy and reported at error level, which also puts it in the
-// admin event log: the store starts empty, and the next write replaces the file.
+// admin event log: the store starts empty and refuses writes, so the file is not replaced.
 async function testKoboBrokenStoreIsReported() {
     const KoboStore = require('../server/core/kobo/KoboStore');
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-kobo-broken-'));
@@ -1438,17 +1500,81 @@ async function testKoboBrokenStoreIsReported() {
         assert.strictEqual(await fs.readFile(path.join(dir, copies[0]), 'utf8'), '{"devices": [');
         assert.strictEqual(events.filter(([level, message]) => level === LM_ERR && message.includes(copies[0])).length, 1,
             'one error naming the copy');
+        await assert.rejects(store.createDevice('u1', {}), error => error.status === 503 && error.message.includes('kobo-sync.json'));
+        assert.strictEqual(await fs.readFile(path.join(dir, 'kobo-sync.json'), 'utf8'), '{"devices": [');
+        assert.deepStrictEqual(store.blockedState(), {file: 'kobo-sync.json', copy: path.join(dir, copies[0])});
     } finally {
         appLogger.setEventListener(listener);
         await fs.remove(dir);
     }
 }
 
+// While kobo-sync.json is unreadable, devices get 503 (they retry later) and writes are refused; the profile store
+// stays writable. A full-backup restore or the admin's accept-reset unblocks it without a restart.
+async function testKoboBrokenStoreWaitsForAdminDecision() {
+    await fixture({}, async({config, service, store, call, base}) => {
+        const file = service.store.file;
+        const breakStore = async() => {
+            await fs.writeFile(file, '{"devices": [');
+            //как после перезапуска с испорченным файлом
+            service.store.data = null;
+            await service.store.load();
+        };
+        const req = {headers: {host: new URL(base).host}, socket: {}, protocol: 'http'};
+        await breakStore();
+        const put = await call(`/v1/library/${kobo.uuidv5('main:101')}/state`, {method: 'PUT', body: '{}'});
+        assert.strictEqual(put.status, 503, 'the device retries later, no 500 and no 401');
+        assert.ok(put.headers.get('retry-after'));
+        await assert.rejects(service.createDevice('default', {name: 'New'}, req), error => error.status === 503 && error.message.includes('kobo-sync.json'));
+        assert.strictEqual(await fs.readFile(file, 'utf8'), '{"devices": [');
+        await store.createList('default', 'Profiles stay writable');
+
+        const admin = Object.assign(Object.create(require('../server/core/WebWorker').prototype), {readingListStore: store,
+            config: Object.assign({}, config, {configFile: path.join(config.dataDir, 'config.json')}),
+            koboService: service, adminEvents: [], checkMyState() {}});
+        await assert.rejects(admin.acceptUserDataReset('default', admin.profileToken('default')), /администратор|administrator/i);
+        assert.ok(service.store.blockedState(), 'still blocked');
+
+        //полное восстановление
+        const zip = new yazl.ZipFile();
+        zip.addBuffer(Buffer.from('{}'), 'backup-info.json');
+        //полный бэкап - с файлом профилей
+        zip.addBuffer(await fs.readFile(store.file), 'reading-lists.json');
+        zip.addBuffer(Buffer.from(JSON.stringify({version: 1, devices: [], states: {}})), 'kobo-sync.json');
+        zip.end();
+        const chunks = [];
+        for await (const chunk of zip.outputStream)
+            chunks.push(chunk);
+        await admin.importAdminBackup('admin', admin.profileToken('admin'), {buffer: Buffer.concat(chunks)});
+        assert.strictEqual(service.store.blockedState(), null);
+        await service.createDevice('default', {name: 'After restore'}, req);
+
+        //начать без устройств: устройство, созданное после этого, синхронизируется
+        await breakStore();
+        assert.deepStrictEqual((await admin.acceptUserDataReset('admin', admin.profileToken('admin'))).reset, ['kobo-sync.json']);
+        assert.strictEqual(admin.adminEvents.at(-1).message.key, 'admin.userDataReset');
+        assert.deepStrictEqual(await fs.readJson(file), {version: 1, devices: [], states: {}});
+        const {endpoint} = await service.createDevice('default', {name: 'After reset'}, req);
+        assert.strictEqual((await fetch(`${endpoint}/v1/initialization`)).status, 200);
+
+        //профили не читаются: устройство тоже ждёт, синхронизация с пустыми списками убрала бы с него книги
+        const lists = await fs.readFile(store.file);
+        await fs.writeFile(store.file, '{broken');
+        await store.load();
+        assert.strictEqual((await fetch(`${endpoint}/v1/initialization`)).status, 503);
+        await fs.writeFile(store.file, lists);
+        await store.load();
+        assert.strictEqual((await fetch(`${endpoint}/v1/initialization`)).status, 200);
+    });
+}
+
 module.exports = [
     testKoboChecksTokenBeforeReadingBody,
     testKoboDevicesTravelWithProfileBackup,
+    testKoboStatesStayWithinProfileLimit,
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,
+    testKoboBrokenStoreWaitsForAdminDecision,
     testKoboReadStateBothWays,
     testKoboProgressPastThresholdMarksRead,
     testKoboFinishedReachesOtherDevices,
@@ -1460,6 +1586,7 @@ module.exports = [
     testKoboStoreProxyToggle,
     testKoboSyncKeepsChangesMadeDuringConversion,
     testKoboResetDuringSyncIsKept,
+    testKoboSyncKeepsStatePutDuringConversion,
     testKoboSyncLoadsProfileStoreOnce,
     testKoboRowFollowsTheListedRecord,
     testKoboReannouncesRegeneratedFiles,

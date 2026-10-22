@@ -1,5 +1,6 @@
 const defaultTimeout = 15*1000;//15 sec
-const exitSignals = ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP', 'uncaughtException'];
+//необработанный reject без обработчика завершил бы процесс сразу, без закрытия БД и записи журнала
+const exitSignals = ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP', 'uncaughtException', 'unhandledRejection'];
 
 //singleton
 let instance = null;
@@ -23,7 +24,7 @@ class AsyncExit {
     _init(signals, codeOnSignal) {
         const runSingalCallbacks = async(signal, err, origin) => {
             if (!this.onSignalCallbacks.size) {
-                console.error(`Uncaught signal "${signal}" received, error: "${(err.stack ? err.stack : err)}"`);
+                console.error(`Uncaught signal "${signal}" received, error: "${(err && err.stack ? err.stack : err)}"`);
             }
 
             for (const signalCallback of this.onSignalCallbacks.keys()) {

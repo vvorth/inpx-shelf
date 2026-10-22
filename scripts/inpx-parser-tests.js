@@ -1,4 +1,5 @@
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');
@@ -61,4 +62,36 @@ async function testInpxParserSkipsBlankCrlfLines() {
     }
 }
 
-module.exports = [testInpxParserUidIsStable, testInpxParserSkipsBlankCrlfLines];
+// Поле structure.info с именем служебного поля (_uid, shown, sourceid) не затирает его: _uid считает парсер,
+// и строки с одинаковым значением такого столбца не склеиваются в повтор. Файл .INP читается, как .inp.
+async function testInpxParserKeepsInternalFields() {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-parser-'));
+    try {
+        const row = ['Булгаков,Михаил,Афанасьевич:', 'prose_classic:', 'Мастер и Маргарита', 'Классика', '3', '1001', '123456', '1001', '0', 'fb2', '2020-01-01', 'ru', '5', ''].join('\x04');
+        const upper = path.join(dir, 'upper.inpx');
+        await writeZip(upper, {'collection.info': 'Test', 'FB2-002.INP': `${row}\r\n`});
+        const plain = [];
+        await new InpxParser().parse(upper, null, async chunk => plain.push(...chunk));
+        assert.deepStrictEqual(plain.map(b => [b._uid, b.folder, b.title]),
+            [['4xwZGsGG0A5IwTfueWXH7cMo3vXKCs0yoFA3vByf56w=', 'FB2-002.zip', 'Мастер и Маргарита']]);
+
+        const hostile = path.join(dir, 'hostile.inpx');
+        const rows = ['A:', 'B:'].map(author => [author, 'sf:', 'Title', 'same', 'x', 'src', '1', '__proto__'].join('\x04'));
+        await writeZip(hostile, {
+            'structure.info': 'AUTHOR;GENRE;TITLE;_UID;SHOWN;SOURCEID;SERNO;__PROTO__',
+            'fb2-001.inp': rows.join('\n'),
+        });
+        const books = [];
+        await new InpxParser().parse(hostile, null, async chunk => books.push(...chunk));
+        assert.deepStrictEqual(books.map(b => b._uid), rows.map(line => crypto.createHash('sha256').update(line).digest('base64')));
+        for (const book of books) {
+            assert.strictEqual(Object.getPrototypeOf(book), Object.prototype);
+            assert.ok(!('shown' in book) && !('sourceid' in book));
+            assert.deepStrictEqual([book.title, book.serno, book.folder], ['Title', 1, 'fb2-001.zip']);
+        }
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
+module.exports = [testInpxParserUidIsStable, testInpxParserSkipsBlankCrlfLines, testInpxParserKeepsInternalFields];

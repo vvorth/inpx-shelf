@@ -89,9 +89,9 @@ function sendJson(res, data, status = 200) {
     res.status(status).type('application/json; charset=utf-8').send(JSON.stringify(data));
 }
 
-// Worker errors carry their HTTP meaning in a code (a busy converter) or a leading "404 ".
+// Worker errors carry their HTTP meaning in a code (a busy converter), a status (user data blocked) or a leading "404 ".
 function errorStatus(error) {
-    if (busyConversionCodes.has(error && error.code))
+    if (busyConversionCodes.has(error && error.code) || (error && error.status === 503))
         return 503;
     return (/^404\b/.test(String((error && error.message) || '')) ? 404 : 500);
 }
@@ -814,8 +814,25 @@ class KoboService {
 
     async saveSyncResult({device, generation, books, startBooks, startTags, states, now}, tags) {
         await this.store.saveSync(device.id, (target, data) => {
-            // Only states changed by this sync: a concurrent state PUT must not be overwritten.
-            data.states[device.userId] = Object.assign(data.states[device.userId] || idMap(), states);
+            // This sync worked on copies taken before conversions were awaited: a state PUT that landed
+            // meanwhile keeps its bookmark and statistics, and only the status this sync set goes on top.
+            const rows = data.states[device.userId] = data.states[device.userId] || idMap();
+            for (const [uuid, state] of Object.entries(states)) {
+                const live = ownEntry(rows, uuid);
+                if (!live) {
+                    rows[uuid] = state;
+                    continue;
+                }
+                // The device set a status after this sync started: it is the newer one.
+                if (String(live.statusModified || '') > now)
+                    continue;
+                for (const field of ['status', 'statusModified', 'timesStartedReading', 'lastTimeStartedReading'])
+                    live[field] = state[field];
+                for (const field of ['lastModified', 'priorityTimestamp']) {
+                    if (String(state[field] || '') > String(live[field] || ''))
+                        live[field] = state[field];
+                }
+            }
             target.lastSyncAt = now;
             if (target.generation !== generation)
                 return;
@@ -1118,6 +1135,12 @@ class KoboService {
                 await this.store.load();
             } catch (e) {
                 log(LM_ERR, `Kobo: cannot load ${this.store.file}: ${e.message}`);
+                return res.sendStatus(503);
+            }
+            // Файл устройств или профилей не читается, решение за администратором: устройство повторит запрос позже.
+            // Синхронизация с пустыми данными убрала бы с него книги, а отказ по токену - вход
+            if (this.store.blocked || this.worker.readingListStore.blocked) {
+                res.set('Retry-After', '600');
                 return res.sendStatus(503);
             }
             let device = this.store.findDeviceByToken(req.params.token);
