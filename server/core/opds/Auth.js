@@ -10,13 +10,14 @@ function parseBasicAuth(header = '') {
 // или в веб-интерфейсе (cookie сессии) - его находит ProfileAccess.httpGuard. Общий логин opds.user - не профиль.
 function resolveViewer(req) {
     const user = req.profileAccessIdentity && req.profileAccessIdentity.user;
-    return {ids: new Set(user ? [user.id] : []), admin: !!(user && user.isAdmin)};
+    return {ids: new Set(user ? [user.id] : [])};
 }
 
-// Профиль с паролем (история чтения, списки) показывается в OPDS только ему самому и администратору
+// Профиль с паролем (история чтения, списки) показывается в OPDS только ему самому, администратору тоже нет:
+// открыть чужой ?user= не даёт и ProfileAccess.httpGuard
 function canSeeProfile(req, userId, hasPassword) {
     const viewer = req.opdsViewer;
-    return !hasPassword || !!(viewer && (viewer.admin || viewer.ids.has(userId)));
+    return !hasPassword || !!(viewer && viewer.ids.has(userId));
 }
 
 module.exports = {parseBasicAuth, resolveViewer, canSeeProfile};

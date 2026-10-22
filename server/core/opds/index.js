@@ -19,7 +19,7 @@ const log = new (require('../AppLogger'))().log;//singleton
 
 // Profile lookups fall back to the first profile (the admin), and the OPDS auth check skips profiles
 // without OPDS: a ?user= scope must name a profile with OPDS on, or the signed-in profile itself.
-// A profile with a password is shown only to itself and to an admin (see Auth.canSeeProfile).
+// A profile with a password is shown only to itself, not to an admin either (see Auth.canSeeProfile).
 function scopeGuard(getWorker) {
     return async(req, res, next) => {
         try {

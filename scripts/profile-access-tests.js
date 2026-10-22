@@ -252,6 +252,26 @@ async function testOpdsHidesPasswordProfiles() {
     });
 }
 
+// An admin has no exception: a password profile stays hidden and closed, passwordless profiles stay visible.
+async function testOpdsAdminSeesNoPasswordProfiles() {
+    await fixture({}, async({worker, alice, bob, request, session}) => {
+        const store = worker.readingListStore;
+        const admin = (await store.load()).users.find(user => user.isAdmin);
+        for (const user of [alice, bob])
+            await store.createList(user.id, `${user.name} OPDS list`, 'opds');
+        const cookie = {cookie: session(admin.id).cookie};
+        const asAdmin = await (await request('/opds/reading-profiles', cookie)).text();
+        assert.ok(!asAdmin.includes('Alice'), asAdmin);
+        assert.strictEqual((await request(`/opds?user=${alice.id}`, cookie)).status, 401);
+        const {resolveViewer, canSeeProfile} = require('../server/core/opds/Auth');
+        const req = {profileAccessIdentity: {user: admin}};
+        req.opdsViewer = resolveViewer(req);
+        assert.strictEqual(canSeeProfile(req, alice.id, true), false, 'A password profile');
+        assert.strictEqual(canSeeProfile(req, bob.id, false), true, 'A passwordless profile');
+        assert.strictEqual(canSeeProfile(req, admin.id, true), true, 'Its own profile');
+    });
+}
+
 // A profile without a password (reached through an SSO binding): only an admin gives it credentials. Own password needs the current one.
 async function testOpenProfileCredentialsAdminOnly() {
     await fixture({kosyncEnabled: true}, async({worker, alice, bob, connect, signIn, session}) => {
@@ -776,7 +796,7 @@ async function testOpdsUserPrefersIdOverLogin() {
 }
 
 module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromCookieOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
-    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testImportIntoOpenProfileSkipsCredentials, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
+    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testImportIntoOpenProfileSkipsCredentials, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testOpdsAdminSeesNoPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials, testOpdsUserPrefersIdOverLogin,
     testParallelBasicShareOneScrypt, testBusyPasswordCheckIsNotAFailedLogin];

@@ -1471,6 +1471,53 @@ async function testOpdsSeriesEntriesAndFilter() {
     assert.deepStrictEqual(page.filterBooks(books, {title: '~^al'}).map(book => book._uid), ['a']);
 }
 
+// Books of one title come 100 per page with a next link; a title search that hit its cap says the list is incomplete.
+async function testOpdsTitlePagesAndSearchCap() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const file = path.join(dir, 'catalog.sqlite');
+        const book = (id, title, extra = {}) => Object.assign({
+            id, _uid: `u${id}`, title, author: 'Автор Первый', series: '', serno: 0, genre: 'prose_classic', lang: 'ru', ext: 'fb2',
+            size: 1000, date: '2020-01-01', librate: 4, del: 0, sourceId: 'main', keywords: '',
+        }, extra);
+        //150 книг одного названия (одна - с другими знаками), удалённая и другая книга
+        const books = Array.from({length: 149}, (_, i) => book(i + 1, 'Избранное'));
+        books.push(book(150, 'Избранное!'), book(151, 'Избранное', {del: 1}), book(152, 'Другая книга'));
+        const index = new CatalogIndex();
+        index.beginBuild(file);
+        index.insertBooks(books);
+        index.finishBuild({inpxHash: 'hash'});
+        index.open(file);
+        try {
+            const webWorker = {catalogSearch: {findBooks: async(query) => index.withBooks('findBooks', query)}};
+            const page = (name, id) => Object.assign(Object.create(require(`../server/core/opds/${name}`).prototype),
+                {config: {}, opdsRoot: '/opds', id, title: 'opds.books', rootTag: 'feed', webWorker});
+            const ids = xml => [...xml.matchAll(/<entry>\s*<updated>[^<]*<\/updated>\s*<id>([^<]*)<\/id>/g)].map(m => m[1]);
+            const body = async(p, query) => ids(await p.body({query, originalUrl: '/opds'}));
+
+            const titlePage = page('TitlePage', 'title');
+            const first = await body(titlePage, {title: '=избранное'});
+            assert.strictEqual(first.length, 101);
+            assert.strictEqual(first[100], 'next_page');
+            const second = await body(titlePage, {title: '=избранное', page: '2'});
+            assert.strictEqual(second.length, 50, 'the rest, the title with other punctuation too');
+            assert.ok(second.includes('u150') && !second.includes('next_page'));
+            assert.strictEqual(new Set([...first, ...second]).size, 151, 'no book is repeated');
+
+            const searchPage = page('SearchPage', 'search');
+            const found = await body(searchPage, {type: 'title', term: 'избран'});
+            assert.strictEqual(found.length, 101);
+            assert.strictEqual(found[100], 'next_page');
+            const last = await body(searchPage, {type: 'title', term: 'избран', page: '2'});
+            assert.strictEqual(last.length, 21);
+            assert.strictEqual(last[20], 'search_incomplete', 'the title search stopped at 120 books');
+            assert.deepStrictEqual(await body(searchPage, {type: 'title', term: 'другая'}), ['u152']);
+        } finally {
+            index.close();
+        }
+    });
+}
+
 async function testBookPageRecordAndReaderStates() {
     const worker = makeWorker();
     worker.getBookRecordByUid = async(uid) => (uid === 'book:1' ? {_uid: 'book:1', title: 'Старое название', author: 'Автор Первый', ext: 'fb2', size: 10, series: 'Цикл', serno: 1} : null);
@@ -2861,6 +2908,7 @@ const tests = [
     testReaderHomeKeepsUnavailableProgressVisible,
     testBookPageRecordAndReaderStates,
     testOpdsSeriesEntriesAndFilter,
+    testOpdsTitlePagesAndSearchCap,
     testCatalogIndexSearch,
     testAuthorEnglishNames,
     testDiscoveryPreferencesAndEventsPersist,

@@ -1207,6 +1207,7 @@
             "    </li>",
             "</ul>"
         ],
+        "searchIncomplete": "[Показаны не все результаты: уточните поиск]",
         "searchSeries": "Поиск серий",
         "searchSeriesTitles": "Искать по названиям серий",
         "searchValueFormatDescription": "Описание формата поискового значения",

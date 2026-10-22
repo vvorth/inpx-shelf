@@ -10,10 +10,12 @@ class SearchPage extends BasePage {
         this.title = 'opds.search';
     }
 
+    //Книги по слову в названии, серии или авторе: не больше 120 из каждого поиска.
+    //incomplete - хотя бы один поиск упёрся в предел, и список неполон
     async searchBooks(term = '', genre = '') {
         const normalized = String(term || '').trim();
         if (!normalized)
-            return [];
+            return {books: [], incomplete: false};
 
         const queries = [
             {title: `*${normalized}`, genre, del: '0', limit: 120, offset: 0},
@@ -21,21 +23,23 @@ class SearchPage extends BasePage {
             {author: `*${normalized}`, genre, del: '0', limit: 120, offset: 0},
         ];
 
-        const result = [];
+        const books = [];
         const seen = new Set();
+        let incomplete = false;
 
         for (const query of queries) {
             const res = await this.webWorker.catalogSearch.findBooks(query);
+            incomplete = incomplete || res.totalFound > query.limit;
             for (const book of res.books) {
                 if (!book || seen.has(book._uid))
                     continue;
 
                 seen.add(book._uid);
-                result.push(book);
+                books.push(book);
             }
         }
 
-        return result;
+        return {books, incomplete};
     }
 
     async body(req) {
@@ -52,11 +56,11 @@ class SearchPage extends BasePage {
         if (query.type) {
             if (query.type == 'title') {
                 try {
-                    let found = await this.searchBooks(query.term, query.genre);
+                    let {books: found, incomplete} = await this.searchBooks(query.term, query.genre);
 
                     if (!found.length) {
                         const fallbackTerm = iconv.encode(query.term, 'ISO-8859-1').toString();
-                        found = await this.searchBooks(fallbackTerm, query.genre);
+                        ({books: found, incomplete} = await this.searchBooks(fallbackTerm, query.genre));
                     }
 
                     const page = query.page;
@@ -76,6 +80,14 @@ class SearchPage extends BasePage {
                                 id: 'next_page',
                                 title: t('opds.nextPage'),
                                 link: this.navLink({href: `/${this.id}?type=title&term=${encodeURIComponent(query.term)}&genre=${encodeURIComponent(query.genre)}&page=${page + 1}`}),
+                            })
+                        );
+                    } else if (incomplete) {
+                        entry.push(
+                            this.makeEntry({
+                                id: 'search_incomplete',
+                                title: t('opds.searchIncomplete'),
+                                link: this.acqLink({href: `/search-help`}),
                             })
                         );
                     }
