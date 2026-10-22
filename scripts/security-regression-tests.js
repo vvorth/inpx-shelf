@@ -801,7 +801,7 @@ async function testServerDetailsStayPrivate() {
             await new Promise(resolve => server.close(resolve));
         }
 
-        const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})},
+        const controller = apiController({config, security, profileAccess: null,
             webWorker: {getBookLink: async() => { throw new Error(`archive not found: ${config.libDir}/fb2-000001.zip`); }}});
         const api = await listen(apiApp({config, security, controller, health: false}));
         try {
@@ -847,7 +847,7 @@ async function testBookRecordsCarryNoServerPaths() {
         await worker.readingListStore.addBooks('default', list.id, [sampleUid]);
         const security = new Security(config);
         security.secret = 'test-secret';
-        const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})}, webWorker: worker});
+        const controller = apiController({config, security, profileAccess: null, webWorker: worker});
         const api = await listen(apiApp({config, security, controller, health: false}));
         try {
             const client = ApiTestClient.forSession(api.base, security);
@@ -1104,7 +1104,7 @@ async function apiFixture({config: overrides = {}, worker: workerFields = {}, ha
         security.secret = 'test-secret';
         const worker = Object.assign({getIndexStatus: async() => ({ready: true, state: 'normal', progress: 1})}, workerFields);
         const controller = apiController(Object.assign({config, security, profileAccess: null, webWorker: worker,
-            workerState: {getState: () => ({state: 'normal'})}, test: async() => ({message: 'inpx-shelf project is awesome'})}, handlers));
+            test: async() => ({message: 'inpx-shelf project is awesome'})}, handlers));
         await fs.outputFile(path.join(config.publicDir, 'index.html'), '<html>App</html>');
         const {base: origin, close} = await listen(apiApp({config, security, controller,
             after: app => require('../server/static')(app, config, worker, security)}));

@@ -50,7 +50,8 @@ try {
     assert.deepStrictEqual(sorted({title: '*маргар'}), [1, 6]);
     assert.deepStrictEqual(sorted({title: '#198'}), [9], '# allows names starting with a digit');
     assert.deepStrictEqual(sorted({title: '#мир'}), [], '# excludes names starting with a cyrillic letter');
-    assert.deepStrictEqual(sorted({title: '~сердце$'}), [2]);
+    assert.deepStrictEqual(sorted({title: '~^собачье сердце$'}), [2]);
+    assert.throws(() => index.findBooks({title: '~сердце$'}), /двух обычных символов/, 'a pattern without a literal start would test every title');
     assert.deepStrictEqual(sorted({series: 'мир'}), [3]);
     assert.deepStrictEqual(sorted({series: '=классика'}), [1]);
     assert.deepStrictEqual(sorted({title: '???'}), [], 'punctuation-only value matches nothing');
@@ -130,7 +131,7 @@ try {
     const titlePage = offset => index.opdsNames('title', {del: '0', limit: 2, offset});
     assert.deepStrictEqual([titlePage(2).totalFound, titlePage(4).totalFound], [7, 7]);
     assert.strictEqual(counts, 0, 'the total of the query above is reused');
-    index.updateBook(file, {id: 2, title: 'Мастер и Маргарита', author: 'Булгаков Михаил'});
+    index.updateBook(file, {_uid: 'u2', title: 'Мастер и Маргарита', author: 'Булгаков Михаил'});
     assert.strictEqual(titlePage(0).totalFound, 6);
     assert.strictEqual(counts, 1);
 

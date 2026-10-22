@@ -163,6 +163,43 @@ async function testCleanDirSkipsVanishedFiles() {
     });
 }
 
+//очистка после подготовки книги откладывается и при одном cron-расписании (интервал 0); пустое расписание её выключает
+async function testDeferredCacheCleanFollowsCronSchedule() {
+    const scheduled = config => {
+        const worker = bareWorker({config, cacheCleanTimer: null});
+        worker.scheduleCacheClean('after book');
+        const timer = worker.cacheCleanTimer;
+        clearTimeout(timer);
+        return !!timer;
+    };
+    assert.strictEqual(scheduled({cacheCleanInterval: 0, cacheCleanSchedule: '0 3 * * *'}), true, 'cron only');
+    assert.strictEqual(scheduled({cacheCleanInterval: 60}), true, 'interval only');
+    assert.strictEqual(scheduled({cacheCleanInterval: 60, cacheCleanSchedule: ''}), false, 'an empty schedule turns cleaning off');
+    assert.strictEqual(scheduled({cacheCleanInterval: 0}), false);
+}
+
+//состояние сборки - поле воркера без срока жизни: статус индекса и get-worker-state отдают задание и после часа без изменений
+async function testServerStateOutlivesIdleHour() {
+    const {mock} = require('node:test');
+    mock.timers.enable({apis: ['Date', 'setTimeout', 'setInterval']});
+    try {
+        const worker = bareWorker({config: {version: 'test'}, catalogSearch: {ready: false}});
+        worker.setMyState('db_creating', {job: 'build library', jobMessage: 'db.loadInpx', jobStep: 1, jobStepCount: 1, progress: 0.4});
+        mock.timers.tick(61*60*1000);
+        const status = await worker.getIndexStatus();
+        assert.deepStrictEqual([status.state, status.job, status.progress, status.jobStepCount], ['db_creating', 'build library', 0.4, 1]);
+        assert.ok(status.serverMessage && status.jobMessage);
+
+        const ApiController = require('../server/controllers/ApiController');
+        const controller = Object.assign(Object.create(ApiController.prototype), {webWorker: worker});
+        const state = await controller.getWorkerState({workerId: 'server_state'});
+        assert.deepStrictEqual([state.state, state.job, state.progress], ['db_creating', 'build library', 0.4]);
+        assert.deepStrictEqual(await controller.getWorkerState({workerId: 'other'}), {});
+    } finally {
+        mock.timers.reset();
+    }
+}
+
 //если config.json не записался, прежний список библиотек остаётся в памяти
 async function testLibrarySourcesRollBackWhenConfigSaveFails() {
     await temporary(async(dir) => {
@@ -726,6 +763,8 @@ module.exports = [
     testAuthorInfoIndexBuildsOnce,
     testRestoreBookRemovesExtractedFileWhenDescriptionIsMissing,
     testCleanDirSkipsVanishedFiles,
+    testDeferredCacheCleanFollowsCronSchedule,
+    testServerStateOutlivesIdleHour,
     testLibrarySourcesRollBackWhenConfigSaveFails,
     testReadMarkIsTheProfiles,
     testListReadMarksMoveToProgress,

@@ -189,7 +189,8 @@ class Logger {
 
         this.closed = false;
         ayncExit.onSignal((signal, err) => {
-            this.log(LM_FATAL, `Signal "${signal}" received, error: "${(err.stack ? err.stack : err)}", exiting...`);
+            //у unhandledRejection err - причина reject: может быть чем угодно, в том числе undefined
+            this.log(LM_FATAL, `Signal "${signal}" received, error: "${(err && err.stack ? err.stack : err)}", exiting...`);
         });
         ayncExit.addAfter(this.close.bind(this));
     }

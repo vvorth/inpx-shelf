@@ -86,9 +86,75 @@ async function testRegExpSearchRefusesBacktrackingPatterns() {
             assert.throws(() => index.findBooks({author: 'huh', title: '~.{0,99}.{0,99}q'}), /слишком сложное/);
             // optional characters before a fixed run backtrack exponentially (1 s per title at 20)
             assert.throws(() => index.findBooks({title: `~^${'.?'.repeat(20)}.{20}\\x00`}), /слишком сложное/);
-            assert.deepStrictEqual(index.findBooks({title: '~^(?:keeping) my hopes?$'}).ids, [1], 'One "?" and a group prefix stay allowed');
+            assert.deepStrictEqual(index.findBooks({title: '~^ke(?:eping) my hopes?$'}).ids, [1], 'One "?" and a group prefix stay allowed');
             assert.deepStrictEqual(index.findBooks({title: '~^keeping.*?hope$'}).ids, [1], 'A lazy quantifier counts once');
         } finally {
+            index.close();
+        }
+    });
+}
+
+// "~" runs a JS function per row: only names whose normalized form starts with the pattern's literal start are tested,
+// with the same results as testing every name; a pattern without such a start is refused.
+async function testRegExpSearchScansOnlyItsPrefixRange() {
+    await withTempDir(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        const books = [
+            ['Толстой Лев', 'Война и мир', 'Классика'], ['Толстая Татьяна', 'Война миров', 'Классики мира'],
+            ['Толстой Алексей', '«Ёлка» для всех', ''], ['Тургенев Иван', 'Ёлки-палки', 'Классика'],
+            ['Пушкин Александр', 'Анна Каренина', ''], ['Le Guin Ursula', 'Le Morte', 'Earthsea'], ['Lem Stanisław', 'Солярис', ''],
+        ];
+        index.beginBuild(file);
+        index.insertBooks(books.map(([author, title, series], i) => ({id: i + 1, _uid: `u${i + 1}`, author, title, series, serno: 0,
+            size: 1, librate: 0, del: 0, sourceId: 'main', insno: 0, folder: 'a.zip', file: String(i + 1), libid: String(i + 1), ext: 'fb2', lang: 'ru'})));
+        index.finishBuild({});
+        index.open(file);
+        const test = RegExp.prototype.test;
+        const patterns = new Set();
+        let calls = 0;
+        RegExp.prototype.test = function(value) {
+            if (patterns.has(this.source))
+                calls++;
+            return test.call(this, value);
+        };
+        const counted = (pattern, query) => {
+            patterns.add(pattern);
+            calls = 0;
+            const result = query();
+            patterns.delete(pattern);
+            return [result, calls];
+        };
+        try {
+            const [authors, authorCalls] = counted('^Толст', () => index.opdsNames('author', {author: '~^Толст', limit: 100}));
+            const fullScan = (table, column, pattern) => index.db.prepare(`SELECT ${column} AS v FROM ${table} WHERE catalog_re(?, ${column})`)
+                .all(pattern).map(row => row.v).sort();
+            assert.deepStrictEqual(authors.found.map(row => row.author).sort(), fullScan('author', 'name', '^Толст'));
+            assert.strictEqual(authors.found.length, 3);
+            //имена считаются дважды (страница и итог), но только из диапазона «толст»
+            assert.strictEqual(authorCalls, 6, 'only the "толст" range is tested');
+            const [found, bookCalls] = counted('^Толст', () => index.findBooks({author: '~^Толст'}));
+            assert.deepStrictEqual(found.ids.sort(), [1, 2, 3]);
+            assert.strictEqual(bookCalls, 3);
+
+            for (const [field, table, column, pattern] of [
+                ['title', 'book', 'title', '^«Ёл'], ['title', 'book', 'title', '^ёлки-п'], ['title', 'book', 'title', '^Война ми'],
+                ['title', 'book', 'title', '^Война (и|миров)'], ['author', 'author', 'name', '^Le\\s'], ['author', 'author', 'name', '^le'],
+                ['series', 'series', 'name', '^Классик[аи]'], ['series', 'series', 'name', '^классики\\ м'],
+            ]) {
+                const names = index.opdsNames(field, {[field]: `~${pattern}`, limit: 100}).found;
+                const actual = (field === 'title' ? index.getBooks(names.map(row => row.id)).map(row => row.title) : names.map(row => row[field]));
+                const expected = fullScan(table, column, pattern);
+                assert.ok(expected.length, pattern);
+                assert.deepStrictEqual(actual.sort(), expected, pattern);
+            }
+
+            for (const pattern of ['~.*', '~Толст', '~^Т.*', '~^Т?олст', '~^[Тт]олст', '~^Толст|Пушкин', '~^\\wолст'])
+                assert.throws(() => index.findBooks({author: pattern}), /двух обычных символов/, pattern);
+            assert.throws(() => index.opdsGroups('series', {series: '~^К'}), /двух обычных символов/);
+        } finally {
+            RegExp.prototype.test = test;
             index.close();
         }
     });
@@ -195,8 +261,8 @@ async function testMetadataEditKeepsAuthorCounts() {
         index.beginBuild(file);
         index.insertBooks([book(1, 'Автор Первый'), book(2, 'Автор Первый'), book(3, 'Автор Второй')]);
         index.finishBuild({});
-        index.updateBook(file, {id: 1, title: 'Книга 1', author: 'Автор Второй', series: ''});
-        index.updateBook(file, {id: 3, title: 'Книга 3', author: 'Автор Третий,Автор Третий', series: ''});
+        index.updateBook(file, {_uid: 'u1', title: 'Книга 1', author: 'Автор Второй', series: ''});
+        index.updateBook(file, {_uid: 'u3', title: 'Книга 3', author: 'Автор Третий,Автор Третий', series: ''});
         index.open(file);
         try {
             assert.deepStrictEqual(index.listNames({kind: 'author'}).items,
@@ -224,7 +290,7 @@ async function testMetadataEditKeepsAliasesSeriesAndOpdsGroups() {
         try {
             const titles = () => index.opdsGroups('title', {depth: 1, del: '0'}).found.map(group => group.value);
             assert.deepStrictEqual(titles(), ['а', 'к']);
-            index.updateBook(file, {id: 1, title: 'Будущее', author: 'Азимов Айзек', series: 'Новая серия'});
+            index.updateBook(file, {_uid: 'u1', title: 'Будущее', author: 'Азимов Айзек', series: 'Новая серия'});
             assert.deepStrictEqual(titles(), ['б', 'к']);
             assert.deepStrictEqual(index.search({q: 'asimov будущее'}).ids, [1]);
             assert.deepStrictEqual(index.listNames({kind: 'series'}).items, [{name: 'Новая серия', books: 1}]);
@@ -284,6 +350,38 @@ async function testCatalogSearchRebuildEditsAndThreadRestart() {
             assert.deepStrictEqual((await fs.readdir(dir)).filter(name => name.endsWith('.tmp')), []);
         } finally {
             InpxParser.prototype.parse = parse;
+            await search.close();
+        }
+    });
+}
+
+// A metadata edit is addressed by _uid: a record read before a rebuild carries the id of the previous DB,
+// where the same id may now be another book. An unknown _uid changes nothing.
+async function testCatalogEditFollowsUidAcrossRebuild() {
+    await withTempDir(async(dir) => {
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const inpxFile = path.join(dir, 'x.inpx');
+        const lines = [['Author A', 'Book One'], ['Author B', 'Book Two']].map(inpxLine);
+        const [a, b] = lines.map(line => crypto.createHash('sha256').update(line).digest('base64'));
+        await writeInpx(inpxFile, [], lines);
+        const search = new CatalogSearch({dataDir: dir, inpxFile, libDir: dir}, catalogWorker());
+        const ids = async() => (await search.getBooksByUids([a, b])).map(row => [row._uid, row.id]).sort((x, y) => x[1] - y[1]);
+        try {
+            assert.strictEqual(await search.ensure('h1'), true);
+            assert.deepStrictEqual(await ids(), [[a, 1], [b, 2]]);
+            const [stale] = await search.getBooksByUids([a]);
+
+            await writeInpx(inpxFile, [], [lines[1], lines[0]]);
+            assert.strictEqual(await search.ensure('h2', {force: true}), true);
+            assert.deepStrictEqual(await ids(), [[b, 1], [a, 2]]);
+            await search.updateBook(Object.assign(stale, {title: 'Edited Title'}));
+            assert.deepStrictEqual((await search.call('search', {q: 'edited'})).ids, [2]);
+            assert.deepStrictEqual((await search.call('search', {q: 'two'})).ids, [1], 'the book now at the stale id keeps its title');
+
+            const index = new (require('../server/core/search/CatalogIndex'))();
+            assert.strictEqual(index.updateBook(search.file, {id: 1, _uid: 'missing', title: 'Ghost'}), false);
+            assert.deepStrictEqual((await search.call('search', {q: 'ghost'})).ids, []);
+        } finally {
             await search.close();
         }
     });
@@ -559,8 +657,8 @@ function testSearchQueryIsCapped() {
     assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
 }
 
-module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildAppliesInpxFilter,
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogEditFollowsUidAcrossRebuild, testCatalogBuildAppliesInpxFilter,
     testCatalogImportSkipsPathsOutsideLibrary, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb, testBroadSearchSkipsRanking,
     testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
-    testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart,
+    testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testRegExpSearchScansOnlyItsPrefixRange, testPreparedBookSizeAppearsInCatalogAcrossRestart,
     testWorkKeyMatchesEditionsOnly, testSearchGroupsEditions];

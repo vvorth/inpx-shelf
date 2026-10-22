@@ -338,7 +338,7 @@ module.exports = {
                 return text.includes('cover') || text.includes('облож') || /\bimage\s+\S+:/i.test(text);//i18n-ignore: поиск по тексту лога
             })
             .slice(0, 8);
-        const state = this.wState.get() || {};
+        const state = this.serverState || {};
 
         return Object.assign({}, metrics, {
             //файлы данных, которые не читаются: запись в них отклоняется до решения администратора

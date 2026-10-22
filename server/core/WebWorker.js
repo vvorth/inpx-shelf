@@ -3,7 +3,6 @@ const path = require('path');
 const fs = require('fs-extra');
 const _ = require('lodash');
 
-const WorkerState = require('./WorkerState');//singleton
 const CatalogSearch = require('./search/CatalogSearch');
 const StateStore = require('./StateStore');
 const InpxHashCreator = require('./InpxHashCreator');
@@ -63,7 +62,6 @@ class WebWorker {
     constructor(config) {
         if (!instance) {
             this.config = config;
-            this.workerState = new WorkerState();
             this.catalogSearch = new CatalogSearch(config, this);
             this.stateStore = new StateStore(config);
 
@@ -77,7 +75,8 @@ class WebWorker {
             this.cacheCleanTimer = null;
             this.cacheCleanRunning = false;
 
-            this.wState = this.workerState.getControl('server_state');
+            //состояние сервера и задания сборки для окна «сервер занят» (get-worker-state) и статуса индекса
+            this.serverState = {};
             this.myState = '';
             this.adminEvents = [];
             const cpuUsage = process.cpuUsage();
@@ -112,7 +111,7 @@ class WebWorker {
     }
 
     async getIndexStatus() {
-        const workerState = this.wState.get() || {};
+        const workerState = this.serverState || {};
         const ready = this.myState === ssNormal && this.catalogSearch.ready;
         const result = {
             ready,
@@ -151,10 +150,10 @@ class WebWorker {
 
     setMyState(newState, workerState = {}) {
         this.myState = newState;
-        this.wState.set(Object.assign({}, workerState, {
+        this.serverState = Object.assign({}, this.serverState, workerState, {
             state: newState,
             serverMessage: stateToText[newState]
-        }));
+        });
     }
 
     async closeDb() {

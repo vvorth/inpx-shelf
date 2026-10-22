@@ -67,7 +67,7 @@ async function testApiBodyBoundsAndRecovery() {
         const config = {apiMessageLimitMb: 1, importLimitMb: 1, backupUploadLimitMb: 1, tempDir: path.join(dir, 'tmp'), rootPathStatic: ''};
         const security = new Security(config);
         security.secret = 'test-secret';
-        const controller = apiController({config, security, profileAccess: null, webWorker: {}, workerState: {getState: () => ({})},
+        const controller = apiController({config, security, profileAccess: null, webWorker: {},
             updateReaderPreferences: async() => ({ok: true})});
         const {base, close} = await listen(apiApp({config, security, controller, health: false}));
         const api = ApiTestClient.forSession(base, security);
@@ -108,7 +108,7 @@ async function testHttpUploadsGoThroughRequestChecks() {
         security.secret = 'test-secret';
         const seen = [];
         let signedIn = true;
-        const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})},
+        const controller = apiController({config, security, profileAccess: null,
             webWorker: {
                 requireAuthorizedUser: async() => {
                     if (!signedIn)

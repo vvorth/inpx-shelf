@@ -135,6 +135,29 @@ async function testConfigSecretsSurviveRestart() {
     }
 }
 
+// An unhandled rejection exits through AsyncExit, as an uncaught exception does: exit callbacks (closeDb) run
+// and the reason with its stack reaches the fatal log before the process ends.
+async function testUnhandledRejectionExitsThroughAsyncExit() {
+    const {execFile} = require('child_process');
+    const childScript = `
+        const [appLoggerPath, asyncExitPath, logDir] = process.argv.slice(1);
+        (async() => {
+            await new (require(appLoggerPath))().init({loggingEnabled: true, logDir, name: 'child'});
+            new (require(asyncExitPath))().add(async() => console.log('exit callbacks ran'));
+            Promise.reject(new Error('rejected on purpose'));
+        })();
+    `;
+    await withTempDir(async(dir) => {
+        const result = await new Promise(resolve => execFile(process.execPath,
+            ['-e', childScript, require.resolve('../server/core/AppLogger'), require.resolve('../server/core/AsyncExit'), dir],
+            {timeout: 20000}, (error, stdout) => resolve({code: error ? error.code : 0, stdout})));
+        assert.strictEqual(result.code, 2);
+        assert.match(result.stdout, /exit callbacks ran/);
+        const fatal = await fs.readFile(path.join(dir, 'child.fatal.log'), 'utf8');
+        assert.match(fatal, /FATAL ERROR: Signal "unhandledRejection" received, error: "Error: rejected on purpose\n\s+at /);
+    });
+}
+
 // The packaged Windows binary keeps its data where the installer shortcuts do, unless a data directory next to the .exe already exists.
 async function testWindowsDefaultDataDir() {
     const {resolveDefaultDataDir} = require('../server/config');
@@ -867,7 +890,7 @@ async function testDisabledLibrarySourceIsKept() {
         const worker = makeWorker({librarySources: config.librarySources, adminEventLogEnabled: false});
         worker.getIndexStatus = async() => ({ready: false});
         worker.buildAdminDashboardMetrics = async() => ({paths: {}, sizes: {coverCache: {}}, limits: {}});
-        worker.wState = {get: () => ({})};
+        worker.serverState = {};
         worker.adminEvents = [];
         worker.readingListStore = new (require('../server/core/ReadingListStore'))({dataDir: dir});
         const dashboard = await worker.getAdminDashboard();
@@ -962,7 +985,7 @@ async function testDisabledLibraryHiddenWithoutRebuild() {
         assert.strictEqual(index.sourceVisibility().stats, null);
 
         //правка метаданных переносит книгу выключаемой библиотеки к другому автору: счётчики по библиотекам следуют за ней
-        index.updateBook(file, {id: 3, title: 'Пикник на обочине', author: 'Булгаков Михаил', series: 'Повести'});
+        index.updateBook(file, {_uid: 'u3', title: 'Пикник на обочине', author: 'Булгаков Михаил', series: 'Повести'});
         index.open(file, []);
         assert.deepStrictEqual(index.listNames({kind: 'author'}).items.map(item => [item.name, item.books]), [['Булгаков Михаил', 3]]);
         index.open(file, ['second']);
@@ -1608,7 +1631,7 @@ async function testCatalogIndexSearch() {
         assert.deepStrictEqual(suggest.books.map(item => item.id), [3]);
         assert.strictEqual(suggest.authors.length, 2);
 
-        index.updateBook(file, {id: 2, title: 'Сердце собаки', author: 'Булгаков Михаил Афанасьевич', lang: 'ru', librate: 4});
+        index.updateBook(file, {_uid: 'u2', title: 'Сердце собаки', author: 'Булгаков Михаил Афанасьевич', lang: 'ru', librate: 4});
         assert.deepStrictEqual(search('собаки').ids, [2]);
         assert.strictEqual(search('собачье').total, 0);
         index.close();
@@ -2689,6 +2712,7 @@ const tests = [
     ...require('./web-worker-tests'),
     ...require('./api-routes-tests'),
     testConfigSecretsSurviveRestart,
+    testUnhandledRejectionExitsThroughAsyncExit,
     testWindowsDefaultDataDir,
     testAppCacheRecoveryBootstrapAndRoute,
     testStaticAssetsArePrecompressed,
