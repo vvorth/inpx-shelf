@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const utils = require('./utils');
-const {S3Fs, isS3} = require('./S3Fs');
+const {S3Fs, isS3, parse} = require('./S3Fs');
 
 //Файлы библиотеки (INPX, архивы, covers/images/etc): путь s3://... читается из S3, остальные - с диска.
 //Только для путей библиотеки: dataDir, tempDir и кеши всегда на диске и идут через fs.
@@ -18,8 +18,33 @@ async function readLocalRange(file, offset, length) {
     }
 }
 
+//target внутри каталога base (или он сам). S3 не сворачивает .. в ключе, но прокси и S3-совместимые серверы могут:
+//такой ключ отвергается
+function insideDir(base, target) {
+    if (String(target).includes('\0'))
+        return false;
+    if (isS3(base) || isS3(target)) {
+        if (!isS3(base) || !isS3(target))
+            return false;
+        const dir = parse(base);
+        const item = parse(target);
+        return dir.bucket === item.bucket && !item.key.split(/[\\/]/).includes('..')
+            && (!dir.key || item.key === dir.key || item.key.startsWith(`${dir.key}/`));
+    }
+    const relative = path.relative(path.resolve(base), path.resolve(target));
+    return !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`);
+}
+
+//Путь из INPX (folder, file) относителен каталогу библиотеки: без .., NUL и корня в начале
+function isSafeRelativePath(value) {
+    const text = String(value || '');
+    return !text.includes('\0') && !/^([\\/]|[a-zA-Z]:)/.test(text) && !text.split(/[\\/]/).includes('..');
+}
+
 module.exports = {
     isS3,
+    insideDir,
+    isSafeRelativePath,
     s3,
     //path.join свернул бы s3:// в s3:/ (а в Windows заменил бы / на \): S3Fs поймёт, но в настройках и журнале некрасиво
     join: (dir, ...names) => (isS3(dir) ? [String(dir).replace(/\/+$/, ''), ...names].join('/') : path.join(dir, ...names)),

@@ -366,15 +366,21 @@ async function testBooksExtractFromPpmdZipsAndCp866Names() {
         assert.strictEqual(await fs.readFile(file, 'utf8'), 'ppmd book');
         await assert.rejects(value.extractBook('fb2-104215-113436.zip', '1.fb2', libDir), /fb2-104215-113436\.zip: 1\.fb2: Entry not found/);
 
-        // yazl writes a non-ASCII name as UTF-8: write an ASCII placeholder and put the cp866 bytes in its place
+        // yazl writes a non-ASCII name as UTF-8: write an ASCII placeholder and put the cp866 bytes in its place.
+        // Decoys of the same length and the same name in a folder must not be extracted along with the book.
         const name = iconv.encode('книга.fb2', 'cp866');
         const placeholder = 'x'.repeat(name.length - 4) + '.fb2';
-        await archive(path.join(libDir, 'cp866.zip'), {[placeholder]: 'cp866 book'});
+        await archive(path.join(libDir, 'cp866.zip'), {[placeholder]: 'cp866 book', [`dir/${placeholder}`]: 'nested',
+            ['y'.repeat(name.length - 4) + '.fb2']: 'decoy', 'книги.fb2': 'utf-8 decoy'});
         const bytes = await fs.readFile(path.join(libDir, 'cp866.zip'));
         for (let at = bytes.indexOf(placeholder); at >= 0; at = bytes.indexOf(placeholder, at + 1))
             name.copy(bytes, at);
         await fs.writeFile(path.join(libDir, 'cp866.zip'), bytes);
         assert.strictEqual(await fs.readFile(await value.extractBook('cp866.zip', 'книга.fb2', libDir), 'utf8'), 'cp866 book');
+        assert.strictEqual(await fs.readFile(await value.extractBook('cp866.zip', 'dir/книга.fb2', libDir), 'utf8'), 'nested');
+        const extracted = await require('../server/core/archive/SevenZipEngine').extract(path.join(libDir, 'cp866.zip'), [], name);
+        assert.deepStrictEqual(Object.values(extracted).map(String), ['cp866 book']);
+        await assert.rejects(value.extractBook('cp866.zip', 'книжа.fb2', libDir), /Entry not found/);
     });
 }
 

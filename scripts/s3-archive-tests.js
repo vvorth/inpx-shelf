@@ -6,6 +6,7 @@ const fs = require('fs-extra');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const {Worker} = require('worker_threads');
 const yazl = require('yazl');
 const {sevenZipArchive} = require('./seven-zip-fixture');
 
@@ -192,6 +193,36 @@ function randomText(seed, size) {
             hasCovers: true, hasEtc: true, hasImages: false,
         });
         await assert.rejects(worker.extractBook('fb2-999999.zip', '1.fb2', libDir), /ENOENT|archive not found/);
+
+        //кеш блоков S3 после вытеснения: каждый блок держит только свои байты, учтённый объём - весь объём в памяти.
+        //S3File ждёт ответа в Atomics.wait: в своём потоке, иначе ждал бы этот поток с сервером S3
+        const blob = crypto.randomBytes(40*1024*1024);
+        await fs.writeFile(path.join(dir, 'lib/blob.bin'), blob);
+        const cache = await new Promise((resolve, reject) => {
+            const thread = new Worker(`
+                const {parentPort, workerData} = require('worker_threads');
+                const crypto = require('crypto');
+                const s3File = require(workerData.module);
+                const remote = s3File.open('s3://lib/blob.bin');
+                const half = remote.size/2;
+                const hash = crypto.createHash('md5');
+                for (const position of [0, half]) {
+                    const target = new Uint8Array(half);
+                    remote.read(target, 0, half, position);
+                    hash.update(target);
+                }
+                const {bytes, maxBytes, blocks} = s3File.cacheState();
+                parentPort.postMessage({md5: hash.digest('hex'), bytes, maxBytes, count: blocks.length,
+                    sum: blocks.reduce((sum, block) => sum + block.byteLength, 0),
+                    own: blocks.every(block => block.buffer.byteLength === block.byteLength)});
+            `, {eval: true, workerData: {module: require.resolve('../server/core/archive/S3File')}});
+            thread.once('message', resolve);
+            thread.once('error', reject);
+        });
+        assert.strictEqual(cache.md5, crypto.createHash('md5').update(blob).digest('hex'));
+        assert.ok(cache.bytes <= cache.maxBytes && cache.count > 1);
+        assert.strictEqual(cache.sum, cache.bytes);
+        assert.ok(cache.own, 'a cached block pins a larger buffer');
 
         console.log('s3-archive-tests: ok');
     } finally {

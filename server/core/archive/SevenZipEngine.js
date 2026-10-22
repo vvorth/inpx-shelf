@@ -171,17 +171,25 @@ function readTree(sz, dir, prefix = '', result = {}) {
 }
 
 //Распаковывает записи в память: {имя: Buffer}; записей, которых в архиве нет, в ответе нет.
-//pattern - шаблон 7-Zip вместо имени (см. ZipReader.cp866Pattern): в ответе все подошедшие записи.
-async function extract(file, names = [], pattern = '') {
+//rawName - имя записи байтами (см. ZipReader.extractCp866): в ответе эта запись под именем, как его прочла ФС 7-Zip.
+async function extract(file, names = [], rawName = null) {
     const sz = await load();
     const outDir = `/out${++mountId}`;
     sz.FS.mkdir(outDir);
     try {
         return withArchive(sz, file, (archive) => {
             //-spd: имена без шаблонов (* и ? в имени файла - обычные символы)
-            run(sz, ['x', '-y', '-bd', '-sccUTF-8', `-o${outDir}`, ...(pattern ? ['--', archive, pattern] : ['-spd', '--', archive, ...names])]);
+            let args = ['-spd', '--', archive, ...names];
+            if (rawName) {
+                //байты не UTF-8 в аргументе не передать: файл-список, -scsDOS переводит его байты в Unicode
+                //так же, как 7-Zip читает имена zip без флага UTF-8. Экземпляр одноразовый: список не удаляется
+                const listFile = `/list${mountId}`;
+                sz.FS.writeFile(listFile, rawName);
+                args = ['-spd', '-scsDOS', `-i@${listFile}`, '--', archive];
+            }
+            run(sz, ['x', '-y', '-bd', '-sccUTF-8', `-o${outDir}`, ...args]);
             const found = readTree(sz, outDir);
-            return (pattern ? found : Object.fromEntries(names.filter(name => found[name]).map(name => [name, found[name]])));
+            return (rawName ? found : Object.fromEntries(names.filter(name => found[name]).map(name => [name, found[name]])));
         });
     } finally {
         removeTree(sz, outDir);

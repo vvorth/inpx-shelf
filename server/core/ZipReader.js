@@ -40,17 +40,14 @@ class ZipReader {
         return this.zipEntries;
     }
 
-    //Имя записи в cp866 без флага UTF-8 7-Zip в WebAssembly читает как UTF-8: каждый неверный байт - символ U+FFFD,
-    //и такое имя в аргументе не совпадает. Ищем запись шаблоном с ? на месте этих символов; из подошедших записей
-    //берём ту, чьё имя совпало целиком, или единственную.
+    //Имя записи в cp866 без флага UTF-8 7-Zip в WebAssembly хранит байтами как есть, и имя в аргументе (UTF-8) с ним
+    //не совпадает. Байты cp866 передаются без шаблонов: распаковывается только запись с точно таким именем.
     async extractCp866(entryFilePath) {
         if (this.archiveType !== 'zip' || /^[\x20-\x7e]*$/.test(entryFilePath))
             return null;
 
-        const name = new TextDecoder().decode(iconv.encode(entryFilePath, 'cp866'));
-        const found = await archivePool.call('extract', this.archiveFile, [], name.replace(/[\uFFFD*]/g, '?'));
-        const names = Object.keys(found);
-        return found[name] || (names.length === 1 ? found[names[0]] : null);
+        const found = Object.values(await archivePool.call('extract', this.archiveFile, [], iconv.encode(entryFilePath, 'cp866')));
+        return (found.length === 1 ? found[0] : null);
     }
 
     async extractToBuf(entryFilePath) {

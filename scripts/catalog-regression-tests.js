@@ -310,6 +310,42 @@ async function testCatalogBuildAppliesInpxFilter() {
     });
 }
 
+// A row whose folder or file leaves the library folder (.., a root, NUL) is not imported, like a row the filter drops;
+// names that only start with dots stay.
+async function testCatalogImportSkipsPathsOutsideLibrary() {
+    await withTempDir(async(dir) => {
+        const yazl = require('yazl');
+        const {pipeline} = require('stream/promises');
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const {importLibrary} = require('../server/core/search/LibraryImport');
+        const rows = [['Good 1', '1', 'a.zip'], ['Bad 1', '2', '../a.zip'], ['Bad 2', '../../etc/passwd', 'a.zip'],
+            ['Bad 3', '3', '/abs.zip'], ['Bad 4', '4', '\\abs.zip'], ['Bad 5', '5', 'dir\\..\\..\\x.zip'], ['Bad 6', 'x\0y', 'a.zip'],
+            ['Good 2', 'sub/6', 'dir/b.zip'], ['Good 3', '7', '..dots.zip']];
+        const lines = rows.map(([title, file, folder]) => ['Author,A:', 'sf:', title, file, folder].join('\x04'));
+        const inpx = path.join(dir, 'lib.inpx');
+        const zip = new yazl.ZipFile();
+        const done = pipeline(zip.outputStream, fs.createWriteStream(inpx));
+        zip.addBuffer(Buffer.from('AUTHOR;GENRE;TITLE;FILE;FOLDER'), 'structure.info');
+        zip.addBuffer(Buffer.from(lines.join('\n')), 'lib.inp');
+        zip.end();
+        await done;
+
+        const index = new CatalogIndex();
+        const file = path.join(dir, 'library.sqlite');
+        index.beginBuild(file);
+        await importLibrary(index, {sources: [{id: 'main', name: 'Main', inpx, libDir: dir}], filterConfig: {}, overrides: {}});
+        index.finishBuild({});
+        index.open(file);
+        try {
+            const uids = lines.map(line => crypto.createHash('sha256').update(line).digest('base64'));
+            assert.deepStrictEqual(index.getBooksByUids(uids, true).sort((a, b) => a.id - b.id).map(book => [book.id, book.title, book.folder, book.file]),
+                [[1, 'Good 1', 'a.zip', '1'], [2, 'Good 2', 'dir/b.zip', 'sub/6'], [3, 'Good 3', '..dots.zip', '7']]);
+        } finally {
+            index.close();
+        }
+    });
+}
+
 // INPX line in the field order of writeInpx: [author, title], i - its number.
 const inpxLine = ([author, title], i) => [`${author.replace(' ', ',')}:`, 'sf:', title, '', '0', String(1000 + i), '100', String(1000 + i), '0', 'fb2',
     '2026-10-01', 'ru', '0', ''].join('\x04');
@@ -523,7 +559,8 @@ function testSearchQueryIsCapped() {
     assert.strictEqual(new CatalogIndex().parseQuery(`author:"${'слово '.repeat(20)}"`).columns[0].tokens.length, 12);
 }
 
-module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildAppliesInpxFilter, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb, testBroadSearchSkipsRanking,
+module.exports = [testSearchQueryIsCapped, testCatalogSearchRebuildEditsAndThreadRestart, testCatalogBuildAppliesInpxFilter,
+    testCatalogImportSkipsPathsOutsideLibrary, testCatalogBuildsAreSerialized, testCatalogRecordsSurviveDbSwap, testCatalogFailedSwapReopensDb, testBroadSearchSkipsRanking,
     testMetadataEditKeepsAliasesSeriesAndOpdsGroups,
     testMetadataEditKeepsAuthorCounts, testSpellingVariantsShareAuthorAndSeries, testRegExpSearchRefusesBacktrackingPatterns, testPreparedBookSizeAppearsInCatalogAcrossRestart,
     testWorkKeyMatchesEditionsOnly, testSearchGroupsEditions];

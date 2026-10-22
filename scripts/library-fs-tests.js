@@ -188,6 +188,40 @@ function testLibraryFsJoin() {
     assert.strictEqual(libraryFs.join('/library', 'covers'), path.join('/library', 'covers'));
 }
 
+//Пути из INPX (folder, file) не выходят за каталог библиотеки: ни на диске, ни в S3, где .. в ключе не сворачивается
+async function testInpxPathsStayInsideLibrary() {
+    assert.strictEqual(libraryFs.insideDir('/lib', '/lib/a/b.zip'), true);
+    assert.strictEqual(libraryFs.insideDir('/lib', '/lib'), true);
+    assert.strictEqual(libraryFs.insideDir('/lib', '/lib/..dots.zip'), true);
+    for (const target of ['/lib/../etc/passwd', '/lib2/a.zip', '/', '/lib/a\0b', 's3://lib/a.zip'])
+        assert.strictEqual(libraryFs.insideDir('/lib', target), false, target);
+    assert.strictEqual(libraryFs.insideDir('s3://lib/flibusta', 's3://lib/flibusta/fb2/a.zip'), true);
+    assert.strictEqual(libraryFs.insideDir('s3://lib', 's3://lib/a.zip'), true);
+    for (const target of ['s3://lib/flibusta/../other/a.zip', 's3://lib/flibustaX/a.zip', 's3://other/flibusta/a.zip', '/flibusta/a.zip'])
+        assert.strictEqual(libraryFs.insideDir('s3://lib/flibusta', target), false, target);
+    for (const value of ['a.zip', 'dir/b.zip', '..dots.zip', 'sub/1', ''])
+        assert.strictEqual(libraryFs.isSafeRelativePath(value), true, value);
+    for (const value of ['../a.zip', 'a/../../b', '..', '/a.zip', '\\a.zip', 'a\\..\\b', 'C:/a.zip', 'a\0b'])
+        assert.strictEqual(libraryFs.isSafeRelativePath(value), false, value);
+
+    const client = useFakeS3(library());
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'library-fs-'));
+    try {
+        const libDir = path.join(dir, 'lib');
+        await fs.ensureDir(libDir);
+        await fs.writeFile(path.join(dir, 'secret.fb2'), 'secret');
+        const worker = Object.assign({config: {libDir, tempDir: dir, librarySources: []}}, require('../server/core/LibraryAssets'));
+        const notFound = error => error.status === 404 && !error.message.includes(dir);
+        await assert.rejects(worker.extractBook('..', 'secret.fb2', libDir), notFound);
+        await assert.rejects(worker.extractBook('a.zip', '../../secret.fb2', libDir), notFound);
+        await assert.rejects(worker.getBookAssetArchives('covers', '../x.zip', libDir), notFound);
+        await assert.rejects(worker.extractBook('../other/a.zip', '1.fb2', 's3://lib/flibusta'), notFound);
+        assert.strictEqual(client.calls.length, 0, 'nothing outside the library is read');
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
 //Источники и хеш INPX в S3: пути не портятся path.resolve, единственный INPX находится, замена INPX видна после clearCache
 async function testLibrarySourcesAndInpxHashOnS3() {
     const objects = library();
@@ -229,4 +263,4 @@ async function testLibrarySourcesAndInpxHashOnS3() {
 }
 
 module.exports = [testS3PathForms, testS3ListingStatAndCache, testS3ReadsAndContentHash, testLocalAndS3PathsMix,
-    testLibraryFsJoin, testLibrarySourcesAndInpxHashOnS3];
+    testLibraryFsJoin, testLibrarySourcesAndInpxHashOnS3, testInpxPathsStayInsideLibrary];

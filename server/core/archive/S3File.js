@@ -116,8 +116,9 @@ function open(uri) {
                 end++;
             const start = n*blockSize;
             const data = call('readRange', uri, start, Math.min(size, (end + 1)*blockSize) - start);
+            //блоки нескольких сразу - копии: срез держал бы в памяти весь ответ, пока жив хоть один его блок
             for (let i = n; i <= end; i++)
-                cachePut(blockId(i), data.subarray((i - n)*blockSize, (i - n + 1)*blockSize));
+                cachePut(blockId(i), (end > n ? data.slice((i - n)*blockSize, (i - n + 1)*blockSize) : data));
             n = end + 1;
         }
     };
@@ -165,4 +166,9 @@ function createNode(sz, dir, name, uri) {
     return file;
 }
 
-module.exports = {createNode, blockSize};
+//для тестов: учтённый объём и блоки кеша
+function cacheState() {
+    return {bytes: cacheBytes, maxBytes: maxCacheBytes, blocks: [...blocks.values()]};
+}
+
+module.exports = {createNode, blockSize, open, cacheState};

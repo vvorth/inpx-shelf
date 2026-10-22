@@ -77,7 +77,7 @@ class InpxParser {
             const entries = Object.values(zipReader.entries);
             const inpFiles = [];
             for (const entry of entries) {
-                if (!entry.isDirectory && path.extname(entry.name) == '.inp')
+                if (!entry.isDirectory && path.extname(entry.name).toLowerCase() == '.inp')
                     inpFiles.push(entry.name);
             }            
 
@@ -123,7 +123,7 @@ class InpxParser {
         const inpBuf = await zipReader.extractToBuf(inpFile);
         const rows = inpBuf.toString().split('\n');
 
-        const defaultFolder = `${path.basename(inpFile, '.inp')}.zip`;
+        const defaultFolder = `${path.basename(inpFile, path.extname(inpFile))}.zip`;
         const structLen = structure.length;
 
         for (const row of rows) {
@@ -140,9 +140,10 @@ class InpxParser {
             //парсим запись
             const parts = line.split('\x04');
 
+            //только поля INPX: имя из structure.info вроде _uid или sourceId не затрёт служебное поле записи
             const len = (parts.length > structLen ? structLen : parts.length);
             for (let i = 0; i < len; i++) {
-                if (structure[i])
+                if (utils.hasProp(recStructType, structure[i]))
                     rec[structure[i]] = parts[i];
             }
 

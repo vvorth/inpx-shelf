@@ -2,6 +2,7 @@
 //Порядок и отбор записей те же, что у прежнего DbCreator: id книг и их _uid не меняются.
 const fs = require('fs-extra');
 const InpxParser = require('../InpxParser');
+const libraryFs = require('../LibraryFs');
 const utils = require('../utils');
 
 const emptyFieldValue = '?';
@@ -86,7 +87,8 @@ async function importLibrary(index, {sources, filterConfig, overrides}, onProgre
             const rows = [];
             for (const rec of chunk) {
                 rec.sourceId = source.id;
-                if (!filter(rec))
+                //путь книги, выходящий за каталог библиотеки, отсеивается, как строка, не прошедшая фильтр
+                if (!libraryFs.isSafeRelativePath(rec.folder) || !libraryFs.isSafeRelativePath(rec.file) || !filter(rec))
                     continue;
                 const override = overrides[rec._uid];
                 if (override) {
