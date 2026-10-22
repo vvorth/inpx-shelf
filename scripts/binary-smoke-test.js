@@ -54,7 +54,7 @@ async function checkApi(url) {
     assert.match(cookie, /^inpx_web_session=/);
     const config = await configResponse.json();
     assert.strictEqual(config.profileAuthorized, false);
-    const login = await fetch(`${url}/api/login-user-profile`, {method: 'POST', body: JSON.stringify({login: 'admin', password: adminPassword}),
+    const login = await fetch(`${url}/api/session`, {method: 'POST', body: JSON.stringify({login: 'admin', password: adminPassword}),
         headers: {...headers, cookie, 'Content-Type': 'application/json', 'X-CSRF-Token': config.csrfToken}});
     const result = await login.json();
     assert.strictEqual(login.status, 200, JSON.stringify(result));
