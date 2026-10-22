@@ -23,7 +23,7 @@ module.exports = {
                 test: /\.js$/,
                 loader: 'babel-loader',
                 exclude: /node_modules/,
-                //настройки babel в .babelrc: его же читает @babel/eslint-parser
+                //настройки babel в .babelrc
             },
             {
                 //до css-loader: из стилей Quasar и Line Awesome убирается неиспользуемое

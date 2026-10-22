@@ -72,7 +72,7 @@ class BookPage extends BasePage {
             ]},
         ];
 
-        const valueToString = (value, nodePath, b) => {//eslint-disable-line no-unused-vars
+        const valueToString = (value, nodePath, b) => {
             if (nodePath == 'fileInfo/file')
                 return `${value}.${b.ext}`;
 
@@ -237,7 +237,7 @@ class BookPage extends BasePage {
                         ann = infoObj.titleInfo.annotationHtml || '';
                         const self = this;
                         const infoList = parser.bookInfoList(infoObj, {
-                            valueToString(value, nodePath, origVTS) {//eslint-disable-line no-unused-vars
+                            valueToString(value, nodePath, origVTS) {
                                 if ((nodePath == 'titleInfo/genre' || nodePath == 'srcTitleInfo/genre') && value) {
                                     return self.convertGenres(value);
                                 }

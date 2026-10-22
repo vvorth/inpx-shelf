@@ -40,6 +40,7 @@ npm run dev
 Полезные точки отладки:
 
 - `npm run build:client` - быстрая проверка клиентской сборки после UI-правок.
+- `npx eslint --quiet server shared scripts build client --ext .js,.vue` - ESLint, как в CI; настройки - `eslint.config.js` (без `--quiet` видны и предупреждения).
 - `npm run test:release` - проверки перед релизом: авторизация, бэкапы, конвертация, EPUB, дополнительные материалы библиотеки, кэш, каталог и читалка.
 - `node server --data-dir=.inpx-shelf --lib-dir=/path/to/library --inpx=/path/to/file.inpx` - локальный запуск сервера без Docker.
 - `/#/reader` - отдельный старт читалки и PWA-режим INPX Reader.
