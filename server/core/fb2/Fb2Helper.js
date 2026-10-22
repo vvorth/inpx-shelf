@@ -8,6 +8,8 @@ const sax = require('../xml/sax');
 const utils = require('../utils');
 const {t} = require('../i18n');
 
+const {NODE, TEXT, CDATA, COMMENT} = new Fb2Parser();
+
 class Fb2Helper {
     async decompressIfNeeded(data) {
         if (data && data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b)
@@ -55,21 +57,149 @@ class Fb2Helper {
         return Buffer.from(text, 'utf8');
     }
 
-    async getDescAndCover(bookFile) {
-        let data = await fs.readFile(bookFile);
-        data = await this.decompressIfNeeded(data);
-        const text = this.checkEncoding(data).toString();
+    async readText(bookFile) {
+        return this.checkEncoding(await this.decompressIfNeeded(await fs.readFile(bookFile))).toString();
+    }
 
-        // Дерево всей книги строим только по запросу: для обложки хватает поиска по тексту.
-        let fb2 = null;
-        return {
-            ...this.findCover(text),
-            get fb2() {
-                if (!fb2) {
-                    fb2 = new Fb2Parser();
-                    fb2.fromString(text, {lowerCase: true});
+    async getDescAndCover(bookFile) {
+        return this.findCover(await this.readText(bookFile));
+    }
+
+    // Странице книги: обложка, <description>, картинки, оглавление и статистика текста
+    async getBookPageInfo(bookFile) {
+        const text = await this.readText(bookFile);
+        return {...this.findCover(text), ...this.pageInfo(text)};
+    }
+
+    // Один проход sax без дерева всей книги: дерево XmlParser.fromString (lowerCase) строится
+    // только вне <body> и для картинок вкладки «Картинки» (до 18, без обложки); <body> первого
+    // корневого узла даёт оглавление (кроме body name="notes"), эпиграф и счёт букв и слов.
+    // Вложенность повторяет fromString: закрывающий тег снимает узел, только если совпал с верхним.
+    pageInfo(text) {
+        const parsed = [];
+        const stack = [];
+        const sections = [];
+        const lines = [];
+        const authors = [];
+        const stats = {letters: 0, words: 0, pages: 0, images: 0};
+        let firstBody = true;
+        let coverId = null;
+        let binaries = 0;
+
+        const append = node => {
+            const parent = stack[stack.length - 1];
+            if (!parent)
+                parsed.push(node);
+            else if (parent.raw)
+                (parent.raw[3] || (parent.raw[3] = [])).push(node);
+        };
+        const onText = (value, type) => {
+            const top = stack[stack.length - 1];
+            if (top && top.count) {
+                countText(value, stats);
+                if (top.collect)
+                    top.collect.push(value);
+            }
+            append([type, value]);
+        };
+
+        sax.parseSync(text, {
+            lowerCase: true,
+            onStartNode: (tag, tail) => {
+                if (tag == '?xml')
+                    return;
+
+                const parent = stack[stack.length - 1];
+                const frame = {tag, raw: null, count: false, collect: null, kind: ''};
+                let attrs = null;
+                let build = !parent || !!parent.raw;
+                if (parent) {
+                    frame.count = parent.count;
+                    frame.collect = parent.collect;
                 }
-                return fb2;
+
+                const inFirst = stack.length == 1 && parent.raw === parsed[0];
+                if (stack.length == 1 && tag == 'body') {
+                    build = false;
+                    if (inFirst) {
+                        frame.count = true;
+                        frame.kind = 'body';
+                        attrs = tailAttrs(tail);
+                        frame.notes = String(attrs.get('name') || '').trim().toLowerCase() == 'notes';
+                        frame.first = firstBody;
+                        firstBody = false;
+                    }
+                } else if (stack.length == 1 && tag == 'binary') {
+                    attrs = tailAttrs(tail);
+                    if (inFirst && String(attrs.get('content-type') || '').toLowerCase().startsWith('image/'))
+                        stats.images++;
+                    // Обложка и картинки сверх 18 не нужны; пока первый <description> не пройден, id обложки неизвестен
+                    if (coverId === null && (!inFirst || hasChild(parsed[0], 'description')))
+                        coverId = findCoverId(parsed);
+                    if (coverId !== null) {
+                        if (attrs.get('id') === coverId || binaries >= 18)
+                            build = false;
+                        else
+                            binaries++;
+                    }
+                } else if (parent && parent.kind) {
+                    if (tag == 'section' && (parent.kind == 'section' || (parent.kind == 'body' && !parent.notes))) {
+                        frame.kind = 'section';
+                        frame.slot = {level: (parent.kind == 'section' ? parent.slot.level + 1 : 0), parts: null};
+                        sections.push(frame.slot);
+                    } else if (tag == 'title' && parent.kind == 'section' && !parent.slot.parts) {
+                        frame.collect = parent.slot.parts = [];
+                    } else if (tag == 'epigraph' && parent.kind == 'body' && parent.first) {
+                        frame.kind = 'epigraph';
+                    } else if (tag == 'p' && parent.kind == 'epigraph') {
+                        lines.push(frame.collect = []);
+                    } else if (tag == 'text-author' && parent.kind == 'epigraph' && !parent.author) {
+                        authors.push(parent.author = frame.collect = []);
+                    }
+                }
+
+                if (build) {
+                    frame.raw = [NODE, tag, null, null];
+                    if (!attrs && tail && tail.trim() !== '')
+                        attrs = tailAttrs(tail);
+                    if (attrs && attrs.size)
+                        frame.raw[2] = Array.from(attrs);
+                    append(frame.raw);
+                } else if (parent.raw && !parent.raw[3]) {
+                    // как в полном дереве: у родителя есть список детей, даже если всё из него отброшено
+                    parent.raw[3] = [];
+                }
+                stack.push(frame);
+            },
+            onEndNode: tag => {
+                if (stack.length && stack[stack.length - 1].tag === tag)
+                    stack.pop();
+            },
+            onTextNode: value => {
+                if (/\S/.test(value))
+                    onText(value, TEXT);
+            },
+            onCdata: value => onText(value, CDATA),
+            onComment: value => append([COMMENT, value]),
+        });
+
+        if (coverId === null)
+            coverId = findCoverId(parsed);
+        let images = 0;
+        const keep = node => node[0] !== NODE || (node[1] === 'binary'
+            ? new Map(node[2] || []).get('id') !== coverId && images++ < 18
+            : node[1] !== 'body');
+        const fb2 = parsed.map(node => (node[0] === NODE && Array.isArray(node[3])
+            ? [node[0], node[1], node[2], node[3].filter(keep)] : node));
+
+        stats.pages = (stats.words ? Math.max(1, Math.round((stats.words / 250) * 10) / 10) : 0);
+        return {
+            fb2,
+            contents: sections.map(({parts, level}) => ({title: joinText(parts), level})).filter(item => item.title).slice(0, 200),
+            annotationMeta: {
+                epigraph: lines.map(joinText).filter(Boolean).slice(0, 12),
+                epigraphAuthor: authors.map(joinText).find(Boolean) || '',
+                stats,
             },
         };
     }
@@ -124,6 +254,51 @@ class Fb2Helper {
     }
 }
 
+// id обложки так же, как /description/title-info/coverpage/image в первом корневом узле
+function findCoverId(rawNodes) {
+    const parser = new Fb2Parser(rawNodes);
+    const image = parser.$$('/description/title-info/coverpage/image');
+    const root = rawNodes[0];
+    let ns = 'l';
+    for (const [key, value] of (root && root[0] === NODE && root[2]) || []) {
+        if (value == 'http://www.w3.org/1999/xlink') {
+            ns = key.split(':')[1] || ns;
+            break;
+        }
+    }
+    const href = String((image.count && (image.attrs() || {})[`${ns}:href`]) || '');
+    return (href[0] == '#' ? href.substring(1) : href);
+}
+
+function hasChild(node, name) {
+    return !!node && node[0] === NODE && Array.isArray(node[3]) && node[3].some(child => child[0] === NODE && child[1] === name);
+}
+
+// Текст узла, как его собирала страница книги: куски через пробел, пробелы схлопнуты
+function joinText(parts) {
+    return (parts ? parts.join(' ').replace(/\s+/g, ' ').trim() : '');
+}
+
+// Буквы и слова как у fullText.replace(/\s+/g, '') и split(/\s+/), но без копии всего текста книги
+function countText(value, stats) {
+    let inWord = false;
+    for (let i = 0; i < value.length; i++) {
+        const c = value.charCodeAt(i);
+        // \s в JS
+        const space = (c <= 0x20 ? (c == 0x20 || (c >= 0x09 && c <= 0x0d)) : (c >= 0xa0 && (c < 0x1680 ? c == 0xa0 : (c == 0x1680
+            || (c >= 0x2000 && c <= 0x200a) || c == 0x2028 || c == 0x2029 || c == 0x202f || c == 0x205f || c == 0x3000 || c == 0xfeff))));
+        if (space) {
+            inWord = false;
+        } else {
+            stats.letters++;
+            if (!inWord) {
+                stats.words++;
+                inWord = true;
+            }
+        }
+    }
+}
+
 function block(text, name) {
     const match = text.match(new RegExp(`<${name}(?=[\\s/>])[^>]*>[\\s\\S]*?</${name}\\s*>`, 'i'));
     return match ? match[0] : '';
@@ -131,7 +306,10 @@ function block(text, name) {
 
 // Атрибуты тега так же, как их читает XmlParser с lowerCase.
 function tagAttrs(tag) {
-    const tail = tag.replace(/^<[^\s/>]*/, '').replace(/\/?>$/, '');
+    return tailAttrs(tag.replace(/^<[^\s/>]*/, '').replace(/\/?>$/, ''));
+}
+
+function tailAttrs(tail) {
     return new Map(Array.from(sax.getAttrsSync(tail, true).values(), attr => [attr.fn, attr.value]));
 }
 

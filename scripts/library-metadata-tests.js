@@ -81,11 +81,9 @@ async function testBookInfoRefreshesChangedReviewsWithoutReparsingBook() {
             value.catalogSearch = {getBooksByUids: async() => [book]};
             value.getBookLink = async() => ({link: '/book/hash', downFileName: 'fixture.fb2'});
             value.readingListStore = {getMetadataOverrides: async() => ({})};
-            value.fb2Helper = {getDescAndCover: async() => {
+            value.fb2Helper = {getBookPageInfo: async() => {
                 parses++;
-                const parser = new (require('../server/core/fb2/Fb2Parser'))();
-                parser.fromString('<FictionBook><description><title-info><book-title>Fixture</book-title></title-info></description><body><section><p>Text</p></section></body></FictionBook>');
-                return {fb2: parser};
+                return new (require('../server/core/fb2/Fb2Helper'))().pageInfo('<FictionBook><description><title-info><book-title>Fixture</book-title></title-info></description><body><section><p>Text</p></section></body></FictionBook>');
             }};
             return value;
         };
@@ -138,8 +136,8 @@ async function testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation() {
         value.readingListStore = {getMetadataOverrides: async() => ({})};
         value.fb2Helper = new (require('../server/core/fb2/Fb2Helper'))();
         let parses = 0;
-        const getDescAndCover = value.fb2Helper.getDescAndCover.bind(value.fb2Helper);
-        value.fb2Helper.getDescAndCover = async file => { parses++; return getDescAndCover(file); };
+        const getBookPageInfo = value.fb2Helper.getBookPageInfo.bind(value.fb2Helper);
+        value.fb2Helper.getBookPageInfo = async file => { parses++; return getBookPageInfo(file); };
 
         const views = await Promise.all([value.getBookInfo('fixture'), value.getBookInfo('fixture')]);
         assert.strictEqual(parses, 1, 'concurrent first views parse the book once');
@@ -183,8 +181,8 @@ async function testBookInfoCacheHoldsUnderRootPath() {
         value.readingListStore = {getMetadataOverrides: async() => ({})};
         value.fb2Helper = new (require('../server/core/fb2/Fb2Helper'))();
         let parses = 0;
-        const getDescAndCover = value.fb2Helper.getDescAndCover.bind(value.fb2Helper);
-        value.fb2Helper.getDescAndCover = async file => { parses++; return getDescAndCover(file); };
+        const getBookPageInfo = value.fb2Helper.getBookPageInfo.bind(value.fb2Helper);
+        value.fb2Helper.getBookPageInfo = async file => { parses++; return getBookPageInfo(file); };
 
         assert.strictEqual((await value.getBookInfo('fixture')).bookInfo.cover, '/shelf/book/hash.png');
         const infoFile = path.join(config.bookDir, 'hash.i.json');
@@ -212,18 +210,104 @@ async function testBookInfoParsesAreLimited() {
         value.readingListStore = {getMetadataOverrides: async() => ({})};
         value.bookInfoParses = require('../server/core/utils').limiter(1);
         const order = [];
-        value.fb2Helper = {getDescAndCover: async file => {
+        value.fb2Helper = {getBookPageInfo: async file => {
             const name = path.basename(file);
             order.push(`start ${name}`);
             await new Promise(resolve => setTimeout(resolve, 20));
             order.push(`end ${name}`);
-            const parser = new (require('../server/core/fb2/Fb2Parser'))();
-            parser.fromString('<FictionBook><description><title-info><book-title>Fixture</book-title></title-info></description></FictionBook>');
-            return {fb2: parser};
+            return new (require('../server/core/fb2/Fb2Helper'))().pageInfo('<FictionBook><description><title-info><book-title>Fixture</book-title></title-info></description></FictionBook>');
         }};
         await Promise.all([value.getBookInfo('a'), value.getBookInfo('b')]);
-        assert.deepStrictEqual(order, ['start hash-a', 'end hash-a', 'start hash-b', 'end hash-b']);
+        // какая книга начнётся первой, под нагрузкой не определено: проверяем только, что разборы не пересекаются
+        const [first, second] = [order[0].split(' ')[1], order[2].split(' ')[1]];
+        assert.deepStrictEqual([first, second].sort(), ['hash-a', 'hash-b']);
+        assert.deepStrictEqual(order, [`start ${first}`, `end ${first}`, `start ${second}`, `end ${second}`]);
     });
+}
+
+// Большая FB2 с главами, эпиграфом, сносками, обложкой и картинками; words/letters - ожидаемая статистика текста
+function largeFb2(chapters, paragraphs) {
+    const stats = {words: 0, letters: 0};
+    const text = value => {
+        stats.words += value.split(' ').length;
+        stats.letters += value.replace(/ /g, '').length;
+        return value;
+    };
+    const binary = id => `<binary id="${id}" content-type="image/png">${png.toString('base64')}</binary>`;
+    const parts = ['<?xml version="1.0" encoding="utf-8"?><FictionBook xmlns:l="http://www.w3.org/1999/xlink"><description>',
+        '<title-info><book-title>Large</book-title><coverpage><image l:href="#cover.png"/></coverpage></title-info></description>',
+        `<body><epigraph><p>${text('Эпиграф')}</p><text-author>${text('Автор')}</text-author></epigraph>`];
+    const words = Array(50).fill('слово').join(' ');
+    for (let chapter = 1; chapter <= chapters; chapter++) {
+        parts.push(`<section><title><p>${text(`Глава ${chapter}`)}</p></title>`);
+        for (let part = 1; part <= 2; part++) {
+            parts.push(`<section><title><p>${text(`Часть ${chapter}.${part}`)}</p></title>`);
+            for (let i = 0; i < paragraphs; i++)
+                parts.push(`<p>${text(words)} <emphasis>${text('курсив')}</emphasis></p>`);
+            parts.push('</section>');
+        }
+        parts.push('</section>');
+    }
+    parts.push(`</body><body name="notes"><section><title><p>${text('1')}</p></title><p>${text('Сноска')}</p></section></body>`);
+    parts.push(binary('cover.png'));
+    for (let i = 0; i < 20; i++)
+        parts.push(binary(`pic${i}.png`));
+    parts.push('</FictionBook>');
+    return {xml: parts.join(''), ...stats};
+}
+
+// Страница большой книги строится одним проходом без дерева всей книги (раньше - секунды и сотни МБ в главном потоке)
+async function testLargeFb2BookInfoWithoutWholeBookTree() {
+    await temporary(async dir => {
+        const config = {libDir: dir, bookDir: path.join(dir, 'book'), publicFilesDir: dir, bookPathStatic: '/book', branch: 'test'};
+        await fs.ensureDir(config.bookDir);
+        const fb2 = largeFb2(300, 5);
+        await fs.writeFile(path.join(config.bookDir, 'hash'), require('zlib').gzipSync(fb2.xml));
+        const book = {id: 1, _uid: 'fixture', folder: 'c.zip', file: '1', ext: 'fb2'};
+        const value = worker(config);
+        value.checkMyState = () => true;
+        value.catalogSearch = {getBooksByUids: async() => [book]};
+        value.getBookLink = async() => ({link: '/book/hash', downFileName: 'fixture.fb2'});
+        value.readingListStore = {getMetadataOverrides: async() => ({})};
+        value.fb2Helper = new (require('../server/core/fb2/Fb2Helper'))();
+        const XmlParser = require('../server/core/xml/XmlParser');
+        const fromString = XmlParser.prototype.fromString;
+        XmlParser.prototype.fromString = () => { throw new Error('whole-book tree'); };
+        let info;
+        try {
+            info = (await value.getBookInfo('fixture')).bookInfo;
+        } finally {
+            XmlParser.prototype.fromString = fromString;
+        }
+        assert.strictEqual(info.contents.length, 200);
+        assert.deepStrictEqual(info.contents.slice(0, 4), [{title: 'Глава 1', level: 0}, {title: 'Часть 1.1', level: 1},
+            {title: 'Часть 1.2', level: 1}, {title: 'Глава 2', level: 0}]);
+        assert.deepStrictEqual(info.annotationMeta, {epigraph: ['Эпиграф'], epigraphAuthor: 'Автор',
+            stats: {letters: fb2.letters, words: fb2.words, pages: Math.round((fb2.words / 250) * 10) / 10, images: 21}});
+        const parser = new (require('../server/core/fb2/Fb2Parser'))(info.fb2);
+        assert.strictEqual(parser.$$array('/body').length, 0);
+        assert.deepStrictEqual(parser.$$array('/binary').map(node => node.attrs().id), Array.from({length: 18}, (_, i) => `pic${i}.png`));
+        assert.strictEqual(info.cover, '/book/hash.png');
+        assert.deepStrictEqual(await fs.readFile(path.join(config.bookDir, 'hash.png')), png);
+    });
+}
+
+// Проход sax повторяет дерево XmlParser: поздний заголовок главы, первые эпиграф и автор, сноски, картинки до описания
+function testFb2PageInfoMatchesBookTree() {
+    const binaries = (from, count) => Array.from({length: count}, (_, i) => `<binary id="p${from + i}" content-type="image/png">UElD</binary>`).join('');
+    const xml = `<?xml version="1.0"?><FictionBook xmlns:xl="http://www.w3.org/1999/xlink">${binaries(0, 2)}`
+        + '<description><title-info><coverpage><image xl:href="#cover"/></coverpage></title-info></description>'
+        + '<body name=" Notes "><epigraph><p>First <emphasis>line</emphasis></p><p> </p><text-author/><text-author>Skipped</text-author></epigraph>'
+        + '<epigraph><p><![CDATA[Second]]></p><text-author>Author</text-author></epigraph><section><title><p>Note</p></title></section></body>'
+        + '<body><!-- comment --><section><section><title><p>Inner</p></title></section><title><p>Late</p><p>title</p></title><title><p>Ignored</p></title></section>'
+        + '<section><title><p>Open<br/></p></title><p>a\u00a0b</p></section></body>'
+        + `<binary id="cover" content-type="image/jpeg">Q09W</binary>${binaries(2, 20)}</FictionBook>`;
+    const info = new (require('../server/core/fb2/Fb2Helper'))().pageInfo(xml);
+    assert.deepStrictEqual(info.contents, [{title: 'Late title', level: 0}, {title: 'Inner', level: 1}, {title: 'Open', level: 0}]);
+    assert.deepStrictEqual(info.annotationMeta, {epigraph: ['First line', 'Second'], epigraphAuthor: 'Author',
+        stats: {letters: 59, words: 13, pages: 1, images: 23}});
+    assert.deepStrictEqual(info.fb2[0][3].map(node => `${node[1]}:${node[2] ? new Map(node[2]).get('id') : ''}`),
+        ['binary:p0', 'binary:p1', 'description:', ...Array.from({length: 16}, (_, i) => `binary:p${i + 2}`)]);
 }
 
 async function testReindexReloadsAuthorAndArchiveCaches() {
@@ -297,4 +381,5 @@ async function testBooksExtractFromPpmdZipsAndCp866Names() {
 module.exports = [testLibraryReviewsAndRatingsAreOptionalAndSourceScoped,
     testBookInfoRefreshesChangedReviewsWithoutReparsingBook, testReindexReloadsAuthorAndArchiveCaches,
     testBooksExtractFromPpmdZipsAndCp866Names, testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation,
-    testBookInfoCacheHoldsUnderRootPath, testBookInfoParsesAreLimited];
+    testBookInfoCacheHoldsUnderRootPath, testBookInfoParsesAreLimited, testLargeFb2BookInfoWithoutWholeBookTree,
+    testFb2PageInfoMatchesBookTree];

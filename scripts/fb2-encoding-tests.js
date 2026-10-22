@@ -101,7 +101,7 @@ async function testFb2CoverAfterBinaryWithoutAttributes() {
             + '<description><title-info><coverpage><image l:href="#c.jpg"/></coverpage></title-info></description>'
             + '<body><p>x</p></body><binary>QUFB</binary><binary id="c.jpg" content-type="image/jpeg">QkJC</binary></FictionBook>');
         const result = await new Fb2Helper().getDescAndCover(file);
-        assert.ok(result && result.fb2, 'Result must not be undefined');
+        assert.ok(result, 'Result must not be undefined');
         assert.strictEqual(result.cover.toString(), 'BBB');
         assert.strictEqual(result.coverExt, '.jpg');
     } finally {

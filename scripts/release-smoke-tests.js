@@ -337,8 +337,7 @@ async function withStaticServer(config, fn, worker = null, security = null) {
 
 async function testFb2ContentsExcludeNotesBodies() {
     const Fb2Parser = require('../server/core/fb2/Fb2Parser');
-    const parser = new Fb2Parser();
-    parser.fromString(`
+    const xml = `
         <FictionBook>
             <description>
                 <title-info>
@@ -358,7 +357,9 @@ async function testFb2ContentsExcludeNotesBodies() {
                 <section id="note-2"><title><p>2</p></title><p>Ещё одна сноска</p></section>
             </body>
         </FictionBook>
-    `, {lowerCase: true});
+    `;
+    const parser = new Fb2Parser();
+    parser.fromString(xml, {lowerCase: true});
 
     const annotation = parser.bookInfo().titleInfo.annotation;
     assert.ok(Array.isArray(annotation));
@@ -370,7 +371,7 @@ async function testFb2ContentsExcludeNotesBodies() {
         {title: '1', level: 0},
         {title: 'Вложенная глава', level: 1},
     ];
-    assert.deepStrictEqual(makeWorker().extractFb2Contents(parser), expectedContents);
+    assert.deepStrictEqual(new (require('../server/core/fb2/Fb2Helper'))().pageInfo(xml).contents, expectedContents);
 
     assert.deepStrictEqual(require('../client/components/Reader/fb2ToReaderHtml').extractReaderContents(parser), expectedContents);
 }

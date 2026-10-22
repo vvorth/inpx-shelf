@@ -1,5 +1,6 @@
 Unreleased
 
+- The first view of a large FB2 book page is several times faster and uses far less memory: the table of contents, epigraph and text statistics are read in one pass instead of parsing the whole book.
 - Kobo: a bookmark or reading statistics sent by the device while a sync waits for a book conversion are no longer overwritten by that sync. Reading states kept per profile are capped like web reading positions (20,000): the oldest are dropped when a profile backup is imported or the server starts, and the import warning counts them with the skipped positions.
 - Docker, **action required** if you run the image with your own command (`docker run … vvorth/inpx-shelf <command>`): that command now also runs as `PUID`/`PGID` (default `1000:1000`) after the data directory is handed to that user, instead of as root. Set `PUID=0` to keep root.
 - Windows, **action required** only if you start `inpx-shelf.exe` directly and want the installer's data: the standalone Windows binary now keeps its data in `%LOCALAPPDATA%\inpx-shelf` by default, like the installer's shortcuts. An existing `.inpx-shelf` (or `.inpx-web`) folder next to the `.exe` is still used; to switch, move its contents to `%LOCALAPPDATA%\inpx-shelf` and delete the old folder.

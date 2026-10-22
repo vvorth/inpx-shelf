@@ -1263,125 +1263,6 @@ class WebWorker {
         };
     }
 
-    extractFb2Contents(parser) {
-        const result = [];
-        const walk = (sections, level = 0) => {
-            for (const section of sections) {
-                const titleNode = section.$$('/title/');
-                let title = '';
-                if (titleNode && titleNode.count)
-                    title = this.extractFb2NodeText(titleNode, parser);
-
-                if (title)
-                    result.push({title, level});
-
-                const childSections = section.$$array('/section');
-                if (childSections.length)
-                    walk(childSections, level + 1);
-            }
-        };
-
-        for (const body of parser.$$array('/body')) {
-            const attrs = body.attrs() || {};
-            const bodyName = String(attrs.name || '').trim().toLowerCase();
-            if (bodyName === 'notes')
-                continue;
-
-            walk(body.$$array('/section'));
-        }
-
-        return result.slice(0, 200);
-    }
-
-    //Странице книги нужны только <description> и картинки вкладки «Картинки» (до 18, без обложки):
-    //текст (<body>) не идёт ни в кеш, ни в ответ, читалка берёт сам файл книги
-    fb2InfoNodes(parser) {
-        const image = parser.$$('/description/title-info/coverpage/image');
-        const href = String((image.count && (image.attrs() || {})[`${parser.xlinkNS}:href`]) || '');
-        const coverId = (href[0] == '#' ? href.substring(1) : href);
-        let images = 0;
-        const keep = node => node[0] !== parser.NODE || (node[1] === 'binary'
-            ? new Map(node[2] || []).get('id') !== coverId && images++ < 18
-            : node[1] !== 'body');
-        return parser.rawNodes.map(node => (node[0] === parser.NODE && Array.isArray(node[3])
-            ? [node[0], node[1], node[2], node[3].filter(keep)] : node));
-    }
-
-    extractFb2NodeText(node, parser) {
-        if (!node)
-            return '';
-
-        const parts = [];
-        node.eachDeepSelf((item) => {
-            if (item.type === parser.TEXT || item.type === parser.CDATA)
-                parts.push(item.value);
-        });
-
-        return parts.join(' ').replace(/\s+/g, ' ').trim();
-    }
-
-    extractFb2AnnotationMeta(parser) {
-        const result = {
-            epigraph: [],
-            epigraphAuthor: '',
-            stats: {
-                letters: 0,
-                words: 0,
-                pages: 0,
-                images: 0,
-            },
-        };
-
-        const topEpigraphs = parser.$$array('/body/epigraph');
-        if (topEpigraphs.length) {
-            const lines = [];
-            let author = '';
-
-            for (const epigraph of topEpigraphs) {
-                for (const p of epigraph.$$array('/p')) {
-                    const text = this.extractFb2NodeText(p, parser);
-                    if (text)
-                        lines.push(text);
-                }
-
-                if (!author) {
-                    const textAuthor = epigraph.$$('/text-author/');
-                    const value = this.extractFb2NodeText(textAuthor, parser);
-                    if (value)
-                        author = value;
-                }
-            }
-
-            result.epigraph = lines.slice(0, 12);
-            result.epigraphAuthor = author;
-        }
-
-        const textParts = [];
-        for (const body of parser.$$array('/body')) {
-            body.eachDeepSelf((item) => {
-                if (item.type === parser.TEXT || item.type === parser.CDATA)
-                    textParts.push(item.value);
-            });
-        }
-
-        const fullText = textParts.join(' ').replace(/\s+/g, ' ').trim();
-        const letters = fullText.replace(/\s+/g, '').length;
-        const words = (fullText ? fullText.split(/\s+/).filter(Boolean).length : 0);
-        const pages = (words ? Math.max(1, Math.round((words / 250) * 10) / 10) : 0);
-
-        let images = 0;
-        for (const node of parser.$$array('/binary')) {
-            const attrs = node.attrs() || {};
-            const contentType = String(attrs['content-type'] || '').toLowerCase();
-            if (contentType.startsWith('image/'))
-                images++;
-        }
-
-        result.stats = {letters, words, pages, images};
-
-        return result;
-    }
-
     metadataBookUid(book = {}) {
         return String(book._uid || book.uid || book.bookUid || '').trim();
     }
@@ -1506,14 +1387,10 @@ class WebWorker {
                 result.annotationMeta = null;
                 result.reviews = [];
                 result.infoVersion = bookInfoVersion;
-                let parser = null;
 
                 if (book.ext == 'fb2') {
-                    const {fb2, cover, coverExt} = await this.fb2Helper.getDescAndCover(bookFile);
-                    parser = fb2;
-                    result.fb2 = this.fb2InfoNodes(fb2);
-                    result.contents = this.extractFb2Contents(fb2);
-                    result.annotationMeta = this.extractFb2AnnotationMeta(fb2);
+                    const {fb2, contents, annotationMeta, cover, coverExt} = await this.fb2Helper.getBookPageInfo(bookFile);
+                    Object.assign(result, {fb2, contents, annotationMeta});
 
                     if (cover) {
                         result.cover = `${this.config.bookPathStatic}/${hash}${coverExt}`;
@@ -1529,7 +1406,7 @@ class WebWorker {
                 await writeFileAtomic(bookFileInfo, JSON.stringify(info));
 
                 if (this.config.branch === 'development') {
-                    await fs.writeFile(`${bookFile}.dev`, `${JSON.stringify(info, null, 2)}\n\n${parser ? parser.toString({format: true}) : ''}`);
+                    await fs.writeFile(`${bookFile}.dev`, JSON.stringify(info, null, 2));
                 }
                 return info;
             };
@@ -1554,7 +1431,7 @@ class WebWorker {
                 if (!this.pendingBookInfos)
                     this.pendingBookInfos = new Map();
                 const pending = this.pendingBookInfos;
-                //разбор FB2 целиком идёт в главном потоке: разные книги - не больше двух сразу
+                //проход по FB2 идёт в главном потоке и держит текст книги в памяти: разные книги - не больше двух сразу
                 if (!this.bookInfoParses)
                     this.bookInfoParses = utils.limiter(2);
                 if (!pending.has(bookFileInfo))
