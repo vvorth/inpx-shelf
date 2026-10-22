@@ -8,7 +8,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "nodemon --inspect --ignore server/.inpx-shelf --ignore client --exec 'node --expose-gc server --lib-dir=server/.inpx-shelf/lib'",
+    "dev": "npm run build:client-dev && nodemon --inspect --ignore server/.inpx-shelf --ignore client --exec 'node --expose-gc server --lib-dir=server/.inpx-shelf/lib'",
     "build:client": "webpack --config build/webpack.prod.config.js",
     "build:linux": "npm run build:client && node build/prepkg.js linux && pkg -t node24-linux-x64 -C GZip --options max-old-space-size=4096,expose-gc -o dist/linux/inpx-shelf .",
     "build:linux-arm64": "npm run build:client && node build/prepkg.js linux-arm64 && pkg -t node24-linux-arm64 -C GZip --options max-old-space-size=4096,expose-gc -o dist/linux-arm64/inpx-shelf .",
@@ -27,8 +27,7 @@
     "release:win-installer": "npm run build:win && npm run build:win-tools && npm run build:win-installer",
     "release:macos": "npm run build:macos && node build/release.js macos",
     "release:macos-arm64": "npm run build:macos-arm64 && node build/release.js macos-arm64",
-    "release:arm64": "npm run build:linux-arm64 && node build/release.js linux-arm64",
-    "postinstall": "npm run build:client-dev"
+    "release:arm64": "npm run build:linux-arm64 && node build/release.js linux-arm64"
   },
   "bin": "server/index.js",
   "pkg": {
@@ -52,6 +51,7 @@
     "eslint-plugin-vue": "^9.23.0",
     "html-webpack-plugin": "^5.6.0",
     "mini-css-extract-plugin": "^2.8.1",
+    "nodemon": "^3.1.14",
     "postcss": "^8.5.28",
     "terser-webpack-plugin": "^5.3.10",
     "vue-eslint-parser": "^9.4.2",

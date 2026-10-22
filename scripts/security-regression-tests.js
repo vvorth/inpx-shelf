@@ -409,6 +409,58 @@ async function testRootPathRewriteAtExtraction() {
     });
 }
 
+// The web app is extracted next to public/ and renamed into place: an old or half-extracted copy is never served.
+async function testWebAppExtractionIsAtomic() {
+    await temporary(async(dir) => {
+        const appDir = require('../build/appdir');
+        const zip = new (require('yazl').ZipFile)();
+        const chunks = [];
+        const done = new Promise((resolve, reject) => {
+            zip.outputStream.on('data', chunk => chunks.push(chunk));
+            zip.outputStream.on('end', resolve);
+            zip.outputStream.on('error', reject);
+        });
+        zip.addBuffer(Buffer.from(`<script src="/${appDir}/app.js"></script>`), 'index.html');
+        zip.addBuffer(Buffer.from('console.log(1);'.repeat(100)), `${appDir}/app.js`);
+        zip.end();
+        await done;
+        const webApp = {data: Buffer.concat(chunks).toString('base64')};
+        const data = path.join(dir, 'data');
+        const config = {version: 'test', rootPathStatic: '/root', publicDir: path.join(data, 'public'), tempDir: path.join(dir, 'tmp')};
+        await fs.ensureDir(config.tempDir);
+        await fs.outputFile(path.join(config.publicDir, 'version.txt'), 'old');
+        await fs.outputFile(path.join(config.publicDir, 'stale.js'), 'old');
+        // An extraction interrupted long ago is removed; a recent one may belong to another running instance.
+        const leftover = path.join(data, 'public.0123abcd.tmp');
+        const recent = path.join(data, 'public.4567cdef.tmp');
+        await fs.outputFile(path.join(leftover, 'index.html'), 'half');
+        await fs.outputFile(path.join(recent, 'index.html'), 'half');
+        const old = new Date(Date.now() - 2*60*60*1000);
+        await fs.utimes(leftover, old, old);
+        await fs.ensureDir(path.join(data, 'public-files'));
+
+        const createWebApp = require('../server/createWebApp');
+        await createWebApp(config, webApp);
+        assert.deepStrictEqual((await fs.readdir(data)).sort(), ['public', 'public-files', 'public.4567cdef.tmp']);
+        const files = (await fs.readdir(config.publicDir)).filter(name => !/\.(br|gz)$/.test(name));
+        assert.deepStrictEqual(files.sort(), [appDir, 'index.html', 'version.txt'], 'Files of the old copy are gone');
+        assert.strictEqual(await fs.readFile(path.join(config.publicDir, 'index.html'), 'utf8'), `<script src="/root/${appDir}/app.js"></script>`);
+        assert.ok(await fs.pathExists(path.join(config.publicDir, appDir, 'app.js.gz')), 'Precompressed in place before the rename');
+        assert.deepStrictEqual(await fs.readdir(config.tempDir), []);
+
+        // The same version is not extracted again.
+        await fs.outputFile(path.join(config.publicDir, 'marker'), '');
+        await createWebApp(config, webApp);
+        assert.ok(await fs.pathExists(path.join(config.publicDir, 'marker')));
+
+        // A failed extraction leaves the working copy and no temporary files.
+        await assert.rejects(createWebApp(config, {data: Buffer.from('not a zip').toString('base64')}));
+        assert.ok(await fs.pathExists(path.join(config.publicDir, 'marker')));
+        assert.deepStrictEqual((await fs.readdir(data)).sort(), ['public', 'public-files', 'public.4567cdef.tmp']);
+        assert.deepStrictEqual(await fs.readdir(config.tempDir), []);
+    });
+}
+
 // A failed cover write must not leave a partial file under the cached name.
 async function testCoverCacheWriteIsAtomic() {
     await temporary(async(dir) => {
@@ -1282,7 +1334,7 @@ async function testGunzipBufferIsBounded() {
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
     testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testMetricsTokenRateLimit, testCookieSecureFromForwardedProto, testOpdsQueryValuesAreStrings,
-    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
+    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebAppExtractionIsAtomic,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testBrokenStoreWithoutCopyIsNotOverwritten, testBackupsKeepNewestTen, testWikidataDownloadWaitsForFileLock, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,

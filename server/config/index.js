@@ -172,8 +172,14 @@ function preferLegacyDir(dirPath, legacyPath) {
     return dirPath;
 }
 
-function resolveDefaultDataDir(config = {}) {
-    return preferLegacyDir(`${config.execDir}/.${config.name}`, `${config.execDir}/.${legacyName}`);
+//Windows-сборка хранит данные там же, где их ищут ярлыки установщика (%LOCALAPPDATA%\inpx-shelf);
+//каталог рядом с .exe, созданный прежними версиями, остаётся в работе
+function resolveDefaultDataDir(config = {}, packagedWindows = Boolean(process.pkg) && process.platform === 'win32') {
+    const execDataDir = preferLegacyDir(`${config.execDir}/.${config.name}`, `${config.execDir}/.${legacyName}`);
+    if (packagedWindows && !fs.pathExistsSync(execDataDir))
+        return resolveFallbackDataDir(config);
+
+    return execDataDir;
 }
 
 function resolveFallbackDataDir(config = {}) {
@@ -351,5 +357,6 @@ class ConfigManager {
 ConfigManager.propsToSave = propsToSave;
 ConfigManager.applyEnvOverrides = applyEnvOverrides;
 ConfigManager.readFileConfig = readFileConfig;
+ConfigManager.resolveDefaultDataDir = resolveDefaultDataDir;
 
 module.exports = ConfigManager;

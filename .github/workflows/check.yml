@@ -13,6 +13,10 @@ on:
         description: Git ref to check out (empty means the ref of the calling event)
         type: string
         default: ''
+      strict_audit:
+        description: Fail on npm audit findings (release.yml); otherwise they only warn, audit.yml reports them weekly
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,16 +27,18 @@ jobs:
     runs-on: ${{ inputs.target == 'win' && 'windows-latest' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
       # Platform-independent checks run once, on Linux.
+      # A new advisory in a dependency is not caused by the commit under test: it blocks only a release.
       - if: runner.os == 'Linux'
+        continue-on-error: ${{ !inputs.strict_audit }}
         run: npm audit --omit=dev --audit-level=moderate
       - if: runner.os == 'Linux'
         run: npx eslint --quiet server shared scripts build client --ext .js,.vue
@@ -44,7 +50,7 @@ jobs:
       # The release bundles djxl, dwebp and fbc into the Windows archive: the same pinned downloads, checked on
       # every run so a broken download or archive shows up before a release. The archives come from the cache.
       - if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: dist/tools-cache
           key: windows-tools-${{ hashFiles('scripts/bundle-windows-tools.ps1') }}

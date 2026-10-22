@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const {promisify} = require('util');
+const _ = require('lodash');
 
 const ZipReader = require('./core/ZipReader');
 const utils = require('./core/utils');
@@ -55,10 +56,23 @@ async function precompress(config) {
     }
 }
 
-module.exports = async(config) => {
-    const webApp = require('../dist/public.json');
+//Незаконченная распаковка (сбой, другой экземпляр) старше этого срока - мусор
+const staleExtractMs = 60*60*1000;
+
+async function removeStaleExtracts(publicDir) {
+    const parent = path.dirname(publicDir);
+    const re = new RegExp(`^${_.escapeRegExp(path.basename(publicDir))}\\.[0-9a-f]+\\.tmp$`);
+    for (const name of await fs.readdir(parent)) {
+        const dir = path.join(parent, name);
+        const stat = (re.test(name) ? await fs.stat(dir).catch(() => null) : null);
+        if (stat && Date.now() - stat.mtimeMs > staleExtractMs)
+            await fs.remove(dir);
+    }
+}
+
+//webApp - для тестов; по умолчанию сборка клиента из dist/public.json
+module.exports = async(config, webApp = require('../dist/public.json')) => {
     const verFile = `${config.publicDir}/version.txt`;
-    const zipFile = `${config.tempDir}/public.zip`;
     const publicVersion = [
         config.version,
         config.rootPathStatic,
@@ -71,23 +85,43 @@ module.exports = async(config) => {
             return;
     }
 
-    await fs.remove(config.publicDir);
-
-    // Extract the new web app bundle.
-    await fs.writeFile(zipFile, webApp.data, {encoding: 'base64'});
-    const zipReader = new ZipReader();
-    await zipReader.open(zipFile);
-
+    //Распаковка во временный каталог рядом и переименование: сбой посередине или второй экземпляр
+    //не оставляют недораспакованное приложение под рабочим именем
+    await fs.ensureDir(path.dirname(config.publicDir));
+    await removeStaleExtracts(config.publicDir);
+    const token = crypto.randomBytes(6).toString('hex');
+    const extractDir = `${config.publicDir}.${token}.tmp`;
+    const zipFile = `${config.tempDir}/public.${token}.zip`;
+    const extractConfig = {...config, publicDir: extractDir};
     try {
-        await zipReader.extractAllToDir(config.publicDir);
-    } finally {
-        await zipReader.close();
-    }
-    await applyRootPath(config);
-    await precompress(config);
+        await fs.writeFile(zipFile, webApp.data, {encoding: 'base64'});
+        const zipReader = new ZipReader();
+        await zipReader.open(zipFile);
+        try {
+            await zipReader.extractAllToDir(extractDir);
+        } finally {
+            await zipReader.close();
+        }
+        await applyRootPath(extractConfig);
+        await precompress(extractConfig);
+        await fs.writeFile(`${extractDir}/version.txt`, publicVersion);
 
-    await fs.writeFile(verFile, publicVersion);
-    await fs.remove(zipFile);
+        //прежняя версия уходит под временное имя: рабочий каталог отсутствует лишь между двумя rename
+        const oldDir = `${config.publicDir}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+        if (await fs.pathExists(config.publicDir))
+            await fs.rename(config.publicDir, oldDir);
+        try {
+            await fs.rename(extractDir, config.publicDir);
+        } catch (error) {
+            //другой экземпляр успел положить ту же версию
+            if (!await fs.pathExists(verFile) || await fs.readFile(verFile, 'utf8') !== publicVersion)
+                throw error;
+        }
+        await fs.remove(oldDir);
+    } finally {
+        await fs.remove(extractDir);
+        await fs.remove(zipFile);
+    }
 };
 
 module.exports.applyRootPath = applyRootPath;

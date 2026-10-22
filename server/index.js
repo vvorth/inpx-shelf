@@ -1,3 +1,9 @@
+//node:sqlite и другие API Node 24: на старой версии - понятное сообщение, а не ошибка при загрузке модулей ниже
+if (Number(process.versions.node.split('.')[0]) < 24) {
+    console.error(`inpx-shelf requires Node.js 24 or newer, this is Node.js ${process.versions.node}`);
+    process.exit(1);
+}
+
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
@@ -27,7 +33,7 @@ Options:
   --host=<ip>          Set web server host, default: ${defaultConfig.server.host}
   --port=<port>        Set web server port, default: ${defaultConfig.server.port}
   --config=<filepath>  Set config filename, default: <dataDir>/config.json
-  --data-dir=<dirpath> (or --app-dir) Set application working directory, default: <execDir>/.${defaultConfig.name}
+  --data-dir=<dirpath> (or --app-dir) Set application working directory, default: <execDir>/.${defaultConfig.name} (Windows binary: %LOCALAPPDATA%\\${defaultConfig.name})
   --lib-dir=<dirpath>  Set library directory, default: the same as ${defaultConfig.name} executable's
   --inpx=<filepath>    Set INPX collection file, default: the one that found in library dir
   --library-sources=<json> Set multiple INPX sources, JSON array or "name|inpx|libDir;..."

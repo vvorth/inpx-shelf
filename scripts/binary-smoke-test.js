@@ -7,27 +7,46 @@ const {spawn, execFile} = require('child_process');
 const {promisify} = require('util');
 const {setTimeout: sleep} = require('timers/promises');
 const yazl = require('yazl');
+const {PNG} = require('pngjs');
 
-async function createFixture(dir) {
-    await fs.ensureDir(dir);
+async function writeZip(file, entries) {
     const zip = new yazl.ZipFile();
-    const output = fs.createWriteStream(path.join(dir, 'smoke.inpx'));
+    const output = fs.createWriteStream(file);
     const complete = new Promise((resolve, reject) => {
         output.on('close', resolve);
         output.on('error', reject);
         zip.outputStream.on('error', reject);
     });
     zip.outputStream.pipe(output);
-    zip.addBuffer(Buffer.from('Smoke library\n'), 'collection.info');
-    zip.addBuffer(Buffer.from('20260914'), 'version.info');
-    const row = ['Tester,Smoke:', 'sf:', 'Packaged smoke book', '', '0', '1', '100', '1', '0', 'fb2', '2026-09-14', 'en', '0', ''];
-    zip.addBuffer(Buffer.from(row.join('\x04') + '\n'), 'smoke.inp');
+    for (const [name, data] of Object.entries(entries))
+        zip.addBuffer(Buffer.from(data), name);
     zip.end();
     await complete;
+}
+
+const bookTitle = 'Packaged smoke book';
+const cover = PNG.sync.write(Object.assign(new PNG({width: 2, height: 3}), {data: Buffer.alloc(2*3*4, 0x80)}));
+
+// One FB2 with an embedded cover in smoke.zip (the archive of smoke.inp): books and covers come out through
+// 7z-wasm in the archive worker, as in a real library. Returns the book's _uid (SHA-256 of its INPX line).
+async function createFixture(dir) {
+    await fs.ensureDir(dir);
+    const fb2 = '<?xml version="1.0" encoding="utf-8"?>\n<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">' +
+        `<description><title-info><genre>sf</genre><author><first-name>Smoke</first-name><last-name>Tester</last-name></author><book-title>${bookTitle}</book-title>` +
+        '<lang>en</lang><coverpage><image l:href="#cover.png"/></coverpage></title-info></description>' +
+        `<body><section><p>${bookTitle} text.</p></section></body><binary id="cover.png" content-type="image/png">${cover.toString('base64')}</binary></FictionBook>`;
+    await writeZip(path.join(dir, 'smoke.zip'), {'1.fb2': fb2});
+    const row = ['Tester,Smoke:', 'sf:', bookTitle, '', '0', '1', String(Buffer.byteLength(fb2)), '1', '0', 'fb2', '2026-09-14', 'en', '0', ''].join('\x04');
+    await writeZip(path.join(dir, 'smoke.inpx'), {
+        'collection.info': 'Smoke library\n',
+        'version.info': '20260914',
+        'smoke.inp': row + '\n',
+    });
     await fs.writeJson(path.join(dir, 'config.json'), {
         loggingEnabled: false,
         opds: {enabled: true},
     });
+    return require('crypto').createHash('sha256').update(row).digest('base64');
 }
 
 //пароль администратора задаётся только окружением (adminPassword не читается из config.json)
@@ -64,12 +83,29 @@ async function checkApi(url) {
     assert.notStrictEqual(signedIn, cookie);
     const after = await (await fetch(`${url}/api/config`, {headers: {...headers, cookie: signedIn}})).json();
     assert.deepStrictEqual([after.profileAuthorized, after.currentUserId], [true, 'admin']);
+    return signedIn;
 }
 
-async function main() {
-    const [target, imageName] = process.argv.slice(2);
-    if (!target || (target === '--image' && !imageName))
-        throw new Error('Usage: node scripts/binary-smoke-test.js <binary> | --image <local-image>');
+// The public book link (/book/by-uid redirects to the prepared file) and the embedded cover.
+async function checkBook(url, cookie, uid) {
+    const query = `uid=${encodeURIComponent(uid)}`;
+    const link = await fetch(`${url}/book/by-uid?${query}`, {headers: {cookie}, redirect: 'manual'});
+    assert.strictEqual(link.status, 302, await link.text());
+    const book = await fetch(new URL(link.headers.get('location'), url), {headers: {cookie}});
+    assert.strictEqual(book.status, 200);
+    assert.match(String(book.headers.get('content-type')), /^application\/x-fictionbook\+xml/);
+    assert.match(await book.text(), new RegExp(`<book-title>${bookTitle}</book-title>`));
+    const coverResponse = await fetch(`${url}/cover/by-uid?${query}`, {headers: {cookie}});
+    assert.strictEqual(coverResponse.status, 200);
+    assert.strictEqual(coverResponse.headers.get('content-type'), 'image/png');
+    assert.ok(Buffer.from(await coverResponse.arrayBuffer()).equals(cover), 'The embedded cover');
+}
+
+const dockerDataDir = '/usr/local/bin/.inpx-web';
+
+// mode: binary, command (the image with an explicit command, as in the docs) or entrypoint (the default
+// entrypoint with PUID/PGID and the data volume: the privilege drop and chown are checked).
+async function run(target, mode) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-binary-smoke-'));
     const library = path.join(dir, 'library');
     const containerName = `inpx-smoke-${process.pid}-${Date.now()}`;
@@ -77,20 +113,25 @@ async function main() {
     let exited;
     let output = '';
     try {
-        await createFixture(library);
+        const uid = await createFixture(library);
         const port = await unusedPort();
         let command;
         let args;
-        if (target === '--image') {
-            command = 'docker';
-            args = ['run', '--rm', '--name', containerName,
-                '-p', `127.0.0.1:${port}:12380`, '--tmpfs', '/data', '-e', `INPX_ADMIN_PASSWORD=${adminPassword}`,
-                '--mount', `type=bind,source=${library},target=/library,readonly`, imageName,
-                'sh', '-c', 'cp /library/config.json /data/config.json && exec inpx-shelf --data-dir=/data --config=/data/config.json --lib-dir=/library --host=0.0.0.0 --port=12380'];
-        } else {
+        if (mode === 'binary') {
             command = path.resolve(target);
             args = [`--data-dir=${path.join(dir, 'data')}`, `--lib-dir=${library}`,
                 `--config=${path.join(library, 'config.json')}`, '--host=127.0.0.1', `--port=${port}`];
+        } else {
+            command = 'docker';
+            args = ['run', '--rm', '--name', containerName, '-p', `127.0.0.1:${port}:12380`, '-e', `INPX_ADMIN_PASSWORD=${adminPassword}`,
+                '--mount', `type=bind,source=${library},target=/library,readonly`];
+            if (mode === 'command') {
+                // DATA_DIR: the entrypoint gives /data to the app user before running the command
+                args.push('--tmpfs', '/data', '-e', 'DATA_DIR=/data', target,
+                    'sh', '-c', 'cp /library/config.json /data/config.json && exec inpx-shelf --data-dir=/data --config=/data/config.json --lib-dir=/library --host=0.0.0.0 --port=12380');
+            } else {
+                args.push('-e', 'PUID=1000', '-e', 'PGID=1000', target);
+            }
         }
         const env = {...process.env, INPX_LIBRARY_SOURCES: '', LIBRARY_SOURCES: '',
             INPX_REQUIRE_AUTH: 'false', INPX_AUTH_MODE: 'local', INPX_ENABLE_CONVERSION: 'false', INPX_ADMIN_PASSWORD: adminPassword};
@@ -125,10 +166,17 @@ async function main() {
         const opds = await fetch(`${url}/opds`);
         assert.strictEqual(opds.status, 401);
         assert.match(String(opds.headers.get('www-authenticate')), /^Basic/);
-        await checkApi(url);
-        console.log(`ok packaged application: indexing, health, web UI, OPDS, HTTP API (${target === '--image' ? imageName : target})`);
+        const cookie = await checkApi(url);
+        await checkBook(url, cookie, uid);
+        if (mode === 'entrypoint') {
+            // config.json is written by the app itself: its owner is the user the app runs as
+            const {stdout} = await promisify(execFile)('docker', ['exec', containerName, 'stat', '-c', '%u:%g',
+                dockerDataDir, `${dockerDataDir}/config.json`], {windowsHide: true, timeout: 15000});
+            assert.deepStrictEqual(stdout.trim().split('\n'), ['1000:1000', '1000:1000']);
+        }
+        console.log(`ok packaged application: indexing, health, web UI, OPDS, HTTP API, book and cover (${mode === 'binary' ? target : `${target}, ${mode}`})`);
     } finally {
-        if (target === '--image')
+        if (mode !== 'binary')
             await promisify(execFile)('docker', ['rm', '-f', containerName], {windowsHide: true, timeout: 15000}).catch(() => {});
         if (child && child.exitCode === null)
             child.kill();
@@ -137,6 +185,18 @@ async function main() {
             try { await exited; } finally { clearTimeout(timer); }
         }
         await fs.remove(dir);
+    }
+}
+
+async function main() {
+    const [target, imageName] = process.argv.slice(2);
+    if (!target || (target === '--image' && !imageName))
+        throw new Error('Usage: node scripts/binary-smoke-test.js <binary> | --image <local-image>');
+    if (target === '--image') {
+        await run(imageName, 'command');
+        await run(imageName, 'entrypoint');
+    } else {
+        await run(target, 'binary');
     }
 }
 

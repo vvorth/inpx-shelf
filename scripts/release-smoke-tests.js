@@ -135,6 +135,32 @@ async function testConfigSecretsSurviveRestart() {
     }
 }
 
+// The packaged Windows binary keeps its data where the installer shortcuts do, unless a data directory next to the .exe already exists.
+async function testWindowsDefaultDataDir() {
+    const {resolveDefaultDataDir} = require('../server/config');
+    const previous = process.env.LOCALAPPDATA;
+    try {
+        await withTempDir(async(dir) => {
+            process.env.LOCALAPPDATA = path.join(dir, 'local');
+            const config = {name: 'inpx-shelf', execDir: path.join(dir, 'app')};
+            const resolve = packagedWindows => path.resolve(resolveDefaultDataDir(config, packagedWindows));
+            assert.strictEqual(resolve(true), path.join(dir, 'local', 'inpx-shelf'));
+            assert.strictEqual(resolve(false), path.join(dir, 'app', '.inpx-shelf'));
+            await fs.ensureDir(path.join(dir, 'local', 'inpx-web'));
+            assert.strictEqual(resolve(true), path.join(dir, 'local', 'inpx-web'));
+            await fs.ensureDir(path.join(dir, 'app', '.inpx-web'));
+            assert.strictEqual(resolve(true), path.join(dir, 'app', '.inpx-web'));
+            await fs.ensureDir(path.join(dir, 'app', '.inpx-shelf'));
+            assert.strictEqual(resolve(true), path.join(dir, 'app', '.inpx-shelf'));
+        });
+    } finally {
+        if (previous === undefined)
+            delete process.env.LOCALAPPDATA;
+        else
+            process.env.LOCALAPPDATA = previous;
+    }
+}
+
 function testConvertedBookFileNames() {
     const bookConverter = require('../server/core/BookConverter');
 
@@ -2660,6 +2686,7 @@ const tests = [
     ...require('./web-worker-tests'),
     ...require('./api-routes-tests'),
     testConfigSecretsSurviveRestart,
+    testWindowsDefaultDataDir,
     testAppCacheRecoveryBootstrapAndRoute,
     testStaticAssetsArePrecompressed,
     testFb2ContentsExcludeNotesBodies,

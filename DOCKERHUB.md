@@ -117,7 +117,7 @@ Keep `/usr/local/bin/.inpx-web` in a persistent volume. It stores:
 
 The book library itself should normally be mounted read-only at `/library`.
 
-The app runs as user `1000:1000`, not root. Set `PUID` / `PGID` to use another user (for example `99` / `100` on Unraid), or `PUID=0` to keep root. On start the data directory and `CACHE_DIR` are given to that user if they belong to someone else, e.g. after an older version that ran as root. The library must be readable by that user.
+The app runs as user `1000:1000`, not root. Set `PUID` / `PGID` to use another user (for example `99` / `100` on Unraid), or `PUID=0` to keep root. An explicit container command (`docker run ... vvorth/inpx-shelf <command>`) runs as that user too. On start the data directory and `CACHE_DIR` are given to that user if they belong to someone else, e.g. after an older version that ran as root. The library must be readable by that user.
 
 ## Backups
 

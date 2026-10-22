@@ -12,24 +12,21 @@ if [ "$1" = "healthcheck" ]; then
         healthcheck "$HOST_VALUE" "${PORT:-12380}"
 fi
 
-if [ "$#" -gt 0 ]; then
-    case "$1" in
-        -*)
-            set -- inpx-shelf "$@"
-            ;;
-        *)
-            exec "$@"
-            ;;
-    esac
-fi
-
 DATA_DIR_VALUE="${DATA_DIR:-${APP_DIR:-}}"
 if [ -z "$DATA_DIR_VALUE" ] && [ -n "$CACHE_DIR" ]; then
     DATA_DIR_VALUE="$(dirname "$CACHE_DIR")"
 fi
 DATA_DIR_VALUE="${DATA_DIR_VALUE:-/usr/local/bin/.inpx-web}"
 
-if [ "$#" -eq 0 ]; then
+# Опции (первый аргумент с "-") передаются inpx-shelf, другая команда запускается как есть,
+# но тоже после смены пользователя ниже.
+if [ "$#" -gt 0 ]; then
+    case "$1" in
+        -*)
+            set -- inpx-shelf "$@"
+            ;;
+    esac
+else
     LIBDIR_VALUE="${LIBDIR:-${LIB_DIR:-/library}}"
     INPX_VALUE="${INPX:-}"
     HOST_VALUE="${HOST:-0.0.0.0}"
