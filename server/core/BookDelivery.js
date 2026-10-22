@@ -173,7 +173,7 @@ module.exports = {
                     command: item.command,
                 })) : undefined,
             });
-            throw new Error(t('errors.emailNotSent', {details: response}));
+            throw new Error(t('errors.emailNotSent', {details: response}), {cause: err});
         }
 
         this.addAdminEvent('info', 'delivery', msg('admin.deliveryEmailSent', {title: book.title || downFileName}));

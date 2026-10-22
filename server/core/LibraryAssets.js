@@ -114,7 +114,7 @@ module.exports = {
             } catch(e) {
                 //причина в ошибке: записи нет в архиве, архив повреждён, метод сжатия не поддерживается
                 await fs.remove(outFile);
-                throw new Error(`${folder}: ${file}: ${e.message}`);
+                throw new Error(`${folder}: ${file}: ${e.message}`, {cause: e});
             } finally {
                 await zipReader.close();
             }
@@ -605,7 +605,7 @@ module.exports = {
             const zipReader = new ZipReader();
             await zipReader.open(archive.file, false);
 
-            let html = '';
+            let html;
             try {
                 html = decodeArchiveText(await zipReader.extractToBuf(entryName));
             } catch(e) {

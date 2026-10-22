@@ -326,7 +326,7 @@ class ConfigManager {
                 await this.save();
             }
         } catch(e) {
-            throw new Error(`Error while loading "${this._config.configFile}": ${e.message}`);
+            throw new Error(`Error while loading "${this._config.configFile}": ${e.message}`, {cause: e});
         }
     }
 

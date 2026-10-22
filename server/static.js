@@ -138,7 +138,7 @@ function precompressedStatic(publicDir) {
             return next();
 
         res.vary('Accept-Encoding');
-        let file = '';
+        let file;
         try {
             file = path.resolve(root, `.${decodeURIComponent(pathname)}`);
         } catch (e) {

@@ -299,7 +299,7 @@ function normalizeReaderImageAnchor(src = '') {
     if (!safeSrc)
         return '';
 
-    let normalized = safeSrc;
+    let normalized;
     try {
         const url = new URL(safeSrc, window.location.href);
         normalized = `${url.pathname}${url.search || ''}`;

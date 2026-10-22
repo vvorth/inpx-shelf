@@ -195,7 +195,7 @@ export default class ReaderProgressSync {
         if (this.readerProfileWarningVisible && !this.readerProfileAuthorized)
             return;
 
-        let state = null;
+        let state;
         try {
             state = await api.getReaderState(bookUid, {suppressProfileLogin: true});
         } catch (e) {

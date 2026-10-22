@@ -123,7 +123,7 @@ export default class ReaderChrome {
         const sourceMessage = String(this.loadingMessage || '').trim();
         const isActivePagedBuild = !!(this.bookPreparing || this.isPagedBuildPending);
         const hasMeasuredProgress = isActivePagedBuild && this.pagedBuildProgressPercent > 0;
-        let pagesMessage = '';
+        let pagesMessage;
 
         if (isActivePagedBuild && sourceMessage)
             pagesMessage = sourceMessage;

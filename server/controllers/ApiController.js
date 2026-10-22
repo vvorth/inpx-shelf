@@ -397,7 +397,7 @@ class ApiController {
         try {
             return JSON.parse(await fs.readFile(file, 'utf8'));
         } catch (e) {
-            throw new Error(i18n.t('errors.uploadInvalidJson'));
+            throw new Error(i18n.t('errors.uploadInvalidJson'), {cause: e});
         }
     }
 

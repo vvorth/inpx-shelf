@@ -30,8 +30,6 @@ module.exports = [
             'no-extra-semi': 'error',
             'no-mixed-spaces-and-tabs': 'error',
             'no-inner-declarations': 'error',
-            'no-useless-assignment': 'off',
-            'preserve-caught-error': 'off',
 
             'space-before-function-paren': ['error', 'never'],
             'max-len': ['warn', 200, 4, {ignoreComments: true, ignoreUrls: true}],

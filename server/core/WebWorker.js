@@ -1048,8 +1048,8 @@ class WebWorker {
 
     //remote - книга удалённой библиотеки: её файл уже подготовлен там
     async restoreBook(bookUid, libFolder, libFile, downFileName, sourceLibDir = '', remote = null) {
-        let extractedFile = '';
-        let hash = '';
+        let extractedFile;
+        let hash;
 
         if (remote) {
             extractedFile = await this.remoteLib.downloadBook(remote, bookUid);
@@ -1457,7 +1457,7 @@ class WebWorker {
         } catch(e) {
             log(LM_ERR, `getBookInfo error: ${e.message}`);
             if (e.message.indexOf('ENOENT') >= 0)
-                throw new Error(t('errors.fileNotFound'));
+                throw new Error(t('errors.fileNotFound'), {cause: e});
             throw e;
         }
     }

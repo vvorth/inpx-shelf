@@ -410,7 +410,7 @@ module.exports = {
             const sameTitle = (bookTitle === title
                 || normalizeDiscoveryText(String(book.title || '').replace(/\s*\([^()]*\)\s*$/, '')) === title);
 
-            let score = -Infinity;
+            let score;
             if (bookTitle === title) {
                 score = 1000;
             } else if (bookTitle.startsWith(title) || title.startsWith(bookTitle)) {
@@ -562,7 +562,7 @@ module.exports = {
         } catch (e) {
             const details = String(e && e.message || '').trim();
             const suffix = details ? `: ${details}` : '';
-            throw new Error(t('errors.externalUpdateFailed', {name: discovery.externalName || t('discovery.externalSource'), details: suffix}));
+            throw new Error(t('errors.externalUpdateFailed', {name: discovery.externalName || t('discovery.externalSource'), details: suffix}), {cause: e});
         }
     },
 
