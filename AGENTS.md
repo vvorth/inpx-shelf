@@ -35,9 +35,16 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 
 ## Before finishing
 
-- `npm run test:release` passes (`fail 0` in the summary).
-- UI text changed: `npm run test:i18n`. Client changed: `npm run build:client`.
-- `npx eslint --quiet server shared scripts build client --ext .js,.vue` reports no errors (CI runs it).
+Before a commit, before merging into `dev` or `main`, and before reporting the work done, all tests pass, including every check CI runs (`.github/workflows/check.yml`, Linux job). A failure is fixed first, even one the change did not cause.
+
+1. `npm ci --ignore-scripts`
+2. `npm audit --omit=dev --audit-level=moderate` (fix with plain `npm audit fix`: `--omit=dev` also removes the dev packages from `node_modules`)
+3. `npx eslint --quiet server shared scripts build client --ext .js,.vue`
+4. `npm run test:i18n`
+5. `npm run test:release` (`fail 0` in the summary)
+6. `npm run build:linux`, then `node scripts/binary-smoke-test.js dist/linux/inpx-shelf`
+
+The Windows job runs the same steps on `build:win`; it cannot run here, so say so when a change touches the packaged binary.
 
 ## Invariants
 
