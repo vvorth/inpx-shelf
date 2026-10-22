@@ -18,6 +18,17 @@
             @keydown="onKeydown"
         />
         <span v-if="!query" class="omnibox-key">/</span>
+        <button
+            v-else
+            type="button"
+            class="omnibox-clear"
+            :aria-label="$t('omnibox.clearSearch')"
+            :title="$t('omnibox.clearSearch')"
+            @mousedown.prevent
+            @click="clear"
+        >
+            <q-icon name="la la-times" size="16px" />
+        </button>
 
         <div v-if="open" class="omnibox-panel" role="listbox" @mousedown.prevent>
             <div v-if="suggestion.corrected" class="omnibox-note">
@@ -76,12 +87,14 @@ const componentOptions = {
     },
 };
 
+const emptySuggestion = () => ({authors: [], series: [], books: [], corrected: '', layout: false});
+
 class Omnibox {
     _options = componentOptions;
 
     query = '';
     focused = false;
-    suggestion = {authors: [], series: [], books: [], corrected: '', layout: false};
+    suggestion = emptySuggestion();
     activeIndex = -1;
     requestSeq = 0;
     timer = null;
@@ -185,7 +198,7 @@ class Omnibox {
         const q = this.query.trim();
         const seq = ++this.requestSeq;
         if (!q || !this.indexReady) {
-            this.suggestion = {authors: [], series: [], books: [], corrected: '', layout: false};
+            this.suggestion = emptySuggestion();
             return;
         }
         try {
@@ -217,6 +230,18 @@ class Omnibox {
     choose(item) {
         this.$refs.input.blur();
         this.$router.push(item.to);
+    }
+
+    //страница поиска открывается как «с нуля»: без запроса и фильтров; на других страницах очищается только поле
+    clear() {
+        clearTimeout(this.timer);
+        this.requestSeq++;
+        this.query = '';
+        this.activeIndex = -1;
+        this.suggestion = emptySuggestion();
+        this.$refs.input.focus();
+        if (this.$route.path === '/search')
+            this.$router.push({path: '/search'});
     }
 
     submit() {
@@ -271,7 +296,32 @@ export default vueComponent(Omnibox);
 }
 
 .omnibox-input::-webkit-search-cancel-button {
+    appearance: none;
+    display: none;
+}
+
+.omnibox-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--app-radius);
+    background: none;
+    color: var(--app-muted);
     cursor: pointer;
+}
+
+.omnibox-clear:hover,
+.omnibox-clear:focus-visible {
+    color: var(--app-text);
+    background: var(--app-surface-3);
 }
 
 .omnibox-key {

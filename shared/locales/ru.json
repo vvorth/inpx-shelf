@@ -1118,6 +1118,7 @@
     },
     "omnibox": {
         "authorsBooksSeries": "Авторы, книги, серии",
+        "clearSearch": "Очистить поиск",
         "didYouMean": "Возможно, вы искали:",
         "otherKeyboardLayout": "Другая раскладка:",
         "searchEverythingFor": "Искать «{q}» везде",

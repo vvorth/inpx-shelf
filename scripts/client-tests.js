@@ -310,6 +310,39 @@ async function testLibraryPagesDropPreviousProfileStates() {
     }
 }
 
+// Кнопка «очистить» в поиске: на странице поиска возвращает её к открытию «с нуля» (маршрут без запроса и фильтров),
+// на остальных страницах только очищает поле; подсказки закрываются, устаревший ответ не возвращается.
+async function testOmniboxClearResetsSearch() {
+    let Omnibox = null;
+    await loadClientModule('components/Shell/Omnibox.vue', {vueComponent: cls => { Omnibox = cls; }, t: key => key, bookAuthors: () => [], clearTimeout});
+    const make = (path) => {
+        const pushed = [];
+        const calls = [];
+        const state = {
+            query: 'tolkien', activeIndex: 2, requestSeq: 5, timer: null,
+            suggestion: {authors: [{name: 'a'}], series: [], books: [], corrected: 'x', layout: true},
+            $route: {path, query: {q: 'tolkien', lang: 'en', sort: 'title'}},
+            $router: {push: to => pushed.push(to)},
+            $refs: {input: {focus: () => calls.push('focus')}},
+        };
+        Omnibox.prototype.clear.call(state);
+        return {state, pushed, calls};
+    };
+
+    const onSearch = make('/search');
+    assert.strictEqual(onSearch.state.query, '');
+    assert.strictEqual(onSearch.state.activeIndex, -1);
+    assert.strictEqual(onSearch.state.requestSeq, 6);
+    assert.strictEqual(JSON.stringify(onSearch.state.suggestion), '{"authors":[],"series":[],"books":[],"corrected":"","layout":false}');
+    assert.deepStrictEqual(onSearch.calls, ['focus']);
+    assert.strictEqual(JSON.stringify(onSearch.pushed), '[{"path":"/search"}]');
+
+    const elsewhere = make('/book/1');
+    assert.strictEqual(elsewhere.state.query, '');
+    assert.deepStrictEqual(elsewhere.calls, ['focus']);
+    assert.strictEqual(elsewhere.pushed.length, 0);
+}
+
 // Пауза переподключения растёт вдвое до 30 с и случайно уменьшается не больше чем вдвое.
 async function testConnectionErrorsAndReconnectDelay() {
     const apiRoutes = require('../shared/apiRoutes');
@@ -465,6 +498,6 @@ async function testLockQueueHandsOverAndFrees() {
 module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testServiceWorkerCachesOnlyBuildFiles,
     testClientSha256MatchesNode, testBookLanguagesDefaultToAll, testLockQueueHandsOverAndFrees,
     testApiConnectionMapsErrors, testApiRequestRefreshesCsrfTokenOnce, testApiDropsOutOfOrderConfig, testLibraryPagesDropPreviousProfileStates,
-    testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
+    testOmniboxClearResetsSearch, testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
     testReleaseVersionsCompareCalVer];
