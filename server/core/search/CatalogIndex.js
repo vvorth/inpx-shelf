@@ -7,7 +7,7 @@ const {normalize, tokens, switchLayout, editDistance, allowedTypos, trigrams} = 
 const {workKey} = require('./workKey');
 const {buildLookup, englishName} = require('./AuthorNames');
 
-const schemaVersion = '10';
+const schemaVersion = '11';
 const maxLimit = 200;
 //длинный запрос из сотен слов превращается в огромное выражение FTS и перебор опечаток: режем
 const maxQueryLength = 200;

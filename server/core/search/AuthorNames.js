@@ -18,17 +18,20 @@ function occupationQuery(occupation, offset) {
 } ORDER BY ?item LIMIT ${pageSize} OFFSET ${offset}`;
 }
 
+//ь и ъ пишут не везде: «Конан Дойль Артур» в библиотеке, «Артур Конан Дойл» в Wikidata
+const words = name => normalize(name).replace(/[ьъ]/g, '').split(' ').filter(Boolean);//i18n-ignore: данные поиска
+
 //Ключ имени: слова в алфавитном порядке, чтобы «Айзек Азимов» и «Азимов Айзек» совпали
 function nameKey(name = '') {
-    return normalize(name).split(' ').filter(Boolean).sort().join(' ');
+    return words(name).sort().join(' ');
 }
 
 //Ключи имени из библиотеки «Фамилия Имя Отчество»: полное имя и без отчества
 function libraryKeys(name = '') {
-    const words = normalize(name).split(' ').filter(Boolean);
-    const keys = [words.slice().sort().join(' ')];
-    if (words.length > 2)
-        keys.push(words.slice(0, 2).sort().join(' '));
+    const own = words(name);
+    const keys = [own.slice().sort().join(' ')];
+    if (own.length > 2)
+        keys.push(own.slice(0, 2).sort().join(' '));
     return keys.filter(key => key.includes(' '));
 }
 

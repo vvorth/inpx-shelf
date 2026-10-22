@@ -1590,8 +1590,14 @@ async function testAuthorEnglishNames() {
         ['Джон Смит', 'John Smith'],
         ['Джон Смит', 'John Smyth'],
         ['Борис Акунин', 'Борис Акунин'],
+        ['Артур Конан Дойл', 'Arthur Conan Doyle'],
+        ['Адриан Конан Дойль', 'Adrian Conan Doyle'],
     ]);
     assert.strictEqual(AuthorNames.englishName(lookup, 'Азимов Айзек'), 'Isaac Asimov', 'word order must not matter');
+    //ь пишут не везде
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Конан Дойль Артур'), 'Arthur Conan Doyle');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Дойль Артур Конан'), 'Arthur Conan Doyle');
+    assert.strictEqual(AuthorNames.englishName(lookup, 'Дойл Адриан Конан'), 'Adrian Conan Doyle');
     assert.strictEqual(AuthorNames.englishName(lookup, 'Булгаков Михаил Афанасьевич'), 'Mikhail Bulgakov');
     assert.strictEqual(AuthorNames.englishName(lookup, 'Азимов Айзек Юдович'), 'Isaac Asimov', 'a patronymic in the library is ignored');
     assert.strictEqual(AuthorNames.englishName(lookup, 'Смит Джон'), '', 'namesakes with different English names are skipped');
