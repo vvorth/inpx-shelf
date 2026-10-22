@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const {withFileTransaction, writeFileAtomic} = require('../FilePersistence');
 const {t} = require('../i18n');
 const {log, isKoboId, idMap, ownEntry} = require('./common');
+const {userData} = require('../RequestLimits');
 
 const storeVersion = 1;
 const maxDevicesPerUser = 16;
@@ -19,6 +20,19 @@ function makeToken() {
 
 function nowIso() {
     return new Date().toISOString();
+}
+
+// A profile keeps as many Kobo reading states as web reading positions: past it the oldest (by lastModified) go.
+// Returns how many were dropped.
+function trimStates(rows) {
+    const keys = Object.keys(rows);
+    const extra = keys.length - userData.progressPerProfile;
+    if (extra <= 0)
+        return 0;
+    keys.sort((a, b) => String(rows[a].lastModified || '').localeCompare(String(rows[b].lastModified || '')));
+    for (const key of keys.slice(0, extra))
+        delete rows[key];
+    return extra;
 }
 
 // Kobo sync state lives apart from reading-lists.json: it is written on every
@@ -101,8 +115,11 @@ class KoboStore {
 
         const states = idMap();
         for (const [userId, rows] of Object.entries(source.states || {})) {
-            if (rows && typeof(rows) === 'object')
-                states[userId] = idMap(Object.fromEntries(Object.entries(rows).filter(([uuid]) => isKoboId(uuid))));
+            if (!rows || typeof(rows) !== 'object')
+                continue;
+            states[userId] = idMap(Object.fromEntries(Object.entries(rows)
+                .filter(([uuid, state]) => isKoboId(uuid) && state && typeof(state) === 'object')));
+            trimStates(states[userId]);
         }
 
         return {version: storeVersion, devices, states};
@@ -328,9 +345,10 @@ class KoboStore {
 
     // A device whose id or token is already on this server is kept as it is: a backup never takes over another device.
     // States merge per book; the newer one wins, so an old backup does not roll reading back.
+    // `trimmed` - states dropped over the profile limit.
     async importUser(userId = '', payload = {}, listIds = new Map()) {
         if (!payload || typeof(payload) !== 'object')
-            return {devices: 0, states: 0};
+            return {devices: 0, states: 0, trimmed: 0};
         return await this.mutate(async(data) => {
             let devices = 0;
             let states = 0;
@@ -358,9 +376,10 @@ class KoboStore {
                 rows[uuid] = state;
                 states++;
             }
+            const trimmed = trimStates(rows);
             if (Object.keys(rows).length)
                 data.states[userId] = rows;
-            return {devices, states};
+            return {devices, states, trimmed};
         });
     }
 

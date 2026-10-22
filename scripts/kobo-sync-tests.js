@@ -553,6 +553,37 @@ async function testKoboSyncKeepsChangesMadeDuringConversion() {
     });
 }
 
+// The sync copies a reading state, then waits for a conversion; a state PUT landing meanwhile keeps its bookmark
+// and statistics, and the status the sync set goes on top.
+async function testKoboSyncKeepsStatePutDuringConversion() {
+    await fixture({slowUid: 'late-uid'}, async({service, store, listA, call, sync}) => {
+        const json = body => ({method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ReadingStates: [body]})});
+        await store.addBooks('default', listA.id, ['epub-uid']);
+        await sync({fresh: true});
+        const epubUuid = kobo.uuidv5('main:102');
+        assert.strictEqual((await call(`/v1/library/${epubUuid}/state`, json({CurrentBookmark: {ProgressPercent: 10}}))).status, 200);
+        await store.setBooksRead('default', ['epub-uid'], true);
+        await store.addBooks('default', listA.id, ['late-uid']);
+        service.prepareBudgetMs = 2000;
+        // A full sync announces the read book (status Finished from its saved state), then waits for late-uid.
+        const pendingSync = sync({fresh: true});
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.strictEqual((await call(`/v1/library/${epubUuid}/state`, json({
+            CurrentBookmark: {ProgressPercent: 55, Location: {Value: 'kobo.5.1', Type: 'KoboSpan', Source: 'ch5.xhtml'}},
+            Statistics: {SpentReadingMinutes: 42},
+        }))).status, 200);
+        const {items} = await pendingSync;
+        const announced = items.find(item => item.NewEntitlement && item.NewEntitlement.BookEntitlement.Id === epubUuid);
+        assert.strictEqual(announced.NewEntitlement.ReadingState.StatusInfo.Status, 'Finished');
+        const state = service.store.getState('default', epubUuid);
+        assert.strictEqual(state.bookmark.ProgressPercent, 55);
+        assert.strictEqual(state.bookmark.Location.Value, 'kobo.5.1');
+        assert.strictEqual(state.statistics.SpentReadingMinutes, 42);
+        assert.strictEqual(state.status, 'Finished');
+        assert.ok(state.lastModified >= state.statistics.lastModified, 'the state is as new as its newest part');
+    });
+}
+
 // Each request checks the profile without cloning the store; a sync loads it once and asks for all books at once.
 async function testKoboSyncLoadsProfileStoreOnce() {
     await fixture({}, async({store, listA, listB, sync, lookups}) => {
@@ -1284,6 +1315,37 @@ async function testKoboDevicesTravelWithProfileBackup() {
     });
 }
 
+// Reading states are capped per profile like web positions: past the cap the oldest go, on import and on load.
+async function testKoboStatesStayWithinProfileLimit() {
+    const {userData} = require('../server/core/RequestLimits');
+    const KoboStore = require('../server/core/kobo/KoboStore');
+    const limit = userData.progressPerProfile;
+    userData.progressPerProfile = 3;
+    try {
+        await fixture({}, async({service, worker}) => {
+            const WebWorker = require('../server/core/WebWorker');
+            Object.assign(worker, {checkMyState() {}, koboService: service, trySyncListedBooks: async() => {}});
+            const uuids = [1, 2, 3, 4, 5].map(n => kobo.uuidv5(`book-${n}`));
+            const states = Object.fromEntries(uuids.map((uuid, i) => [uuid, {status: 'Reading', lastModified: `2020-01-0${i + 1}T00:00:00.000Z`}]));
+            const backup = JSON.parse(JSON.stringify(await WebWorker.prototype.exportReadingLists.call(worker, 'default')));
+            backup.kobo.states = states;
+            const result = await WebWorker.prototype.importReadingLists.call(worker, 'default', backup);
+            assert.strictEqual(result.importedKoboStates, 5);
+            assert.strictEqual(result.trimmed.progress, 2, 'dropped states are reported');
+            assert.deepStrictEqual(Object.keys(service.store.data.states.default).sort(), uuids.slice(2).sort(), 'the newest stay');
+
+            // A stored file over the cap loads trimmed; a malformed state is dropped, not fatal.
+            const file = path.join(service.store.config.dataDir, 'kobo-sync.json');
+            await fs.writeJson(file, {devices: [], states: {default: Object.assign({[kobo.uuidv5('broken')]: null}, states)}});
+            const reloaded = new KoboStore(service.store.config);
+            await reloaded.load();
+            assert.deepStrictEqual(Object.keys(reloaded.data.states.default).sort(), uuids.slice(2).sort());
+        });
+    } finally {
+        userData.progressPerProfile = limit;
+    }
+}
+
 // Ids from the device are keys of the per-device maps: `__proto__` and the like must stay unknown ids,
 // answered as before, and never write to Object.prototype (every `error.status` would read 'Finished').
 const hostileIds = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
@@ -1360,7 +1422,7 @@ async function testKoboRestoreSkipsHostileIds() {
             states: entries({status: 'Finished', lastModified: '2020-01-01T00:00:00.000Z'}),
         }));
         assert.ok(Object.hasOwn(payload.states, '__proto__'));
-        assert.deepStrictEqual(await service.store.importUser('default', payload), {devices: 1, states: 1});
+        assert.deepStrictEqual(await service.store.importUser('default', payload), {devices: 1, states: 1, trimmed: 0});
         const device = service.store.data.devices.find(item => item.id === 'restored');
         assert.deepStrictEqual(Object.keys(device.books), [known]);
         assert.deepStrictEqual(Object.keys(service.store.data.states.default), [known]);
@@ -1405,6 +1467,7 @@ async function testKoboBrokenStoreIsReported() {
 module.exports = [
     testKoboChecksTokenBeforeReadingBody,
     testKoboDevicesTravelWithProfileBackup,
+    testKoboStatesStayWithinProfileLimit,
     testKoboSyncListsAndDownloads,
     testKoboFailedMutationKeepsFileState,
     testKoboReadStateBothWays,
@@ -1417,6 +1480,7 @@ module.exports = [
     testKoboStoreProxyToggle,
     testKoboSyncKeepsChangesMadeDuringConversion,
     testKoboResetDuringSyncIsKept,
+    testKoboSyncKeepsStatePutDuringConversion,
     testKoboSyncLoadsProfileStoreOnce,
     testKoboRowFollowsTheListedRecord,
     testKoboReannouncesRegeneratedFiles,

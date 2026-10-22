@@ -814,8 +814,25 @@ class KoboService {
 
     async saveSyncResult({device, generation, books, startBooks, startTags, states, now}, tags) {
         await this.store.saveSync(device.id, (target, data) => {
-            // Only states changed by this sync: a concurrent state PUT must not be overwritten.
-            data.states[device.userId] = Object.assign(data.states[device.userId] || idMap(), states);
+            // This sync worked on copies taken before conversions were awaited: a state PUT that landed
+            // meanwhile keeps its bookmark and statistics, and only the status this sync set goes on top.
+            const rows = data.states[device.userId] = data.states[device.userId] || idMap();
+            for (const [uuid, state] of Object.entries(states)) {
+                const live = ownEntry(rows, uuid);
+                if (!live) {
+                    rows[uuid] = state;
+                    continue;
+                }
+                // The device set a status after this sync started: it is the newer one.
+                if (String(live.statusModified || '') > now)
+                    continue;
+                for (const field of ['status', 'statusModified', 'timesStartedReading', 'lastTimeStartedReading'])
+                    live[field] = state[field];
+                for (const field of ['lastModified', 'priorityTimestamp']) {
+                    if (String(state[field] || '') > String(live[field] || ''))
+                        live[field] = state[field];
+                }
+            }
             target.lastSyncAt = now;
             if (target.generation !== generation)
                 return;

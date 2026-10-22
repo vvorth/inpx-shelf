@@ -959,6 +959,8 @@ class WebWorker {
                 const kobo = await this.koboService.store.importUser(userId, data.kobo, listIds);
                 result.importedKoboDevices = kobo.devices;
                 result.importedKoboStates = kobo.states;
+                //состояния Kobo - тоже позиции чтения: в отчёте о пропущенном они идут с ними
+                result.trimmed.progress += kobo.trimmed;
             }
             this.koboService.prewarmLists(userId);
         }
