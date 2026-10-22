@@ -933,12 +933,13 @@ class ApiController {
             return this.uploadAllowed(() => this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken));
         const user = await this.webWorker.requireAuthorizedUser(req.userId, req.profileAccessToken);
         const data = await this.uploadedJson(ctx);
-        //в открытый профиль из файла не переносятся устройства Kobo (их токены) и адреса отправки, см. requireProtectedProfile
+        //в открытый профиль из файла не переносятся устройства Kobo (их токены), адреса отправки, пароль OPDS и ключ KOReader
+        //с его позициями: прямые маршруты к ним требуют защищённого профиля, см. requireProtectedProfile
         if (data && typeof(data) === 'object' && !await this.isProtectedProfile(user, req)) {
             delete data.kobo;
             if (data.user && typeof(data.user) === 'object') {
-                delete data.user.emailTo;
-                delete data.user.telegramChatId;
+                for (const key of ['emailTo', 'telegramChatId', 'opdsPasswordHash', 'kosyncKeyHash', 'kosyncProgress'])
+                    delete data.user[key];
             }
         }
         const result = await this.webWorker.importReadingLists(user.id, data);

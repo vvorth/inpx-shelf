@@ -1,6 +1,7 @@
 const utils = require('../utils');
 const {t} = require('../i18n');
 const {READ_PERCENT, readerProgressOf} = require('../ReaderProgress');
+const limits = require('../RequestLimits').userData;
 
 // Доля прочитанного до отметки «прочитано» (setBooksRead): снятие отметки возвращает её вместе с местом в книге
 function percentBeforeRead(row = {}) {
@@ -44,11 +45,12 @@ module.exports = {
     },
 
     // Read marks that list entries kept in older files and exports ({bookUid, read: true}) become the profile's progress.
-    applyListReadMarks(target, entries = [], updatedAt = '') {
+    // accept: which uids may become progress (an import takes only real book uids).
+    applyListReadMarks(target, entries = [], updatedAt = '', accept = () => true) {
         const bookUids = (Array.isArray(entries) ? entries : [])
             .filter((row) => row && typeof(row) === 'object' && row.read)
             .map((row) => this.normalizeBookUid(row.bookUid || row.uid || row.id))
-            .filter((bookUid) => bookUid && !this.isBookRead(target, bookUid));
+            .filter((bookUid) => bookUid && accept(bookUid) && !this.isBookRead(target, bookUid));
         if (bookUids.length)
             this.applyBooksRead(target, bookUids, true, updatedAt || this.nowIso());
     },
@@ -75,7 +77,41 @@ module.exports = {
                 ...percentBeforeRead(row),
             };
         }
+        //позиций в профиле не больше предела: самые старые (по updatedAt) уходят, как события витрин
+        const keys = Object.keys(result);
+        if (keys.length > limits.progressPerProfile) {
+            keys.sort((a, b) => result[a].updatedAt.localeCompare(result[b].updatedAt));
+            for (const key of keys.slice(0, keys.length - limits.progressPerProfile))
+                delete result[key];
+        }
         return result;
+    },
+
+    // Bookmark text from the client or an import, cut to the limits.
+    limitBookmarkText(row) {
+        return Object.assign({}, row, {
+            sectionId: String(row.sectionId || '').slice(0, limits.sectionId),
+            title: String(row.title || '').slice(0, limits.bookmarkTitle),
+            excerpt: String(row.excerpt || '').slice(0, limits.bookmarkExcerpt),
+            note: String(row.note || '').slice(0, limits.bookmarkNote),
+        });
+    },
+
+    // Keeps the newest bookmarks within the per-book and per-profile limits; returns how many were dropped.
+    trimReaderBookmarks(target) {
+        let trimmed = 0;
+        const rows = [];
+        for (const [bookUid, bookmarks] of Object.entries(target.readerBookmarks || {})) {
+            const sorted = this.normalizeReaderBookmarks({[bookUid]: bookmarks})[bookUid] || [];
+            trimmed += Math.max(0, sorted.length - limits.bookmarksPerBook);
+            rows.push(...sorted.slice(0, limits.bookmarksPerBook).map((bookmark) => [bookUid, bookmark]));
+        }
+        rows.sort((a, b) => String(b[1].createdAt).localeCompare(String(a[1].createdAt)));
+        trimmed += Math.max(0, rows.length - limits.bookmarksPerProfile);
+        target.readerBookmarks = {};
+        for (const [bookUid, bookmark] of rows.slice(0, limits.bookmarksPerProfile))
+            (target.readerBookmarks[bookUid] = target.readerBookmarks[bookUid] || []).push(bookmark);
+        return trimmed;
     },
 
     normalizeReaderBookmarks(value = {}) {
@@ -148,7 +184,7 @@ module.exports = {
 
         const current = target.readerProgress[normalizedBookUid] || {};
         const percent = Number(utils.hasProp(patch, 'percent') ? patch.percent : current.percent);
-        const sectionId = String(utils.hasProp(patch, 'sectionId') ? patch.sectionId : current.sectionId || '').trim();
+        const sectionId = String(utils.hasProp(patch, 'sectionId') ? patch.sectionId : current.sectionId || '').trim().slice(0, limits.sectionId);
         const pageIndex = Number(utils.hasProp(patch, 'pageIndex') ? patch.pageIndex : current.pageIndex);
         const textOffset = Number(utils.hasProp(patch, 'textOffset') ? patch.textOffset : current.textOffset);
         const textSnippet = String(utils.hasProp(patch, 'textSnippet') ? patch.textSnippet : current.textSnippet || '').trim().slice(0, 240);
@@ -302,7 +338,10 @@ module.exports = {
             target.readerBookmarks = {};
 
         const current = Array.isArray(target.readerBookmarks[normalizedBookUid]) ? target.readerBookmarks[normalizedBookUid] : [];
-        current.unshift({
+        const total = Object.values(target.readerBookmarks).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
+        if (current.length >= limits.bookmarksPerBook || total >= limits.bookmarksPerProfile)
+            throw new Error(t('errors.tooManyBookmarks', {perBook: limits.bookmarksPerBook, perProfile: limits.bookmarksPerProfile}));
+        current.unshift(this.limitBookmarkText({
             id: this.makeId(),
             sectionId: String(bookmark.sectionId || '').trim(),
             title: this.normalizeName(bookmark.title || '') || t('reader.bookmark'),
@@ -310,7 +349,7 @@ module.exports = {
             note: this.normalizeName(bookmark.note || ''),
             percent: Number.isFinite(Number(bookmark.percent)) ? Math.max(0, Math.min(1, Number(bookmark.percent))) : 0,
             createdAt: this.nowIso(),
-        });
+        }));
 
         target.readerBookmarks[normalizedBookUid] = this.normalizeReaderBookmarks({[normalizedBookUid]: current})[normalizedBookUid] || [];
         target.updatedAt = this.nowIso();

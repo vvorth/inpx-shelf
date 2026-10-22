@@ -284,5 +284,106 @@ async function testBackupRollbackAndCrashRecovery() {
     });
 }
 
+const realUid = name => require('crypto').createHash('sha256').update(String(name)).digest('base64');
+
+// Limits of RequestLimits.userData, lowered for a test and restored after it.
+async function withUserDataLimits(values, task) {
+    const saved = Object.assign({}, requestLimits.userData);
+    Object.assign(requestLimits.userData, values);
+    try {
+        await task();
+    } finally {
+        Object.assign(requestLimits.userData, saved);
+    }
+}
+
+// One profile cannot grow reading-lists.json without bound: positions, bookmarks, lists and their books are capped,
+// and repeated imports add up to the same caps (the oldest is dropped, the answer says how much).
+async function testProfileDataCapsAndImportTrim() {
+    await withUserDataLimits({progressPerProfile: 3, bookmarksPerBook: 2, bookmarksPerProfile: 3, listsPerProfile: 2, booksPerList: 3,
+        listBooksPerProfile: 4, bookmarkTitle: 5, bookmarkExcerpt: 6, bookmarkNote: 7}, async() => temporary(async(dataDir) => {
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        const [a, b, c, d, e] = ['a', 'b', 'c', 'd', 'e'].map(realUid);
+
+        //позиции: сверх предела уходят самые старые по updatedAt
+        for (const [i, uid] of [a, b, c, d].entries())
+            await store.updateReaderProgress('', uid, {percent: 0.1, updatedAt: `2026-01-0${i + 1}T00:00:00.000Z`});
+        assert.deepStrictEqual(Object.keys((await store.resolveUser('')).user.readerProgress).sort(), [b, c, d].sort());
+
+        //закладки: текст обрезается, на книгу и на профиль - не больше предела
+        const [first] = await store.addReaderBookmark('', a, {title: 'Title long', excerpt: 'Excerpt long', note: 'Note is long'});
+        assert.deepStrictEqual([first.title, first.excerpt, first.note], ['Title', 'Excerpt'.slice(0, 6), 'Note is']);
+        await store.addReaderBookmark('', a, {title: 'Second'});
+        await assert.rejects(store.addReaderBookmark('', a, {title: 'Third'}), /bookmarks|закладок/);
+        await store.addReaderBookmark('', b, {title: 'Other'});
+        await assert.rejects(store.addReaderBookmark('', c, {title: 'Over'}), /bookmarks|закладок/);
+
+        //списки: число списков и книг в них
+        const one = await store.createList('', 'One');
+        await store.createList('', 'Two');
+        await assert.rejects(store.createList('', 'Three'), /2/);
+        await store.addBooks('', one.id, [a, b]);
+        await store.setBookMembership('', one.id, c, true);
+        await assert.rejects(store.setBookMembership('', one.id, d, true), /books|книг/);
+        await store.setBookMembership('', one.id, c, true);
+
+        //импорт: чужие uid и пустые записи пропускаются, лишнее отбрасывается и считается
+        const payload = {user: {
+            readerProgress: {[e]: {percent: 0.5, updatedAt: '2026-02-01T00:00:00.000Z'}, 'not-a-uid': {percent: 0.5, updatedAt: '2026-02-01T00:00:00.000Z'}},
+            readerBookmarks: {[c]: [{id: 'x1', title: 'Imported long title', createdAt: '2099-01-01T00:00:00.000Z'},
+                {id: 'x2', title: 'Old', createdAt: '2000-01-01T00:00:00.000Z'}], 'not-a-uid': [{id: 'x3'}]},
+        }, lists: [{name: 'Two', books: [a, null, 'not-a-uid', b, c]}, {name: 'Four', books: [d]}]};
+        const imported = await store.importData('', payload);
+        assert.deepStrictEqual(imported.trimmed, {lists: 1, books: 3, progress: 1, bookmarks: 2});
+        const sizes = async() => {
+            const {user, data} = await store.resolveUser('');
+            return {progress: Object.keys(user.readerProgress).sort(), bookmarks: Object.values(user.readerBookmarks).flat().length,
+                imported: user.readerBookmarks[c].map(item => item.title), lists: data.lists.map(item => [item.name, item.books.length])};
+        };
+        const after = await sizes();
+        assert.deepStrictEqual(after, {progress: [c, d, e].sort(), bookmarks: 3, imported: ['Impor'], lists: [['One', 3], ['Two', 1]]},
+            'the oldest position and bookmarks go, the newest imported bookmark stays with its text cut');
+        //повторный импорт ничего не растит
+        assert.deepStrictEqual((await store.importData('', payload)).trimmed, {lists: 1, books: 3, progress: 0, bookmarks: 1});
+        assert.deepStrictEqual(await sizes(), after);
+    }));
+}
+
+// A broken reading-lists.json is kept as a copy and reported at error level (and so in the admin event log); a bad row
+// of the file or of an import is skipped or refused with a user error, not a 500 on every request.
+async function testBrokenReadingListsAreVisibleAndBadRowsSkipped() {
+    await temporary(async(dataDir) => {
+        const store = new ReadingListStore({dataDir, adminLogin: 'admin', adminPassword: 'admin-fixture'});
+        //журнал может быть ещё не запущен: тогда строка идёт в console.warn
+        const messages = [];
+        const logger = new (require('../server/core/AppLogger'))();
+        const listener = logger.eventListener;
+        const warn = console.warn;
+        logger.setEventListener((level, message) => messages.push(`${level >= LM_ERR ? 'ERROR' : 'WARN'} ${message}`));
+        console.warn = message => messages.push(`ERROR ${message}`);
+        try {
+            await fs.outputFile(store.file, '{broken');
+            await store.load();
+            const [copy] = (await fs.readdir(dataDir)).filter(name => /\.broken-[^.]+$/.test(name));
+            assert.ok(copy, 'the broken file is kept');
+            assert.ok(messages.some(message => message.startsWith('ERROR') && message.includes('unreadable') && message.includes(copy)), messages.join('\n'));
+
+            const uid = realUid('a');
+            await fs.writeJson(store.file, {version: 5, users: [{id: 'admin', name: 'Admin', login: 'admin', isAdmin: true}],
+                lists: [{id: 'l1', userId: 'admin', name: 'List', books: [null, uid, 7]}],
+                metadataOverrides: {[uid]: {title: 'Kept'}, [realUid('b')]: {title: ' '}}});
+            const data = await store.load();
+            assert.deepStrictEqual(data.lists[0].books, [{bookUid: uid}]);
+            assert.deepStrictEqual(Object.keys(await store.getMetadataOverrides()), [uid]);
+            assert.ok(messages.some(message => message.includes('metadata override') && message.includes('skipped')), messages.join('\n'));
+        } finally {
+            console.warn = warn;
+            logger.setEventListener(listener);
+        }
+        await assert.rejects(store.importData('', {lists: [null]}), error => error.constructor === Error);
+    });
+}
+
 module.exports = [testScryptMigrationAndOpds, testApiBodyBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
-    testBackupValidationBeforeMutation, testBackupRollbackAndCrashRecovery];
+    testBackupValidationBeforeMutation, testBackupRollbackAndCrashRecovery, testProfileDataCapsAndImportTrim,
+    testBrokenReadingListsAreVisibleAndBadRowsSkipped];

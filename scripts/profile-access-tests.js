@@ -316,6 +316,25 @@ async function testDeliveryNeedsPasswordOneRecipientAndRate() {
     });
 }
 
+// A profile backup brings OPDS and KOReader credentials only into a protected profile, like set-opds-password and
+// create-kosync-password: into an open one they would be planted by anyone who can pick it.
+async function testImportIntoOpenProfileSkipsCredentials() {
+    await fixture({}, async({worker, alice, bob, security, base}) => {
+        const opdsPasswordHash = `scrypt:v1:${'a'.repeat(32)}:${'b'.repeat(64)}`;
+        const backup = key => JSON.stringify({lists: [], user: {opdsPasswordHash, kosyncKeyHash: key.repeat(64),
+            kosyncProgress: {['d'.repeat(32)]: {progress: '/body/p[1]', percentage: 0.5, device: 'kr', device_id: 'X', timestamp: 1}}}});
+        const upload = async(user, key) => {
+            const response = await ApiTestClient.forSession(base, security, user.id).call('import-reading-lists', {}, {body: backup(key)});
+            assert.strictEqual(response.status, 200, response.text);
+            return await worker.readingListStore.getUser(user.id);
+        };
+        const open = await upload(bob, 'c');
+        assert.deepStrictEqual([open.opdsPasswordHash, open.kosyncKeyHash || '', Object.keys(open.kosyncProgress || {})], ['', '', []]);
+        const own = await upload(alice, 'e');
+        assert.deepStrictEqual([own.opdsPasswordHash, own.kosyncKeyHash, Object.keys(own.kosyncProgress)], [opdsPasswordHash, 'e'.repeat(64), ['d'.repeat(32)]]);
+    });
+}
+
 // A cookie that fails verification (the format of earlier versions, another session-secret) is replaced by the next API response.
 async function testStaleCookieReplacedByApi() {
     await fixture({}, async({security, client}) => {
@@ -672,6 +691,6 @@ async function testOpdsUserPrefersIdOverLogin() {
 }
 
 module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromCookieOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
-    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
+    testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testImportIntoOpenProfileSkipsCredentials, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
     testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials, testOpdsUserPrefersIdOverLogin];

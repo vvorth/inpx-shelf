@@ -1,6 +1,7 @@
 const utils = require('../utils');
 const {t} = require('../i18n');
 const {bookNote} = require('../search/bookMatch');
+const limits = require('../RequestLimits').userData;
 
 // Reading lists and their books, list export and import. Mixed into ReadingListStore.prototype: `this` is the store.
 module.exports = {
@@ -67,10 +68,24 @@ module.exports = {
             throw new Error(t('errors.listNameExists'));
     },
 
+    // How many lists the profile has and how many books are in them: both are capped (RequestLimits.userData).
+    profileListUsage(data, user) {
+        const lists = data.lists.filter((item) => item.userId === user.id);
+        return {lists: lists.length, books: lists.reduce((sum, item) => sum + (Array.isArray(item.books) ? item.books.length : 0), 0)};
+    },
+
+    // Throws when `count` more books do not fit into the list or the profile's lists.
+    checkListRoom(data, user, item, count = 1) {
+        if (item.books.length + count > limits.booksPerList || this.profileListUsage(data, user).books + count > limits.listBooksPerProfile)
+            throw new Error(t('errors.tooManyListBooks', {perList: limits.booksPerList, perProfile: limits.listBooksPerProfile}));
+    },
+
     async createList(userId = '', name, visibility = 'private') {
         const {data, user} = await this.resolveUser(userId);
         const normalized = this.validateName(name);
         this.ensureUniqueListName(data.lists, user.id, normalized);
+        if (this.profileListUsage(data, user).lists >= limits.listsPerProfile)
+            throw new Error(t('errors.tooManyLists', {n: limits.listsPerProfile}));
 
         const now = this.nowIso();
         const item = this.normalizeList({
@@ -127,8 +142,10 @@ module.exports = {
         const existing = item.books.find((row) => row.bookUid === normalizedBookUid);
 
         if (enabled) {
-            if (!existing)
+            if (!existing) {
+                this.checkListRoom(data, user, item);
                 item.books.push({bookUid: normalizedBookUid});
+            }
         } else {
             item.books = item.books.filter((row) => row.bookUid !== normalizedBookUid);
         }
@@ -294,17 +311,11 @@ module.exports = {
 
         item.books = this.normalizeEntries(item.books);
         const existing = new Set(item.books.map((row) => row.bookUid));
-
-        let added = 0;
-        for (const rawUid of bookUids) {
-            const bookUid = this.normalizeBookUid(rawUid);
-            if (!bookUid || existing.has(bookUid))
-                continue;
-
-            existing.add(bookUid);
-            item.books.push({bookUid});
-            added++;
-        }
+        const newUids = [...new Set(bookUids.map((rawUid) => this.normalizeBookUid(rawUid)))]
+            .filter((bookUid) => bookUid && !existing.has(bookUid));
+        this.checkListRoom(data, user, item, newUids.length);
+        newUids.forEach((bookUid) => item.books.push({bookUid}));
+        const added = newUids.length;
 
         item.updatedAt = this.nowIso();
         await this.save(data);
@@ -355,6 +366,8 @@ module.exports = {
         let importedBooks = 0;
         let importedProgress = 0;
         let importedBookmarks = 0;
+        //повторный импорт не растит данные профиля сверх пределов: лишнее отбрасывается, ответ говорит сколько
+        const trimmed = {lists: 0, books: 0, progress: 0, bookmarks: 0};
 
         if (target) {
             if (utils.hasProp(incomingUser, 'name')) {
@@ -396,6 +409,8 @@ module.exports = {
                 const progress = Object.fromEntries(
                     Object.entries(this.normalizeReaderProgress(incomingUser.readerProgress))
                         .filter(([bookUid, row]) => {
+                            if (!this.isBookUid(bookUid))
+                                return false;
                             const currentTime = Date.parse(current[bookUid] && current[bookUid].updatedAt);
                             return Number.isNaN(currentTime) || Date.parse(row.updatedAt) > currentTime;
                         })
@@ -409,6 +424,8 @@ module.exports = {
                 const bookmarks = this.normalizeReaderBookmarks(incomingUser.readerBookmarks);
                 target.readerBookmarks = Object.assign({}, target.readerBookmarks || {});
                 for (const [bookUid, incomingRows] of Object.entries(bookmarks)) {
+                    if (!this.isBookUid(bookUid))
+                        continue;
                     const current = Array.isArray(target.readerBookmarks[bookUid]) ? target.readerBookmarks[bookUid] : [];
                     const seenIds = new Set(current.map((item) => String(item.id || '').trim()).filter(Boolean));
                     const merged = current.slice();
@@ -417,17 +434,21 @@ module.exports = {
                             continue;
 
                         seenIds.add(bookmark.id);
-                        merged.push(bookmark);
+                        merged.push(this.limitBookmarkText(bookmark));
                         importedBookmarks++;
                     }
                     target.readerBookmarks[bookUid] = this.normalizeReaderBookmarks({[bookUid]: merged})[bookUid] || [];
                 }
+                trimmed.bookmarks = this.trimReaderBookmarks(target);
             }
 
             target.updatedAt = this.nowIso();
         }
 
+        const usage = this.profileListUsage(data, user);
         for (const incoming of payload.lists) {
+            if (!incoming || typeof(incoming) !== 'object')
+                throw new Error(t('errors.listImportInvalid'));
             const normalizedIncoming = this.normalizeList({
                 name: incoming.name,
                 visibility: incoming.visibility,
@@ -439,7 +460,13 @@ module.exports = {
 
             let item = data.lists.find((row) => row.userId === user.id && row.name.toLowerCase() === normalizedIncoming.name.toLowerCase());
 
+            if (!item && usage.lists >= limits.listsPerProfile) {
+                trimmed.lists++;
+                trimmed.books += normalizedIncoming.books.length;
+                continue;
+            }
             if (!item) {
+                usage.lists++;
                 item = {
                     id: this.makeId(),
                     userId: user.id,
@@ -458,20 +485,32 @@ module.exports = {
             const existing = new Map(item.books.map((row) => [row.bookUid, row]));
 
             for (const entry of normalizedIncoming.books) {
-                if (!existing.has(entry.bookUid)) {
-                    existing.set(entry.bookUid, {bookUid: entry.bookUid});
-                    importedBooks++;
+                if (existing.has(entry.bookUid) || !this.isBookUid(entry.bookUid))
+                    continue;
+                if (existing.size >= limits.booksPerList || usage.books >= limits.listBooksPerProfile) {
+                    trimmed.books++;
+                    continue;
                 }
+                existing.set(entry.bookUid, {bookUid: entry.bookUid});
+                usage.books++;
+                importedBooks++;
             }
             //в старом экспорте отметка «прочитано» - в записи списка: она становится прогрессом профиля
             if (target)
-                this.applyListReadMarks(target, incoming.books, normalizedIncoming.updatedAt);
+                this.applyListReadMarks(target, incoming.books, normalizedIncoming.updatedAt, (bookUid) => this.isBookUid(bookUid));
 
             item.books = Array.from(existing.values());
             item.updatedAt = this.nowIso();
         }
 
+        if (target) {
+            //сверх предела уходят самые старые позиции (normalizeReaderProgress)
+            const progressCount = Object.keys(target.readerProgress || {}).length;
+            trimmed.progress = Math.max(0, progressCount - limits.progressPerProfile);
+            target.readerProgress = this.normalizeReaderProgress(target.readerProgress);
+        }
+
         await this.save(data);
-        return {importedLists, importedBooks, importedProgress, importedBookmarks};
+        return {importedLists, importedBooks, importedProgress, importedBookmarks, trimmed};
     },
 };

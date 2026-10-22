@@ -78,9 +78,13 @@ class MeData {
 
         this.busy = true;
         try {
-            await this.api.importReadingLists(file);
+            const result = await this.api.importReadingLists(file);
             await this.api.updateConfig();
-            this.$root.notify.success(t('profiles.profileBackupImported'));
+            const trimmed = (result && result.trimmed) || {};
+            if (Object.values(trimmed).some(Boolean))
+                this.$root.notify.warning(t('profiles.profileBackupTrimmed', trimmed));
+            else
+                this.$root.notify.success(t('profiles.profileBackupImported'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('common.error'));
         } finally {

@@ -5,12 +5,18 @@ const profilePassword = require('./ProfilePassword');
 const {withFileTransaction, writeFileAtomic} = require('./FilePersistence');
 const {t} = require('./i18n');
 
-function logWarning(message) {
+//level - имя: LM_* объявляет Logger, его может ещё не быть до первого require
+function logMessage(level, message) {
     try {
-        new (require('./AppLogger'))().log(LM_WARN, message);
+        const logger = new (require('./AppLogger'))();
+        logger.log(global[level], message);
     } catch (e) {
         console.warn(message);
     }
+}
+
+function logWarning(message) {
+    logMessage('LM_WARN', message);
 }
 
 class ReadingListStore {
@@ -90,7 +96,8 @@ class ReadingListStore {
     adminPassword() {
         if (!this.config.adminPassword) {
             this.config.adminPassword = crypto.randomBytes(12).toString('base64url');
-            logWarning(`Admin profile "${this.adminLogin()}" password: ${this.config.adminPassword} `
+            //INFO: строки WARN и выше копируются в журнал событий админки, пароль туда не попадает
+            logMessage('LM_INFO', `Admin profile "${this.adminLogin()}" password: ${this.config.adminPassword} `
                 + '(generated; set INPX_ADMIN_PASSWORD or --admin-password to choose one)');
         }
         return String(this.config.adminPassword);
@@ -142,6 +149,12 @@ class ReadingListStore {
         return String(bookUid || '').trim();
     }
 
+    //_uid - base64 от SHA-256 строки INPX (InpxParser), у книг удалённой библиотеки тот же. Uid в пути API проверяет
+    //apiRoutes, здесь - uid из файла импорта; загрузка своего файла uid не проверяет: прежние строки не теряются
+    isBookUid(bookUid) {
+        return /^[A-Za-z0-9+/]{43}=$/.test(bookUid);
+    }
+
     normalizeVisibility(value) {
         return (value === 'opds' ? 'opds' : 'private');
     }
@@ -174,7 +187,14 @@ class ReadingListStore {
             if (!uid || !row || typeof(row) !== 'object')
                 continue;
 
-            const patch = this.normalizeMetadataPatch(row);
+            let patch;
+            try {
+                patch = this.normalizeMetadataPatch(row);
+            } catch (e) {
+                //одна испорченная правка (например, пустое название) не ломает каждую загрузку файла
+                this.warnRepaired(`metadata override "${uid}"`, e, 'skipped');
+                continue;
+            }
             if (Object.keys(patch).length) {
                 result[uid] = Object.assign(patch, {
                     updatedAt: String(row.updatedAt || '').trim() || this.nowIso(),
@@ -214,8 +234,10 @@ class ReadingListStore {
             let entry;
             if (typeof(row) === 'string') {
                 entry = {bookUid: this.normalizeBookUid(row)};
-            } else {
+            } else if (row && typeof(row) === 'object') {
                 entry = {bookUid: this.normalizeBookUid(row.bookUid || row.uid || row.id)};
+            } else {
+                continue;
             }
 
             if (!entry.bookUid || seen.has(entry.bookUid))
@@ -329,8 +351,8 @@ class ReadingListStore {
     }
 
     // Every save normalizes the store again: say it once per row and problem.
-    warnRepaired(what, error) {
-        const message = `reading-lists.json: ${what} kept with its invalid field repaired: ${error.message}`;
+    warnRepaired(what, error, outcome = 'kept with its invalid field repaired') {
+        const message = `reading-lists.json: ${what} ${outcome}: ${error.message}`;
         this.repairWarnings = this.repairWarnings || new Set();
         if (!this.repairWarnings.has(message)) {
             this.repairWarnings.add(message);
@@ -429,7 +451,10 @@ class ReadingListStore {
                 throw new Error('reading-lists.json is empty');
             raw = JSON.parse(normalized);
         } catch (e) {
-            await this.backupBrokenStore(e);
+            const backupFile = await this.backupBrokenStore(e);
+            //ошибка попадает и в журнал событий админки: профили и списки надо вернуть из копии или бэкапа
+            logMessage('LM_ERR', `reading-lists.json is unreadable (${e.message}): profiles and lists start empty, `
+                + `the broken file is saved as ${backupFile}; restore it from that copy or a backup`);
             raw = this.makeDefaultData();
             await this.save(raw);
             reset = true;
@@ -450,16 +475,18 @@ class ReadingListStore {
             return;
 
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const backupFile = `${this.file}.broken-${stamp}`;
+        let backupFile = `${this.file}.broken-${stamp}`;
         try {
             await fs.copy(this.file, backupFile, {overwrite: false});
         } catch (copyError) {
             // No copy - no overwrite: the load fails and the file stays as it is.
-            await fs.copy(this.file, `${backupFile}-${crypto.randomBytes(3).toString('hex')}`, {overwrite: false});
+            backupFile = `${backupFile}-${crypto.randomBytes(3).toString('hex')}`;
+            await fs.copy(this.file, backupFile, {overwrite: false});
         }
 
         if (error && error.message)
             await fs.writeFile(`${backupFile}.error.txt`, String(error.stack || error.message));
+        return backupFile;
     }
 
     async save(data) {

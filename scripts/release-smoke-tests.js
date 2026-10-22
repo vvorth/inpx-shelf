@@ -1277,6 +1277,8 @@ async function testAdminBackupArchiveAndDownload() {
 }
 
 async function testUserBackupExportsAndRestoresReaderState() {
+    //импорт берёт только настоящие _uid (base64 от SHA-256)
+    const bookUid = require('crypto').createHash('sha256').update('source:book:1').digest('base64');
     await withTempDir(async(dir) => {
         const ReadingListStore = require('../server/core/ReadingListStore');
         const store = new ReadingListStore({
@@ -1299,14 +1301,14 @@ async function testUserBackupExportsAndRestoresReaderState() {
                     fontSize: 21,
                 },
                 readerProgress: {
-                    'source:book:1': {
+                    [bookUid]: {
                         percent: 0.75,
                         sectionId: 'chapter-3',
                         hidden: false,
                     },
                 },
                 readerBookmarks: {
-                    'source:book:1': [{
+                    [bookUid]: [{
                         id: 'bookmark-a',
                         title: 'Chapter 3',
                         excerpt: 'Text',
@@ -1326,7 +1328,7 @@ async function testUserBackupExportsAndRestoresReaderState() {
                 userId: 'reader-a',
                 name: 'Reading',
                 visibility: 'private',
-                books: [{bookUid: 'source:book:1'}],
+                books: [{bookUid}],
             }],
         });
 
@@ -1334,10 +1336,10 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(exported.version, 4);
         assert.strictEqual(exported.user.emailTo, 'reader@example.test');
         assert.strictEqual(exported.user.readerPreferences.theme, 'sepia');
-        assert.strictEqual(exported.user.readerProgress['source:book:1'].percent, 0.75);
-        assert.strictEqual(exported.user.readerBookmarks['source:book:1'][0].id, 'bookmark-a');
+        assert.strictEqual(exported.user.readerProgress[bookUid].percent, 0.75);
+        assert.strictEqual(exported.user.readerBookmarks[bookUid][0].id, 'bookmark-a');
         assert.deepStrictEqual(exported.user.discoveryPreferences.taste.genres, ['sf']);
-        assert.deepStrictEqual(exported.lists[0].books, [{bookUid: 'source:book:1'}]);
+        assert.deepStrictEqual(exported.lists[0].books, [{bookUid}]);
 
         const imported = await store.importData('reader-b', exported);
         assert.strictEqual(imported.importedLists, 1);
@@ -1349,8 +1351,8 @@ async function testUserBackupExportsAndRestoresReaderState() {
         assert.strictEqual(restored.user.name, 'Reader B');
         assert.strictEqual(restored.user.telegramChatId, '12345');
         assert.strictEqual(restored.user.readerPreferences.fontFamily, 'sans');
-        assert.strictEqual(restored.user.readerProgress['source:book:1'].sectionId, 'chapter-3');
-        assert.strictEqual(restored.user.readerBookmarks['source:book:1'][0].note, 'Note');
+        assert.strictEqual(restored.user.readerProgress[bookUid].sectionId, 'chapter-3');
+        assert.strictEqual(restored.user.readerBookmarks[bookUid][0].note, 'Note');
         assert.deepStrictEqual(restored.user.discoveryPreferences.taste.genres, ['sf']);
 
         // OPDS and KOReader credentials travel as hashes, like Kobo device tokens.
@@ -1381,11 +1383,11 @@ async function testUserBackupExportsAndRestoresReaderState() {
 
         // An older backup must not roll back a position saved after it.
         const backup = JSON.parse(JSON.stringify(exported));
-        backup.user.readerProgress['source:book:1'].updatedAt = '2020-01-01T00:00:00.000Z';
-        await store.updateReaderProgress('reader-b', 'source:book:1', {percent: 0.9, updatedAt: new Date().toISOString(), force: true});
+        backup.user.readerProgress[bookUid].updatedAt = '2020-01-01T00:00:00.000Z';
+        await store.updateReaderProgress('reader-b', bookUid, {percent: 0.9, updatedAt: new Date().toISOString(), force: true});
         const again = await store.importData('reader-b', backup);
         assert.strictEqual(again.importedProgress, 0);
-        assert.strictEqual((await store.exportData('reader-b')).user.readerProgress['source:book:1'].percent, 0.9);
+        assert.strictEqual((await store.exportData('reader-b')).user.readerProgress[bookUid].percent, 0.9);
     });
 }
 

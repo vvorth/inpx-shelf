@@ -3,6 +3,9 @@ const fs = require('fs-extra');
 const os = require('os');
 const path = require('path');
 
+//настоящий _uid (base64 от SHA-256): импорт принимает только такие
+const realUid = name => require('crypto').createHash('sha256').update(name).digest('base64');
+
 async function temporary(task) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'inpx-web-worker-'));
     try {
@@ -238,10 +241,10 @@ async function testListReadMarksMoveToProgress() {
         rows = await progress();
         assert.strictEqual(rows['book-1'].percent, 1);
 
-        await store.importData('reader', {lists: [{name: 'Exported', books: [{bookUid: 'book-4', read: true}, {bookUid: 'book-5'}]}]});
+        await store.importData('reader', {lists: [{name: 'Exported', books: [{bookUid: realUid('book-4'), read: true}, {bookUid: realUid('book-5')}]}]});
         rows = await progress();
-        assert.strictEqual(rows['book-4'].percent, 1);
-        assert.strictEqual(rows['book-5'], undefined);
+        assert.strictEqual(rows[realUid('book-4')].percent, 1);
+        assert.strictEqual(rows[realUid('book-5')], undefined);
     });
 }
 
@@ -589,6 +592,7 @@ async function testListedBooksFollowUpdatedInpxLine() {
 
 //бэкап профиля несёт названия и авторов книг: на сервере с новым INPX пропавшие книги видны и находятся замены
 async function testProfileBackupCarriesBookDetails() {
+    const [oldRevision, oldLine, newRevision, newLine] = ['old-revision', 'old-line', 'new-revision', 'new-line'].map(realUid);
     await temporary(async(dataDir) => {
         const CatalogIndex = require('../server/core/search/CatalogIndex');
         const ReadingListStore = require('../server/core/ReadingListStore');
@@ -609,10 +613,10 @@ async function testProfileBackupCarriesBookDetails() {
             getBooksByTitles: async(titles) => index.getBooksByTitles(titles),
             getBooksByStableKeys: async(keys) => index.getBooksByStableKeys(keys),
             authorAliasesOf: async() => ({})});
-        const older = library('older.sqlite', [book(1, 'old-revision', 'Корепанов Алексей', 'Горькие яблоки', {libid: '500'}),
-            book(2, 'old-line', 'Петров Пётр', 'Тот же libid')]);
-        const newer = library('newer.sqlite', [book(1, 'new-revision', 'Корепанов Алексей', 'Горькие яблоки', {libid: '900'}),
-            book(2, 'new-line', 'Петров Пётр', 'Тот же libid', {size: 2})]);
+        const older = library('older.sqlite', [book(1, oldRevision, 'Корепанов Алексей', 'Горькие яблоки', {libid: '500'}),
+            book(2, oldLine, 'Петров Пётр', 'Тот же libid')]);
+        const newer = library('newer.sqlite', [book(1, newRevision, 'Корепанов Алексей', 'Горькие яблоки', {libid: '900'}),
+            book(2, newLine, 'Петров Пётр', 'Тот же libid', {size: 2})]);
         try {
             const oldDir = path.join(dataDir, 'old');
             const newDir = path.join(dataDir, 'new');
@@ -620,11 +624,11 @@ async function testProfileBackupCarriesBookDetails() {
             await fs.ensureDir(newDir);
             const oldStore = new ReadingListStore({dataDir: oldDir, adminLogin: 'admin', adminPassword: 'admin'});
             const list = await oldStore.createList('', 'Queue');
-            await oldStore.addBooks('', list.id, ['old-revision', 'old-line']);
+            await oldStore.addBooks('', list.id, [oldRevision, oldLine]);
             const source = bareWorker({readingListStore: oldStore, catalogSearch: catalog(older), checkMyState: () => true, config: {}});
             const backup = JSON.parse(JSON.stringify(await source.exportReadingLists('')));
-            assert.deepStrictEqual(Object.keys(backup.books).sort(), ['old-line', 'old-revision']);
-            assert.strictEqual(backup.books['old-revision'].author, 'Корепанов Алексей');
+            assert.deepStrictEqual(Object.keys(backup.books).sort(), [oldLine, oldRevision].sort());
+            assert.strictEqual(backup.books[oldRevision].author, 'Корепанов Алексей');
 
             const newStore = new ReadingListStore({dataDir: newDir, adminLogin: 'admin', adminPassword: 'admin'});
             const target = bareWorker({readingListStore: newStore, catalogSearch: catalog(newer), checkMyState: () => true, config: {}});
@@ -633,11 +637,11 @@ async function testProfileBackupCarriesBookDetails() {
             const {books} = await target.getReadingList('', imported.id);
             //та же библиотека и libid - переходит сама; другая ревизия с новым libid - видна по названию и автору
             assert.deepStrictEqual(books.map(item => [item._uid, item.title, item.author, item.series, item.unavailable || '']).sort(), [
-                ['new-line', 'Тот же libid', 'Петров Пётр', 'Цикл', ''],
-                ['old-revision', 'Горькие яблоки', 'Корепанов Алексей', 'Цикл', 'missing'],
-            ]);
-            const page = await target.getBook('old-revision');
-            assert.deepStrictEqual(page.replacements.map(item => item._uid), ['new-revision']);
+                [newLine, 'Тот же libid', 'Петров Пётр', 'Цикл', ''],
+                [oldRevision, 'Горькие яблоки', 'Корепанов Алексей', 'Цикл', 'missing'],
+            ].sort());
+            const page = await target.getBook(oldRevision);
+            assert.deepStrictEqual(page.replacements.map(item => item._uid), [newRevision]);
         } finally {
             older.close();
             newer.close();

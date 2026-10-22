@@ -1,5 +1,20 @@
 const {t} = require('./i18n');
 const MiB = 1024*1024;
+// What one profile may keep in reading-lists.json: every change rewrites the whole file and every load parses it.
+// Imports add up to the same totals.
+const userData = {
+    sectionId: 256,
+    bookmarkTitle: 200,
+    bookmarkExcerpt: 2000,
+    bookmarkNote: 4000,
+    bookmarksPerBook: 500,
+    bookmarksPerProfile: 5000,
+    // past it the oldest positions (by updatedAt) are dropped
+    progressPerProfile: 20000,
+    listsPerProfile: 1000,
+    booksPerList: 20000,
+    listBooksPerProfile: 100000,
+};
 function bounded(value, fallback, max) {
     const number = Number(value);
     return Number.isFinite(number) && number >= 1 ? Math.min(max, Math.floor(number)) : fallback;
@@ -33,4 +48,4 @@ function checkImport(payload, config) {
         }
     }
 }
-module.exports = {limits, uploadLimit, checkImport};
+module.exports = {limits, uploadLimit, checkImport, userData};
