@@ -129,7 +129,7 @@ function readReloadRecord(deployedBuildId) {
     const markerAttempts = markerFresh
         ? Math.max(0, parseInt(url.searchParams.get('appReloadAttempt'), 10) || 0)
         : 0;
-    let stored = null;
+    let stored;
 
     try {
         stored = JSON.parse(window.sessionStorage.getItem(appReloadStorageKey()) || 'null');

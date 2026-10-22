@@ -86,7 +86,7 @@ async function restore(bookFile, config = {}, loadImages = async images => image
             try {
                 imageIndex = JSON.parse((await readEntry(indexes[0].sourceName)).toString());
             } catch (error) {
-                throw new Error(t('errors.epubInvalidImageIndex', {details: error.message}));
+                throw new Error(t('errors.epubInvalidImageIndex', {details: error.message}), {cause: error});
             }
             if (!Array.isArray(imageIndex))
                 throw new Error(t('errors.epubImageIndexArray'));

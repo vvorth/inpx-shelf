@@ -204,6 +204,10 @@ function randomText(seed, size) {
                 const crypto = require('crypto');
                 const s3File = require(workerData.module);
                 const remote = s3File.open('s3://lib/blob.bin');
+                //одно чтение длиннее всего кеша
+                const whole = new Uint8Array(remote.size);
+                remote.read(whole, 0, remote.size, 0);
+                const wholeMd5 = crypto.createHash('md5').update(whole).digest('hex');
                 const half = remote.size/2;
                 const hash = crypto.createHash('md5');
                 for (const position of [0, half]) {
@@ -212,7 +216,7 @@ function randomText(seed, size) {
                     hash.update(target);
                 }
                 const {bytes, maxBytes, blocks} = s3File.cacheState();
-                parentPort.postMessage({md5: hash.digest('hex'), bytes, maxBytes, count: blocks.length,
+                parentPort.postMessage({md5: hash.digest('hex'), wholeMd5, bytes, maxBytes, count: blocks.length,
                     sum: blocks.reduce((sum, block) => sum + block.byteLength, 0),
                     own: blocks.every(block => block.buffer.byteLength === block.byteLength)});
             `, {eval: true, workerData: {module: require.resolve('../server/core/archive/S3File')}});
@@ -220,6 +224,9 @@ function randomText(seed, size) {
             thread.once('error', reject);
         });
         assert.strictEqual(cache.md5, crypto.createHash('md5').update(blob).digest('hex'));
+        assert.strictEqual(cache.wholeMd5, cache.md5, 'a read longer than the cache');
+        const ranges = requests.filter(item => item.startsWith('GET lib/blob.bin bytes=')).map(item => item.split('=')[1].split('-').map(Number));
+        assert.ok(ranges.length && ranges.every(([start, end]) => end - start + 1 <= cache.maxBytes/2), 'one request per half of the cache at most');
         assert.ok(cache.bytes <= cache.maxBytes && cache.count > 1);
         assert.strictEqual(cache.sum, cache.bytes);
         assert.ok(cache.own, 'a cached block pins a larger buffer');

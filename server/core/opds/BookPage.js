@@ -220,7 +220,7 @@ class BookPage extends BasePage {
                     }
                 }
 
-                let content = '';
+                let content;
                 let ann = '';
                 let info = '';
                 //fb2 info

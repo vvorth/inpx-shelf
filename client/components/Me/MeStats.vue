@@ -41,6 +41,7 @@ import vueComponent from '../vueComponent.js';
 
 import {t, getLang} from '../../share/i18n';
 import {loadGenres, genreName} from '../../share/genres';
+import {authorRoute} from '../../share/bookActions';
 
 class MeStats {
     stats = null;
@@ -84,7 +85,7 @@ class MeStats {
         const firstYear = Math.min(this.year, ...this.dates.map(date => date.getFullYear()));
         const years = countBy([...Array(this.year - firstYear + 1).keys()].map(index => firstYear + index), date => date.getFullYear())
             .map(row => Object.assign(row, {label: String(row.key)}));
-        const authors = this.stats.authors.map(row => ({key: row.name, label: row.name, count: row.count, to: `/author/${row.name}`}));
+        const authors = this.stats.authors.map(row => ({key: row.name, label: row.name, count: row.count, to: authorRoute(row.name)}));
         const genres = this.stats.genres.map(row => ({key: row.name, label: (this.genresReady ? genreName(row.name) : row.name),
             count: row.count, to: {path: '/search', query: {genre: row.name}}}));
 

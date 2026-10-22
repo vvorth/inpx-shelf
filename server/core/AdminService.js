@@ -20,7 +20,7 @@ async function* walkFiles(dir) {
     const stack = [dir];
     while (stack.length) {
         const current = stack.pop();
-        let list = [];
+        let list;
         try {
             list = await libraryFs.readdir(current, {withFileTypes: true});
         } catch (e) {
@@ -132,7 +132,7 @@ module.exports = {
             return Object.assign(result, {size: own.size, files: 1});
 
         for await (const filePath of walkFiles(dir)) {
-            let stat = null;
+            let stat;
             try {
                 stat = await fs.stat(filePath);
             } catch (e) {
@@ -213,7 +213,7 @@ module.exports = {
         const list = await fs.readdir(dir);
         for (const name of list) {
             const filePath = path.join(dir, name);
-            let stat = null;
+            let stat;
             try {
                 stat = await fs.stat(filePath);
             } catch (e) {

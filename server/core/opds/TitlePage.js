@@ -29,14 +29,24 @@ class TitlePage extends BasePage {
 
         const entry = [];
         if (query.title && query.title[0] == '=') {
-            //книги по названию
-            const {books} = await this.webWorker.catalogSearch.findBooks({title: query.title, genre: query.genre, del: query.del, limit: 1000});
+            //книги по названию, по 100 на страницу. Название (без учёта регистра, ё и знаков, как в счётчике каталога),
+            //жанр и удалённые отбирает запрос к БД: фильтр после него сбил бы страницы
+            const page = parseInt(req.query.page, 10) || 1;
+            const limit = 100;
+            const offset = (page - 1)*limit;
+            const {books, totalFound} = await this.webWorker.catalogSearch.findBooks({title: query.title, genre: query.genre, del: query.del, offset, limit});
 
-            if (books.length) {
-                const filtered = this.filterBooks(books, query);
+            for (const book of books)
+                entry.push(this.bookEntry(book));
 
-                for (const book of filtered)
-                    entry.push(this.bookEntry(book));
+            if (totalFound > offset + limit) {
+                entry.push(
+                    this.makeEntry({
+                        id: 'next_page',
+                        title: t('opds.nextPage'),
+                        link: this.navLink({href: `/${this.id}?title=${encodeURIComponent(query.title)}&genre=${encodeURIComponent(query.genre)}&page=${page + 1}`}),
+                    })
+                );
             }
         } else {
             entry.push(...await this.catalogEntries('title', query, t('opds.otherTitles'), 'opds.titleCount'));

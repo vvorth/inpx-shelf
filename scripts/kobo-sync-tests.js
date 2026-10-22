@@ -504,7 +504,7 @@ async function testKoboStoreProxyToggle() {
     store.use(express.raw({type: () => true}));
     store.all('*', (req, res) => {
         seen.push({method: req.method, path: req.path, syncToken: req.headers['x-kobo-synctoken'] || '',
-            body: Buffer.isBuffer(req.body) ? req.body.toString('utf8') : ''});
+            headers: req.headers, body: Buffer.isBuffer(req.body) ? req.body.toString('utf8') : ''});
         if (req.path === '/v1/initialization')
             return res.json({Resources: {from_store: 'yes', library_sync: 'https://storeapi.kobo.com/v1/library/sync',
                 user_profile: 'https://storeapi.kobo.com/v1/user/profile'}});
@@ -514,6 +514,9 @@ async function testKoboStoreProxyToggle() {
             res.set('x-kobo-synctoken', 'store.token2');
             return res.json([{NewEntitlement: {BookEntitlement: {Id: 'purchased-book'}}}]);
         }
+        // A store token or a stray header on a non-sync answer must not reach the device.
+        res.set({'x-kobo-synctoken': 'store.token-elsewhere', 'x-kobo-apitoken': 'store-api', 'x-odd': 'odd',
+            'etag': '"store-etag"', 'set-cookie': 'store=1'});
         res.status(202).json({proxied: req.path});
     });
     const storeServer = http.createServer(store);
@@ -558,8 +561,20 @@ async function testKoboStoreProxyToggle() {
             assert.strictEqual((await call(`/v1/library/tags/${kobo.uuidv5(`list:${listA.id}`)}`, {method: 'DELETE'})).status, 200,
                 'bound lists stay local');
             assert.ok(!seen.some(item => item.path.startsWith(`/v1/library/tags/`)));
-            const post = await call('/v1/user/wishlist', {method: 'POST', body: 'x'});
+            const post = await call('/v1/user/wishlist', {method: 'POST', body: 'x', headers: {authorization: 'Bearer device',
+                'x-kobo-deviceid': 'clara-1', 'x-kobo-synctoken': ours, 'x-odd-request': 'odd', 'x-forwarded-for': '10.0.0.1'}});
             assert.strictEqual(post.status, 202, 'non-GET store calls are proxied server-side');
+            assert.strictEqual(post.headers.get('x-kobo-synctoken'), null, 'the store token is not relayed outside the sync');
+            assert.strictEqual(post.headers.get('x-odd'), null);
+            assert.strictEqual(post.headers.get('set-cookie'), null);
+            assert.strictEqual(post.headers.get('x-kobo-apitoken'), 'store-api');
+            assert.strictEqual(post.headers.get('etag'), '"store-etag"');
+            assert.match(post.headers.get('content-type'), /^application\/json/);
+            const wishlist = seen.find(item => item.path === '/v1/user/wishlist').headers;
+            assert.strictEqual(wishlist.authorization, 'Bearer device');
+            assert.strictEqual(wishlist['x-kobo-deviceid'], 'clara-1');
+            for (const name of ['x-kobo-synctoken', 'x-odd-request', 'x-forwarded-for'])
+                assert.strictEqual(wishlist[name], undefined, `${name} does not go to the store`);
             const get = await call('/v1/products/featured/', {redirect: 'manual'});
             assert.strictEqual(get.status, 307);
             assert.strictEqual(get.headers.get('location'), `${storeUrl}/v1/products/featured/`);
@@ -676,6 +691,31 @@ async function testKoboRowFollowsTheListedRecord() {
         await sync();
         assert.strictEqual(service.store.data.devices[0].books[fb2Uuid].bookUid, 'fb2-uid');
         assert.strictEqual((await call(`/download/${fb2Uuid}/kepub`)).status, 200);
+    });
+}
+
+// One book in two formats (two records, one libid): both reach the Kobo under ids of their own, and a copy
+// listed before the one already on the device does not take its id.
+async function testKoboRecordsWithOneLibidStayApart() {
+    await fixture({}, async({service, store, books, listA, sync}) => {
+        books.set('fb2-copy-uid', {_uid: 'fb2-copy-uid', libid: '101', sourceId: 'main', title: 'Первая книга', author: 'Тестов Автор', ext: 'epub'});
+        const plain = kobo.uuidv5('main:101');
+        const copy = kobo.uuidv5('main:101:fb2-copy-uid');
+        await store.addBooks('default', listA.id, ['fb2-uid']);
+        assert.deepStrictEqual(entitlementIds((await sync({fresh: true})).items, 'NewEntitlement'), [plain]);
+
+        // The copy now comes first in the list.
+        await store.setBookMembership('default', listA.id, 'fb2-uid', false);
+        await store.addBooks('default', listA.id, ['fb2-copy-uid', 'fb2-uid']);
+        const next = await sync();
+        assert.deepStrictEqual(entitlementIds(next.items, 'NewEntitlement'), [copy]);
+        assert.deepStrictEqual(entitlementIds(next.items, 'ChangedEntitlement'), []);
+        const rows = service.store.data.devices[0].books;
+        assert.strictEqual(rows[plain].bookUid, 'fb2-uid');
+        assert.strictEqual(rows[copy].bookUid, 'fb2-copy-uid');
+
+        assert.deepStrictEqual((await sync()).items, [], 'nothing changes on the next sync');
+        assert.deepStrictEqual(entitlementIds((await sync({fresh: true})).items, 'NewEntitlement').sort(), [plain, copy].sort());
     });
 }
 
@@ -1589,6 +1629,7 @@ module.exports = [
     testKoboSyncKeepsStatePutDuringConversion,
     testKoboSyncLoadsProfileStoreOnce,
     testKoboRowFollowsTheListedRecord,
+    testKoboRecordsWithOneLibidStayApart,
     testKoboReannouncesRegeneratedFiles,
     testKoboTokensAreMaskedInLogs,
     testKoboPrewarmsBooksAddedToBoundLists,

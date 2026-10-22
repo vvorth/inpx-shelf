@@ -231,7 +231,7 @@ module.exports = {
         //формируем список
         for (const filename of list) {
             const filePath = `${dir}/${filename}`;
-            let stat = null;
+            let stat;
             try {
                 stat = await fs.stat(filePath);
             } catch (e) {

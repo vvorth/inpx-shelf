@@ -53,7 +53,7 @@ function meaningfulLines() {
 
 function run(sz, args) {
     output = [];
-    let code = 0;
+    let code;
     let crashed = false;
     try {
         code = sz.callMain(args);

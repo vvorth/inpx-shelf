@@ -18,7 +18,24 @@ function formatTemplate(template, book = {}) {
         .replace(/\$\{EXT\}/g, book.ext || '');
 }
 
+// Bot API refuses a caption over 1024 characters with a bare 400. Counted in UTF-16 units, as Telegram may count
+// them: that also keeps it within 1024 code points. Cut by code points, so a surrogate pair is never split.
+const telegramCaptionLimit = 1024;
+
 module.exports = {
+    telegramCaption(template, book = {}) {
+        const caption = formatTemplate(template, book).trim();
+        if (caption.length <= telegramCaptionLimit)
+            return caption;
+        let cut = '';
+        for (const char of caption) {
+            if (cut.length + char.length > telegramCaptionLimit - 1)
+                break;
+            cut += char;
+        }
+        return `${cut.trimEnd()}…`;
+    },
+
     buildSmtpTransportOptions() {
         return {
             host: this.config.smtpHost,
@@ -95,7 +112,7 @@ module.exports = {
         const form = new FormData();
 
         form.append('chat_id', chatId);
-        form.append('caption', formatTemplate(this.config.telegramCaptionTemplate, book).trim());
+        form.append('caption', this.telegramCaption(this.config.telegramCaptionTemplate, book));
         form.append('document', fs.createReadStream(rawFile), downFileName);
 
         const response = await axios.post(url, form, {
@@ -156,7 +173,7 @@ module.exports = {
                     command: item.command,
                 })) : undefined,
             });
-            throw new Error(t('errors.emailNotSent', {details: response}));
+            throw new Error(t('errors.emailNotSent', {details: response}), {cause: err});
         }
 
         this.addAdminEvent('info', 'delivery', msg('admin.deliveryEmailSent', {title: book.title || downFileName}));

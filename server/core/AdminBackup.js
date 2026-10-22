@@ -299,7 +299,7 @@ module.exports = {
                     } catch (e) {
                         //секреты зашифрованы другим ключом: без secret.key в архиве это ключ другого сервера; файлы не тронуты
                         log(LM_WARN, `Backup config.json secrets: ${e.message}`);
-                        throw new Error(t(sourceKey ? 'errors.backupKeyDamaged' : 'errors.backupKeyMismatch'));
+                        throw new Error(t(sourceKey ? 'errors.backupKeyDamaged' : 'errors.backupKeyMismatch'), {cause: e});
                     }
                     this.normalizeImportedAdminSettings(decoded);
                     // Keep machine-local settings: storage paths (including the recovery journal location),

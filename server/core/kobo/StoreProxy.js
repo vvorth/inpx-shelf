@@ -1,9 +1,20 @@
 const {log, rootPath, syncTokenHeader} = require('./common');
 
 const storeTimeoutMs = 10000;
-// Hop-by-hop headers and ones fetch() already decoded must not be relayed.
-const skippedStoreHeaders = new Set(['host', 'connection', 'content-length', 'content-encoding', 'transfer-encoding',
-    'keep-alive', 'accept-encoding', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded', 'cookie']);
+// Allow-lists, both ways: what the firmware sends and the store needs, and what the device needs back.
+// x-kobo-* device headers pass too, except the sync token: ours means nothing to the store, and the store's
+// would make the device start a full resync. mergeStoreSync passes the store's token on purpose.
+// Content-Length and Content-Encoding are left to fetch() and express: the body is already decoded.
+const storeRequestHeaders = new Set(['authorization', 'user-agent', 'accept', 'accept-language', 'content-type',
+    'if-none-match', 'if-modified-since', 'range', 'x-requested-with']);
+// Location: redirects are not followed (`redirect: 'manual'`), the device follows them itself.
+const storeResponseHeaders = new Set(['content-type', 'content-language', 'cache-control', 'expires', 'etag',
+    'last-modified', 'location']);
+
+function relayed(name, allowed) {
+    name = name.toLowerCase();
+    return allowed.has(name) || (name.startsWith('x-kobo-') && name !== syncTokenHeader);
+}
 
 // Kobo Store proxy for devices that opted in. Mixed into KoboService.prototype: `this` is the service.
 module.exports = {
@@ -17,7 +28,7 @@ module.exports = {
     async storeRequest(req, token, extraHeaders = {}) {
         const headers = {};
         for (const [key, value] of Object.entries(req.headers)) {
-            if (!skippedStoreHeaders.has(key.toLowerCase()) && value !== undefined)
+            if (relayed(key, storeRequestHeaders) && value !== undefined)
                 headers[key] = (Array.isArray(value) ? value.join(', ') : String(value));
         }
         for (const [key, value] of Object.entries(extraHeaders)) {
@@ -38,8 +49,7 @@ module.exports = {
 
     async relayStoreResponse(res, response) {
         for (const [key, value] of response.headers) {
-            const name = key.toLowerCase();
-            if (!skippedStoreHeaders.has(name) && name !== 'set-cookie')
+            if (relayed(key, storeResponseHeaders))
                 res.set(key, value);
         }
         res.status(response.status).send(Buffer.from(await response.arrayBuffer()));

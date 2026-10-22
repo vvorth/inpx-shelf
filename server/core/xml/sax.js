@@ -53,8 +53,8 @@ function parseSync(xstr, options) {
             _onTextNode(text, cutCounter, cutTag);
         }
 
-        let right = null;
-        let rightData = null;
+        let right;
+        let rightData;
         if (inCdata) {
             rightData = xstr.indexOf(']]>', leftData + 1);
             if (rightData < 0)
@@ -83,7 +83,7 @@ function parseSync(xstr, options) {
         } else if (inComment) {
             _onComment(tagData, cutCounter, cutTag);
         } else {
-            let tag = '';
+            let tag;
             let tail = '';
             // Имя тега отделяется любым пробельным символом, не только пробелом
             const firstSpace = tagData.search(/\s/);

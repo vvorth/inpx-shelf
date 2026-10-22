@@ -23,14 +23,14 @@ export async function call(action, params = {}, {timeoutSecs = 0, headers = {}, 
         try {
             response = await fetch(`api/${request.path}${query ? `?${query}` : ''}`, init);
         } catch (e) {
-            throw new Error(controller.signal.aborted ? 'errors.apiNoResponse' : 'errors.apiConnectFailed');
+            throw new Error(controller.signal.aborted ? 'errors.apiNoResponse' : 'errors.apiConnectFailed', {cause: e});
         }
 
         let result;
         try {
             result = await response.json();
         } catch (e) {
-            throw new Error(controller.signal.aborted ? 'errors.apiNoResponse' : 'errors.apiBadResponse');
+            throw new Error(controller.signal.aborted ? 'errors.apiNoResponse' : 'errors.apiBadResponse', {cause: e});
         }
         //не объект - не ответ сервера (например, страница прокси)
         if (!result || typeof result !== 'object')

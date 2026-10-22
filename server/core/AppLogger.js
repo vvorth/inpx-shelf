@@ -23,7 +23,7 @@ class AppLogger {
         if (this.inited)
             throw new Error('already inited');
 
-        let loggerParams = null;
+        let loggerParams;
 
         if (config.loggingEnabled) {
             await fs.ensureDir(config.logDir);

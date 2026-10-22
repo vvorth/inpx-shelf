@@ -37,6 +37,16 @@ Unreleased
 - "Read" is one mark per profile and book, not a mark per reading list. A book in several lists is read or unread in all of them at once, and so on Kobo, in OPDS and on the discovery shelves; before, unticking it in one list left it read in the others and on Kobo. The "Read" switch is gone from the "Add to list" dialog: mark a book read on its page, in a list or in the reader. Read marks the lists already had move to the profile on the first start, keeping the place in the book; old list exports keep theirs on import too. "Clear reading progress" now also clears every read mark, since read is progress at 100%.
 - Docker images are multi-arch: every tag (`latest`, `<version>`, `dev` and their `-pdf` variants) now also runs on `linux/arm64` (Raspberry Pi 4/5, ARM servers, Apple Silicon with Docker Desktop); Docker picks the right one on its own.
 - Releases include a standalone archive for macOS on Apple Silicon: `inpx-shelf-<version>-macos-arm64.zip`. The `macos` archive stays for Intel Macs.
+- Old catalog links to an exact author or series (`/author?author==Name`) and the author links in reading statistics open the right page for names containing `/`, `?`, `#` or `%`.
+- Accepting the password or profile sign-in dialog no longer adds a browser history entry, so Back takes you where it did before the dialog.
+- The app keeps working when the browser refuses to store settings (full storage, private window, blocked site data); the settings are then just not remembered.
+- Discovery shelves open only `http` and `https` links from Wikidata answers; any other link is dropped.
+- Kobo with "Connect the Kobo Store": proxied store requests carry only the headers the store needs, and store answers reach the device with only content, caching, redirect and Kobo headers. A store sync token in an answer outside the sync no longer reaches the device, where it would have forced a full resync.
+- Kobo: one book in two formats (two library records with one `libid`), both in the device's lists, now reaches the Kobo as two books; before, only one of them did. A book already on the device keeps its place when the other format is added.
+- Telegram: a caption longer than Telegram's 1024-character limit is cut with `…` instead of failing the send.
+- Windows: saving data files retries for a moment when an indexer or antivirus holds the file, instead of failing the change.
+- S3 libraries: a single read of more than 32 MB from an archive (large books, big solid blocks) no longer fails, and is fetched in parts of at most 16 MB.
+- OPDS: the books of one title are listed 100 per page with a next-page link instead of the first 1000 on one page, and books whose title differs only in case, `ё` or punctuation are listed too, as the catalog count promised. A book search by word that hits its limit of 120 matches in titles, series or authors ends with a line saying the list is incomplete.
 
 26.10.0 / 2026-10-20
 

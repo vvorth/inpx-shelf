@@ -25,7 +25,6 @@ function findLastFit(fits, low, high, guess = NaN) {
             best = low;
             lo = low + 1;
         } else if (fits(probe)) {
-            best = probe;
             if (probe === high || !fits(probe + 1))
                 return probe;
             best = probe + 1;

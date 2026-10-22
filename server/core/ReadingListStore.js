@@ -468,7 +468,7 @@ class ReadingListStore {
         if (this.blocked && this.blocked.stamp === stamp)
             return structuredClone(this.blocked.data);
         this.loaded = null;
-        let raw = null;
+        let raw;
         let broken = false;
         let copy = '';
         // A read error (EMFILE, EACCES, EIO) is not a broken file: let it fail this request

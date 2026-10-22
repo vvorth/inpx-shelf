@@ -1195,6 +1195,7 @@
             "    </li>",
             "</ul>"
         ],
+        "searchIncomplete": "[Not all results are shown: refine the search]",
         "searchSeries": "Search series",
         "searchSeriesTitles": "Search by series titles",
         "searchValueFormatDescription": "Search value format description",

@@ -14,7 +14,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 | `build/` | Webpack configs, pkg packaging, release, Windows installer | |
 | `README.md` | Entry point (English): overview, Docker quick start, links to `README.ru.md` and `docs/` | |
 | `README.ru.md` | Entry point (Russian): overview, Docker quick start, links to `docs/` | |
-| `CHANGELOG.md` | Release notes (Russian), newest first | |
+| `CHANGELOG.md` | Release notes (English), newest first | |
 | `CHANGELOG-inpx-web.md` | Upstream history before the fork. Frozen, do not edit | |
 | `NOTICE.md`, `DOCKERHUB.md`, `Dockerfile`, `docker-compose*.yml` | Credits, Docker Hub page, images | |
 

@@ -157,6 +157,11 @@ Needed only to keep Kobo Store purchases working alongside the library.
 * Unknown book UUIDs (metadata, state, delete) belong to the store: forward them.
 * Everything else: `GET` → `307` redirect to the store; other methods must be proxied server-side,
   because the device turns redirected `POST`/`PUT` requests into `GET`s.
+* Headers of proxied requests: forward only what the store needs (`Authorization`, `User-Agent`, `Accept`,
+  `Accept-Language`, `Content-Type`, conditional and range headers, `x-kobo-*`); relay back only content,
+  caching and `Location` headers and `x-kobo-*`. Never pass `x-kobo-synctoken` outside the sync: the
+  device's token means nothing to the store, and a store token in another answer replaces the server's
+  cursor on the device and forces a full resync.
 * Unknown covers: `307` to `cdn.kobo.com/book-images/…`.
 
 ## 10. Calibre-Web's implementation (reference)

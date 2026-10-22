@@ -62,7 +62,7 @@ class SecretStore {
             if (error.code !== 'ENOENT')
                 throw error;
             if (!create)
-                throw new Error('Secret key is missing; restore secret.key from backup');
+                throw new Error('Secret key is missing; restore secret.key from backup', {cause: error});
 
             await fs.ensureDir(path.dirname(this.keyFile));
             const temporary = `${this.keyFile}.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;

@@ -40,7 +40,7 @@ docker run -d \
 Переменные для Telegram:
 
 * `TELEGRAM_BOT_TOKEN` — токен бота от `@BotFather`
-* `TELEGRAM_CAPTION_TEMPLATE` — подпись к книге, по умолчанию `${AUTHOR} - ${TITLE}`
+* `TELEGRAM_CAPTION_TEMPLATE` — подпись к книге, по умолчанию `${AUTHOR} - ${TITLE}`; подпись длиннее 1024 символов (предел Telegram) обрезается с `…` в конце
 
 Переменные для email:
 

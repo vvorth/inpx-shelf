@@ -222,7 +222,22 @@ class KoboService {
                     continue;
                 }
                 const key = stableKey(book);
-                const uuid = uuidv5(key);
+                let uuid = uuidv5(key);
+                const taken = wanted.get(uuid);
+                if (taken) {
+                    // Several records with one libid (one book in two formats): each is a book of its own on the Kobo.
+                    // The plain id stays with the record the device already has under it, else with the first one
+                    // listed; the others get an id from their _uid. So a copy added later never moves a book the
+                    // device has, and every record keeps its id from sync to sync whatever the list order.
+                    const row = (device.books || {})[uuid];
+                    if (row && row.bookUid === entry.bookUid) {
+                        wanted.delete(uuid);
+                        taken.uuid = uuidv5(`${key}:${taken.bookUid}`);
+                        wanted.set(taken.uuid, taken);
+                    } else {
+                        uuid = uuidv5(`${key}:${entry.bookUid}`);
+                    }
+                }
                 if (!wanted.has(uuid))
                     wanted.set(uuid, {uuid, stableKey: key, bookUid: entry.bookUid, book, listIds: []});
                 const item = wanted.get(uuid);
