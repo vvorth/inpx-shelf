@@ -1,5 +1,6 @@
 Unreleased
 
+- Book data sent to the browser, OPDS clients, Kobo devices and remote libraries no longer includes the library folder path on the server, and the cached book description files in the book cache (`.i.json`, `.dev`) can no longer be downloaded over HTTP. Discovery shelves saved before the update are rebuilt once.
 - The web app no longer caches server data in the browser: the service worker keeps only the app's own files, not API responses or OPDS feeds. After signing out on a shared browser the next person no longer sees the previous profile's library, lists, devices or admin dashboard, and the sign-in state updates again.
 - A profile in a shared browser no longer opens a book at another user's reading position or uploads that position to its own profile: positions kept in the browser are now strictly per profile.
 - When the browser does not keep the session cookie, an action fails with an error after one retry instead of retrying forever and opening a new server session each time.

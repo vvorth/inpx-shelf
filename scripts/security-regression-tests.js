@@ -670,7 +670,8 @@ async function testServerDetailsStayPrivate() {
         profileToken: userId => ({userId}),
         readingListStore: {load: async() => ({users: [{id: 'admin', isAdmin: true, sessionsValidAfter: 0}, {id: 'reader', sessionsValidAfter: 0}]})},
         requireAdmin: async(userId) => { if (userId !== 'admin') throw new Error('not admin'); }};
-        await fs.outputFile(path.join(config.bookDir, 'abcdef.d.json'), JSON.stringify({sourceLibDir: config.libDir}));
+        for (const name of ['abcdef.d.json', 'abcdef.i.json', 'abcdef.dev'])
+            await fs.outputFile(path.join(config.bookDir, name), JSON.stringify({sourceLibDir: config.libDir}));
         const app = require('express')();
         app.use(security.middleware());
         require('../server/core/HealthRoutes')(app, config, worker, security);
@@ -688,7 +689,8 @@ async function testServerDetailsStayPrivate() {
             const cookie = sessionCookie(security, 'admin').cookie;
             assert.strictEqual((await (await get('/api/index-status', {cookie})).json()).inpxInfo.collection, 'Private collection');
             assert.strictEqual((await get('/book/abcdef.d.json')).status, 401, 'No anonymous books');
-            assert.strictEqual((await get('/book/abcdef.d.json', {cookie})).status, 404);
+            for (const name of ['abcdef.d.json', 'abcdef.i.json', 'abcdef.I.JSON', 'abcdef.dev', 'abcdef%2Ei.json'])
+                assert.strictEqual((await get(`/book/${name}`, {cookie})).status, 404, name);
         } finally {
             await new Promise(resolve => server.close(resolve));
         }
@@ -704,6 +706,58 @@ async function testServerDetailsStayPrivate() {
             assert.match(error, /журнале сервера|server log/);
         } finally {
             await api.close();
+        }
+    });
+}
+
+// Book records from a real library DB reach clients without the library folder: search, book page, book info
+// and its cache file, author and series lists, reading lists.
+async function testBookRecordsCarryNoServerPaths() {
+    await temporary(async(dir) => {
+        const CatalogIndex = require('../server/core/search/CatalogIndex');
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const libDir = path.join(dir, 'private-library');
+        const config = {dataDir: dir, libDir, librarySources: [{id: 'main', name: 'Main', libDir}], rootPathStatic: '', bookPathStatic: '/book',
+            bookDir: path.join(dir, 'book'), publicFilesDir: dir, tempDir: dir, server: {ready: true}, branch: 'production'};
+        const index = new CatalogIndex();
+        index.beginBuild(path.join(dir, 'library.sqlite'), [], [{id: 'main', name: 'Main', libDir}]);
+        index.insertBooks([{_uid: sampleUid, title: 'Тайная книга', author: 'Автор Один', series: 'Серия', serno: 1, genre: 'sf', lang: 'ru', ext: 'fb2',
+            date: '2026-01-01', sourceId: 'main', folder: 'a.zip', file: '1', libid: '1'}]);
+        index.finishBuild({});
+        const worker = Object.create(require('../server/core/WebWorker').prototype);
+        Object.assign(worker, {config, checkMyState: () => true, stateStore: {getBookFiles: () => []},
+            readingListStore: new ReadingListStore({dataDir: dir}), fb2Helper: new (require('../server/core/fb2/Fb2Helper'))(),
+            requireAuthorizedUser: async() => ({id: 'default'}), dbConfig: async() => ({inpxHash: 'h'})});
+        worker.resetLibraryAssetCaches();
+        worker.getBookLink = async() => {
+            await fs.outputFile(path.join(config.bookDir, 'hash'), require('zlib').gzipSync('<FictionBook><description><title-info>' +
+                '<book-title>Тайная книга</book-title></title-info></description><body><section><p>Text</p></section></body></FictionBook>'));
+            return {link: '/book/hash', size: 10};
+        };
+        worker.catalogSearch = new CatalogSearch(config, worker);
+        await worker.catalogSearch.openIndex(worker.catalogSearch.getThread());
+        worker.catalogSearch.ready = true;
+        const list = await worker.readingListStore.createList('default', 'Список');
+        await worker.readingListStore.addBooks('default', list.id, [sampleUid]);
+        const security = new Security(config);
+        security.secret = 'test-secret';
+        const controller = apiController({config, security, profileAccess: null, workerState: {getState: () => ({})}, webWorker: worker});
+        const api = await listen(apiApp({config, security, controller, health: false}));
+        try {
+            const client = ApiTestClient.forSession(api.base, security);
+            for (const [action, params] of [['catalog-search', {q: 'тайная'}], ['catalog-suggest', {q: 'тайная'}], ['get-book', {bookUid: sampleUid}],
+                ['get-book-info', {bookUid: sampleUid}], ['get-author-book-list', {author: 'Автор Один'}], ['get-series-book-list', {series: 'Серия'}],
+                ['get-reading-list', {listId: list.id}]]) {
+                const response = await client.call(action, params);
+                assert.strictEqual(response.status, 200, `${action}: ${response.text}`);
+                assert.ok(response.text.includes('Тайная книга'), `${action}: ${response.text}`);
+                assert.ok(!response.text.includes(dir) && !response.text.includes('sourceLibDir'), `${action}: ${response.text}`);
+            }
+            const cached = await fs.readFile(path.join(config.bookDir, 'hash.i.json'), 'utf8');
+            assert.ok(cached.includes('Тайная книга') && !cached.includes(dir), cached);
+        } finally {
+            await api.close();
+            await worker.catalogSearch.close();
         }
     });
 }
@@ -1173,7 +1227,7 @@ async function testGunzipBufferIsBounded() {
 
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
-    testServerDetailsStayPrivate, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
     testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

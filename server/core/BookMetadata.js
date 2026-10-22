@@ -109,7 +109,7 @@ class BookMetadata {
     }
 
     async read(book) {
-        const key = `${this.worker.libraryAssetGeneration || 0}:${coverCacheKey(book)}`;
+        const key = `${this.worker.libraryAssetGeneration || 0}:${coverCacheKey(book, this.worker.config)}`;
         const cached = this.cache.get(key);
         if (cached && Date.now() - cached.time < 15 * 60 * 1000)
             return cached.value;
@@ -120,7 +120,7 @@ class BookMetadata {
                 try {
                     if (!['fb2', 'epub'].includes(String(book.ext).toLowerCase()) || this.worker.remoteSourceOf(book))
                         return value;
-                    file = await this.worker.extractBook(book.folder, `${book.file}.${book.ext}`, book.sourceLibDir);
+                    file = await this.worker.extractBook(book.folder, `${book.file}.${book.ext}`, this.worker.bookLibDir(book));
                     if (String(book.ext).toLowerCase() === 'fb2') {
                         // Description precedes the body and binary images. Do not
                         // parse or restore the entire book for a metadata search.
@@ -159,7 +159,7 @@ class BookMetadata {
     }
 
     async cover(book) {
-        const key = coverCacheKey(book);
+        const key = coverCacheKey(book, this.worker.config);
         if (!this.pendingCovers.has(key)) {
             this.pendingCovers.set(key, this.run(async() => {
                 const config = this.worker.config;

@@ -1124,7 +1124,7 @@ class WebWorker {
                 const source = getEnabledLibrarySources(this.config).find(item => item.id === sourceId);
                 if (!source)
                     throw notFound();
-                book = Object.assign({}, book, {sourceId, sourceLibDir: source.libDir});
+                book = Object.assign({}, book, {sourceId});
                 cacheId = `${sourceId}:${bookUid}`;
             } else if (book.hiddenSource) {
                 throw notFound();
@@ -1153,7 +1153,7 @@ class WebWorker {
 
             const libFolder = book.folder;
             const libFile = `${book.file}${ext}`;
-            const sourceLibDir = book.sourceLibDir || this.config.libDir;
+            const sourceLibDir = this.bookLibDir(book);
 
             //найдем хеш
             const rows = this.stateStore.getBookFiles([cacheId]);
@@ -1481,7 +1481,7 @@ class WebWorker {
                 throw new Error(t('errors.fileNotFound'));
             const book = {...found};
             this.applyPreparedBookSize(book, bookInfo.size);
-            const reviewState = await this.getReviewArchiveState(book.sourceLibDir);
+            const reviewState = await this.getReviewArchiveState(this.bookLibDir(book));
             const refreshReviews = async(info) => {
                 [info.reviews, info.libraryRating] = await Promise.all([
                     this.getBookReviews(book, reviewState), this.getBookLibraryRating(book, reviewState),

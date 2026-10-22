@@ -45,7 +45,7 @@ async function testFb2DownloadsNormalizeEncodingAndRepairLegacyCache() {
         const original = iconv.encode(document('windows-1251'), 'windows-1251');
         await fs.writeFile(path.join(source, '123.fb2'), original);
         const record = {_uid: 'encoding-fixture', author: 'Тестов Автор', title: 'Проверка кодировки', file: '123',
-            ext: 'fb2', folder: '', sourceLibDir: source};
+            ext: 'fb2', folder: ''};
         const config = {libDir: source, bookDir, tempDir, publicFilesDir: dir, publicDir: dir, bookPathStatic: '/book', rootPathStatic: ''};
         const worker = Object.create(require('../server/core/WebWorker').prototype);
         worker.config = config; worker.fb2Helper = new Fb2Helper(); worker.checkMyState = () => {}; worker.scheduleCacheClean = () => {};

@@ -42,9 +42,9 @@ class CatalogSearch {
         return getAllLibrarySources(this.config).filter(source => source.enabled === false).map(source => source.id);
     }
 
-    //Название и папка библиотеки берутся из текущих настроек: их правка не требует пересборки
+    //Название библиотеки берётся из текущих настроек: его правка не требует пересборки
     sourceInfo() {
-        return getAllLibrarySources(this.config).map(source => ({id: source.id, name: source.name, libDir: source.libDir}));
+        return getAllLibrarySources(this.config).map(source => ({id: source.id, name: source.name}));
     }
 
     //Открыть БД в потоке запросов со скрытыми выключенными библиотеками

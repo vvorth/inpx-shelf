@@ -104,7 +104,7 @@ async function writeCachedCover(cacheDir, cacheKey, cover) {
 async function sendBookCover(res, config, webWorker, book) {
     try {
         const cacheDir = config.coverDir || `${config.publicFilesDir}/cover`;
-        const cacheKey = require('./core/BookAssets').coverCacheKey(book);
+        const cacheKey = require('./core/BookAssets').coverCacheKey(book, config);
         if (await sendCachedCover(res, cacheDir, cacheKey))
             return;
         const cover = await webWorker.getBookCover(book);
@@ -329,8 +329,8 @@ module.exports = (app, config, webWorker = null, security = null) => {
         }
         if (pathname === '/backup' || pathname.startsWith('/backup/'))
             return res.sendStatus(403);
-        //описание файла кэша (.d.json) хранит папку библиотеки на сервере
-        if (pathname.endsWith('.d.json'))
+        //служебные файлы кэша (.d.json, .i.json, отладочный .dev) хранят пути сервера
+        if (/\.(d\.json|i\.json|dev)$/.test(pathname))
             return res.sendStatus(404);
         next();
     });

@@ -126,7 +126,7 @@ function init(app, config, worker, security) {
         const book = (await worker.getBookRecordsByUids([req.bookUid], true)).get(req.bookUid);
         if (!book || book.sourceId === req.remoteSource.id)
             return book || null;
-        return Object.assign({}, book, {sourceId: req.remoteSource.id, sourceName: req.remoteSource.name, sourceLibDir: req.remoteSource.libDir});
+        return Object.assign({}, book, {sourceId: req.remoteSource.id, sourceName: req.remoteSource.name});
     };
 
     router.get('/sources/:sourceId/books/:uid', handle(async(req, res) => {

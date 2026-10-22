@@ -30,8 +30,8 @@ async function fixture(test) {
         await fs.ensureDir(config.bookDir);
         await fs.writeFile(config.librarySources[1].inpxFile, 'inpx of b');
         // Book 1 is only in b; book 2 is in a and b, its DB row went to a (first library wins).
-        const books = new Map([[uid(1), {_uid: uid(1), sourceId: 'b', sourceLibDir: path.join(dir, 'b')}], [uid(2), {_uid: uid(2), sourceId: 'a', sourceLibDir: path.join(dir, 'a')}],
-            [uid(3), {_uid: uid(3), sourceId: 'a', sourceLibDir: path.join(dir, 'a')}]]);
+        const books = new Map([[uid(1), {_uid: uid(1), sourceId: 'b'}], [uid(2), {_uid: uid(2), sourceId: 'a'}],
+            [uid(3), {_uid: uid(3), sourceId: 'a'}]]);
         const calls = {links: [], covers: []};
         const worker = {
             config,
@@ -131,7 +131,8 @@ async function testRemoteApiInpxBooksAndCovers() {
         assert.strictEqual(cover.status, 200);
         assert.strictEqual(cover.headers.get('content-type'), 'image/png');
         assert.strictEqual(calls.covers[0].sourceId, 'b');
-        assert.strictEqual(calls.covers[0].sourceLibDir, path.join(dir, 'b'));
+        assert.strictEqual(require('../server/core/LibrarySources').getSourceLibDir(mainConfig, calls.covers[0].sourceId), path.join(dir, 'b'));
+        assert.ok(!('sourceLibDir' in calls.covers[0]), 'records carry no server paths');
 
         // The connecting side: INPX is downloaded once, then 304; books and covers by uid.
         const local = path.join(dir, 'client');

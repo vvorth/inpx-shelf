@@ -41,8 +41,8 @@ async function testLibraryReviewsAndRatingsAreOptionalAndSourceScoped() {
         const otherDir = path.join(dir, 'second', 'books');
         await fs.ensureDir(libDir);
         await fs.ensureDir(otherDir);
-        const value = worker({libDir: otherDir});
-        const book = {folder: 'f.fb2-887686-891322.zip', file: '887700', ext: 'fb2', sourceLibDir: libDir};
+        const value = worker({libDir: otherDir, librarySources: [{id: 'first', libDir}, {id: 'second', libDir: otherDir}]});
+        const book = {folder: 'f.fb2-887686-891322.zip', file: '887700', ext: 'fb2', sourceId: 'first'};
         assert.deepStrictEqual(await value.getBookReviews(book), []);
         assert.strictEqual(await value.getBookLibraryRating(book), null);
         await archive(path.join(dir, 'first', 'reviews', '202609.7z'), {
@@ -63,8 +63,8 @@ async function testLibraryReviewsAndRatingsAreOptionalAndSourceScoped() {
         assert.deepStrictEqual(await value.getBookReviews(book), [review, {...review, text: 'New\nreview'}]);
         assert.deepStrictEqual(await value.getBookLibraryRating(book), {value: 13 / 3, count: 3});
         assert.strictEqual(await value.getBookLibraryRating({...book, file: 'invalid'}), null);
-        assert.deepStrictEqual(await value.getBookReviews({...book, sourceLibDir: otherDir}), [{...review, text: 'Other source'}]);
-        assert.strictEqual(await value.getBookLibraryRating({...book, sourceLibDir: otherDir}), null);
+        assert.deepStrictEqual(await value.getBookReviews({...book, sourceId: 'second'}), [{...review, text: 'Other source'}]);
+        assert.strictEqual(await value.getBookLibraryRating({...book, sourceId: 'second'}), null);
     });
 }
 
@@ -73,7 +73,7 @@ async function testBookInfoRefreshesChangedReviewsWithoutReparsingBook() {
         const config = {libDir: path.join(dir, 'library'), bookDir: path.join(dir, 'cache'), branch: 'test'};
         await fs.ensureDir(config.libDir);
         await fs.ensureDir(config.bookDir);
-        const book = {id: 1, _uid: 'fixture', folder: 'collection.zip', file: '12345', ext: 'fb2', sourceLibDir: config.libDir};
+        const book = {id: 1, _uid: 'fixture', folder: 'collection.zip', file: '12345', ext: 'fb2'};
         let parses = 0;
         const make = () => {
             const value = worker(config);
@@ -130,7 +130,7 @@ async function testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation() {
             `<binary id="cover.png" content-type="image/png">${png.toString('base64')}</binary>` +
             '<binary id="pic.png" content-type="image/png">UElD</binary></FictionBook>';
         await fs.writeFile(path.join(config.bookDir, 'hash'), require('zlib').gzipSync(fb2));
-        const book = {id: 1, _uid: 'fixture', folder: 'c.zip', file: '1', ext: 'fb2', sourceLibDir: dir};
+        const book = {id: 1, _uid: 'fixture', folder: 'c.zip', file: '1', ext: 'fb2'};
         const value = worker(config);
         value.checkMyState = () => true;
         value.catalogSearch = {getBooksByUids: async() => [book]};

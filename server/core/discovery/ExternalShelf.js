@@ -16,7 +16,8 @@ const discoveryCacheTtl = 15*60*1000;//15 minutes
 //наибольший срок обновления внешней витрины (externalTtlMinutes); записи без своего срока живут столько
 const discoveryCacheMaxTtl = 10080*60*1000;
 
-const externalDiscoveryCacheVersion = 'v10';
+//смена версии сбрасывает сохранённые витрины: в них целые записи книг
+const externalDiscoveryCacheVersion = 'v11';
 
 function buildExternalFeedIdentity(item = {}) {
     const title = normalizeDiscoveryText(item.title || '');

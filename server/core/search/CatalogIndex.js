@@ -113,7 +113,7 @@ class CatalogIndex {
 
     //---------- открытие ----------
     //hidden - ключи выключенных библиотек: их книги остаются в БД, но не видны (см. setHiddenSources)
-    //info - [{id, name, libDir}] из текущих настроек: название и папка библиотеки в записях книг
+    //info - [{id, name}] из текущих настроек: название библиотеки в записях книг
     open(file, hidden = [], info = []) {
         this.close();
         const db = new DatabaseSync(file, {readOnly: true});
@@ -126,7 +126,7 @@ class CatalogIndex {
             throw e;
         }
         this.db = db;
-        this.sources = new Map(db.prepare('SELECT key, name, lib_dir FROM source').all().map(row => [row.key, row]));
+        this.sources = new Map(db.prepare('SELECT key, name FROM source').all().map(row => [row.key, row]));
         db.function('catalog_visible', id => (this.columns.flags[id] & 1));
         db.function('catalog_hit', (id) => {
             this.hits.push(id);
@@ -1312,7 +1312,7 @@ class CatalogIndex {
     }
 
     //---------- записи книг ----------
-    //Поля записи как у разбора INPX, плюс сведения об источнике
+    //Поля записи как у разбора INPX, плюс ключ и название источника; папки библиотеки нет: записи уходят клиенту
     //книги выключенных библиотек пропускаются; includeHidden - вернуть и их с пометкой hiddenSource (списки показывают их бледными)
     bookRows(sql, params = [], includeHidden = false) {
         return this.db.prepare(`SELECT id, uid, title, author, series, serno, genre, keywords, lang, ext, size, date, librate, del,
@@ -1323,7 +1323,7 @@ class CatalogIndex {
                 id: row.id, _uid: row.uid, author: row.author, genre: row.genre, title: row.title, series: row.series, serno: row.serno,
                 file: row.file, size: row.size, libid: row.libid, del: row.del, ext: row.ext, date: row.date, lang: row.lang,
                 librate: row.librate, keywords: row.keywords, folder: row.folder, insno: row.insno,
-                sourceId: row.source, sourceName: live.name || source.name || '', sourceLibDir: live.libDir || source.lib_dir || '',
+                sourceId: row.source, sourceName: live.name || source.name || '',
                 ...(this.hidden.has(row.source) ? {hiddenSource: true} : {}),
             };
         });

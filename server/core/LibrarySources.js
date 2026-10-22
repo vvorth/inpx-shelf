@@ -234,6 +234,12 @@ function getAllLibrarySources(config = {}) {
     }];
 }
 
+//Папка библиотеки по ключу из текущих настроек: записи книг уходят клиенту, путей сервера в них нет
+function getSourceLibDir(config = {}, sourceId = '') {
+    const source = getAllLibrarySources(config).find(item => item.id === sourceId);
+    return (source && source.libDir) || config.libDir || '';
+}
+
 function getEnabledLibrarySources(config = {}) {
     return getAllLibrarySources(config).filter(source => source.enabled !== false);
 }
@@ -256,5 +262,6 @@ module.exports = {
     resolveLibrarySources,
     getEnabledLibrarySources,
     getAllLibrarySources,
+    getSourceLibDir,
     getIndexedLibrarySources,
 };

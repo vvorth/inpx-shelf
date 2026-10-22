@@ -24,7 +24,7 @@ module.exports = {
         }
 
         const cacheDir = this.config.coverDir || `${this.config.publicFilesDir}/cover`;
-        const key = coverCacheKey(book);
+        const key = coverCacheKey(book, this.config);
         const size = this.coverSize(req.params);
         const resizedFile = size && `${cacheDir}/${key}-kobo-${size.width}x${size.height}-q${size.quality}.jpg`;
         if (resizedFile && await this.sendCoverFile(res, resizedFile, 'image/jpeg'))

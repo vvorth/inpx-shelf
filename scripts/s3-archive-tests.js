@@ -184,7 +184,7 @@ function randomText(seed, size) {
         await fs.remove(extracted);
         const cover = await worker.getFblibraryCover(10, libDir, 'fb2-000010.zip');
         assert.ok(cover && cover.data.equals(png), 'cover from covers/');
-        const book = {folder: 'fb2-000010.zip', file: '10', ext: 'fb2', sourceLibDir: libDir};
+        const book = {folder: 'fb2-000010.zip', file: '10', ext: 'fb2'};
         assert.deepStrictEqual(await worker.getBookReviews(book), [{name: 'reader', time: '2026-01-01', text: 'good'}]);
         const diagnostics = await worker.getLibrarySourceDiagnostics({libDir, inpx: `${libDir}/flib.inpx`});
         assert.deepStrictEqual(Object.assign({}, diagnostics, {foundInpx: diagnostics.foundInpx.length}), {

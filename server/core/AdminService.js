@@ -588,7 +588,7 @@ module.exports = {
         const libid = parseInt(book.libid, 10);
 
         const sourceId = String(book.sourceId || '').trim();
-        const cacheBase = bookAssets.coverCacheKey(book);
+        const cacheBase = bookAssets.coverCacheKey(book, this.config);
         const coverDir = this.config.coverDir || `${this.config.publicFilesDir}/cover`;
         const removed = [];
         for (const ext of ['.png', '.jpg', '.gif']) {

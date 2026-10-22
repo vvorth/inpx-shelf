@@ -124,14 +124,14 @@ async function testCompressedEpubDownloadsRestoreImagesAndInvalidateCache() {
         await archive(path.join(otherSource, 'covers', 'collection.zip'), {'12345': 'wrong source'});
         // A file with the old INPX name is actually a 7z archive, too.
         await fs.rename(path.join(source, 'collection.7z'), path.join(source, 'collection.zip'));
-        const config = {libDir: otherSource, tempDir, bookDir, publicFilesDir: dir, publicDir: dir,
+        const config = {libDir: otherSource, librarySources: [{id: 'epub', libDir: source}], tempDir, bookDir, publicFilesDir: dir, publicDir: dir,
             rootPathStatic: '', bookPathStatic: '/book', converterPaths: {}};
         const worker = Object.create(require('../server/core/WebWorker').prototype);
         worker.config = config;
         worker.checkMyState = () => true;
         worker.scheduleCacheClean = () => {};
         const record = {_uid: 'epub-fixture', author: 'Fixture Author', title: 'Compressed EPUB', file: '12345',
-            ext: 'epub', folder: 'collection.zip', sourceLibDir: source};
+            ext: 'epub', folder: 'collection.zip', sourceId: 'epub'};
         let fileHash = {hash: 'old-cache'};
         worker.catalogSearch = {getBooksByUids: async() => [record]};
         worker.stateStore = {getBookFiles: () => (fileHash ? [fileHash] : []), putBookFile: (row) => { fileHash = row; }};
@@ -271,9 +271,9 @@ async function testSameFilenameEpubAndFb2KeepTheirOwnAssetsAndDownloads() {
         const epubUid = 'epub/UID+504942=';
         const records = [
             {_uid: 'fb2/UID+504942=', file: '504942', libid: 504942, ext: 'fb2', folder: 'f.fb2-502689-505100.zip',
-                title: 'Other FB2', author: 'Other Author', genre: '', sourceId: 'main', sourceLibDir: source},
+                title: 'Other FB2', author: 'Other Author', genre: '', sourceId: 'main'},
             {_uid: epubUid, file: '504942', libid: 504942, ext: 'epub', folder: 'usr-500000-504999.zip',
-                title: 'Keeping My Home', author: 'EPUB Author', genre: '', size: 42, sourceId: 'main', sourceLibDir: source},
+                title: 'Keeping My Home', author: 'EPUB Author', genre: '', size: 42, sourceId: 'main'},
         ];
         for (const record of records)
             Object.assign(record, {id: record._uid, series: '', serno: 0, lang: 'en', keywords: '',

@@ -10,7 +10,7 @@ const libraryReviews = require('./LibraryReviews');
 const log = new (require('./AppLogger'))().log;//singleton
 const utils = require('./utils');
 const libraryFs = require('./LibraryFs');
-const {getEnabledLibrarySources} = require('./LibrarySources');
+const {getEnabledLibrarySources, getSourceLibDir} = require('./LibrarySources');
 const {stripHtml, normalizeAuthorText} = require('./HtmlText');
 
 function decodeArchiveText(data) {
@@ -58,6 +58,11 @@ function libraryAssetDirCandidates(subDir = '', libDir = '') {
 // Файлы библиотеки: книги из архивов, обложки и иллюстрации fb2/epub, справки об авторах, отзывы и оценки.
 // Подмешивается в WebWorker.prototype: `this` - воркер.
 module.exports = {
+    //папка библиотеки книги - по sourceId из настроек: в записях книг путей сервера нет
+    bookLibDir(book) {
+        return getSourceLibDir(this.config, book && book.sourceId);
+    },
+
     async extractBook(libFolder, libFile, sourceLibDir = '') {
         const outFile = `${this.config.tempDir}/${utils.randomHexString(30)}`;
 
@@ -369,13 +374,13 @@ module.exports = {
         if (remote)
             return await this.remoteLib.getCover(remote, book._uid);
         const fileId = path.basename(String(book.file || ''), path.extname(String(book.file || '')));
-        const cover = book.folder ? await this.getFblibraryCover(fileId, book.sourceLibDir, book.folder) : null;
+        const cover = book.folder ? await this.getFblibraryCover(fileId, this.bookLibDir(book), book.folder) : null;
         if (cover || String(book.ext).toLowerCase() !== 'fb2')
             return cover;
 
         // Embedded covers must come from this book, never another archive
         // that happens to contain the same numeric filename.
-        const file = await this.extractBook(book.folder, `${book.file}.${book.ext}`, book.sourceLibDir);
+        const file = await this.extractBook(book.folder, `${book.file}.${book.ext}`, this.bookLibDir(book));
         try {
             const {cover: embedded} = await this.fb2Helper.getDescAndCover(file);
             return embedded ? await imageUtils.normalizeForFb2(embedded, this.config.tempDir, this.config.converterPaths) : null;
@@ -751,7 +756,7 @@ module.exports = {
 
     async getBookReviews(book, state = null) {
         const entryKey = libraryReviews.entryKey(book.folder, `${book.file}.${book.ext}`);
-        const reviewIndex = await this.ensureReviewIndex(book.sourceLibDir, state);
+        const reviewIndex = await this.ensureReviewIndex(this.bookLibDir(book), state);
         const matches = reviewIndex.get(entryKey) || [];
         const reviews = [];
         const seen = new Set();
@@ -791,7 +796,7 @@ module.exports = {
     },
 
     async getBookLibraryRating(book, state = null) {
-        state = state || await this.getReviewArchiveState(book.sourceLibDir);
+        state = state || await this.getReviewArchiveState(this.bookLibDir(book));
         if (!state.ratingsPromise)
             state.ratingsPromise = this.readLibraryRatings(state.archives);
         const ratings = await state.ratingsPromise;

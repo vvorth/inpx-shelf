@@ -921,10 +921,11 @@ async function testDisabledLibraryHiddenWithoutRebuild() {
         assert.strictEqual(visibility.stats.seriesCount, 0);
         assert.deepStrictEqual(visibility.indexed, ['main', 'second']);
 
-        index.setHiddenSources([], [{id: 'second', name: 'Renamed', libDir: '/moved'}]);
+        index.setHiddenSources([], [{id: 'second', name: 'Renamed'}]);
         assert.deepStrictEqual(index.search({q: ''}).ids.sort(), [1, 2, 3]);
         const [renamed] = index.getBooks([2]);
-        assert.deepStrictEqual([renamed.sourceName, renamed.sourceLibDir], ['Renamed', '/moved'], 'name and folder come from current settings');
+        assert.strictEqual(renamed.sourceName, 'Renamed', 'name comes from current settings');
+        assert.ok(!('sourceLibDir' in renamed), 'records carry no server paths');
         assert.strictEqual(index.getBooks([1])[0].sourceName, 'Main', 'falls back to the name stored in the index');
         assert.deepStrictEqual(index.search({q: 'булгаков'}).authors, [{name: 'Булгаков Михаил', books: 2}]);
         assert.deepStrictEqual(index.opdsNames('series', {}).found.map(row => [row.series, row.bookCount]), [['Повести', 2]]);
