@@ -199,8 +199,32 @@ function checkSearchRegExp(pattern = '') {
     return new RegExp(value, 'i');
 }
 
+// Не больше size задач одновременно, остальные ждут по очереди; очередь длиннее queueSize - HTTP 429.
+// Тяжёлый разбор книг в главном потоке: N разных книг иначе разбираются все сразу.
+function limiter(size, queueSize = Infinity) {
+    let active = 0;
+    const queue = [];
+    return async(task) => {
+        if (active >= size) {
+            if (queue.length >= queueSize)
+                throw Object.assign(new Error('too_many_requests'), {status: 429});
+            await new Promise(resolve => queue.push(resolve));
+        } else {
+            active++;
+        }
+        try {
+            return await task();
+        } finally {
+            const next = queue.shift();
+            if (next) next();
+            else active--;
+        }
+    };
+}
+
 module.exports = {
     checkSearchRegExp,
+    limiter,
     sleep,
     processLoop,
     versionText,

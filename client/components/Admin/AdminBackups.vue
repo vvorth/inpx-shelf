@@ -131,10 +131,18 @@ class AdminBackups {
 
         this.backupImportLoading = true;
         try {
-            await this.api.importAdminBackup(file);
+            const result = await this.api.importAdminBackup(file) || {};
             await this.api.updateConfig();
             this.$emit('restored');
             this.$root.notify.success(t('settings.backup.restored'));
+            //сменившиеся настройки доступа действуют сразу: администратор должен о них знать
+            const notes = [];
+            if (result.securityChanged && result.securityChanged.length)
+                notes.push(t('settings.backup.restoredSecurity', {keys: result.securityChanged.join(', ')}));
+            if (result.snapshot)
+                notes.push(t('settings.backup.restoredSnapshot', {file: result.snapshot}));
+            if (notes.length)
+                this.$root.stdDialog.alert(notes.join(' '), t('settings.backup.backupImport'));
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {

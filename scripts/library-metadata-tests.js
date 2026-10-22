@@ -165,6 +165,67 @@ async function testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation() {
     });
 }
 
+// Адрес обложки в .i.json содержит server.root, файл лежит в bookDir: под корнем кеш тоже действует
+async function testBookInfoCacheHoldsUnderRootPath() {
+    await temporary(async dir => {
+        const config = {libDir: dir, bookDir: path.join(dir, 'book'), publicFilesDir: dir, rootPathStatic: '/shelf',
+            bookPathStatic: '/shelf/book', branch: 'test'};
+        await fs.ensureDir(config.bookDir);
+        const fb2 = '<?xml version="1.0" encoding="utf-8"?><FictionBook xmlns:l="http://www.w3.org/1999/xlink"><description>' +
+            '<title-info><book-title>Fixture</book-title><coverpage><image l:href="#cover.png"/></coverpage></title-info></description>' +
+            `<body><section><p>Text</p></section></body><binary id="cover.png" content-type="image/png">${png.toString('base64')}</binary></FictionBook>`;
+        await fs.writeFile(path.join(config.bookDir, 'hash'), fb2);
+        const book = {id: 1, _uid: 'fixture', folder: 'c.zip', file: '1', ext: 'fb2'};
+        const value = worker(config);
+        value.checkMyState = () => true;
+        value.catalogSearch = {getBooksByUids: async() => [book]};
+        value.getBookLink = async() => ({link: '/shelf/book/hash', downFileName: 'fixture.fb2'});
+        value.readingListStore = {getMetadataOverrides: async() => ({})};
+        value.fb2Helper = new (require('../server/core/fb2/Fb2Helper'))();
+        let parses = 0;
+        const getDescAndCover = value.fb2Helper.getDescAndCover.bind(value.fb2Helper);
+        value.fb2Helper.getDescAndCover = async file => { parses++; return getDescAndCover(file); };
+
+        assert.strictEqual((await value.getBookInfo('fixture')).bookInfo.cover, '/shelf/book/hash.png');
+        const infoFile = path.join(config.bookDir, 'hash.i.json');
+        const written = await fs.readFile(infoFile, 'utf8');
+        assert.strictEqual((await value.getBookInfo('fixture')).bookInfo.cover, '/shelf/book/hash.png');
+        assert.strictEqual(parses, 1, 'the second view reads the cache');
+        assert.strictEqual(await fs.readFile(infoFile, 'utf8'), written);
+        await fs.remove(path.join(config.bookDir, 'hash.png'));
+        await value.getBookInfo('fixture');
+        assert.strictEqual(parses, 2, 'a missing cover file is restored');
+        assert.ok(await fs.pathExists(path.join(config.bookDir, 'hash.png')));
+    });
+}
+
+// Первые просмотры разных книг разбирают FB2 в главном потоке не все сразу, а в пределах лимита
+async function testBookInfoParsesAreLimited() {
+    await temporary(async dir => {
+        const config = {libDir: dir, bookDir: path.join(dir, 'book'), publicFilesDir: dir, bookPathStatic: '/book', branch: 'test'};
+        await fs.ensureDir(config.bookDir);
+        const books = {a: {id: 1, _uid: 'a', folder: 'c.zip', file: '1', ext: 'fb2'}, b: {id: 2, _uid: 'b', folder: 'c.zip', file: '2', ext: 'fb2'}};
+        const value = worker(config);
+        value.checkMyState = () => true;
+        value.catalogSearch = {getBooksByUids: async([uid]) => [books[uid]]};
+        value.getBookLink = async uid => ({link: `/book/hash-${uid}`, downFileName: `${uid}.fb2`});
+        value.readingListStore = {getMetadataOverrides: async() => ({})};
+        value.bookInfoParses = require('../server/core/utils').limiter(1);
+        const order = [];
+        value.fb2Helper = {getDescAndCover: async file => {
+            const name = path.basename(file);
+            order.push(`start ${name}`);
+            await new Promise(resolve => setTimeout(resolve, 20));
+            order.push(`end ${name}`);
+            const parser = new (require('../server/core/fb2/Fb2Parser'))();
+            parser.fromString('<FictionBook><description><title-info><book-title>Fixture</book-title></title-info></description></FictionBook>');
+            return {fb2: parser};
+        }};
+        await Promise.all([value.getBookInfo('a'), value.getBookInfo('b')]);
+        assert.deepStrictEqual(order, ['start hash-a', 'end hash-a', 'start hash-b', 'end hash-b']);
+    });
+}
+
 async function testReindexReloadsAuthorAndArchiveCaches() {
     await temporary(async dir => {
         const config = {...require('../server/config/base'), dataDir: path.join(dir, 'data'),
@@ -235,4 +296,5 @@ async function testBooksExtractFromPpmdZipsAndCp866Names() {
 
 module.exports = [testLibraryReviewsAndRatingsAreOptionalAndSourceScoped,
     testBookInfoRefreshesChangedReviewsWithoutReparsingBook, testReindexReloadsAuthorAndArchiveCaches,
-    testBooksExtractFromPpmdZipsAndCp866Names, testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation];
+    testBooksExtractFromPpmdZipsAndCp866Names, testBookInfoCacheKeepsDescriptionOnlyAndSurvivesTruncation,
+    testBookInfoCacheHoldsUnderRootPath, testBookInfoParsesAreLimited];

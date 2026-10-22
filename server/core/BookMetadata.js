@@ -87,25 +87,7 @@ class BookMetadata {
         this.cache = new Map();
         this.pending = new Map();
         this.pendingCovers = new Map();
-        this.active = 0;
-        this.queue = [];
-    }
-
-    async run(task) {
-        if (this.active >= 2) {
-            if (this.queue.length >= 16)
-                throw Object.assign(new Error('Metadata queue is full'), {status: 429});
-            await new Promise(resolve => this.queue.push(resolve));
-        } else {
-            this.active++;
-        }
-        try {
-            return await task();
-        } finally {
-            const next = this.queue.shift();
-            if (next) next();
-            else this.active--;
-        }
+        this.run = utils.limiter(2, 16);
     }
 
     async read(book) {

@@ -226,6 +226,68 @@ async function testBackupValidationBeforeMutation() {
     });
 }
 
+// Полное восстановление сохраняет прежние файлы (3 последние копии), называет сменившиеся настройки доступа,
+// на config.json с ключом другого сервера отвечает понятной ошибкой, ничего не меняя
+async function testRestoreSnapshotSecurityChangesAndKeyMismatch() {
+    await temporary(async(dataDir) => {
+        const Worker = require('../server/core/WebWorker');
+        const StreamZip = require('node-stream-zip');
+        const worker = Object.create(Worker.prototype);
+        worker.config = {dataDir, configFile: path.join(dataDir, 'config.json'), tempDir: path.join(dataDir, 'tmp'),
+            authMode: 'none', trustProxy: false, proxyAuthHeader: '', loggingEnabled: false, opds: {}};
+        const events = [];
+        worker.checkMyState = () => {};
+        worker.requireAdmin = async() => {};
+        worker.addAdminEvent = (level, category, message, details) => events.push({level, message, details});
+        worker.readingListStore = new ReadingListStore(worker.config);
+        await worker.readingListStore.load();
+        await fs.writeJson(worker.config.configFile, {authMode: 'none', loggingEnabled: false});
+        const backups = path.join(dataDir, 'backups');
+        await fs.outputFile(path.join(backups, 'inpx-shelf-backup-2000-01-01.zip'), 'own backup');
+        const before = await fs.readFile(worker.config.configFile, 'utf8');
+        const listsBefore = await fs.readFile(worker.readingListStore.file, 'utf8');
+        const backup = await archive({'backup-info.json': {version: 'test'}, 'reading-lists.json': {users: [], lists: []},
+            'config.json': {authMode: 'proxy', trustProxy: true, proxyAuthHeader: 'X-User', loggingEnabled: true}});
+
+        const result = await worker.importAdminBackup('admin', 'token', backup);
+        assert.match(result.snapshot, /^inpx-shelf-pre-restore-.+\.zip$/);
+        assert.deepStrictEqual(result.securityChanged, ['authMode', 'trustProxy', 'proxyAuthHeader']);
+        assert.strictEqual(worker.config.authMode, 'proxy', 'the admin chose the backup: its settings apply');
+        const zip = new StreamZip.async({file: path.join(backups, result.snapshot)});
+        try {
+            assert.strictEqual((await zip.entryData('config.json')).toString('utf8'), before);
+            assert.strictEqual((await zip.entryData('reading-lists.json')).toString('utf8'), listsBefore);
+        } finally {
+            await zip.close();
+        }
+        assert.deepStrictEqual(events.map(event => event.message.key), ['admin.fullBackupRestoredSnapshot', 'admin.restoreSecurityChanged']);
+        assert.strictEqual(events[1].message.params.keys, 'authMode, trustProxy, proxyAuthHeader');
+        assert.deepStrictEqual(events[1].details.securityChanged, result.securityChanged);
+        assert.strictEqual(events[0].details.snapshot, result.snapshot);
+
+        for (let i = 0; i < 3; i++)
+            assert.deepStrictEqual((await worker.importAdminBackup('admin', 'token', backup)).securityChanged, []);
+        const names = (await fs.readdir(backups)).sort();
+        assert.strictEqual(names.filter(name => name.startsWith('inpx-shelf-pre-restore-')).length, 3);
+        assert.ok(names.includes('inpx-shelf-backup-2000-01-01.zip'), 'other backups are kept');
+
+        //config.json зашифрован ключом другого сервера, secret.key в архиве нет
+        const other = new (require('../server/core/SecretStore'))({dataDir: path.join(dataDir, 'other')});
+        const foreign = await archive({'backup-info.json': {version: 'test'},
+            'config.json': await other.protectConfig({opds: {password: 'foreign'}})});
+        await fs.writeFile(path.join(dataDir, 'secret.key'), require('crypto').randomBytes(32).toString('base64'));
+        const configNow = await fs.readFile(worker.config.configFile, 'utf8');
+        const backupsNow = (await fs.readdir(backups)).sort();
+        await assert.rejects(worker.importAdminBackup('admin', 'token', foreign), /другого сервера|another server/);
+        assert.strictEqual(await fs.readFile(worker.config.configFile, 'utf8'), configNow);
+        assert.deepStrictEqual((await fs.readdir(backups)).sort(), backupsNow, 'no snapshot for a rejected archive');
+
+        //испорченный журнал: сообщение называет папку журнала
+        await fs.outputFile(path.join(dataDir, '.restore-transaction', 'manifest.json'), '{broken');
+        await assert.rejects(transaction.recover(worker.config), error => error.message.includes(path.join(dataDir, '.restore-transaction')));
+    });
+}
+
 async function testBackupRollbackAndCrashRecovery() {
     await temporary(async(dataDir) => {
         const config = {dataDir, configFile: path.join(dataDir, 'config.json')};
@@ -385,5 +447,5 @@ async function testBrokenReadingListsAreVisibleAndBadRowsSkipped() {
 }
 
 module.exports = [testScryptMigrationAndOpds, testApiBodyBoundsAndRecovery, testHttpUploadsGoThroughRequestChecks,
-    testBackupValidationBeforeMutation, testBackupRollbackAndCrashRecovery, testProfileDataCapsAndImportTrim,
+    testBackupValidationBeforeMutation, testRestoreSnapshotSecurityChangesAndKeyMismatch, testBackupRollbackAndCrashRecovery, testProfileDataCapsAndImportTrim,
     testBrokenReadingListsAreVisibleAndBadRowsSkipped];

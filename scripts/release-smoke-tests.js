@@ -1238,6 +1238,7 @@ async function testAdminBackupArchiveAndDownload() {
         assert.strictEqual(restored.success, true);
         assert.ok((await restoreWorker.readingListStore.load()).users.every(user => user.sessionsValidAfter > restoreStarted), 'A restore ends all sessions');
         assert.strictEqual(restored.restartRecommended, true);
+        assert.match(restored.snapshot, /^inpx-shelf-pre-restore-.+\.zip$/, 'the state before the restore is kept');
         assert.ok(restored.restored.includes('config.json'));
         assert.ok(restored.restored.includes('secret.key'));
         assert.ok(restored.restored.includes('reading-lists.json'));

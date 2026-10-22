@@ -1542,18 +1542,21 @@ class WebWorker {
                     throw e;
             }
 
-            //проверим существование файла обложки, восстановим если нету
+            //проверим существование файла обложки, восстановим если нету; cover - адрес с server.root, файл - рядом с книгой
             let coverFile = '';
             if (tmpInfo && tmpInfo.cover)
-                coverFile = `${this.config.publicFilesDir}${tmpInfo.cover}`;
+                coverFile = `${bookFile}${path.extname(tmpInfo.cover)}`;
 
             if (!tmpInfo || !tmpInfo.book || book.id != tmpInfo.book.id || tmpInfo.infoVersion !== bookInfoVersion || (coverFile && !await fs.pathExists(coverFile))) {
                 //одновременные первые просмотры одной книги разбирают её один раз
                 if (!this.pendingBookInfos)
                     this.pendingBookInfos = new Map();
                 const pending = this.pendingBookInfos;
+                //разбор FB2 целиком идёт в главном потоке: разные книги - не больше двух сразу
+                if (!this.bookInfoParses)
+                    this.bookInfoParses = utils.limiter(2);
                 if (!pending.has(bookFileInfo))
-                    pending.set(bookFileInfo, restoreBookInfo(bookInfo).finally(() => pending.delete(bookFileInfo)));
+                    pending.set(bookFileInfo, this.bookInfoParses(() => restoreBookInfo(bookInfo)).finally(() => pending.delete(bookFileInfo)));
                 bookInfo = {...await pending.get(bookFileInfo), book};
             } else {
                 bookInfo = tmpInfo;

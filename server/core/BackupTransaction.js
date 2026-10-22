@@ -17,12 +17,13 @@ async function recover(config) {
         await fs.remove(folder);
         return;
     }
-    const manifest = await fs.readJson(manifestFile);
+    const manifest = await fs.readJson(manifestFile).catch(() => null);
     const allowed = targets(config);
-    if (!['prepared', 'committed'].includes(manifest.state) || !manifest.existed
+    if (!manifest || !['prepared', 'committed'].includes(manifest.state) || !manifest.existed
         || !Array.isArray(manifest.files) || new Set(manifest.files).size !== manifest.files.length
         || manifest.files.some(name => !Object.hasOwn(allowed, name) || typeof manifest.existed[name] !== 'boolean'))
-        throw new Error('Invalid backup recovery journal');
+        // The admin decides by hand: the folder holds the files from before the interrupted restore.
+        throw new Error(`Invalid backup recovery journal ${folder}: restore the files from it by hand or remove it`);
     if (manifest.state !== 'committed') {
         for (const name of manifest.files) {
             if (manifest.existed[name])

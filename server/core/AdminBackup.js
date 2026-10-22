@@ -23,6 +23,14 @@ const scopes = {
         event: 'admin.workTitlesImported'},
 };
 
+// Копия текущих файлов перед полным восстановлением: не вид бэкапа из API, хранятся 3 последние
+const preRestore = {prefix: 'inpx-shelf-pre-restore', files: BackupFiles.names, keep: 3,
+    note: `State before a full restore. ${scopes[''].note}`};
+
+// Настройки доступа: восстановленные действуют сразу, администратор видит, какие сменились
+const securityKeys = ['authMode', 'requireAuth', 'guestAccess', 'proxyBindProfile', 'trustProxy', 'proxyAuthHeader', 'trustedProxyCidrs',
+    'authExemptHealth', 'loginRateLimitEnabled', 'remoteAccess', 'metricsEnabled', 'metricsToken', 'opds', 'librarySources'];
+
 function backupScope(scope = '') {
     const result = scopes[String(scope || '')];
     if (!result)
@@ -187,8 +195,11 @@ module.exports = {
     async createAdminBackupSnapshot(userId = '', profileAccessToken = '', scope = '') {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
-        const {prefix, files, note} = backupScope(scope);
+        return this.writeBackupArchive(backupScope(scope));
+    },
 
+    // ZIP в dataDir/backups; блокировки файлов вида держит вызывающий
+    async writeBackupArchive({prefix, files, note, keep}) {
         const backupDir = path.join(this.config.dataDir, 'backups');
         await fs.ensureDir(backupDir);
 
@@ -226,7 +237,7 @@ module.exports = {
         } finally {
             await fs.remove(tempFile);
         }
-        await this.pruneBackups(backupDir, prefix);
+        await this.pruneBackups(backupDir, prefix, keep);
 
         return {
             success: true,
@@ -236,9 +247,9 @@ module.exports = {
         };
     },
 
-    // Оставляем 10 новых архивов этого вида и убираем оборванные *.zip.tmp; чужие файлы не трогаем.
+    // Оставляем keep новых архивов этого вида и убираем оборванные *.zip.tmp; чужие файлы не трогаем.
     // .zip.tmp моложе суток может писать параллельный бэкап.
-    async pruneBackups(backupDir, prefix) {
+    async pruneBackups(backupDir, prefix, keep = 10) {
         const names = (await fs.readdir(backupDir)).filter(name => name.startsWith(`${prefix}-`)).sort();
         const dayAgo = Date.now() - 24*60*60*1000;
         const temps = [];
@@ -247,7 +258,7 @@ module.exports = {
             if (stat && stat.mtimeMs < dayAgo)
                 temps.push(name);
         }
-        const stale = names.filter(name => name.endsWith('.zip')).slice(0, -10).concat(temps);
+        const stale = names.filter(name => name.endsWith('.zip')).slice(0, -keep).concat(temps);
         await Promise.all(stale.map(name => fs.remove(path.join(backupDir, name))));
     },
 
@@ -269,6 +280,7 @@ module.exports = {
                 await this.requireAdmin(userId, profileAccessToken);
                 const content = {};
                 let runtimePatch = null;
+                let securityChanged = [];
                 if (archive['config.json']) {
                     const SecretStore = require('./SecretStore');
                     const sourceKey = archive['secret.key'];
@@ -281,7 +293,14 @@ module.exports = {
                             await fs.copy(currentKey, path.join(folder, 'secret.key'));
                     }
                     const secretStore = new SecretStore({dataDir: folder});
-                    const {config: decoded} = await secretStore.unprotectConfig(archive['config.json']);
+                    let decoded;
+                    try {
+                        ({config: decoded} = await secretStore.unprotectConfig(archive['config.json']));
+                    } catch (e) {
+                        //секреты зашифрованы другим ключом: без secret.key в архиве это ключ другого сервера; файлы не тронуты
+                        log(LM_WARN, `Backup config.json secrets: ${e.message}`);
+                        throw new Error(t(sourceKey ? 'errors.backupKeyDamaged' : 'errors.backupKeyMismatch'));
+                    }
                     this.normalizeImportedAdminSettings(decoded);
                     // Keep machine-local settings: storage paths (including the recovery journal location),
                     // programs the server runs and file filters. Release links stay too:
@@ -306,6 +325,7 @@ module.exports = {
                         log(LM_WARN, `Library sources from the backup: ${e.message}`);
                         Object.assign(runtimePatch, _.pick(this.config, libraryKeys));
                     }
+                    securityChanged = securityKeys.filter(key => Object.hasOwn(runtimePatch, key) && !_.isEqual(runtimePatch[key], this.config[key]));
                     if (await fs.pathExists(path.join(folder, 'secret.key')))
                         content['secret.key'] = await fs.readFile(path.join(folder, 'secret.key'));
                     content['config.json'] = JSON.stringify(protectedConfig, null, 4);
@@ -332,6 +352,10 @@ module.exports = {
                     counts[name] = data.entries.length;
                 }
                 const names = !!archive['author-names.json'];
+                //ошибочный архив можно откатить: прежние файлы - в backups, под теми же блокировками
+                let snapshot = '';
+                if (!only && (await Promise.all(preRestore.files.map(name => fs.pathExists(BackupFiles.filePath(this.config, name))))).some(Boolean))
+                    snapshot = (await this.writeBackupArchive(preRestore)).fileName;
                 await transaction.commit(this.config, content);
                 for (const name of Object.keys(counts))
                     if (this.catalogSearch)
@@ -350,14 +374,19 @@ module.exports = {
                 const restored = Object.keys(content);
                 if (only)
                     this.addAdminEvent('info', 'settings', msg(importEvent, {count: counts[only[0]] || 0}));
-                else
-                    this.addAdminEvent('warn', 'settings', msg('admin.fullBackupRestored', {files: restored.join(', ')}));
+                else {
+                    const details = {files: restored, snapshot, securityChanged};
+                    this.addAdminEvent('warn', 'settings', (snapshot ? msg('admin.fullBackupRestoredSnapshot', {files: restored.join(', '), snapshot})
+                        : msg('admin.fullBackupRestored', {files: restored.join(', ')})), details);
+                    if (securityChanged.length)
+                        this.addAdminEvent('warn', 'settings', msg('admin.restoreSecurityChanged', {keys: securityChanged.join(', ')}), details);
+                }
                 //правки метаданных и английские имена авторов из бэкапа попадают в поиск при пересборке БД библиотеки;
                 //прежняя БД отвечает, пока строится новая
                 if ((archive['reading-lists.json'] || names) && this.catalogSearch && this.catalogSearch.ready)
                     this.recreateDb().catch(e => log(LM_ERR, `Library DB rebuild after restore: ${e.message}`));//no await
                 return {
-                    success: true, restored, restartRecommended: !only,
+                    success: true, restored, restartRecommended: !only, snapshot, securityChanged,
                     message: (only ? '' : t('admin.fullBackupRestoredMessage')),
                 };
             });
