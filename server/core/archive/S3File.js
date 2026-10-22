@@ -37,6 +37,7 @@ port.on('message', async({id, action, uri, offset, length}) => {
 
 const blockSize = 256*1024;
 const maxCacheBytes = 32*1024*1024;
+const runBlocks = maxCacheBytes/2/blockSize;
 const requestTimeoutMs = 2*60*1000;
 //LRU блоков: `${etag}:${uri}:${n}` -> Uint8Array. Общий для вызовов: каждый вызов - новый экземпляр 7-Zip
 const blocks = new Map();
@@ -123,19 +124,25 @@ function open(uri) {
         }
     };
 
+    //длинное чтение идёт частями по половине кеша: иначе первые блоки вытеснились бы до копирования,
+    //а один запрос на всё чтение держал бы в памяти весь ответ
     const read = (target, offset, length, position) => {
         length = Math.max(0, Math.min(length, size - position));
         if (!length)
             return 0;
-        load(Math.floor(position/blockSize), Math.floor((position + length - 1)/blockSize));
+        const last = Math.floor((position + length - 1)/blockSize);
         let done = 0;
-        while (done < length) {
-            const pos = position + done;
-            const data = blocks.get(blockId(Math.floor(pos/blockSize)));
-            const from = pos % blockSize;
-            const n = Math.min(length - done, data.length - from);
-            target.set(data.subarray(from, from + n), offset + done);
-            done += n;
+        for (let first = Math.floor(position/blockSize); first <= last; first += runBlocks) {
+            load(first, Math.min(last, first + runBlocks - 1));
+            const end = Math.min(length, (first + runBlocks)*blockSize - position);
+            while (done < end) {
+                const pos = position + done;
+                const data = blocks.get(blockId(Math.floor(pos/blockSize)));
+                const from = pos % blockSize;
+                const n = Math.min(end - done, data.length - from);
+                target.set(data.subarray(from, from + n), offset + done);
+                done += n;
+            }
         }
         return length;
     };

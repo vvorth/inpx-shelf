@@ -599,6 +599,32 @@ async function testAtomicWriteSyncsDirectory() {
     });
 }
 
+// Windows: a target held by an indexer fails the rename for a moment; the write retries instead of failing.
+async function testAtomicWriteRetriesBusyRename() {
+    await temporary(async(dir) => {
+        const {writeFileAtomic} = require('../server/core/FilePersistence');
+        const rename = fs.rename;
+        let calls = 0;
+        fs.rename = async(...args) => {
+            if (++calls <= 2)
+                throw Object.assign(new Error('operation not permitted'), {code: 'EPERM'});
+            return rename(...args);
+        };
+        try {
+            await writeFileAtomic(path.join(dir, 'data.json'), 'saved');
+            assert.strictEqual(calls, 3);
+            fs.rename = async() => {
+                throw Object.assign(new Error('no space'), {code: 'ENOSPC'});
+            };
+            await assert.rejects(writeFileAtomic(path.join(dir, 'data.json'), 'lost'), {code: 'ENOSPC'}, 'Other errors are not retried');
+        } finally {
+            fs.rename = rename;
+        }
+        assert.strictEqual(await fs.readFile(path.join(dir, 'data.json'), 'utf8'), 'saved');
+        assert.deepStrictEqual(await fs.readdir(dir), ['data.json'], 'No temporary file is left');
+    });
+}
+
 // OPDS sends the password with every request: a repeated success must skip scrypt.
 async function testRepeatedPasswordCheckSkipsScrypt() {
     const profilePassword = require('../server/core/ProfilePassword');
@@ -1333,7 +1359,7 @@ async function testGunzipBufferIsBounded() {
 
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
-    testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testMetricsTokenRateLimit, testCookieSecureFromForwardedProto, testOpdsQueryValuesAreStrings,
+    testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testAtomicWriteRetriesBusyRename, testMetricsReuseDirectorySizes, testMetricsTokenRateLimit, testCookieSecureFromForwardedProto, testOpdsQueryValuesAreStrings,
     testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebAppExtractionIsAtomic,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

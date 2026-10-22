@@ -51,10 +51,24 @@ async function writeFileAtomic(file, data) {
         } finally {
             await handle.close();
         }
-        await fs.rename(temporary, file);
+        await renameWithRetry(temporary, file);
         await syncDir(path.dirname(file));
     } finally {
         await fs.remove(temporary);
+    }
+}
+
+// Windows: an indexer or antivirus holding the target fails the rename with EPERM or EBUSY for a moment.
+// Five attempts, 20 to 160 ms apart.
+async function renameWithRetry(from, to) {
+    for (let delay = 20; ; delay *= 2) {
+        try {
+            return await fs.rename(from, to);
+        } catch (error) {
+            if (!['EPERM', 'EBUSY'].includes(error.code) || delay > 160)
+                throw error;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
     }
 }
 

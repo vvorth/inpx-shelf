@@ -41,6 +41,11 @@ Unreleased
 - Accepting the password or profile sign-in dialog no longer adds a browser history entry, so Back takes you where it did before the dialog.
 - The app keeps working when the browser refuses to store settings (full storage, private window, blocked site data); the settings are then just not remembered.
 - Discovery shelves open only `http` and `https` links from Wikidata answers; any other link is dropped.
+- Kobo with "Connect the Kobo Store": proxied store requests carry only the headers the store needs, and store answers reach the device with only content, caching, redirect and Kobo headers. A store sync token in an answer outside the sync no longer reaches the device, where it would have forced a full resync.
+- Kobo: one book in two formats (two library records with one `libid`), both in the device's lists, now reaches the Kobo as two books; before, only one of them did. A book already on the device keeps its place when the other format is added.
+- Telegram: a caption longer than Telegram's 1024-character limit is cut with `…` instead of failing the send.
+- Windows: saving data files retries for a moment when an indexer or antivirus holds the file, instead of failing the change.
+- S3 libraries: a single read of more than 32 MB from an archive (large books, big solid blocks) no longer fails, and is fetched in parts of at most 16 MB.
 
 26.10.0 / 2026-10-20
 

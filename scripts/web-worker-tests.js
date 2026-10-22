@@ -756,6 +756,18 @@ async function testOtherEditionsAcrossLanguages() {
     });
 }
 
+//подпись в Telegram не длиннее 1024 символов (иначе Bot API отвечает 400), суррогатная пара не разрезается
+function testTelegramCaptionFitsBotApiLimit() {
+    const {telegramCaption} = require('../server/core/BookDelivery');
+    assert.strictEqual(telegramCaption('${AUTHOR} - ${TITLE} ', {author: 'Автор', title: 'Книга'}), 'Автор - Книга');
+    const fits = '😀'.repeat(512);
+    assert.strictEqual(telegramCaption('${TITLE}', {title: fits}), fits);
+    const long = telegramCaption('${TITLE}', {title: `a${fits}`});
+    assert.strictEqual(long, `a${'😀'.repeat(511)}…`);
+    assert.strictEqual(long.length, 1024);
+    assert.strictEqual(telegramCaption('${TITLE}', {title: 'x'.repeat(5000)}).length, 1024);
+}
+
 module.exports = [
     testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
@@ -779,4 +791,5 @@ module.exports = [
     testProfileLoginChecksPasswordOutsideTheStoreLock,
     testMetadataOverridesCacheFollowsWrites,
     testBookMetadataEditsReachIndexInOrder,
+    testTelegramCaptionFitsBotApiLimit,
 ];
