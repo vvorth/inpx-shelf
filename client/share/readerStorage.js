@@ -23,6 +23,15 @@ function progressOf(parsed) {
     return (parsed.progress && typeof parsed.progress === 'object') ? parsed.progress : {};
 }
 
+//Прогресс пользователя - только в его byUser: в общем progress (без пользователя) может лежать чужое место в книге,
+//а позиция из браузера уходит на сервер в профиль читающего
+function progressBucket(parsed, userId) {
+    if (!userId)
+        return progressOf(parsed);
+    const byUser = byUserOf(parsed);
+    return (byUser[userId] && typeof byUser[userId] === 'object') ? byUser[userId] : {};
+}
+
 function readPreferences(userId = '') {
     if (!storage())
         return null;
@@ -58,11 +67,7 @@ function readProgress(userId = '', bookUid = '') {
 
     try {
         const parsed = readJson(progressKey);
-        const byUser = byUserOf(parsed);
-        const bucket = (userId && byUser[userId] && typeof byUser[userId] === 'object')
-            ? byUser[userId]
-            : progressOf(parsed);
-        const progress = bucket[bookUid];
+        const progress = progressBucket(parsed, userId)[bookUid];
         return progress && typeof progress === 'object' ? progress : null;
     } catch (e) {
         return null;
@@ -112,10 +117,7 @@ function writeProgress(userId = '', bookUid = '', progress = {}, {protectForward
         const parsed = readJson(progressKey);
         const byUser = byUserOf(parsed);
         const nextProgress = readerProgress.normalize(progress, generation);
-        const globalProgress = progressOf(parsed);
-        const existingBucket = (userId && byUser[userId] && typeof byUser[userId] === 'object')
-            ? byUser[userId]
-            : globalProgress;
+        const existingBucket = progressBucket(parsed, userId);
         const existingProgress = readerProgress.normalize(existingBucket[bookUid] || {}, generation);
         if (protectForward) {
             const existingTime = Date.parse(existingProgress.updatedAt || '');
@@ -133,16 +135,12 @@ function writeProgress(userId = '', bookUid = '', progress = {}, {protectForward
                 return;
         }
 
-        if (userId) {
-            const scoped = (byUser[userId] && typeof byUser[userId] === 'object') ? byUser[userId] : {};
-            scoped[bookUid] = nextProgress;
-            byUser[userId] = readerProgress.trimMap(scoped);
-        }
-
-        globalProgress[bookUid] = nextProgress;
+        existingBucket[bookUid] = nextProgress;
+        if (userId)
+            byUser[userId] = readerProgress.trimMap(existingBucket);
 
         storage().setItem(progressKey, JSON.stringify({
-            progress: readerProgress.trimMap(globalProgress),
+            progress: readerProgress.trimMap(userId ? progressOf(parsed) : existingBucket),
             byUser,
         }));
     } catch (e) {

@@ -1,4 +1,6 @@
 const BUILD_ID = '__INPX_WEB_BUILD_ID__';
+// Каталог сборки (build/appdir.js) без ведущего "/": иначе подстановка rootPath при распаковке изменила бы и его
+const APP_DIR = '__INPX_WEB_APP_DIR__';
 const CACHE_NAME = `inpx-web-shell-${BUILD_ID}`;
 const BASE_PATH = new URL(self.registration.scope).pathname.replace(/\/$/, '');
 const withBase = (path) => `${BASE_PATH}${path}`;
@@ -86,7 +88,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith(withBase('/book')) || url.pathname.startsWith(withBase('/cover/')))
+  // Кэшируются только файлы сборки и APP_SHELL. Остальное (API, OPDS, книги, обложки, резервные копии) идёт мимо:
+  // на Cache API не действует no-store, и после выхода из профиля следующий получил бы чужие данные
+  if (!url.pathname.startsWith(withBase(`/${APP_DIR}/`)) && !APP_SHELL.includes(url.pathname))
     return;
 
   event.respondWith(

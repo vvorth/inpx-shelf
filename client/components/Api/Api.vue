@@ -294,6 +294,7 @@ class Api {
     async request(params, timeoutSecs = 10, options = {}) {
         const {action, ...actionParams} = params;
         let retries = 0;
+        let csrfRefreshed = false;
         while (1) {// eslint-disable-line
             try {
                 //заголовки - на каждой попытке: после входа или обновления конфига они другие
@@ -316,7 +317,10 @@ class Api {
                 } else if (response && response.error == 'server_busy') {
                     this.accessGranted = true;
                     await this.showBusyDialog();
-                } else if (response && response.error == 'bad_csrf_token') {
+                } else if (response && response.error == 'bad_csrf_token' && !csrfRefreshed) {
+                    //токен устарел (новая сессия): берём свежий один раз; браузер без cookie сессии получал бы новую
+                    //сессию на каждой попытке без конца
+                    csrfRefreshed = true;
                     await this.updateConfig({skipProfileLogin: !!this.profileLoginPromise});
                 } else {
                     this.accessGranted = true;

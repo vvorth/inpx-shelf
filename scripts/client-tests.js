@@ -3,29 +3,45 @@ const fs = require('fs-extra');
 const path = require('path');
 const vm = require('vm');
 
-// Запускает client/assets/sw.js в песочнице и возвращает ключи, которые попали в кэш после навигации.
-async function runServiceWorkerNavigation(pathname, contentType, status = 200) {
-    const source = await fs.readFile(path.resolve(__dirname, '../client/assets/sw.js'), 'utf8');
+// Запускает client/assets/sw.js в песочнице с каталогом сборки, подставленным как при сборке; cache - ключи-пути.
+async function loadServiceWorker(response, scope = 'http://host/') {
+    const appDir = require('../build/appdir');
+    const source = (await fs.readFile(path.resolve(__dirname, '../client/assets/sw.js'), 'utf8')).replace(/__INPX_WEB_APP_DIR__/g, appDir);
     const listeners = {};
-    const cached = [];
+    const cache = new Map();
+    const fetched = [];
+    const keyOf = (request) => (typeof request === 'string' ? request : new URL(request.url).pathname);
+    const self = {
+        registration: {scope},
+        location: {origin: 'http://host'},
+        addEventListener: (type, fn) => { listeners[type] = fn; },
+    };
+    const caches = {
+        open: async() => ({put: async(request, value) => { cache.set(keyOf(request), value); }}),
+        match: async(request) => cache.get(keyOf(request)),
+    };
+    vm.runInNewContext(source, {self, caches, URL, Request: function(request) { return request; },
+        fetch: async(request) => { fetched.push(keyOf(request)); return response; }});
+    //ответ worker'а или null, если запрос он не перехватил
+    const handle = (request) => {
+        let responded = null;
+        listeners.fetch({request: Object.assign({method: 'GET', mode: 'cors', headers: {}}, request), respondWith: (p) => { responded = p; }});
+        return responded;
+    };
+    return {source, appDir, cache, fetched, handle};
+}
+
+// Возвращает ключи, которые попали в кэш после навигации.
+async function runServiceWorkerNavigation(pathname, contentType, status = 200) {
     const response = {
         ok: status >= 200 && status < 300,
         headers: {get: (name) => (name.toLowerCase() === 'content-type' ? contentType : null)},
         clone() { return this; },
     };
-    const self = {
-        registration: {scope: 'http://host/'},
-        location: {origin: 'http://host'},
-        addEventListener: (type, fn) => { listeners[type] = fn; },
-    };
-    const caches = {open: async() => ({put: async(key) => { cached.push(key); }})};
-    vm.runInNewContext(source, {self, caches, URL, Request: function(request) { return request; }, fetch: async() => response});
-
-    let responded;
-    listeners.fetch({request: {method: 'GET', mode: 'navigate', url: `http://host${pathname}`}, respondWith: (p) => { responded = p; }});
-    assert.strictEqual(await responded, response);
+    const sw = await loadServiceWorker(response);
+    assert.strictEqual(await sw.handle({mode: 'navigate', url: `http://host${pathname}`}), response);
     await new Promise(resolve => setImmediate(resolve));
-    return cached;
+    return [...sw.cache.keys()];
 }
 
 // Скачивание книги или резервной копии (в ней secret.key) — тоже навигация: оно не должно оседать в кэше как index.html.
@@ -37,6 +53,32 @@ async function testServiceWorkerCachesOnlyAppShellNavigation() {
     assert.deepStrictEqual(await runServiceWorkerNavigation('/', 'text/html', 503), []);
 }
 
+// API, OPDS и прочие ответы сервера worker не трогает: Cache API не знает no-store, и после выхода из профиля
+// следующий получил бы чужие конфиг, списки и панель администратора. Кэшируются только файлы сборки.
+async function testServiceWorkerCachesOnlyBuildFiles() {
+    const response = {ok: true, headers: {get: () => 'application/json'}, clone() { return this; }};
+    for (const base of ['', '/root']) {
+        const sw = await loadServiceWorker(response, `http://host${base}/`);
+        assert.ok(!sw.source.includes(`/${sw.appDir}`), 'rootPath rewrite at extraction must not touch the worker');
+        //запись старого worker'а не отдаётся
+        sw.cache.set(`${base}/api/config`, {stale: true});
+        assert.strictEqual(sw.handle({url: `http://host${base}/api/config`, headers: {'X-Inpx-Api': '1'}}), null);
+        for (const pathname of ['/api/me/library', '/opds/', '/opds/search?term=x', '/remote/api/config', '/kosync/users/auth',
+            '/admin-backups/backup.zip', '/book/1.fb2', '/cover/1.jpg', '/robots.txt'])
+            assert.strictEqual(sw.handle({url: `http://host${base}${pathname}`}), null, pathname);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepStrictEqual([...sw.cache.keys()], [`${base}/api/config`]);
+        assert.deepStrictEqual(sw.fetched, []);
+
+        const asset = `${base}/${sw.appDir}/bundle.0123abcd.js`;
+        assert.strictEqual(await sw.handle({url: `http://host${asset}`}), response);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.ok(sw.cache.has(asset));
+        assert.strictEqual(await sw.handle({url: `http://host${asset}`}), response);
+        assert.deepStrictEqual(sw.fetched, [asset], 'The second request is served from the cache');
+    }
+}
+
 // Пароль доступа клиент хэширует сам (по http нет crypto.subtle), сервер сравнивает hex: результат должен совпадать с Node.
 async function testClientSha256MatchesNode() {
     const {sha256Hex} = require('../shared/sha256');
@@ -46,9 +88,11 @@ async function testClientSha256MatchesNode() {
         assert.strictEqual(sha256Hex(value), crypto.createHash('sha256').update(value, 'utf8').digest('hex'), `length ${value.length}`);
 }
 
-// Загружает ES-модуль клиента (client/share/*.js) в песочнице: импорты заменяются заглушками из imports.
+// Загружает ES-модуль клиента (client/share/*.js, <script> компонента .vue) в песочнице: импорты заменяются заглушками из imports.
 async function loadClientModule(file, imports = {}) {
     let source = await fs.readFile(path.resolve(__dirname, '../client', file), 'utf8');
+    if (file.endsWith('.vue'))
+        source = source.match(/<script>([\s\S]*?)<\/script>/)[1];
     const names = [];
     source = source.replace(/^import\b[\s\S]*?['"][^'"\n]+['"];?[ \t]*$/gm, '').replace(/^export default /gm, '').replace(/^export (async function|function|const|let|class) (\w+)/gm, (m, kind, name) => {
         names.push(name);
@@ -161,6 +205,38 @@ async function testApiConnectionMapsErrors() {
     assert.strictEqual(await failure(call('test', {})), 'errors.apiBadResponse');
     reply = () => Promise.resolve(new Response('not json', {status: 200, headers: {'Content-Type': 'application/json'}}));
     assert.strictEqual(await failure(call('test', {})), 'errors.apiBadResponse');
+}
+
+// Устаревший токен CSRF: конфиг обновляется один раз, потом ошибка. Браузер, который не хранит cookie сессии,
+// иначе получал бы новую сессию на каждой попытке без конца.
+async function testApiRequestRefreshesCsrfTokenOnce() {
+    const apiRoutes = require('../shared/apiRoutes');
+    const connection = await loadClientModule('share/connection.js', Object.assign({apiRoutes}, apiRoutes));
+    let Api = null;
+    let replies = [];
+    let calls = 0;
+    await loadClientModule('components/Api/Api.vue', Object.assign({}, connection, {
+        vueComponent: cls => { Api = cls; },
+        call: async() => {
+            if (++calls > 5)
+                throw new Error('looped');
+            return replies.shift() || {error: 'bad_csrf_token'};
+        },
+    }));
+    let refreshes = 0;
+    const api = Object.assign(Object.create(Api.prototype), {
+        authHeaders: () => ({}),
+        connectionRestored() {},
+        connectionLost() {},
+        updateConfig: async() => { refreshes++; },
+    });
+
+    assert.strictEqual(await failure(api.request({action: 'update-reading-list', listId: 'l1'})), 'bad_csrf_token');
+    assert.deepStrictEqual({calls, refreshes}, {calls: 2, refreshes: 1});
+
+    [calls, refreshes, replies] = [0, 0, [{error: 'bad_csrf_token'}, {ok: true}]];
+    assert.strictEqual((await api.request({action: 'update-reading-list', listId: 'l1'})).ok, true);
+    assert.deepStrictEqual({calls, refreshes}, {calls: 2, refreshes: 1});
 }
 
 // Пауза переподключения растёт вдвое до 30 с и случайно уменьшается не больше чем вдвое.
@@ -292,7 +368,8 @@ async function testReleaseVersionsCompareCalVer() {
     assert.strictEqual(compareReleaseVersions('v26.10.0', '1.1.1-dev'), 1);
 }
 
-module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
-    testApiConnectionMapsErrors, testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
+module.exports = [testServiceWorkerCachesOnlyAppShellNavigation, testServiceWorkerCachesOnlyBuildFiles,
+    testClientSha256MatchesNode, testBookLanguagesDefaultToAll,
+    testApiConnectionMapsErrors, testApiRequestRefreshesCsrfTokenOnce, testConnectionErrorsAndReconnectDelay, testOnlyIdempotentRequestsAreRetried,
     testStorePersistsOnlySettings, testCssSubsetKeepsUsedIconsAndComponents, testClientLoadsOnlySelectedLocale,
     testReleaseVersionsCompareCalVer];

@@ -4,6 +4,7 @@ const pckg = require('../package.json');
 
 const { merge } = require('webpack-merge');
 const baseWpConfig = require('./webpack.base.config');
+const appdir = require('./appdir');
 
 baseWpConfig.entry.unshift('webpack-hot-middleware/client');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
@@ -54,7 +55,8 @@ module.exports = merge(baseWpConfig, {
                         if (!['sw.js', 'build-id.txt'].includes(path.basename(absoluteFrom)))
                             return content;
 
-                        return content.toString('utf8').replace(/__INPX_WEB_BUILD_ID__/g, buildId);
+                        return content.toString('utf8').replace(/__INPX_WEB_BUILD_ID__/g, buildId)
+                            .replace(/__INPX_WEB_APP_DIR__/g, appdir);
                     },
                 },
             ],

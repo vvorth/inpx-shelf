@@ -43,6 +43,39 @@ async function testReaderStorageKeepsForwardProgress() {
     }
 }
 
+//Позиция в браузере - своя у каждого пользователя: чужая (или общая без пользователя) не открывается и не уходит в профиль
+async function testReaderStorageKeepsProgressPerUser() {
+    const readerStorage = require('../client/share/readerStorage');
+    const items = new Map();
+    global.localStorage = {
+        getItem: key => (items.has(key) ? items.get(key) : null),
+        setItem: (key, value) => items.set(key, String(value)),
+    };
+    try {
+        const at = seconds => new Date(Date.UTC(2026, 0, 1, 12, 0, seconds)).toISOString();
+        //общая карта из прежних версий: в ней позиции всех, кто читал в этом браузере
+        items.set('inpx.reader.progress.v1', JSON.stringify({progress: {book: {pageIndex: 7, percent: 0.07, updatedAt: at(0)}}}));
+        assert.strictEqual(readerStorage.readProgress('u2', 'book'), null);
+        assert.strictEqual(readerStorage.readProgress('', 'book').pageIndex, 7);
+
+        readerStorage.writeProgress('u1', 'book', {pageIndex: 50, percent: 0.5, updatedAt: at(1)});
+        assert.strictEqual(readerStorage.readProgress('u1', 'book').pageIndex, 50);
+        assert.strictEqual(readerStorage.readProgress('u2', 'book'), null);
+        assert.strictEqual(readerStorage.readProgress('', 'book').pageIndex, 7, 'A user does not fill the shared map');
+
+        readerStorage.writeProgress('', 'other', {pageIndex: 3, percent: 0.03, updatedAt: at(2)});
+        assert.strictEqual(readerStorage.readProgress('', 'other').pageIndex, 3);
+        assert.strictEqual(readerStorage.readProgress('u1', 'other'), null);
+
+        //протекция позиции сравнивает только со своей: чужая дальше по книге не мешает записи
+        readerStorage.writeProgress('u2', 'book', {pageIndex: 2, percent: 0.02, updatedAt: at(3)}, {protectForward: true});
+        assert.strictEqual(readerStorage.readProgress('u2', 'book').pageIndex, 2);
+        assert.strictEqual(readerStorage.readProgress('u1', 'book').pageIndex, 50);
+    } finally {
+        delete global.localStorage;
+    }
+}
+
 //Отметка «прочитано» не стирает место, снятие отметки возвращает к нему
 async function testReaderReadMarkKeepsPlace() {
     const readerProgress = require('../client/share/readerProgress');
@@ -268,6 +301,7 @@ module.exports = [
     testReaderPagedStageMustMatchSignature,
     testReaderProgressMapIsCapped,
     testReaderReadMarkKeepsPlace,
+    testReaderStorageKeepsProgressPerUser,
     testReaderRemoteProgressChoice,
     testReaderScrollAnchor,
     testReaderStorageKeepsForwardProgress,
