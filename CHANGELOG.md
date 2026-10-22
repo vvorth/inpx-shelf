@@ -1,5 +1,9 @@
 Unreleased
 
+- A reverse proxy at an IPv6 address or in an IPv6 subnet can be listed in trusted proxies (`INPX_TRUSTED_PROXY_CIDRS` accepts IPv4 and IPv6 addresses and CIDRs); before, such a proxy was never trusted and proxy auth answered 403 to everyone behind it. Entries that cannot be parsed are reported in the log.
+- Wrong metrics tokens on `/metrics` and `/api/index-status` are rate-limited per IP like other logins (HTTP 429, `kind="metrics"` in the login metrics).
+- OPDS clients opening several parallel requests with the same credentials no longer get HTTP 500: identical password checks share one computation, and a busy password checker answers 503 with `Retry-After` without counting as a failed login.
+- The session cookie gets the `Secure` flag whenever the proxy sends `X-Forwarded-Proto: https`, even without trusted-proxy settings; HSTS and the other forwarded headers still need `trustProxy` and `trustedProxyCidrs`.
 - The server accepts connections and answers `/health` at once even when a remote library does not respond: at startup it waits at most 15 seconds per remote library for its INPX and picks up the rest on the next INPX check.
 - Covers from a remote library are limited to 5 MB and must be images, and the remote library list to 1 MB; larger or wrong-type responses are rejected instead of being loaded into memory.
 - Importing a profile backup into a profile without a password no longer brings in an OPDS password, a KOReader password or KOReader progress, just as it already skipped Kobo devices and delivery addresses; only an administrator sets these for such a profile.

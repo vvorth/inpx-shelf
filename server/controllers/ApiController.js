@@ -7,6 +7,7 @@ const utils = require('../core/utils');
 const runtimeMetrics = require('../core/RuntimeMetrics');
 const RequestLimits = require('../core/RequestLimits');
 const i18n = require('../core/i18n');
+const profilePassword = require('../core/ProfilePassword');
 const apiRoutes = require('../../shared/apiRoutes');
 const fs = require('fs-extra');
 const os = require('os');
@@ -236,7 +237,7 @@ class ApiController {
 
     errorReply(res, e, params = {}) {
         const status = this.errorStatus(e);
-        if (status === 429)
+        if (status === 429 || (status === 503 && e && e.retryAfter))
             res.set('Retry-After', String((e && e.retryAfter) || 1));
         if (status === 500) {
             log(LM_ERR, `API ${params.action || ''}: ${(e && e.stack) || e}`);
@@ -774,7 +775,8 @@ class ApiController {
             }
             return {userId};
         } catch (e) {
-            if (this.security) {
+            //занятая проверка паролей - не неудачный вход
+            if (this.security && e.code !== profilePassword.busyCode) {
                 this.security.recordLoginAttempt(ctx.http, false, 'profile');
                 this.security.recordAccountAttempt('profile', req.login, false);
             }

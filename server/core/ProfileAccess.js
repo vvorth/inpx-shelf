@@ -1,6 +1,7 @@
 const {parseBasicAuth} = require('./opds/Auth');
 const {timingSafeStringEqual: equal} = require('./Security');
 const {t} = require('./i18n');
+const profilePassword = require('./ProfilePassword');
 
 const bootstrapActions = new Set(['test', 'get-config', 'get-worker-state', 'login-user-profile', 'logout-user-profile']);
 // With guest access on, a visitor without a profile runs only these: the catalog, book pages, downloads and the shared
@@ -182,6 +183,8 @@ class ProfileAccess {
                     res.set('Retry-After', String(error.retryAfter));
                     return res.status(429).send('Too many login attempts. Try again later.');
                 }
+                if (error.code === profilePassword.busyCode)
+                    res.set('Retry-After', String(error.retryAfter));
                 if (error.status)
                     return res.status(error.status).send(error.message);
                 next(error);

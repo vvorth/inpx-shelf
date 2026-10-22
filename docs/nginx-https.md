@@ -28,6 +28,8 @@ server {
   }
 }
 ```
+Cookie сессии получает `Secure` по `X-Forwarded-Proto: https` и без дополнительных настроек. Чтобы приложение приняло и остальные заголовки (HSTS, адрес клиента для лимита входа, адрес в ссылках Kobo), задайте `INPX_TRUST_PROXY=true` и адрес nginx в `INPX_TRUSTED_PROXY_CIDRS` (IPv4 или IPv6), см. [auth-monitoring.md](auth-monitoring.md).
+
 ```sh
 #загружаем новый конфиг
 sudo service nginx reload

@@ -6,6 +6,12 @@ function statusCode(ok) {
     return ok ? 200 : 503;
 }
 
+//превышен лимит неверных токенов метрик (Security.checkMetricsToken)
+function rateLimited(res, error) {
+    res.set('Retry-After', String((error && error.retryAfter) || 1));
+    res.status(429).send('Too many login attempts. Try again later.');
+}
+
 function metricNumber(value, fallback = 0) {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
@@ -123,7 +129,7 @@ async function buildMetrics(config, webWorker, security = null, apiController = 
 async function indexStatusDetailsAllowed(req, config, webWorker, security) {
     if (!security)
         return false;
-    if (security.hasValidMetricsToken(req))
+    if (security.checkMetricsToken(req))
         return true;
     try {
         const identity = await new (require('./ProfileAccess'))(config, webWorker, security).resolve(req);
@@ -166,9 +172,15 @@ module.exports = function initHealthRoutes(app, config, webWorker, security = nu
     //о коллекции - администратору (сессия веб-интерфейса) и с токеном метрик
     app.get('/api/index-status', async(req, res) => {
         noStore(res);
+        let detailsAllowed;
+        try {
+            detailsAllowed = await indexStatusDetailsAllowed(req, config, webWorker, security);
+        } catch (e) {
+            return rateLimited(res, e);
+        }
         const index = await webWorker.getIndexStatus();
         const full = Object.assign({serverReady: !!config.server.ready, version: config.version}, index);
-        if (await indexStatusDetailsAllowed(req, config, webWorker, security))
+        if (detailsAllowed)
             return res.json(full);
         res.json(Object.fromEntries(['serverReady', 'ready', 'state', 'serverMessage', 'job', 'jobMessage', 'jobStep', 'jobStepCount',
             'progress', 'recsLoaded', 'dbLoaded', 'searchReady'].filter(key => Object.hasOwn(full, key)).map(key => [key, full[key]])));
@@ -183,9 +195,13 @@ module.exports = function initHealthRoutes(app, config, webWorker, security = nu
         }
 
         //без метрик-токена /metrics закрыт: анонимного доступа нет
-        if (!security || !security.hasValidMetricsToken(req)) {
-            res.status(401).send('Metrics token required');
-            return;
+        try {
+            if (!security || !security.checkMetricsToken(req)) {
+                res.status(401).send('Metrics token required');
+                return;
+            }
+        } catch (e) {
+            return rateLimited(res, e);
         }
 
         res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');

@@ -99,6 +99,7 @@
     "authMode": "local",
     "trustProxy": false,
     "proxyAuthHeader": "Remote-User",
+    // адреса и подсети прокси, IPv4 и IPv6: ["172.18.0.0/16", "fd00:abcd::/32"] (INPX_TRUSTED_PROXY_CIDRS, через запятую)
     "trustedProxyCidrs": [],
     "authExemptHealth": true,
 

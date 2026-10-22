@@ -146,6 +146,27 @@ async function testClientIpIgnoresSpoofedForwardedFor() {
     assert.strictEqual(security.clientIp({headers: {'x-forwarded-for': '1.2.3.4'}, socket: {remoteAddress: '198.51.100.1'}}), '198.51.100.1');
 }
 
-module.exports = [testClientIpIgnoresSpoofedForwardedFor, testConversionQueueLimitsAndRecovery, testConverterProcessTimeoutAndBoundedErrors,
+// Прокси на IPv6-адресе или в IPv6-подсети доверяется так же, как IPv4; ::ffff: - тот же IPv4.
+async function testTrustedProxyIpv6() {
+    const security = new Security({trustProxy: true, trustedProxyCidrs: ['fd00:abcd::/32', '2001:db8::10', '10.0.0.0/8', '::ffff:192.168.1.5', 'bogus', '10.0.0.0/40', ' ']});
+    for (const address of ['fd00:abcd:1::7', '2001:db8::10', '10.4.5.6', '::ffff:10.4.5.6', '192.168.1.5', '[fd00:abcd::1]', 'fd00:abcd::1%eth0'])
+        assert.strictEqual(security.isTrustedProxyAddress(address), true, address);
+    for (const address of ['fd00:abce::1', '2001:db8::11', '11.0.0.1', '192.168.1.6', '::1', '127.0.0.1', 'bogus', ''])
+        assert.strictEqual(security.isTrustedProxyAddress(address), false, address);
+
+    const viaProxy = (remoteAddress, headers) => ({headers, socket: {remoteAddress}});
+    const forwarded = {'x-forwarded-for': '1.2.3.4, 2001:db8:5::9', 'x-forwarded-proto': 'https', 'x-forwarded-host': 'books.example.test'};
+    assert.strictEqual(security.clientIp(viaProxy('fd00:abcd::2', forwarded)), '2001:db8:5::9');
+    assert.strictEqual(security.forwardedProto(viaProxy('fd00:abcd::2', forwarded)), 'https');
+    assert.strictEqual(security.clientIp(viaProxy('fd00:abcd::2', {'x-forwarded-for': '2001:db8:5::9, fd00:abcd::3'})), '2001:db8:5::9');
+    assert.strictEqual(security.forwardedProto(viaProxy('2001:db8::11', forwarded)), '', 'An IPv6 address outside the list is not a proxy');
+    assert.strictEqual(new Security({trustProxy: false, trustedProxyCidrs: ['fd00:abcd::/32']}).isTrustedProxy(viaProxy('fd00:abcd::2', {})), false);
+
+    //loopback: ::1 и 127.0.0.1 доверяются вместе, как и раньше
+    for (const list of [['127.0.0.1/32'], ['::1'], ['127.0.0.0/8']])
+        assert.deepStrictEqual(['::1', '127.0.0.1', '::ffff:127.0.0.1'].map(address => new Security({trustedProxyCidrs: list}).isTrustedProxyAddress(address)), [true, true, true], list.join());
+}
+
+module.exports = [testClientIpIgnoresSpoofedForwardedFor, testTrustedProxyIpv6, testConversionQueueLimitsAndRecovery, testConverterProcessTimeoutAndBoundedErrors,
     testProcessStdoutCapture, testProfileLoginRateLimitSurvivesOtherSuccesses,
     testConversionPublishesOnlyCompletedFiles];

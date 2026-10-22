@@ -148,7 +148,7 @@ After restoring a full backup, restart the container. If library sources changed
 | `INPX_REQUIRE_AUTH` | Require app-level auth for all non-exempt requests. |
 | `INPX_AUTH_MODE` | Use `proxy` for Authelia/Authentik/SWAG-style trusted proxy auth. |
 | `INPX_TRUST_PROXY` | Trust reverse proxy headers when `true`. |
-| `INPX_TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy CIDR list. |
+| `INPX_TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy addresses and CIDRs, IPv4 or IPv6. |
 
 ## Health And Metrics
 

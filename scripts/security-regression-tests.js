@@ -466,6 +466,60 @@ async function testMetricsReuseDirectorySizes() {
     }
 }
 
+// Токен метрик подбирается как пароль: неверные токены упираются в лимит (429), верный токен и запросы без токена - нет.
+async function testMetricsTokenRateLimit() {
+    const worker = {config: {}, adminEvents: [], catalogSearch: {file: 'library.sqlite'}, getIndexStatus: async() => ({ready: true, state: 'normal'}),
+        dirSize: async() => ({size: 1, files: 1})};
+    const config = {metricsEnabled: true, metricsToken: 'metrics-fixture', server: {}, loginRateLimitMaxAttempts: 3};
+    const security = new Security(config);
+    const app = require('express')();
+    require('../server/core/HealthRoutes')(app, config, worker, security, {getOnlineMetrics: () => ({clients: 0, users: 0, anonymousClients: 0})});
+    const server = http.createServer(app);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const get = (url, token) => fetch(`http://127.0.0.1:${server.address().port}${url}`, {headers: token ? {authorization: `Bearer ${token}`} : {}});
+    try {
+        for (let i = 0; i < 5; i++)
+            assert.strictEqual((await get('/metrics')).status, 401, 'No token is not an attempt');
+        assert.strictEqual(security.loginAttempts.size, 0);
+        for (let i = 0; i < 3; i++)
+            assert.strictEqual((await get('/metrics', `guess-${i}`)).status, 401);
+        const blocked = await get('/metrics', 'guess-3');
+        assert.strictEqual(blocked.status, 429);
+        assert.ok(Number(blocked.headers.get('retry-after')) > 0);
+        assert.strictEqual((await get('/metrics', 'metrics-fixture')).status, 429, 'Blocked address, even with the right token');
+        assert.strictEqual((await get('/api/index-status', 'guess-4')).status, 429);
+        assert.strictEqual((await get('/api/index-status')).status, 200, 'Health checks without a token stay open');
+        assert.ok(security.getLoginMetrics().attempts.some(row => row.labels.kind === 'metrics' && row.labels.result === 'failure' && row.value === 3));
+        assert.ok(security.getLoginMetrics().attempts.some(row => row.labels.kind === 'metrics' && row.labels.result === 'blocked' && row.value >= 1));
+
+        security.loginAttempts.clear();
+        assert.strictEqual((await get('/metrics', 'metrics-fixture')).status, 200);
+        assert.strictEqual((await get('/metrics', 'guess')).status, 401);
+        assert.strictEqual((await get('/metrics', 'metrics-fixture')).status, 200, 'Right token still works under the limit');
+        assert.strictEqual(security.loginAttempts.get('metrics:127.0.0.1').count, 1, 'One failure per request');
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
+}
+
+// X-Forwarded-Proto: https от любого клиента добавляет Secure к cookie, но не включает HSTS и не делает его прокси доверенным.
+async function testCookieSecureFromForwardedProto() {
+    const security = new Security({trustProxy: false});
+    const plain = {headers: {}, socket: {}};
+    const forwarded = {headers: {'x-forwarded-proto': 'HTTPS'}, socket: {remoteAddress: '203.0.113.7'}};
+    assert.doesNotMatch(security.cookieOptions(plain), /Secure/);
+    assert.doesNotMatch(security.cookieOptions({headers: {'x-forwarded-proto': 'http'}, socket: {}}), /Secure/);
+    assert.match(security.cookieOptions(forwarded), /; Secure$/);
+    assert.strictEqual(security.isSecureRequest(forwarded), false, 'Nothing else follows an untrusted header');
+    const headers = {};
+    security.applySecurityHeaders(forwarded, {setHeader: (name, value) => { headers[name] = value; }});
+    assert.strictEqual(headers['Strict-Transport-Security'], undefined);
+    const trusted = new Security({trustProxy: true, trustedProxyCidrs: ['2001:db8::/32']});
+    const viaProxy = {headers: {'x-forwarded-proto': 'https'}, socket: {remoteAddress: '2001:db8::1'}};
+    assert.match(trusted.cookieOptions(viaProxy), /; Secure$/);
+    assert.strictEqual(trusted.isSecureRequest(viaProxy), true);
+}
+
 // After the rename the directory is synced too; platforms that cannot do it (Windows) still save.
 async function testAtomicWriteSyncsDirectory() {
     await temporary(async(dir) => {
@@ -1227,7 +1281,7 @@ async function testGunzipBufferIsBounded() {
 
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
-    testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testOpdsQueryValuesAreStrings,
+    testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testMetricsReuseDirectorySizes, testMetricsTokenRateLimit, testCookieSecureFromForwardedProto, testOpdsQueryValuesAreStrings,
     testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,

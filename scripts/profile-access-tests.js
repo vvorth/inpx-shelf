@@ -436,6 +436,91 @@ async function testOpdsAuthenticationRateLimit() {
     });
 }
 
+//Свежий экземпляр ProfilePassword с подменённым crypto.scrypt (promisify берёт его при загрузке модуля)
+function loadProfilePassword(scrypt) {
+    const crypto = require('crypto');
+    const modulePath = require.resolve('../server/core/ProfilePassword');
+    const original = crypto.scrypt;
+    const cached = require.cache[modulePath];
+    delete require.cache[modulePath];
+    crypto.scrypt = scrypt(original);
+    try {
+        return require(modulePath);
+    } finally {
+        crypto.scrypt = original;
+        delete require.cache[modulePath];
+        if (cached)
+            require.cache[modulePath] = cached;
+    }
+}
+
+// Один и тот же Basic в нескольких параллельных запросах (OPDS-клиент) делит один scrypt и не упирается в лимит 4 проверок.
+async function testParallelBasicShareOneScrypt() {
+    let calls = 0;
+    const fresh = loadProfilePassword(original => (...args) => { calls++; return original(...args); });
+    const stored = await fresh.hash('shared-fixture-pass');
+    calls = 0;
+    const same = await Promise.all(Array.from({length: 12}, () => fresh.verify(stored, 'alice', 'shared-fixture-pass')));
+    assert.deepStrictEqual(same, Array(12).fill(true));
+    assert.strictEqual(calls, 1, 'One scrypt for all parallel requests with the same credentials');
+    //разные данные не делят работу: сверх лимита проверка занята - 503, а не ошибка пароля
+    calls = 0;
+    const mixed = await Promise.allSettled(Array.from({length: 8}, (_, i) => fresh.verify(stored, 'alice', `wrong-fixture-pass-${i}`)));
+    const busy = mixed.filter(item => item.status === 'rejected');
+    assert.ok(busy.length >= 1 && busy.length === 8 - calls, `${busy.length} busy of 8, ${calls} scrypt runs`);
+    assert.ok(busy.every(item => item.reason.status === 503 && item.reason.code === fresh.busyCode && item.reason.retryAfter > 0));
+    assert.ok(mixed.filter(item => item.status === 'fulfilled').every(item => item.value === false));
+    assert.strictEqual(await fresh.verify(stored, 'alice', 'shared-fixture-pass'), true, 'Busy state is not sticky');
+
+    await fixture({}, async({request}) => {
+        const auth = {authorization: 'Basic ' + Buffer.from('alice:alice-opds-pass').toString('base64')};
+        const burst = await Promise.all(Array.from({length: 12}, () => request('/opds', auth)));
+        assert.deepStrictEqual(burst.map(response => response.status), Array(12).fill(200));
+    });
+}
+
+// Занятая проверка паролей: OPDS отвечает 503 с Retry-After (не 500), вход в веб - 503, и ни то ни другое не неудачная попытка.
+async function testBusyPasswordCheckIsNotAFailedLogin() {
+    //настоящая ошибка занятости: четыре зависшие проверки, пятая отвергается
+    const held = [];
+    const fresh = loadProfilePassword(() => (...args) => held.push(args[args.length - 1]));
+    const stored = await (async() => {
+        const hashing = fresh.hash('held-fixture-pass');
+        held.shift()(null, Buffer.alloc(32));
+        return hashing;
+    })();
+    const pending = Array.from({length: 4}, (_, i) => fresh.verify(stored, 'alice', `held-${i}`));
+    const busyError = await fresh.verify(stored, 'alice', 'held-4').then(() => null, error => error);
+    assert.strictEqual(busyError && busyError.code, fresh.busyCode);
+    held.forEach(callback => callback(null, Buffer.alloc(32)));
+    await Promise.all(pending);
+
+    await fixture({loginRateLimitMaxAttempts: 2}, async({worker, security, request, connect}) => {
+        const failures = kind => security.loginAttemptTotals.get(`${kind}\tfailure`) || 0;
+        const basic = password => ({authorization: 'Basic ' + Buffer.from(`alice:${password}`).toString('base64')});
+        const verify = worker.readingListStore.verifyUserPassword;
+        worker.readingListStore.verifyUserPassword = async() => { throw busyError; };
+
+        for (let i = 0; i < 4; i++) {
+            const response = await request('/opds', basic('alice-opds-pass'));
+            assert.strictEqual(response.status, 503);
+            assert.ok(Number(response.headers.get('retry-after')) > 0);
+        }
+        const call = await connect();
+        for (let i = 0; i < 4; i++) {
+            const response = await call.api.call('login-user-profile', {login: 'alice', password: 'alice-fixture'});
+            assert.strictEqual(response.status, 503);
+            assert.ok(Number(response.headers.get('retry-after')) > 0);
+        }
+        assert.deepStrictEqual([failures('opds'), failures('profile'), security.loginAttempts.size, security.accountFailures.size], [0, 0, 0, 0]);
+
+        //проверка освободилась: те же данные входят, лимит попыток не тронут
+        worker.readingListStore.verifyUserPassword = verify;
+        assert.strictEqual((await request('/opds', basic('alice-opds-pass'))).status, 200);
+        assert.ok(!(await call({action: 'login-user-profile', login: 'alice', password: 'alice-fixture'})).error);
+    });
+}
+
 // The OPDS password: generated and shown once, or the user's own of 10+ characters; a new one replaces the old.
 async function testSetOpdsPassword() {
     await fixture({}, async({bob, request, session, connect, signIn}) => {
@@ -693,4 +778,5 @@ async function testOpdsUserPrefersIdOverLogin() {
 module.exports = [testAnonymousAndGuestRoutes, testProfileComesFromCookieOnly, testGuestAccessWeb, testGuestAccessOpds, testGuestAccessAdminToggle,
     testUnknownLoginTakesAsLong, testSetOpdsPassword, testOpdsAuthenticationRateLimit, testPasswordLengthAndPerLoginThrottle, testStaleCookieReplacedByApi, testLoginRotatesSession, testDeliveryNeedsPasswordOneRecipientAndRate, testImportIntoOpenProfileSkipsCredentials, testOpenProfileCredentialsAdminOnly, testForeignListNotReadable, testOpdsHidesPasswordProfiles, testAdminRoleToggle, testAdminEditNeedsExactProfileId, testInvalidStoredRowsAreRepairedNotDropped,
     testOpdsScopeNeedsAnOpdsProfile, testProxyHeaderRequiredWithOldCookie, testAnonymousAccessDisabledHttpAndApi,
-    testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials, testOpdsUserPrefersIdOverLogin];
+    testProxyProfileBindingAndIdentityChange, testGlobalOpdsCredentials, testOpdsUserPrefersIdOverLogin,
+    testParallelBasicShareOneScrypt, testBusyPasswordCheckIsNotAFailedLogin];

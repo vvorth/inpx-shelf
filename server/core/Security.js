@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const net = require('net');
 const fs = require('fs-extra');
 const path = require('path');
 const sessionLifetime = require('./SessionLifetime');
@@ -9,6 +10,7 @@ const secretFileName = 'session-secret';
 const defaultLoginWindowMs = 15*60*1000;
 const defaultLoginMaxAttempts = 8;
 const maxLoginAttemptKeys = 10000;
+const loginKinds = ['profile', 'opds', 'kobo', 'kosync', 'remote', 'metrics'];
 //per-login throttle: after accountFreeFailures failures each next attempt waits twice as long, up to accountMaxDelayMs
 const accountFreeFailures = 5;
 const accountMaxDelayMs = 5*60*1000;
@@ -16,48 +18,45 @@ const accountFailureWindowMs = 60*60*1000;
 //cookie с updatedAt старше часа выдаётся заново: тайм-аут простоя - дни, обновлять её на каждый запрос незачем
 const sessionTouchMs = 60*60*1000;
 
-function parseIpv4(value = '') {
-    const normalized = String(value || '').trim()
-        .replace(/^::ffff:/i, '')
-        .replace(/^::1$/, '127.0.0.1');
-    const parts = normalized.split('.');
-    if (parts.length !== 4)
-        return null;
-
-    let result = 0;
-    for (const part of parts) {
-        if (!/^\d+$/.test(part))
-            return null;
-
-        const n = Number(part);
-        if (n < 0 || n > 255)
-            return null;
-
-        result = (result << 8) + n;
-    }
-
-    return result >>> 0;
+// ::ffff:1.2.3.4 - это IPv4-адрес 1.2.3.4 (так сокет показывает клиента IPv4 на двойном стеке)
+function normalizeAddress(value = '') {
+    const address = String(value || '').trim().replace(/^\[|\]$/g, '').split('%')[0];
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+    return mapped ? mapped[1] : address;
 }
 
-function parseCidr(value = '') {
-    const raw = String(value || '').trim();
-    if (!raw)
-        return null;
-
-    const [ip, bitsRaw] = raw.split('/');
-    const bits = bitsRaw === undefined ? 32 : Number(bitsRaw);
-    const base = parseIpv4(ip);
-    if (base === null || !Number.isInteger(bits) || bits < 0 || bits > 32)
-        return null;
-
-    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
-    return {base: (base & mask) >>> 0, mask};
+// Доверенные прокси: адреса и подсети IPv4 и IPv6 ("10.0.0.0/8", "fd00::/8", "::1"). Негодные записи
+// пропускаются с предупреждением: доверие только сужается
+function parseTrustedProxies(list = []) {
+    const result = new net.BlockList();
+    for (const entry of list) {
+        const raw = String(entry || '').trim();
+        if (!raw)
+            continue;
+        const [host, bitsRaw] = raw.split('/');
+        const address = normalizeAddress(host);
+        const family = net.isIP(address);
+        const bits = (bitsRaw === undefined ? (family === 6 ? 128 : 32) : (/^\d+$/.test(bitsRaw) ? Number(bitsRaw) : -1));
+        if (!family || bits < 0 || bits > (family === 6 ? 128 : 32)) {
+            logSecurityWarning(`trustedProxyCidrs: entry "${raw}" ignored`);
+            continue;
+        }
+        const type = (family === 6 ? 'ipv6' : 'ipv4');
+        if (bitsRaw === undefined)
+            result.addAddress(address, type);
+        else
+            result.addSubnet(address, bits, type);
+        //::1 доверяется и как 127.0.0.1: так loopback принимался всегда
+        if (address === '::1' && bits === 128)
+            result.addAddress('127.0.0.1', 'ipv4');
+    }
+    return result;
 }
 
 // IPv6 client gets a whole /64: one address per request would bypass the per-IP login limit.
 function loginAddress(value = '') {
     const address = String(value || '').replace(/^\[|\]$/g, '').split('%')[0];
-    if (!require('net').isIPv6(address) || /^::ffff:\d+\.\d+\.\d+\.\d+$/i.test(address))
+    if (!net.isIPv6(address) || /^::ffff:\d+\.\d+\.\d+\.\d+$/i.test(address))
         return value;
     const [head, tail = ''] = address.toLowerCase().split('::');
     const left = head ? head.split(':') : [];
@@ -88,9 +87,7 @@ class Security {
         this.loginAttemptTotals = new Map();
         this.accountFailures = new Map();
         this.secret = '';
-        this.trustedProxyRanges = (config.trustedProxyCidrs || [])
-            .map(parseCidr)
-            .filter(Boolean);
+        this.trustedProxyRanges = parseTrustedProxies(config.trustedProxyCidrs || []);
     }
 
     async init() {
@@ -115,7 +112,8 @@ class Security {
 
     cookieOptions(req) {
         const root = this.config.rootPathStatic || '/';
-        const secure = this.isSecureRequest(req);
+        //X-Forwarded-Proto: https от любого клиента лишь добавляет Secure (строже), HSTS и прочее - только от доверенного прокси
+        const secure = this.isSecureRequest(req) || this.headerFirstValue(req, 'x-forwarded-proto').toLowerCase() === 'https';
         return [
             'HttpOnly',
             'SameSite=Lax',
@@ -291,11 +289,13 @@ class Security {
     }
 
     isTrustedProxyAddress(address = '') {
-        const ip = parseIpv4(address);
-        if (ip === null)
+        const ip = normalizeAddress(address);
+        const family = net.isIP(ip);
+        if (!family)
             return false;
 
-        return this.trustedProxyRanges.some(range => (ip & range.mask) >>> 0 === range.base);
+        const ranges = this.trustedProxyRanges;
+        return ranges.check(ip, family === 6 ? 'ipv6' : 'ipv4') || (ip === '::1' && ranges.check('127.0.0.1', 'ipv4'));
     }
 
     forwardedHeader(req, name = '') {
@@ -345,8 +345,35 @@ class Security {
         return !!(expected && supplied && timingSafeStringEqual(supplied, expected));
     }
 
+    //Токен метрик подбирается по сети, как пароль: неверный токен - неудачная попытка входа kind=metrics.
+    //Результат запоминается в req: токен проверяют и auth-middleware, и сам маршрут, попытка одна.
+    //Выбрасывает ошибку лимита INPX_LOGIN_RATE_LIMIT. Запрос без токена попыткой не считается
+    checkMetricsToken(req) {
+        if (!req.metricsTokenCheck) {
+            const check = req.metricsTokenCheck = {valid: false, error: null};
+            if (this.bearerToken(req)) {
+                try {
+                    this.checkLoginRate(req, 'metrics');
+                    check.valid = this.hasValidMetricsToken(req);
+                    this.recordLoginAttempt(req, check.valid, 'metrics');
+                } catch (e) {
+                    check.error = e;
+                }
+            }
+        }
+        if (req.metricsTokenCheck.error)
+            throw req.metricsTokenCheck.error;
+        return req.metricsTokenCheck.valid;
+    }
+
     isMetricsAuthExempt(req) {
-        return !!(this.config.metricsEnabled && this.isMetricsPath(req) && this.hasValidMetricsToken(req));
+        if (!(this.config.metricsEnabled && this.isMetricsPath(req)))
+            return false;
+        try {
+            return this.checkMetricsToken(req);
+        } catch (e) {
+            return false;
+        }
     }
 
     verifyRequiredAuth(req) {
@@ -446,7 +473,7 @@ class Security {
 
     normalizeLoginKind(kind = 'profile') {
         const normalized = String(kind || 'profile').trim().toLowerCase();
-        return ['profile', 'opds', 'kobo', 'kosync', 'remote'].includes(normalized) ? normalized : 'profile';
+        return loginKinds.includes(normalized) ? normalized : 'profile';
     }
 
     loginAttemptKey(req, kind) {
@@ -574,7 +601,7 @@ class Security {
         }
 
         const attempts = [];
-        for (const kind of ['profile', 'opds', 'kobo', 'kosync', 'remote']) {
+        for (const kind of loginKinds) {
             for (const result of ['success', 'failure', 'blocked']) {
                 attempts.push({
                     labels: {kind, result},
