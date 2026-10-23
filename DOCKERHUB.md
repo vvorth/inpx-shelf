@@ -1,30 +1,43 @@
 # inpx-shelf
 
-Self-hosted web catalog and FB2 reader for large `.inpx`, `.zip`, `.7z` and `fLibrary` book collections.
+**Self-hosted web catalog, online reader, OPDS and Kobo sync for INPX e-book libraries** (Flibusta, Lib.rus.ec and other `.inpx`, `.zip`, `.7z` and `fLibrary` collections, including very large ones).
 
-This image is built from [`vvorth/inpx-shelf`](https://github.com/vvorth/inpx-shelf), a project grown out of [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) (itself a fork of [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web)). It is aimed at Docker, Unraid, Proxmox LXC and home-server setups.
+![inpx-shelf home page: Continue reading and New in the library shelves with book covers](https://raw.githubusercontent.com/vvorth/inpx-shelf/main/docs/images/home-en-light.webp)
 
-The data path inside the container is still `/usr/local/bin/.inpx-web`, so an existing inpx-web volume can be mounted as is.
+<sub>A demo library of public domain classics; the covers are generated for it.</sub>
 
-## What Is Included
+[GitHub](https://github.com/vvorth/inpx-shelf) · [Documentation](https://github.com/vvorth/inpx-shelf#readme) · [Releases](https://github.com/vvorth/inpx-shelf/releases) · [Changelog](https://github.com/vvorth/inpx-shelf/blob/main/CHANGELOG.md) · [Issues](https://github.com/vvorth/inpx-shelf/issues)
 
-- Web catalog with search by authors, series, titles, genres, languages and sources.
-- Multiple library sources through `INPX_LIBRARY_SOURCES`.
-- Large `.zip` / `.7z` / `fLibrary` collection support.
-- Cover extraction and cache, including `covers`, `images`, WebP and JXL helpers.
-- Built-in FB2 reader with profiles, progress, bookmarks, themes, fonts, Wake Lock and separate PWA mode.
-- Personal reading lists, read/unread marks, OPDS and profile-level OPDS links.
-- Book sending by Telegram and email when configured.
-- Conversion to `epub`, `epub3`, `kepub`, `kfx` and `azw8` in the default image; `pdf` in the `-pdf` image.
-- Admin dashboard, event log, backup/restore, source management, health checks and Prometheus metrics.
+```sh
+docker run -d --name=inpx-shelf -p 12380:12380 \
+  -e INPX=/library/my-library.inpx -e LIBDIR=/library \
+  -v /path/to/appdata:/usr/local/bin/.inpx-web \
+  -v /path/to/books:/library:ro \
+  vvorth/inpx-shelf:latest
+```
+
+Then open `http://SERVER_IP:12380`. Multiple sources, Compose and all options are below.
+
+## Features
+
+- **Catalog:** search by authors, series, titles, genres and languages; book, author and series pages with covers; editions of the same work grouped into one card.
+- **Home shelves:** Continue reading, From your lists, Unfinished series, Similar to what you read, new books.
+- **Reader:** built-in FB2 reader with paged mode, themes, fonts, bookmarks, progress and a PWA mode for phones.
+- **Devices:** OPDS (also per profile), Kobo sync, KOReader progress sync, sending books by Telegram and email.
+- **Conversion:** `epub`, `epub3`, `kepub`, `kfx` and `azw8` in the default image; `pdf` in the `-pdf` image.
+- **Users:** multiple profiles, personal reading lists, read marks and reading statistics.
+- **Admin:** several library sources, dashboard, event log, backup and restore, health checks and Prometheus metrics.
+- Interface and OPDS in English and Russian. Multi-arch: `linux/amd64` and `linux/arm64`. Runs on Docker, Unraid, Proxmox LXC and other home servers.
+
+Derived from [`AceAsket/inpx-web`](https://github.com/AceAsket/inpx-web) (a fork of [`bookpauk/inpx-web`](https://github.com/bookpauk/inpx-web)), see [NOTICE.md](https://github.com/vvorth/inpx-shelf/blob/main/NOTICE.md).
 
 ## Tags
 
 | Tag | Purpose |
 | --- | --- |
-| `latest` | Newest release. Releases are versioned by date: `26.10.0`, `26.10.1`, … (year, month, release number within the month). |
+| `latest` | Newest release, with fb2cng, JXL and WebP tools. Releases are versioned by date: `26.10.0`, `26.10.1`, … (year, month, release number within the month). |
+| `<version>` | A specific release, such as `26.10.1`; pin one for reproducible deployments. |
 | `dev`, `dev-<commit>` | Development build, published on every push to the `main` branch after the tests pass. Unstable: for testing, not for your main library. |
-| `<version>` | Image with fb2cng, JXL and WebP tools. Each release is published under its version; pin one for reproducible deployments. |
 | `…-pdf` | Every tag above also exists with a `-pdf` suffix (`latest-pdf`, `dev-pdf`, `<version>-pdf`): the same image plus MuPDF for `fb2` / `epub` → `pdf` conversion, about 100 MB larger. |
 
 Every tag is multi-arch: `linux/amd64` and `linux/arm64`; Docker pulls the one for your host.
@@ -103,7 +116,7 @@ services:
 
 ## Persistent Data
 
-Keep `/usr/local/bin/.inpx-web` in a persistent volume. It stores:
+Keep `/usr/local/bin/.inpx-web` in a persistent volume (the path keeps the inpx-web name, so an existing inpx-web volume can be mounted as is). It stores:
 
 - `config.json`
 - `secret.key`
@@ -229,10 +242,3 @@ docker run -d \
 ```
 
 Lite keeps catalog, reader, profiles, OPDS, 7z support and cover extraction, but disables conversion formats.
-
-## Links
-
-- Notice: inpx-shelf is derived from [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web), see <https://github.com/vvorth/inpx-shelf/blob/main/NOTICE.md>
-- GitHub: <https://github.com/vvorth/inpx-shelf>
-- Releases: <https://github.com/vvorth/inpx-shelf/releases>
-- Issues: <https://github.com/vvorth/inpx-shelf/issues>
