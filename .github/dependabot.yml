@@ -2,14 +2,14 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    target-branch: dev
+    target-branch: main
     schedule:
       interval: weekly
 
   # One pull request for minor and patch updates, one for major ones.
   - package-ecosystem: npm
     directory: /
-    target-branch: dev
+    target-branch: main
     schedule:
       interval: monthly
     groups:

@@ -1,3 +1,7 @@
+Unreleased
+
+- Development moved from the `dev` branch to `main`, and `release` now holds the latest release (formerly `main`). The `dev` Docker image is built from `main`.
+
 26.10.1 / 2026-10-23
 
 - **Behaviour change:** "Read" is a mark of its own, separate from the place in the book. Marking or unmarking a book never changes its position or percent: the reader opens a read book where you left it, and after unmarking the position is still there. Read books show the read mark instead of a percent in the catalog, lists, the book page, the reader home, discovery and OPDS, and never count as "reading now". A book is marked read on its own when reading in the web reader, on a Kobo or in KOReader goes past 95% (before: only at 100%); only crossing 95% sets the mark, so a book unmarked at 96% stays unread while you keep reading. The Kobo you finish the book on is not switched to "Finished", your other Kobo devices are; unmarking on the web reopens the book only on devices where it is "Finished". "Reset progress" clears reading positions but keeps read marks; "Forget" still removes everything about a book. Existing data is converted on the first start: books read to 99.9% or more stay read, and books marked read by earlier versions get back the percent they had before the mark; old profile exports are converted the same way on import.

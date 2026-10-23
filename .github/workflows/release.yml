@@ -1,9 +1,9 @@
 name: Release
 
-# Rolling release: Actions -> Release -> Run workflow publishes the current head of dev as
+# Rolling release: Actions -> Release -> Run workflow publishes the current head of main as
 # version YY.M.N (26.10.0, 26.10.1, ...: N counts the releases of the month). After the checks
 # pass it turns the "Unreleased" section of CHANGELOG.md into the release notes, sets the version
-# in package.json, commits to dev, fast-forwards main to that commit and tags it, then publishes
+# in package.json, commits to main, fast-forwards release to that commit and tags it, then publishes
 # the binaries to GitHub Releases and the images to Docker Hub as <version> and latest.
 on:
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: dev
+          ref: main
           # All tags are needed to number the release within its month.
           fetch-depth: 0
       - id: version
@@ -92,8 +92,8 @@ jobs:
       TAG: ${{ needs.version.outputs.tag }}
       RELEASE_DATE: ${{ needs.version.outputs.date }}
     steps:
-      # Full history: git checks locally that main is an ancestor of the release commit, and a
-      # shallow clone lacks main's commit whenever main is behind dev ("rejected (fetch first)").
+      # Full history: git checks locally that release is an ancestor of the release commit, and a
+      # shallow clone lacks release's commit whenever release is behind main ("rejected (fetch first)").
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.version.outputs.sha }}
@@ -109,15 +109,15 @@ jobs:
           const text = fs.readFileSync('CHANGELOG.md', 'utf8');
           fs.writeFileSync('CHANGELOG.md', text.replace(/^Unreleased(?=\r?\n)/, `${process.env.VERSION} / ${process.env.RELEASE_DATE}`));
           NODE
-      # One atomic push: if dev got new commits during the run or main is not an ancestor of
+      # One atomic push: if main got new commits during the run or release is not an ancestor of
       # the release commit, nothing is pushed and nothing is published.
-      - name: Push to dev and main
+      - name: Push to main and release
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -q -am "Release $VERSION"
           git tag "$TAG"
-          git push --atomic origin HEAD:refs/heads/dev HEAD:refs/heads/main "refs/tags/$TAG"
+          git push --atomic origin HEAD:refs/heads/main HEAD:refs/heads/release "refs/tags/$TAG"
 
   binaries:
     name: Build ${{ matrix.label }}

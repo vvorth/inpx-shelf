@@ -35,7 +35,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 
 ## Before finishing
 
-Before a commit, before merging into `dev` or `main`, and before reporting the work done, all tests pass, including every check CI runs (`.github/workflows/check.yml`, Linux job). A failure is fixed first, even one the change did not cause.
+Before a commit, before merging into `main`, and before reporting the work done, all tests pass, including every check CI runs (`.github/workflows/check.yml`, Linux job). A failure is fixed first, even one the change did not cause.
 
 1. `npm ci --ignore-scripts`
 2. `npm audit --omit=dev --audit-level=moderate` (fix with plain `npm audit fix`: `--omit=dev` also removes the dev packages from `node_modules`)

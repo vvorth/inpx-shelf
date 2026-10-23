@@ -2,10 +2,10 @@
 
 # Разработка
 
-Для разработки получите ветку `dev` и установите зависимости под Node.js 24 или новее (на старой версии npm откажется их ставить: `engine-strict` в `.npmrc`):
+Для разработки получите ветку `main` и установите зависимости под Node.js 24 или новее (на старой версии npm откажется их ставить: `engine-strict` в `.npmrc`):
 
 ```sh
-git clone --branch dev --single-branch https://github.com/vvorth/inpx-shelf.git
+git clone --branch main --single-branch https://github.com/vvorth/inpx-shelf.git
 cd inpx-shelf
 npm ci
 npm run dev
@@ -73,13 +73,13 @@ msg('discovery.reason.series', {...}) // на сервере: описание �
 
 ## Релизы
 
-Релизы выпускаются из ветки `dev` по мере готовности: Actions → Release → Run workflow. Версия ставится по дате, `ГГ.М.N`: `26.10.0`, `26.10.1`, … (N — номер релиза в месяце, ведущих нулей нет). Workflow проверяет текущий коммит `dev`, переименовывает раздел `Unreleased` в `CHANGELOG.md` в «версия / дата», записывает версию в `package.json`, коммитит это в `dev`, переводит `main` на тот же коммит и ставит тег одним атомарным push. Затем публикует архивы и установщик в GitHub Releases и образы `<версия>` и `latest` в Docker Hub. Без раздела `Unreleased` релиз не запускается; если за время проверок в `dev` появились новые коммиты или в `main` есть коммит, которого нет в `dev`, ничего не публикуется. Образы `dev` сообщают версию с меткой коммита: `26.10.0+dev.b95beaa`.
+Релизы выпускаются из ветки `main` по мере готовности: Actions → Release → Run workflow. Версия ставится по дате, `ГГ.М.N`: `26.10.0`, `26.10.1`, … (N — номер релиза в месяце, ведущих нулей нет). Workflow проверяет текущий коммит `main`, переименовывает раздел `Unreleased` в `CHANGELOG.md` в «версия / дата», записывает версию в `package.json`, коммитит это в `main`, переводит `release` на тот же коммит и ставит тег одним атомарным push. Затем публикует архивы и установщик в GitHub Releases и образы `<версия>` и `latest` в Docker Hub. Без раздела `Unreleased` релиз не запускается; если за время проверок в `main` появились новые коммиты или в `release` есть коммит, которого нет в `main`, ничего не публикуется. Образы `dev` сообщают версию с меткой коммита: `26.10.0+dev.b95beaa`.
 
-Рядом с архивами публикуется `SHA256SUMS.txt`, у каждого файла есть [attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) происхождения сборки. `npm audit` останавливает только релиз; в остальных проверках находки дают предупреждение, а еженедельный workflow Audit проверяет зависимости `dev`. Обновления зависимостей и actions присылает Dependabot (`.github/dependabot.yml`) в ветку `dev`; actions закреплены по SHA коммита.
+Рядом с архивами публикуется `SHA256SUMS.txt`, у каждого файла есть [attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) происхождения сборки. `npm audit` останавливает только релиз; в остальных проверках находки дают предупреждение, а еженедельный workflow Audit проверяет зависимости `main`. Обновления зависимостей и actions присылает Dependabot (`.github/dependabot.yml`) в ветку `main`; actions закреплены по SHA коммита.
 
-В `main` пишет только этот workflow. Правило защиты `main` может требовать линейную историю и запрещать force push и удаление, но не должно требовать проверок статуса: релизный коммит новый, проверок на нём ещё нет, и push из GitHub Actions остановится до публикации.
+В `release` пишет только этот workflow. Правило защиты `release` может требовать линейную историю и запрещать force push и удаление, но не должно требовать проверок статуса: релизный коммит новый, проверок на нём ещё нет, и push из GitHub Actions остановится до публикации.
 
-Workflow CI (`.github/workflows/ci.yml`) запускается на pull request и на push в `dev` и `main`. Проверки, уже пройденные на этом же коммите (pull request, влитый в `dev`; `dev`, переведённый в `main`), не повторяются: первая задача ищет успешные check runs по SHA коммита и пропускает их; образы Docker при этом собираются как обычно.
+Workflow CI (`.github/workflows/ci.yml`) запускается на pull request и на push в `main` и `release`. Проверки, уже пройденные на этом же коммите (pull request, влитый в `main`; `main`, переведённый в `release`), не повторяются: первая задача ищет успешные check runs по SHA коммита и пропускает их; образы Docker при этом собираются как обычно.
 
 ## Релизные проверки
 
