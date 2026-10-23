@@ -10,7 +10,7 @@ Self-hosted web catalog for INPX e-book libraries: Node.js 24 server, Vue 3 + Qu
 | `client/` | Web app (Vue 3, Quasar) | [client/AGENTS.md](client/AGENTS.md) |
 | `shared/` | Code used by both server and client | [shared/AGENTS.md](shared/AGENTS.md) |
 | `scripts/` | Tests and maintenance scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |
-| `docs/` | User docs (Russian), project docs, research, plans | [docs/AGENTS.md](docs/AGENTS.md) |
+| `docs/` | User docs (Russian), project docs, README screenshots, research, plans | [docs/AGENTS.md](docs/AGENTS.md) |
 | `build/` | Webpack configs, pkg packaging, release, Windows installer | |
 | `README.md` | Entry point (English): overview, Docker quick start, links to `README.ru.md` and `docs/` | |
 | `README.ru.md` | Entry point (Russian): overview, Docker quick start, links to `docs/` | |

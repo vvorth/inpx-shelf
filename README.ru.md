@@ -3,6 +3,13 @@ inpx-shelf
 
 [English version](./README.md)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/home-ru-dark.webp">
+  <img src="docs/images/home-ru-light.webp" alt="Главная страница inpx-shelf: полки «Продолжить чтение» и «Новое в библиотеке» с обложками книг">
+</picture>
+
+<sub>Демонстрационная библиотека классики в общественном достоянии; обложки сгенерированы для неё.</sub>
+
 > Проект основан на [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (форк [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). Подробнее — в [NOTICE.md](./NOTICE.md).
 
 Релизы выходят по мере готовности и нумеруются по дате, `ГГ.М.N`: `26.10.0`, `26.10.1`, … (год, месяц и номер релиза в месяце). Сборки и последняя версия — на [странице релизов](https://github.com/vvorth/inpx-shelf/releases); что изменилось — в [истории изменений](./CHANGELOG.md) (на английском), изменения, которые требуют действий от вас (конфиг, данные, OPDS, Kobo, переменные окружения), помечены **Action required**.

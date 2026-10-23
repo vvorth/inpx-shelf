@@ -3,6 +3,13 @@ inpx-shelf
 
 [Русская версия](./README.ru.md)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/home-en-dark.webp">
+  <img src="docs/images/home-en-light.webp" alt="inpx-shelf home page: Continue reading and New in the library shelves with book covers">
+</picture>
+
+<sub>A demo library of public domain classics; the covers are generated for it.</sub>
+
 > Based on [AceAsket/inpx-web](https://github.com/AceAsket/inpx-web) (a fork of [bookpauk/inpx-web](https://github.com/bookpauk/inpx-web)). See [NOTICE.md](./NOTICE.md).
 
 Releases ship when ready and are numbered by date, `YY.M.N`: `26.10.0`, `26.10.1`, … (year, month and the number of the release in that month). Downloads and the latest version are on the [releases page](https://github.com/vvorth/inpx-shelf/releases); what changed is in the [changelog](./CHANGELOG.md), and changes that need action from you (config, data, OPDS, Kobo, environment variables) are marked **Action required**.
