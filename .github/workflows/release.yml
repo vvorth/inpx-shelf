@@ -92,9 +92,12 @@ jobs:
       TAG: ${{ needs.version.outputs.tag }}
       RELEASE_DATE: ${{ needs.version.outputs.date }}
     steps:
+      # Full history: git checks locally that main is an ancestor of the release commit, and a
+      # shallow clone lacks main's commit whenever main is behind dev ("rejected (fetch first)").
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
