@@ -1,4 +1,4 @@
-Unreleased
+26.10.2 / 2026-10-27
 
 - Development moved from the `dev` branch to `main`, and `release` now holds the latest release (formerly `main`). The `dev` Docker image is built from `main`.
 - **Behaviour change:** environment variables for Telegram, SMTP and email (`TELEGRAM_*`, `SMTP_*`, `EMAIL_*`), cache sizes and cleaning (`INPX_BOOK_CACHE_SIZE*`, `INPX_COVER_CACHE_SIZE*`, `INPX_CACHE_CLEAN_*`), discovery (`INPX_DISCOVERY_*`) and the OPDS language (`INPX_OPDS_LANG`) now apply at every start and are never written to `config.json`; the admin panel shows such fields as locked and names the variable. Without the variable the value saved in the admin panel is used. `INPX_OPDS_LANG` now takes precedence over `opds.lang` in `config.json` (before, the file won).
