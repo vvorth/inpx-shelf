@@ -30,10 +30,10 @@ function resolveRequestLang(config = {}, req = null, requested = '') {
         || defaultLang;
 }
 
-//Язык OPDS: opds.lang в конфиге, INPX_OPDS_LANG, язык интерфейса по умолчанию, Accept-Language читалки, иначе русский
+//Язык OPDS: opds.lang в конфиге (INPX_OPDS_LANG задаёт его в ConfigManager.applyEnvOverrides),
+//язык интерфейса по умолчанию, Accept-Language читалки, иначе русский
 function resolveOpdsLang(config = {}, req = null) {
     return i18n.normalizeLang(config.opds && config.opds.lang)
-        || i18n.normalizeLang(process.env.INPX_OPDS_LANG)
         || i18n.normalizeLang(config.uiDefaults && config.uiDefaults.uiLang)
         || i18n.langFromAcceptLanguage(req && req.headers && req.headers['accept-language'])
         || 'ru';

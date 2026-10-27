@@ -10,15 +10,16 @@
             </q-btn>
         </div>
         <div class="admin-cache-settings-grid">
-            <q-input v-model.number="admin.adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :label="$t('settings.bookCacheMb')" />
-            <q-input v-model.number="admin.adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :label="$t('settings.coverCacheMb')" />
+            <q-input v-model.number="admin.adminCacheSettings.bookCacheSizeMb" outlined dense type="number" min="1" :disable="!!admin.adminCacheSettings.fromEnv.bookCacheSize" :label="$t('settings.bookCacheMb')" />
+            <q-input v-model.number="admin.adminCacheSettings.coverCacheSizeMb" outlined dense type="number" min="1" :disable="!!admin.adminCacheSettings.fromEnv.coverCacheSize" :label="$t('settings.coverCacheMb')" />
             <q-checkbox class="admin-cache-enabled-toggle" v-model="admin.adminCacheSettings.cacheCleanEnabled" size="32px" :label="$t('settings.scheduledRotation')" />
             <q-select v-model="admin.adminCacheSettings.cacheCleanFrequency" :options="adminCacheFrequencyOptions" outlined dense emit-value map-options :label="$t('settings.frequency')" :disable="!admin.adminCacheSettings.cacheCleanEnabled" />
             <q-select v-if="admin.adminCacheSettings.cacheCleanFrequency === 'weekly'" v-model="admin.adminCacheSettings.cacheCleanWeekDay" :options="admin.adminCacheWeekDayOptions" outlined dense emit-value map-options :label="$t('settings.dayWeek')" :disable="!admin.adminCacheSettings.cacheCleanEnabled" />
             <q-select v-if="admin.adminCacheSettings.cacheCleanFrequency === 'monthly'" v-model="admin.adminCacheSettings.cacheCleanMonthDay" :options="adminCacheMonthDayOptions" outlined dense emit-value map-options :label="$t('settings.dayMonth')" :disable="!admin.adminCacheSettings.cacheCleanEnabled" />
             <q-input class="admin-cache-time-input" v-model="admin.adminCacheSettings.cacheCleanTime" outlined dense type="time" :label="$t('settings.startTime')" :hint="$t('settings.serverTime')" persistent-hint :disable="!admin.adminCacheSettings.cacheCleanEnabled || admin.adminCacheSettings.cacheCleanFrequency === 'advanced'" />
-            <q-input v-model.number="admin.adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :label="$t('settings.cleanupTargetPercent')" />
+            <q-input v-model.number="admin.adminCacheSettings.cacheCleanTargetPercent" outlined dense type="number" min="10" max="100" :disable="!!admin.adminCacheSettings.fromEnv.cacheCleanTargetRatio" :label="$t('settings.cleanupTargetPercent')" />
         </div>
+        <div v-if="cacheEnvVars" class="admin-mail-subtitle">{{ $t('settings.fromEnv', {vars: cacheEnvVars}) }}</div>
         <div class="admin-cache-actions">
             <q-btn outline color="primary" dense no-caps icon="la la-book" :loading="admin.adminCleanBookCacheLoading" @click="admin.cleanAdminCache('book')">
                 {{ $t('settings.clearBookCache') }}
@@ -85,6 +86,12 @@ class AdminStorage {
     _props = {
         admin: {type: Object, required: true},
     };
+
+    //переменные окружения, закрывающие поля размеров и порога очистки (fromEnv с сервера: {ключ: переменная})
+    get cacheEnvVars() {
+        const fromEnv = this.admin.adminCacheSettings.fromEnv;
+        return ['bookCacheSize', 'coverCacheSize', 'cacheCleanTargetRatio'].filter(key => fromEnv[key]).map(key => fromEnv[key]).join(', ');
+    }
 
     get adminCacheFrequencyOptions() {
         return [

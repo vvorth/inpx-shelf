@@ -325,6 +325,7 @@ class AdminPage {
             cacheCleanMonthDay: 1,
             cacheCleanAdvancedSchedule: '',
             cacheCleanTargetPercent: 80,
+            fromEnv: {},
         };
     }
 
@@ -347,6 +348,7 @@ class AdminPage {
             cacheCleanMonthDay: schedule.monthDay,
             cacheCleanAdvancedSchedule: schedule.advancedSchedule,
             cacheCleanTargetPercent: Math.max(10, Math.min(100, Math.round(ratio * 100))),
+            fromEnv: limits.fromEnv || {},
         };
     }
 
@@ -821,12 +823,16 @@ class AdminPage {
     async saveAdminCacheSettings() {
         this.adminCacheSaveLoading = true;
         try {
-            await this.api.updateAdminCache({
-                bookCacheSizeMb: this.adminCacheSettings.bookCacheSizeMb,
-                coverCacheSizeMb: this.adminCacheSettings.coverCacheSizeMb,
-                cacheCleanSchedule: this.dailyCacheScheduleFromSettings(),
-                cacheCleanTargetPercent: this.adminCacheSettings.cacheCleanTargetPercent,
-            });
+            //поля, заданные окружением, не отправляются: сервер всё равно их не сохранит
+            const locked = this.adminCacheSettings.fromEnv;
+            const patch = {cacheCleanSchedule: this.dailyCacheScheduleFromSettings()};
+            if (!locked.bookCacheSize)
+                patch.bookCacheSizeMb = this.adminCacheSettings.bookCacheSizeMb;
+            if (!locked.coverCacheSize)
+                patch.coverCacheSizeMb = this.adminCacheSettings.coverCacheSizeMb;
+            if (!locked.cacheCleanTargetRatio)
+                patch.cacheCleanTargetPercent = this.adminCacheSettings.cacheCleanTargetPercent;
+            await this.api.updateAdminCache(patch);
             await this.api.updateConfig();
             await this.refreshAdminDashboard(false);
             this.$root.notify.success(t('settings.cacheRotationSettingsSaved'));

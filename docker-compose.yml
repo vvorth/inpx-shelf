@@ -13,7 +13,6 @@ services:
       INPX: /library/my-library.inpx
       LIBDIR: /library
       CACHE_DIR: /usr/local/bin/.inpx-web/cache
-      INPX_COVER_CACHE_SIZE_MB: "512"
       # OPDS catalog language: ru or en (default: automatic)
       # INPX_OPDS_LANG: en
       # Optional custom fb2cng YAML. Mount its whole directory read-only below.

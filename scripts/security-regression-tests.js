@@ -1075,6 +1075,76 @@ async function testAdminSaveKeepsEnvOutOfConfigFile() {
     });
 }
 
+// Environment values apply in memory at every start and never reach config.json: not on the first start, not on an
+// admin save; without the variables the next start is back to the defaults.
+async function testEnvOverridesAreNotWrittenOnFirstStart() {
+    await temporary(async(dir) => {
+        const ConfigManager = require('../server/config');
+        const WebWorker = require('../server/core/WebWorker');
+        const configFile = path.join(dir, 'config.json');
+        const MB = 1024*1024;
+        const manager = new ConfigManager();
+        const state = {...manager};
+        const env = {TELEGRAM_BOT_TOKEN: 'env-token', SMTP_HOST: 'smtp.env.test', INPX_BOOK_CACHE_SIZE: undefined,
+            INPX_BOOK_CACHE_SIZE_MB: '64', INPX_DISCOVERY_LIMIT: '3', INPX_OPDS_LANG: 'en', NODE_ENV: process.env.NODE_ENV};
+        const previous = Object.fromEntries(Object.keys(env).map(name => [name, process.env[name]]));
+        const setEnv = values => Object.entries(values).forEach(([name, value]) => (value === undefined ? delete process.env[name] : (process.env[name] = value)));
+        //init изменяет модуль конфигурации ветки: каждый запуск - со свежими умолчаниями
+        const configModules = ['base', 'development', 'production'].map(name => require.resolve(`../server/config/${name}`));
+        const start = async() => {
+            configModules.forEach(file => delete require.cache[file]);
+            manager.inited = false;
+            await manager.init(dir);
+            await manager.load();
+            return manager.config;
+        };
+        setEnv(env);
+        try {
+            let config = await start();
+            const file = await fs.readJson(configFile);
+            assert.strictEqual(file.telegramBotToken, '');
+            assert.strictEqual(file.smtpHost, '');
+            assert.strictEqual(file.telegramShareEnabled, false);
+            assert.strictEqual(file.emailShareEnabled, false);
+            assert.strictEqual(file.bookCacheSize, 2048*MB);
+            assert.strictEqual(file.discovery.shelfLimit, 8);
+            assert.strictEqual(file.opds.lang, '');
+
+            assert.strictEqual(config.telegramShareEnabled, true);
+            assert.strictEqual(config.telegramBotToken, 'env-token');
+            assert.strictEqual(config.emailShareEnabled, true);
+            assert.strictEqual(config.smtpHost, 'smtp.env.test');
+            assert.strictEqual(config.bookCacheSize, 64*MB);
+            assert.strictEqual(config.discovery.shelfLimit, 3);
+            assert.strictEqual(config.opds.lang, 'en');
+
+            const worker = Object.assign(Object.create(WebWorker.prototype), {config});
+            await worker.saveRuntimeConfigPatch({telegramBotToken: 'other', bookCacheSize: 1});
+            assert.deepStrictEqual(await fs.readJson(configFile), file);
+            assert.strictEqual(config.telegramBotToken, 'env-token');
+            assert.strictEqual(config.bookCacheSize, 64*MB);
+            assert.strictEqual(config.discovery.shelfLimit, 3);
+            assert.strictEqual(config.opds.lang, 'en');
+
+            setEnv(Object.fromEntries(Object.keys(env).filter(name => name !== 'NODE_ENV').map(name => [name, undefined])));
+            config = await start();
+            assert.strictEqual(config.telegramShareEnabled, false);
+            assert.strictEqual(config.telegramBotToken, '');
+            assert.strictEqual(config.emailShareEnabled, false);
+            assert.strictEqual(config.smtpHost, '');
+            assert.strictEqual(config.bookCacheSize, 2048*MB);
+            assert.strictEqual(config.discovery.shelfLimit, 8);
+            assert.strictEqual(config.opds.lang, '');
+        } finally {
+            setEnv(previous);
+            configModules.forEach(file => delete require.cache[file]);
+            for (const key of Object.keys(manager))
+                delete manager[key];
+            Object.assign(manager, state);
+        }
+    });
+}
+
 // A restore of a backup without remoteAccess ends the old tokens; the next save does not write them back.
 // Library sources are resolved as at startup: LIBDIR stays in effect though config.json has no libDir.
 async function testRestoreResetsKeysMissingFromBackup() {
@@ -1360,7 +1430,7 @@ async function testGunzipBufferIsBounded() {
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
     testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testAtomicWriteRetriesBusyRename, testMetricsReuseDirectorySizes, testMetricsTokenRateLimit, testCookieSecureFromForwardedProto, testOpdsQueryValuesAreStrings,
-    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebAppExtractionIsAtomic,
+    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testEnvOverridesAreNotWrittenOnFirstStart, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebAppExtractionIsAtomic,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testBrokenStoreWithoutCopyIsNotOverwritten, testBackupsKeepNewestTen, testWikidataDownloadWaitsForFileLock, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,

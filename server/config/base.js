@@ -4,26 +4,6 @@ const pckg = require('../../package.json');
 const execDir = path.resolve(__dirname, '..');
 const MB = 1024*1024;
 
-function sizeFromEnv(bytesName, mbName, fallback) {
-    const bytes = parseInt(process.env[bytesName] || '', 10);
-    if (Number.isFinite(bytes) && bytes >= 0)
-        return bytes;
-
-    const mb = parseInt(process.env[mbName] || '', 10);
-    if (Number.isFinite(mb) && mb >= 0)
-        return mb * MB;
-
-    return fallback;
-}
-
-function numberFromEnv(name, fallback) {
-    const value = parseFloat(process.env[name] || '');
-    return (Number.isFinite(value) ? value : fallback);
-}
-
-const defaultBookCacheSize = sizeFromEnv('INPX_BOOK_CACHE_SIZE', 'INPX_BOOK_CACHE_SIZE_MB', 2048*MB);
-const defaultCoverCacheSize = sizeFromEnv('INPX_COVER_CACHE_SIZE', 'INPX_COVER_CACHE_SIZE_MB', 512*MB);
-
 module.exports = {
     branch: 'unknown',
     version: pckg.version,
@@ -45,8 +25,8 @@ module.exports = {
     loggingEnabled: true,
     logServerStats: false,
     logQueries: false,
-    //переменные окружения INPX_* для настроек доступа применяет ConfigManager.applyEnvOverrides: здесь их нет,
-    //иначе config.json, созданный при первом запуске, сохранил бы их и после снятия переменной
+    //переменные окружения для ключей из propsToSave применяет ConfigManager.applyEnvOverrides: здесь только умолчания,
+    //иначе config.json, созданный при первом запуске, сохранил бы значение переменной и после её снятия
     loginRateLimitEnabled: true,
     loginRateLimitWindowMs: 15*60*1000,
     loginRateLimitMaxAttempts: 8,
@@ -71,16 +51,16 @@ module.exports = {
     dbVersion: '13',
 
     maxPayloadSize: 500,//in MB
-    apiMessageLimitMb: numberFromEnv('INPX_API_MESSAGE_LIMIT_MB', 1),
-    importLimitMb: numberFromEnv('INPX_IMPORT_LIMIT_MB', 16),
-    backupUploadLimitMb: numberFromEnv('INPX_BACKUP_UPLOAD_LIMIT_MB', 256),
-    backupExpandedLimitMb: numberFromEnv('INPX_BACKUP_EXPANDED_LIMIT_MB', 512),
-    maxFilesDirSize: defaultBookCacheSize,//legacy alias for bookCacheSize
-    bookCacheSize: defaultBookCacheSize,
-    coverCacheSize: defaultCoverCacheSize,
-    cacheCleanInterval: numberFromEnv('INPX_CACHE_CLEAN_INTERVAL_MINUTES', 24*60),//minutes
+    apiMessageLimitMb: 1,
+    importLimitMb: 16,
+    backupUploadLimitMb: 256,
+    backupExpandedLimitMb: 512,
+    maxFilesDirSize: 2048*MB,//legacy alias for bookCacheSize
+    bookCacheSize: 2048*MB,
+    coverCacheSize: 512*MB,
+    cacheCleanInterval: 24*60,//minutes
     cacheCleanSchedule: '0 0 * * *',
-    cacheCleanTargetRatio: numberFromEnv('INPX_CACHE_CLEAN_TARGET_RATIO', 0.8),
+    cacheCleanTargetRatio: 0.8,
     adminEventLogEnabled: true,
     adminEventLogSize: 300,
     inpxCheckInterval: 60,//minutes
@@ -103,7 +83,7 @@ module.exports = {
         root: '/opds',
         //каталог OPDS без входа (также INPX_OPDS_GUEST_ACCESS); профили и их списки по-прежнему по паролю OPDS
         guestAccess: false,
-        //язык каталога: '' - автоматически, 'ru', 'en' (также переменная окружения INPX_OPDS_LANG)
+        //язык каталога: '' - автоматически, 'ru', 'en' (переменная окружения INPX_OPDS_LANG важнее)
         lang: '',
     },
 
@@ -122,26 +102,26 @@ module.exports = {
     converterPaths: {},
     fb2cngConfigPath: process.env.INPX_FB2CNG_CONFIG || process.env.FB2CNG_CONFIG || '',
     fb2cngVersion: process.env.INPX_FB2CNG_VERSION || '',
-    telegramShareEnabled: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
-    telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
-    telegramCaptionTemplate: process.env.TELEGRAM_CAPTION_TEMPLATE || '${AUTHOR} - ${TITLE}',
-    emailShareEnabled: Boolean(process.env.SMTP_HOST),
-    smtpHost: process.env.SMTP_HOST || '',
-    smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
-    smtpSecure: process.env.SMTP_SECURE === 'true',
-    smtpUser: process.env.SMTP_USER || '',
-    smtpPass: process.env.SMTP_PASS || '',
-    emailFrom: process.env.EMAIL_FROM || process.env.SMTP_USER || '',
-    emailTo: process.env.EMAIL_TO || '',
+    telegramShareEnabled: false,
+    telegramBotToken: '',
+    telegramChatId: '',
+    telegramCaptionTemplate: '${AUTHOR} - ${TITLE}',
+    emailShareEnabled: false,
+    smtpHost: '',
+    smtpPort: 587,
+    smtpSecure: false,
+    smtpUser: '',
+    smtpPass: '',
+    emailFrom: '',
+    emailTo: '',
     deliveryRateLimit: 20,
     onlineReaderEnabled: true,
     discovery: {
         enabled: true,
-        shelfLimit: parseInt(process.env.INPX_DISCOVERY_LIMIT || '8', 10) || 8,
-        externalSource: String(process.env.INPX_DISCOVERY_EXTERNAL_SOURCE || 'none').trim().toLowerCase(),
-        externalName: String(process.env.INPX_DISCOVERY_EXTERNAL_NAME || '').trim(),
-        externalTtlMinutes: parseInt(process.env.INPX_DISCOVERY_EXTERNAL_TTL_MINUTES || '1440', 10) || 1440,
+        shelfLimit: 8,
+        externalSource: 'none',
+        externalName: '',
+        externalTtlMinutes: 1440,
     },
 
     uiDefaults: {

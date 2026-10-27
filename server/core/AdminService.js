@@ -15,6 +15,34 @@ const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
 
+//Имена переменных окружения для ключей, которые админка показывает закрытыми; задан ли ключ,
+//решает ConfigManager.applyEnvOverrides - правила разбора только там
+const ENV_VARS = {
+    integrations: {
+        telegramShareEnabled: ['TELEGRAM_BOT_TOKEN'],
+        telegramBotToken: ['TELEGRAM_BOT_TOKEN'],
+        telegramChatId: ['TELEGRAM_CHAT_ID'],
+        telegramCaptionTemplate: ['TELEGRAM_CAPTION_TEMPLATE'],
+        emailShareEnabled: ['SMTP_HOST'],
+        smtpHost: ['SMTP_HOST'],
+        smtpPort: ['SMTP_PORT'],
+        smtpSecure: ['SMTP_SECURE'],
+        smtpUser: ['SMTP_USER'],
+        smtpPass: ['SMTP_PASS'],
+        emailFrom: ['EMAIL_FROM', 'SMTP_USER'],
+        emailTo: ['EMAIL_TO'],
+    },
+    opds: {
+        lang: ['INPX_OPDS_LANG'],
+    },
+    cache: {
+        bookCacheSize: ['INPX_BOOK_CACHE_SIZE', 'INPX_BOOK_CACHE_SIZE_MB'],
+        coverCacheSize: ['INPX_COVER_CACHE_SIZE', 'INPX_COVER_CACHE_SIZE_MB'],
+        cacheCleanInterval: ['INPX_CACHE_CLEAN_INTERVAL_MINUTES'],
+        cacheCleanTargetRatio: ['INPX_CACHE_CLEAN_TARGET_RATIO'],
+    },
+};
+
 //Файлы каталога и его подкаталогов (на диске или в S3); каталоги, которые не прочитать, пропускаются
 async function* walkFiles(dir) {
     const stack = [dir];
@@ -41,6 +69,18 @@ async function* walkFiles(dir) {
 // настройки доставки, OPDS и общей витрины с записью в config.json.
 // Подмешивается в WebWorker.prototype: `this` - воркер.
 module.exports = {
+    //{ключ: переменная} для ключей группы, которые сейчас задаёт окружение
+    adminEnvKeys(group) {
+        const overrides = ConfigManager.applyEnvOverrides({});
+        const values = (group === 'opds' ? overrides.opds || {} : overrides);
+        const result = {};
+        for (const [key, names] of Object.entries(ENV_VARS[group])) {
+            if (utils.hasProp(values, key))
+                result[key] = names.find(name => process.env[name]) || names[0];
+        }
+        return result;
+    },
+
     async updateSharedDiscoveryConfig(userId = '', profileAccessToken = '', patch = {}) {
         this.checkMyState();
         await this.requireAdmin(userId, profileAccessToken);
@@ -68,6 +108,7 @@ module.exports = {
             smtpPassSet: hasSmtpPassword,
             emailFrom: String(this.config.emailFrom || ''),
             emailTo: String(this.config.emailTo || ''),
+            fromEnv: this.adminEnvKeys('integrations'),
         };
     },
 
@@ -84,6 +125,7 @@ module.exports = {
             guestAccess: opds.guestAccess === true,
             //переменная окружения задаёт значение при каждом запуске: переключатель в админке закрыт
             guestAccessFromEnv: utils.hasProp(process.env, 'INPX_OPDS_GUEST_ACCESS'),
+            fromEnv: this.adminEnvKeys('opds'),
         };
     },
 
@@ -298,6 +340,7 @@ module.exports = {
                 cacheCleanNextRunAt: this.cacheCleanNextRunAt(),
                 cacheCleanServerTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
                 cacheCleanTargetRatio,
+                fromEnv: this.adminEnvKeys('cache'),
             },
         };
     },
@@ -641,6 +684,8 @@ module.exports = {
             //в файл - только patch поверх его значений; в памяти patch действует после успешной записи
             await ConfigManager.savePatch(this.config, patch);
             Object.assign(this.config, patch);
+            //ключ, заданный переменной окружения, админка не меняет и в памяти
+            ConfigManager.applyEnvOverrides(this.config);
         });
     },
 

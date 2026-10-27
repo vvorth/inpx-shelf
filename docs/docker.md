@@ -137,8 +137,6 @@ docker run -d \
   -e INPX=/library/my-library.inpx \
   -e LIBDIR=/library \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
-  -e INPX_BOOK_CACHE_SIZE_MB=2048 \
-  -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
   vvorth/inpx-shelf:latest

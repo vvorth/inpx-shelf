@@ -59,7 +59,6 @@ async function init() {
 
     await configManager.load();
     config = configManager.config;
-    ConfigManager.applyEnvOverrides(config);
     require('./core/BookConverter').configure(config);
     branch = config.branch;
 

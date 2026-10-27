@@ -57,8 +57,6 @@ docker run -d \
   -e INPX=/library/my-library.inpx \
   -e LIBDIR=/library \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
-  -e INPX_BOOK_CACHE_SIZE_MB=2048 \
-  -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
   vvorth/inpx-shelf:latest
@@ -68,7 +66,7 @@ docker run -d \
 
 * в каталог `/library` должны быть смонтированы `.inpx` и файлы библиотеки, которые указаны в `INPX` и `LIBDIR`
 * каталог `/usr/local/bin/.inpx-web` хранит базу поиска, кэш, конфигурацию и служебные данные, поэтому его лучше выносить в постоянный volume
-* `INPX_BOOK_CACHE_SIZE_MB` и `INPX_COVER_CACHE_SIZE_MB` ограничивают подготовленные книги и обложки; при превышении лимита старые файлы удаляются до целевого размера
+* лимиты кэша книг и обложек задаются в `Администрирование → Хранилище` (или переменными `INPX_BOOK_CACHE_SIZE_MB` и `INPX_COVER_CACHE_SIZE_MB`, тогда поля закрыты); при превышении лимита старые файлы удаляются до целевого размера
 * библиотека подключена как `:ro`, чтобы контейнер не изменял исходные архивы
 * первый запуск может быть долгим: приложение создаёт поисковую базу, а конвертация в `epub` / `epub3` / `kepub` / `kfx` / `azw8` требует установленного в образе fb2cng, в `pdf` — MuPDF (образ с тегом `-pdf`)
 * порядок обновления описан в разделе [Обновление контейнера](./docs/docker.md#обновление-контейнера)

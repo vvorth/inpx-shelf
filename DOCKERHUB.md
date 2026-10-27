@@ -55,7 +55,6 @@ docker run -d \
   -e INPX=/library/my-library.inpx \
   -e LIBDIR=/library \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
-  -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
   vvorth/inpx-shelf:latest
@@ -80,7 +79,6 @@ docker run -d \
   -p 12380:12380 \
   -e DATA_DIR=/usr/local/bin/.inpx-web \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
-  -e INPX_COVER_CACHE_SIZE_MB=512 \
   -e INPX_LIBRARY_SOURCES='[
     {"id":"lib-rus-ec-official","name":"Lib.rus.ec official","inpx":"/library/_Lib.rus.ec - Official/librusec_local_fb2.inpx","libDir":"/library/_Lib.rus.ec - Official"},
     {"id":"flibusta-rus-ec","name":"Flibusta lib.rus.ec","inpx":"/library/fb2.flibusta.lib.rus.ec.7z/fb2.flibusta.lib.rus.ec.7z.inpx","libDir":"/library/fb2.flibusta.lib.rus.ec.7z"},
@@ -108,7 +106,6 @@ services:
       INPX: /library/my-library.inpx
       LIBDIR: /library
       CACHE_DIR: /usr/local/bin/.inpx-web/cache
-      INPX_COVER_CACHE_SIZE_MB: "512"
     volumes:
       - /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web
       - /mnt/user/books/my-library:/library:ro

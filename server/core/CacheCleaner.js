@@ -193,6 +193,7 @@ module.exports = {
                 cacheCleanNextRunAt: this.cacheCleanNextRunAt(),
                 cacheCleanServerTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
                 cacheCleanTargetRatio: this.cacheCleanTargetRatio(),
+                fromEnv: this.adminEnvKeys('cache'),
             },
         };
     },

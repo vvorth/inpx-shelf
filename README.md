@@ -56,8 +56,6 @@ docker run -d \
   -e INPX=/library/my-library.inpx \
   -e LIBDIR=/library \
   -e CACHE_DIR=/usr/local/bin/.inpx-web/cache \
-  -e INPX_BOOK_CACHE_SIZE_MB=2048 \
-  -e INPX_COVER_CACHE_SIZE_MB=512 \
   -v /mnt/user/appdata/inpx-shelf:/usr/local/bin/.inpx-web \
   -v /mnt/user/books/my-library:/library:ro \
   vvorth/inpx-shelf:latest
@@ -67,7 +65,7 @@ Notes:
 
 * mount the `.inpx` file and the library files named in `INPX` and `LIBDIR` into `/library`
 * `/usr/local/bin/.inpx-web` holds the search database, caches, config and service data, so keep it on a persistent volume
-* `INPX_BOOK_CACHE_SIZE_MB` and `INPX_COVER_CACHE_SIZE_MB` limit prepared books and covers; over the limit, the oldest files are removed down to the target size
+* the book and cover cache limits are set in `Administration → Storage` (or by `INPX_BOOK_CACHE_SIZE_MB` and `INPX_COVER_CACHE_SIZE_MB`, which lock those fields); over the limit, the oldest files are removed down to the target size
 * the library is mounted `:ro` so the container never changes the original archives
 * the first start can take a while: the app builds the search database; conversion to `epub` / `epub3` / `kepub` / `kfx` / `azw8` needs fb2cng in the image, and `pdf` needs MuPDF (the `-pdf` image tag)
 * how to update: [Updating the container](./docs/docker.md#обновление-контейнера)

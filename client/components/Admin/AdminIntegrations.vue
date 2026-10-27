@@ -4,42 +4,43 @@
         <section class="card">
             <h2 class="card-title">{{ $t('settings.mail.title') }}</h2>
             <div class="card-hint">{{ $t('admin.theTelegramBotAnd') }}</div>
+            <div v-if="integrationEnvVars" class="card-hint">{{ $t('settings.fromEnv', {vars: integrationEnvVars}) }}</div>
             <div class="admin-mail-section">
                 <div class="admin-mail-section-head">
-                    <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :label="$t('settings.mail.telegramEnabled')" />
+                    <q-checkbox v-model="integrations.telegramShareEnabled" size="34px" :disable="locked('telegramShareEnabled')" :label="$t('settings.mail.telegramEnabled')" />
                     <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="telegramTestLoading" @click="testTelegram">
                         {{ $t('settings.mail.test') }}
                     </q-btn>
                 </div>
                 <div class="admin-mail-grid">
-                    <q-input v-model="integrations.telegramBotToken" outlined dense clearable :type="telegramTokenVisible ? 'text' : 'password'" label="Telegram bot token">
+                    <q-input v-model="integrations.telegramBotToken" outlined dense clearable :disable="locked('telegramBotToken')" :type="telegramTokenVisible ? 'text' : 'password'" label="Telegram bot token">
                         <template #append>
                             <q-icon :name="telegramTokenVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="telegramTokenVisible = !telegramTokenVisible" />
                         </template>
                     </q-input>
-                    <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :label="$t('settings.mail.telegramCaption')" />
+                    <q-input class="admin-mail-wide" v-model="integrations.telegramCaptionTemplate" outlined dense clearable :disable="locked('telegramCaptionTemplate')" :label="$t('settings.mail.telegramCaption')" />
                 </div>
             </div>
 
             <div class="admin-mail-section">
                 <div class="admin-mail-section-head">
-                    <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :label="$t('settings.mail.smtpEnabled')" />
+                    <q-checkbox v-model="integrations.emailShareEnabled" size="34px" :disable="locked('emailShareEnabled')" :label="$t('settings.mail.smtpEnabled')" />
                     <q-btn flat dense no-caps color="primary" icon="la la-plug" :loading="smtpTestLoading" @click="testSmtp">
                         {{ $t('settings.mail.test') }}
                     </q-btn>
                 </div>
                 <div class="admin-mail-grid">
-                    <q-input v-model="integrations.smtpHost" outlined dense clearable label="SMTP host" />
-                    <q-input v-model.number="integrations.smtpPort" outlined dense type="number" label="SMTP port" />
-                    <q-input v-model="integrations.smtpUser" outlined dense clearable label="SMTP user" />
-                    <q-input v-model="integrations.smtpPass" outlined dense clearable :type="smtpPassVisible ? 'text' : 'password'" label="SMTP password">
+                    <q-input v-model="integrations.smtpHost" outlined dense clearable :disable="locked('smtpHost')" label="SMTP host" />
+                    <q-input v-model.number="integrations.smtpPort" outlined dense type="number" :disable="locked('smtpPort')" label="SMTP port" />
+                    <q-input v-model="integrations.smtpUser" outlined dense clearable :disable="locked('smtpUser')" label="SMTP user" />
+                    <q-input v-model="integrations.smtpPass" outlined dense clearable :disable="locked('smtpPass')" :type="smtpPassVisible ? 'text' : 'password'" label="SMTP password">
                         <template #append>
                             <q-icon :name="smtpPassVisible ? 'la la-eye-slash' : 'la la-eye'" class="password-visibility-toggle" @click="smtpPassVisible = !smtpPassVisible" />
                         </template>
                     </q-input>
-                    <q-input v-model="integrations.emailFrom" outlined dense clearable label="Email from" />
-                    <q-input v-model="integrations.emailTo" outlined dense clearable :label="$t('settings.mail.emailTo')" />
-                    <q-checkbox v-model="integrations.smtpSecure" size="34px" label="SMTP secure / SSL" />
+                    <q-input v-model="integrations.emailFrom" outlined dense clearable :disable="locked('emailFrom')" label="Email from" />
+                    <q-input v-model="integrations.emailTo" outlined dense clearable :disable="locked('emailTo')" :label="$t('settings.mail.emailTo')" />
+                    <q-checkbox v-model="integrations.smtpSecure" size="34px" :disable="locked('smtpSecure')" label="SMTP secure / SSL" />
                 </div>
             </div>
 
@@ -56,7 +57,7 @@
             <div class="admin-mail-grid">
                 <q-checkbox v-model="opdsSettings.enabled" size="34px" :label="$t('settings.opds.enabled')" />
                 <q-input v-model="opdsSettings.root" outlined dense clearable :label="$t('settings.opds.root')" />
-                <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :label="$t('settings.opds.lang')" />
+                <q-select v-model="opdsSettings.lang" :options="opdsLangOptions" outlined dense emit-value map-options :disable="opdsLangFromEnv" :label="$t('settings.opds.lang')" />
                 <q-input v-model="opdsSettings.user" outlined dense clearable :label="$t('settings.opds.user')" />
                 <q-input v-model="opdsSettings.password" outlined dense clearable :type="opdsPasswordVisible ? 'text' : 'password'" :label="$t('settings.opds.password')">
                     <template #append>
@@ -69,6 +70,9 @@
                 {{ $t('settings.opds.guestAccessHint') }}
                 <template v-if="opdsSettings.guestAccessFromEnv">
                     {{ $t('settings.opds.guestAccessFromEnv') }}
+                </template>
+                <template v-if="opdsLangFromEnv">
+                    {{ $t('settings.fromEnv', {vars: opdsLangFromEnv}) }}
                 </template>
             </div>
             <div class="admin-mail-actions">
@@ -85,6 +89,11 @@
 import vueComponent from '../vueComponent.js';
 import {t} from '../../share/i18n';
 import {isAdmin} from '../../share/session';
+
+//Поля, заданные окружением, не отправляются: сервер всё равно их не сохранит
+function withoutKeys(obj, keys) {
+    return Object.fromEntries(Object.entries(obj).filter(([key]) => !keys.includes(key)));
+}
 
 const componentOptions = {
     watch: {
@@ -123,6 +132,19 @@ class AdminIntegrations {
         return isAdmin(this.config);
     }
 
+    //fromEnv приходит с сервера: {ключ: переменная окружения}
+    get integrationEnvVars() {
+        return Array.from(new Set(Object.values(this.integrations.fromEnv))).join(', ');
+    }
+
+    get opdsLangFromEnv() {
+        return this.opdsSettings.fromEnv.lang;
+    }
+
+    locked(key) {
+        return key in this.integrations.fromEnv;
+    }
+
     loadSettings() {
         this.loadIntegrations();
         this.loadOpdsSettings();
@@ -150,6 +172,7 @@ class AdminIntegrations {
             smtpPass: '',
             emailFrom: '',
             emailTo: '',
+            fromEnv: {},
         };
     }
 
@@ -162,6 +185,7 @@ class AdminIntegrations {
             lang: '',
             guestAccess: false,
             guestAccessFromEnv: false,
+            fromEnv: {},
         };
     }
 
@@ -187,7 +211,7 @@ class AdminIntegrations {
 
         this.integrationSaveLoading = true;
         try {
-            const result = await this.api.updateAdminIntegrations(this.integrations);
+            const result = await this.api.updateAdminIntegrations(withoutKeys(this.integrations, ['fromEnv', ...Object.keys(this.integrations.fromEnv)]));
             if (result && result.integrations)
                 this.integrations = Object.assign(this.makeDefaultIntegrations(), result.integrations);
             await this.api.updateConfig();
@@ -240,7 +264,7 @@ class AdminIntegrations {
 
         this.opdsSaveLoading = true;
         try {
-            const result = await this.api.updateAdminOpds(this.opdsSettings);
+            const result = await this.api.updateAdminOpds(withoutKeys(this.opdsSettings, this.opdsLangFromEnv ? ['fromEnv', 'lang'] : ['fromEnv']));
             if (result && result.opds)
                 this.opdsSettings = Object.assign(this.makeDefaultOpdsSettings(), result.opds);
             await this.api.updateConfig();

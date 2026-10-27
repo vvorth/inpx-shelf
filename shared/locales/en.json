@@ -1644,6 +1644,7 @@
         "frequencyMonthly": "Monthly",
         "frequencyWeekly": "Weekly",
         "friday": "Friday",
+        "fromEnv": "Set by the environment: {vars}. Remove the variable to edit the value here.",
         "index": "Index",
         "interfaceLanguage": "Interface language",
         "library": "Library",

@@ -5,7 +5,9 @@
 По умолчанию, при первом запуске в рабочей директории будет создан конфигурационный файл `config.json`.
 При необходимости, можно настроить нужный параметр в этом файле вручную. Параметры командной
 строки и переменные окружения имеют больший приоритет, чем настройки из `config.json`, и в файл не записываются:
-сохранение настроек в администрировании пишет в `config.json` только изменённые параметры.
+сохранение настроек в администрировании пишет в `config.json` только изменённые параметры. Значение из переменной
+окружения применяется при каждом запуске, а в администрировании такое поле закрыто; уберите переменную, чтобы
+снова использовать значение из `config.json`.
 
 ```js
 {
@@ -109,15 +111,18 @@
     "metricsToken": "",
 
     // максимальный размер в байтах директории книжного кэша в <раб.дир>/public-files
-    // можно задать через INPX_BOOK_CACHE_SIZE_MB; maxFilesDirSize оставлен для совместимости
+    // INPX_BOOK_CACHE_SIZE (байты) или INPX_BOOK_CACHE_SIZE_MB: переменная главнее, в файл не пишется
+    // maxFilesDirSize оставлен для совместимости
     "bookCacheSize": 2147483648,
     "maxFilesDirSize": 2147483648,
 
     // максимальный размер в байтах директории кеша обложек в <раб.дир>/public-files/cover
+    // INPX_COVER_CACHE_SIZE (байты) или INPX_COVER_CACHE_SIZE_MB: переменная главнее, в файл не пишется
     "coverCacheSize": 536870912,
     
     // устаревший fallback периодичности ротации, в минутах
     // используется только если cacheCleanSchedule отсутствует
+    // INPX_CACHE_CLEAN_INTERVAL_MINUTES: переменная главнее, в файл не пишется
     "cacheCleanInterval": 1440,
 
     // cron-расписание ротации книжного кеша и кеша обложек по времени сервера
@@ -126,6 +131,7 @@
 
     // до какой доли лимита чистить кэш при превышении лимита
     // 0.8 означает: при лимите 2 GB удалить старые файлы примерно до 1.6 GB
+    // INPX_CACHE_CLEAN_TARGET_RATIO: переменная главнее, в файл не пишется
     "cacheCleanTargetRatio": 0.8,
 
     // периодичность проверки изменений .inpx-файла, в минутах
@@ -158,7 +164,8 @@
         // каталог OPDS и скачивание книг без входа; профили и их подборки - по паролю OPDS (INPX_OPDS_GUEST_ACCESS)
         "guestAccess": false,
         // язык каталога: "ru", "en" или "" - автоматически
-        // (переменная окружения INPX_OPDS_LANG, затем uiDefaults.uiLang, затем заголовок Accept-Language читалки)
+        // (переменная окружения INPX_OPDS_LANG главнее и в файл не пишется, затем uiDefaults.uiLang,
+        // затем заголовок Accept-Language читалки)
         "lang": ""
     },
 
@@ -183,10 +190,14 @@
     },
 
     // отправка книг; получатель всегда берётся из текущего профиля пользователя
+    // переменные окружения главнее и в файл не пишутся:
+    // TELEGRAM_BOT_TOKEN (заодно включает отправку в Telegram), TELEGRAM_CHAT_ID, TELEGRAM_CAPTION_TEMPLATE
     "telegramShareEnabled": false,
     "telegramBotToken": "",
     "telegramChatId": "",
     "telegramCaptionTemplate": "${AUTHOR} - ${TITLE}",
+    // SMTP_HOST (заодно включает отправку на email), SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS,
+    // EMAIL_FROM (если не задана - SMTP_USER), EMAIL_TO
     "emailShareEnabled": false,
     "smtpHost": "",
     "smtpPort": 587,
@@ -206,6 +217,9 @@
     "onlineReaderEnabled": true,
 
     // витрины и внешний источник
+    // переменные окружения главнее и в файл не пишутся: INPX_DISCOVERY_LIMIT (shelfLimit),
+    // INPX_DISCOVERY_EXTERNAL_SOURCE, INPX_DISCOVERY_EXTERNAL_NAME, INPX_DISCOVERY_EXTERNAL_TTL_MINUTES
+    // общие настройки витрины из администрирования (reading-lists.json) главнее config.discovery
     "discovery": {
         "enabled": true,
         "shelfLimit": 8,

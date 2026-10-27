@@ -4,6 +4,9 @@ const fs = require('fs-extra');
 const os = require('os');
 const SecretStore = require('../core/SecretStore');
 const {withFileTransaction, writeFileAtomic} = require('../core/FilePersistence');
+const {normalizeLang} = require('../../shared/i18nEngine');
+
+const MB = 1024*1024;
 
 const branchFilename = __dirname + '/application_env';
 
@@ -99,14 +102,43 @@ async function resolveInstallMode(config = {}) {
     return 'native';
 }
 
+function hasEnv(name) {
+    return Object.prototype.hasOwnProperty.call(process.env, name);
+}
+
+const toInt = value => parseInt(value, 10);
+
+// Число из переменной окружения; не задана, пустая или не число - undefined.
+function envNumber(name, parse = Number) {
+    const value = String(process.env[name] || '').trim();
+    const number = (value ? parse(value) : NaN);
+    return (Number.isFinite(number) ? number : undefined);
+}
+
+// Размер кеша: сначала в байтах, затем в МБ.
+function envSize(bytesName, mbName) {
+    const bytes = envNumber(bytesName, toInt);
+    if (bytes >= 0)
+        return bytes;
+    const mb = envNumber(mbName, toInt);
+    return (mb >= 0 ? mb * MB : undefined);
+}
+
 // Переменные окружения поверх config.json: действуют в памяти, в файл не пишутся.
 function applyEnvOverrides(targetConfig) {
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_PROXY_BIND_PROFILE'))
+    if (hasEnv('INPX_PROXY_BIND_PROFILE'))
         targetConfig.proxyBindProfile = process.env.INPX_PROXY_BIND_PROFILE === 'true';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_GUEST_ACCESS'))
+    if (hasEnv('INPX_GUEST_ACCESS'))
         targetConfig.guestAccess = process.env.INPX_GUEST_ACCESS === 'true';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_OPDS_GUEST_ACCESS'))
-        targetConfig.opds = Object.assign({}, targetConfig.opds, {guestAccess: process.env.INPX_OPDS_GUEST_ACCESS === 'true'});
+
+    const opds = {};
+    if (hasEnv('INPX_OPDS_GUEST_ACCESS'))
+        opds.guestAccess = process.env.INPX_OPDS_GUEST_ACCESS === 'true';
+    if (hasEnv('INPX_OPDS_LANG'))
+        opds.lang = normalizeLang(process.env.INPX_OPDS_LANG);
+    if (!_.isEmpty(opds))
+        targetConfig.opds = Object.assign({}, targetConfig.opds, opds);
+
     for (const [field, variable] of Object.entries({
         apiMessageLimitMb: 'INPX_API_MESSAGE_LIMIT_MB',
         importLimitMb: 'INPX_IMPORT_LIMIT_MB',
@@ -116,29 +148,75 @@ function applyEnvOverrides(targetConfig) {
         conversionQueueLimit: 'INPX_CONVERSION_QUEUE_LIMIT',
         conversionTimeoutMs: 'INPX_CONVERSION_TIMEOUT_MS',
         conversionQueueTimeoutMs: 'INPX_CONVERSION_QUEUE_TIMEOUT_MS',
+        cacheCleanInterval: 'INPX_CACHE_CLEAN_INTERVAL_MINUTES',
+        cacheCleanTargetRatio: 'INPX_CACHE_CLEAN_TARGET_RATIO',
     })) {
-        if (Object.prototype.hasOwnProperty.call(process.env, variable))
-            targetConfig[field] = Number(process.env[variable]);
+        const value = envNumber(variable);
+        if (value !== undefined)
+            targetConfig[field] = value;
     }
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_REQUIRE_AUTH'))
+
+    const bookCacheSize = envSize('INPX_BOOK_CACHE_SIZE', 'INPX_BOOK_CACHE_SIZE_MB');
+    if (bookCacheSize !== undefined)
+        Object.assign(targetConfig, {bookCacheSize, maxFilesDirSize: bookCacheSize});
+    const coverCacheSize = envSize('INPX_COVER_CACHE_SIZE', 'INPX_COVER_CACHE_SIZE_MB');
+    if (coverCacheSize !== undefined)
+        targetConfig.coverCacheSize = coverCacheSize;
+
+    if (process.env.TELEGRAM_BOT_TOKEN)
+        Object.assign(targetConfig, {telegramShareEnabled: true, telegramBotToken: process.env.TELEGRAM_BOT_TOKEN});
+    if (hasEnv('TELEGRAM_CHAT_ID'))
+        targetConfig.telegramChatId = process.env.TELEGRAM_CHAT_ID;
+    if (process.env.TELEGRAM_CAPTION_TEMPLATE)
+        targetConfig.telegramCaptionTemplate = process.env.TELEGRAM_CAPTION_TEMPLATE;
+
+    if (process.env.SMTP_HOST)
+        Object.assign(targetConfig, {emailShareEnabled: true, smtpHost: process.env.SMTP_HOST});
+    const smtpPort = envNumber('SMTP_PORT', toInt);
+    if (smtpPort !== undefined)
+        targetConfig.smtpPort = smtpPort;
+    if (hasEnv('SMTP_SECURE'))
+        targetConfig.smtpSecure = process.env.SMTP_SECURE === 'true';
+    for (const [field, variable] of Object.entries({smtpUser: 'SMTP_USER', smtpPass: 'SMTP_PASS', emailTo: 'EMAIL_TO'})) {
+        if (hasEnv(variable))
+            targetConfig[field] = process.env[variable];
+    }
+    if (hasEnv('EMAIL_FROM') || hasEnv('SMTP_USER'))
+        targetConfig.emailFrom = process.env.EMAIL_FROM || process.env.SMTP_USER || '';
+
+    const discovery = {};
+    const shelfLimit = envNumber('INPX_DISCOVERY_LIMIT', toInt);
+    if (shelfLimit)
+        discovery.shelfLimit = shelfLimit;
+    if (hasEnv('INPX_DISCOVERY_EXTERNAL_SOURCE'))
+        discovery.externalSource = String(process.env.INPX_DISCOVERY_EXTERNAL_SOURCE).trim().toLowerCase() || 'none';
+    if (hasEnv('INPX_DISCOVERY_EXTERNAL_NAME'))
+        discovery.externalName = String(process.env.INPX_DISCOVERY_EXTERNAL_NAME).trim();
+    const externalTtlMinutes = envNumber('INPX_DISCOVERY_EXTERNAL_TTL_MINUTES', toInt);
+    if (externalTtlMinutes)
+        discovery.externalTtlMinutes = externalTtlMinutes;
+    if (!_.isEmpty(discovery))
+        targetConfig.discovery = Object.assign({}, targetConfig.discovery, discovery);
+
+    if (hasEnv('INPX_REQUIRE_AUTH'))
         targetConfig.requireAuth = process.env.INPX_REQUIRE_AUTH === 'true';
     if (process.env.INPX_AUTH_MODE)
         targetConfig.authMode = String(process.env.INPX_AUTH_MODE || '').trim().toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_TRUST_PROXY'))
+    if (hasEnv('INPX_TRUST_PROXY'))
         targetConfig.trustProxy = process.env.INPX_TRUST_PROXY === 'true';
     if (process.env.INPX_PROXY_AUTH_HEADER)
         targetConfig.proxyAuthHeader = process.env.INPX_PROXY_AUTH_HEADER;
     if (process.env.INPX_TRUSTED_PROXY_CIDRS)
         targetConfig.trustedProxyCidrs = String(process.env.INPX_TRUSTED_PROXY_CIDRS || '').split(',').map(item => item.trim()).filter(Boolean);
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_AUTH_EXEMPT_HEALTH'))
+    if (hasEnv('INPX_AUTH_EXEMPT_HEALTH'))
         targetConfig.authExemptHealth = process.env.INPX_AUTH_EXEMPT_HEALTH !== 'false';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_ENABLED'))
+    if (hasEnv('INPX_METRICS_ENABLED'))
         targetConfig.metricsEnabled = process.env.INPX_METRICS_ENABLED === 'true';
     if (process.env.INPX_METRICS_PATH)
         targetConfig.metricsPath = process.env.INPX_METRICS_PATH;
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_METRICS_TOKEN'))
+    if (hasEnv('INPX_METRICS_TOKEN'))
         targetConfig.metricsToken = process.env.INPX_METRICS_TOKEN || '';
-    if (Object.prototype.hasOwnProperty.call(process.env, 'INPX_LOGIN_RATE_LIMIT_ENABLED'))
+    if (hasEnv('INPX_LOGIN_RATE_LIMIT_ENABLED'))
         targetConfig.loginRateLimitEnabled = process.env.INPX_LOGIN_RATE_LIMIT_ENABLED !== 'false';
     return targetConfig;
 }
@@ -148,7 +226,8 @@ async function readFileConfig(configFile) {
     return (await fs.pathExists(configFile) ? _.pick(await fs.readJson(configFile), propsToSave) : {});
 }
 
-// Ключ, заданный переменной окружения, сохраняет значение из файла (opds собирается из рабочего конфига целиком).
+// Ключ, заданный переменной окружения, сохраняет значение из файла; в opds и discovery - по вложенным ключам
+// (opds собирается из рабочего конфига целиком).
 function keepFileValues(data, file, overrides) {
     for (const [key, value] of Object.entries(overrides)) {
         if (_.isPlainObject(value) && _.isPlainObject(data[key]))
@@ -325,6 +404,8 @@ class ConfigManager {
                 this._config.installMode = await resolveInstallMode(this._config);
                 await this.save();
             }
+            //после записи файла: переменные окружения действуют только в памяти
+            applyEnvOverrides(this._config);
         } catch(e) {
             throw new Error(`Error while loading "${this._config.configFile}": ${e.message}`, {cause: e});
         }
