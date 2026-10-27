@@ -325,6 +325,7 @@ async function prepareConvertedFile({
 }
 
 module.exports = {
+    targetFormats: [...targetFormats],
     configure: config => runtime.configure(config),
     canConvertTo,
     canConvertSourceTo,

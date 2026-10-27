@@ -42,9 +42,10 @@ module.exports = {
     metricsEnabled: false,
     metricsPath: '/metrics',
     metricsToken: '',
-    koboEnabled: process.env.INPX_KOBO_ENABLED === 'true',
-    koboPublicUrl: String(process.env.INPX_KOBO_PUBLIC_URL || '').trim(),
-    kosyncEnabled: process.env.INPX_KOSYNC_ENABLED === 'true',
+    //синхронизация читалок (также INPX_KOBO_ENABLED, INPX_KOBO_PUBLIC_URL, INPX_KOSYNC_ENABLED)
+    koboEnabled: false,
+    koboPublicUrl: '',
+    kosyncEnabled: false,
 
     // Поправить при критических изменениях разбора INPX (InpxParser, LibraryImport):
     // входит в хеш библиотеки, и БД библиотеки будет перестроена.
@@ -93,12 +94,13 @@ module.exports = {
     adminLogin: process.env.INPX_ADMIN_LOGIN || 'admin',
     adminPassword: process.env.INPX_ADMIN_PASSWORD || '',
     resetAdminPassword: process.env.INPX_RESET_ADMIN_PASSWORD === 'true',
-    conversionEnabled: process.env.INPX_ENABLE_CONVERSION !== 'false',
+    //также INPX_ENABLE_CONVERSION и INPX_CONVERSION_FORMATS
+    conversionEnabled: true,
     conversionConcurrency: 2,
     conversionQueueLimit: 16,
     conversionTimeoutMs: 120000,
     conversionQueueTimeoutMs: 120000,
-    conversionFormats: String(process.env.INPX_CONVERSION_FORMATS || 'epub,epub3,kepub,kfx,azw8,pdf').split(',').map(item => item.trim().toLowerCase()).filter(Boolean),
+    conversionFormats: ['epub', 'epub3', 'kepub', 'kfx', 'azw8', 'pdf'],
     converterPaths: {},
     fb2cngConfigPath: process.env.INPX_FB2CNG_CONFIG || process.env.FB2CNG_CONFIG || '',
     fb2cngVersion: process.env.INPX_FB2CNG_VERSION || '',

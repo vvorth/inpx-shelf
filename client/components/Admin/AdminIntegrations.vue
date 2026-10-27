@@ -81,6 +81,36 @@
                 </q-btn>
             </div>
         </section>
+
+        <section class="card">
+            <h2 class="card-title">{{ $t('settings.sync.title') }}</h2>
+            <div class="card-hint">{{ $t('settings.sync.subtitle') }}</div>
+            <div class="admin-mail-grid">
+                <q-checkbox v-model="sync.koboEnabled" size="34px" :disable="lockedSync('koboEnabled')" :label="$t('settings.sync.koboEnabled')" />
+                <q-input v-model="sync.koboPublicUrl" outlined dense clearable :disable="lockedSync('koboPublicUrl')" :label="$t('settings.sync.koboPublicUrl')" :hint="$t('settings.sync.koboPublicUrlHint')" />
+                <q-checkbox v-model="sync.kosyncEnabled" size="34px" :disable="lockedSync('kosyncEnabled')" :label="$t('settings.sync.kosyncEnabled')" />
+                <q-checkbox v-model="sync.conversionEnabled" size="34px" :disable="lockedSync('conversionEnabled')" :label="$t('settings.sync.conversionEnabled')" />
+                <q-select
+                    class="admin-mail-wide"
+                    v-model="sync.conversionFormats"
+                    :options="syncFormatOptions"
+                    outlined
+                    dense
+                    multiple
+                    use-chips
+                    emit-value
+                    map-options
+                    :disable="lockedSync('conversionFormats')"
+                    :label="$t('settings.sync.conversionFormats')"
+                />
+            </div>
+            <div v-if="syncEnvVars" class="card-hint">{{ $t('settings.fromEnv', {vars: syncEnvVars}) }}</div>
+            <div class="admin-mail-actions">
+                <q-btn color="primary" dense no-caps icon="la la-save" :loading="syncSaveLoading" @click="saveSyncSettings">
+                    {{ $t('settings.sync.save') }}
+                </q-btn>
+            </div>
+        </section>
     </div>
 </template>
 
@@ -109,11 +139,13 @@ class AdminIntegrations {
     smtpTestLoading = false;
     telegramTestLoading = false;
     opdsSaveLoading = false;
+    syncSaveLoading = false;
     smtpPassVisible = false;
     telegramTokenVisible = false;
     opdsPasswordVisible = false;
     integrations = this.makeDefaultIntegrations();
     opdsSettings = this.makeDefaultOpdsSettings();
+    sync = this.makeDefaultSyncSettings();
 
     created() {
         this.api = this.$root.api;
@@ -137,6 +169,14 @@ class AdminIntegrations {
         return Array.from(new Set(Object.values(this.integrations.fromEnv))).join(', ');
     }
 
+    get syncEnvVars() {
+        return Array.from(new Set(Object.values(this.sync.fromEnv))).join(', ');
+    }
+
+    get syncFormatOptions() {
+        return this.sync.availableFormats.map(format => ({label: format, value: format}));
+    }
+
     get opdsLangFromEnv() {
         return this.opdsSettings.fromEnv.lang;
     }
@@ -145,9 +185,14 @@ class AdminIntegrations {
         return key in this.integrations.fromEnv;
     }
 
+    lockedSync(key) {
+        return key in this.sync.fromEnv;
+    }
+
     loadSettings() {
         this.loadIntegrations();
         this.loadOpdsSettings();
+        this.loadSyncSettings();
     }
 
     get opdsLangOptions() {
@@ -189,6 +234,18 @@ class AdminIntegrations {
         };
     }
 
+    makeDefaultSyncSettings() {
+        return {
+            koboEnabled: false,
+            koboPublicUrl: '',
+            kosyncEnabled: false,
+            conversionEnabled: true,
+            conversionFormats: [],
+            availableFormats: [],
+            fromEnv: {},
+        };
+    }
+
     loadIntegrations() {
         const source = this.config.adminIntegrations || {};
         this.integrations = Object.assign(this.makeDefaultIntegrations(), source, {
@@ -203,6 +260,10 @@ class AdminIntegrations {
         this.opdsSettings = Object.assign(this.makeDefaultOpdsSettings(), source, {
             password: source.password || (source.passwordSet ? '__KEEP__' : ''),
         });
+    }
+
+    loadSyncSettings() {
+        this.sync = Object.assign(this.makeDefaultSyncSettings(), this.config.adminSync || {});
     }
 
     async saveIntegrations(options = {}) {
@@ -275,6 +336,26 @@ class AdminIntegrations {
             return false;
         } finally {
             this.opdsSaveLoading = false;
+        }
+    }
+
+    async saveSyncSettings() {
+        if (!this.canEditExternalDiscovery)
+            return false;
+
+        this.syncSaveLoading = true;
+        try {
+            const result = await this.api.updateAdminSync(withoutKeys(this.sync, ['fromEnv', 'availableFormats', ...Object.keys(this.sync.fromEnv)]));
+            if (result && result.sync)
+                this.sync = Object.assign(this.makeDefaultSyncSettings(), result.sync);
+            await this.api.updateConfig();
+            this.$root.notify.success(t('settings.sync.saved'));
+            return true;
+        } catch (e) {
+            this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
+            return false;
+        } finally {
+            this.syncSaveLoading = false;
         }
     }
 }

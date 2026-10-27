@@ -40,6 +40,7 @@ const workerActions = {
     'update-admin-integrations': (w, r) => w.updateAdminIntegrationConfig(r.userId, r.profileAccessToken, r.integrations || {}),
     'test-admin-integration': (w, r) => w.testAdminIntegrationConfig(r.userId, r.profileAccessToken, r.kind),
     'update-admin-opds': (w, r) => w.updateAdminOpdsConfig(r.userId, r.profileAccessToken, r.opds || {}),
+    'update-admin-sync': (w, r) => w.updateAdminSyncConfig(r.userId, r.profileAccessToken, r.sync || {}),
     'update-admin-guest-access': (w, r) => w.updateAdminGuestAccess(r.userId, r.profileAccessToken, r.guestAccess === true),
     'get-admin-dashboard': (w, r) => w.getAdminDashboard(r.userId, r.profileAccessToken),
     'get-admin-dashboard-metrics': (w, r) => w.getAdminDashboardMetrics(r.userId, r.profileAccessToken),
@@ -501,6 +502,7 @@ class ApiController {
         if (currentUser && currentUser.isAdmin && config.profileAuthorized) {
             config.adminIntegrations = this.webWorker.getAdminIntegrationConfig();
             config.adminOpds = this.webWorker.getAdminOpdsConfig();
+            config.adminSync = this.webWorker.getAdminSyncConfig();
             config.adminGuestAccess = this.webWorker.getAdminGuestAccess();
         }
 

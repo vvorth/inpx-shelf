@@ -61,11 +61,16 @@ const propsToSave = [
     'adminEventLogSize',
     'inpxCheckInterval',
     'converterPaths',
+    'conversionEnabled',
+    'conversionFormats',
     'conversionConcurrency',
     'conversionQueueLimit',
     'conversionTimeoutMs',
     'conversionQueueTimeoutMs',
     'remoteAccess',
+    'koboEnabled',
+    'koboPublicUrl',
+    'kosyncEnabled',
     'server',
     'opds',
     'latestReleaseLink',
@@ -197,6 +202,17 @@ function applyEnvOverrides(targetConfig) {
         discovery.externalTtlMinutes = externalTtlMinutes;
     if (!_.isEmpty(discovery))
         targetConfig.discovery = Object.assign({}, targetConfig.discovery, discovery);
+
+    if (hasEnv('INPX_KOBO_ENABLED'))
+        targetConfig.koboEnabled = process.env.INPX_KOBO_ENABLED === 'true';
+    if (String(process.env.INPX_KOBO_PUBLIC_URL || '').trim())
+        targetConfig.koboPublicUrl = String(process.env.INPX_KOBO_PUBLIC_URL).trim();
+    if (hasEnv('INPX_KOSYNC_ENABLED'))
+        targetConfig.kosyncEnabled = process.env.INPX_KOSYNC_ENABLED === 'true';
+    if (hasEnv('INPX_ENABLE_CONVERSION'))
+        targetConfig.conversionEnabled = process.env.INPX_ENABLE_CONVERSION !== 'false';
+    if (process.env.INPX_CONVERSION_FORMATS)
+        targetConfig.conversionFormats = String(process.env.INPX_CONVERSION_FORMATS).split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
 
     if (hasEnv('INPX_REQUIRE_AUTH'))
         targetConfig.requireAuth = process.env.INPX_REQUIRE_AUTH === 'true';

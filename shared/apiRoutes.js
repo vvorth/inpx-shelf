@@ -100,6 +100,7 @@ const writes = [
     ['update-admin-integrations', 'PATCH', 'admin/integrations'],
     ['test-admin-integration', 'POST', 'admin/integrations/:kind/test'],
     ['update-admin-opds', 'PATCH', 'admin/opds'],
+    ['update-admin-sync', 'PATCH', 'admin/sync'],
     ['update-admin-guest-access', 'PUT', 'admin/guest-access'],
     ['update-admin-event-log', 'PUT', 'admin/event-log'],
     ['update-admin-cache', 'PATCH', 'admin/cache'],

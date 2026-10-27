@@ -11,6 +11,7 @@ const ConfigManager = require('../config');
 const {withFileTransaction} = require('./FilePersistence');
 const {getEnabledLibrarySources, getAllLibrarySources, normalizeRemoteSource} = require('./LibrarySources');
 const remoteAccess = require('./RemoteAccess');
+const BookConverter = require('./BookConverter');
 const i18n = require('./i18n');
 const {t, msg} = i18n;
 const {cleanDirSchedule, cleanDirMaxSize, cleanDirTargetSize} = require('./CacheSchedule');
@@ -40,6 +41,13 @@ const ENV_VARS = {
         coverCacheSize: ['INPX_COVER_CACHE_SIZE', 'INPX_COVER_CACHE_SIZE_MB'],
         cacheCleanInterval: ['INPX_CACHE_CLEAN_INTERVAL_MINUTES'],
         cacheCleanTargetRatio: ['INPX_CACHE_CLEAN_TARGET_RATIO'],
+    },
+    sync: {
+        koboEnabled: ['INPX_KOBO_ENABLED'],
+        koboPublicUrl: ['INPX_KOBO_PUBLIC_URL'],
+        kosyncEnabled: ['INPX_KOSYNC_ENABLED'],
+        conversionEnabled: ['INPX_ENABLE_CONVERSION'],
+        conversionFormats: ['INPX_CONVERSION_FORMATS'],
     },
 };
 
@@ -127,6 +135,58 @@ module.exports = {
             guestAccessFromEnv: utils.hasProp(process.env, 'INPX_OPDS_GUEST_ACCESS'),
             fromEnv: this.adminEnvKeys('opds'),
         };
+    },
+
+    //синхронизация читалек и конвертация: включение Kobo и KOReader регистрирует маршруты при запуске
+    getAdminSyncConfig() {
+        return {
+            koboEnabled: this.config.koboEnabled === true,
+            koboPublicUrl: String(this.config.koboPublicUrl || ''),
+            kosyncEnabled: this.config.kosyncEnabled === true,
+            conversionEnabled: this.config.conversionEnabled !== false,
+            conversionFormats: (Array.isArray(this.config.conversionFormats) ? this.config.conversionFormats : []),
+            availableFormats: BookConverter.targetFormats,
+            fromEnv: this.adminEnvKeys('sync'),
+        };
+    },
+
+    normalizeAdminSyncPatch(patch = {}) {
+        const normalized = {};
+        for (const key of ['koboEnabled', 'kosyncEnabled', 'conversionEnabled']) {
+            if (utils.hasProp(patch, key))
+                normalized[key] = (patch[key] === true);
+        }
+        if (utils.hasProp(patch, 'koboPublicUrl')) {
+            const value = String(patch.koboPublicUrl || '').trim().replace(/\/+$/, '');
+            if (value) {
+                let url = null;
+                try {
+                    url = new URL(value);
+                } catch (e) {
+                    //
+                }
+                //те же требования, что у KoboService.publicBase: иначе устройства получат негодную ссылку
+                if (!url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash)
+                    throw new Error(t('errors.koboPublicUrlInvalid'));
+            }
+            normalized.koboPublicUrl = value;
+        }
+        if (utils.hasProp(patch, 'conversionFormats')) {
+            const list = (Array.isArray(patch.conversionFormats) ? patch.conversionFormats : String(patch.conversionFormats || '').split(','));
+            normalized.conversionFormats = BookConverter.targetFormats.filter(format => list.map(item => String(item || '').trim().toLowerCase()).includes(format));
+        }
+        return normalized;
+    },
+
+    async updateAdminSyncConfig(userId = '', profileAccessToken = '', patch = {}) {
+        this.checkMyState();
+        await this.requireAdmin(userId, profileAccessToken);
+
+        const normalized = this.normalizeAdminSyncPatch(patch || {});
+        await this.saveRuntimeConfigPatch(normalized);
+        this.addAdminEvent('info', 'settings', msg('admin.syncSettingsUpdated'));
+
+        return {sync: this.getAdminSyncConfig()};
     },
 
     getAdminGuestAccess() {

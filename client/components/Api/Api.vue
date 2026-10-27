@@ -395,6 +395,10 @@ class Api {
         return await this.request({action: 'update-admin-opds', opds}, 120);
     }
 
+    async updateAdminSync(sync = {}) {
+        return await this.request({action: 'update-admin-sync', sync}, 120);
+    }
+
     async updateAdminGuestAccess(guestAccess = false) {
         return await this.request({action: 'update-admin-guest-access', guestAccess}, 120);
     }

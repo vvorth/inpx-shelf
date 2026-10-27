@@ -108,6 +108,11 @@ module.exports = {
             'emailTo',
             'discovery',
             'uiDefaults',
+            'koboEnabled',
+            'koboPublicUrl',
+            'kosyncEnabled',
+            'conversionEnabled',
+            'conversionFormats',
         ];
     },
 
@@ -144,6 +149,11 @@ module.exports = {
                     item.remote.token = current.get(item.id) || '';
             }
         }
+
+        //те же проверки, что при сохранении в админке: негодный адрес Kobo или неизвестный формат не попадут в config.json
+        const syncPatch = _.pick(patch, ['koboEnabled', 'koboPublicUrl', 'kosyncEnabled', 'conversionEnabled', 'conversionFormats']);
+        if (Object.keys(syncPatch).length)
+            Object.assign(patch, this.normalizeAdminSyncPatch(syncPatch));
 
         return this.dropSmtpPassOnNewServer(patch);
     },

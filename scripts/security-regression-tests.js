@@ -1145,6 +1145,47 @@ async function testEnvOverridesAreNotWrittenOnFirstStart() {
     });
 }
 
+// Reader sync and conversion settings: the admin save validates and writes them; a key set by the environment
+// stays as the environment says, in the file and in memory; a settings import runs the same checks.
+async function testSyncSettingsSaveAndEnvLock() {
+    await temporary(async(dir) => {
+        const ConfigManager = require('../server/config');
+        const WebWorker = require('../server/core/WebWorker');
+        const configFile = path.join(dir, 'config.json');
+        await fs.outputJson(configFile, {koboEnabled: false, conversionFormats: ['epub', 'pdf']});
+        const manager = new ConfigManager();
+        const state = {inited: manager.inited, _config: manager._config};
+        const previous = process.env.INPX_KOBO_ENABLED;
+        process.env.INPX_KOBO_ENABLED = 'true';
+        try {
+            const config = ConfigManager.applyEnvOverrides({dataDir: dir, configFile, tempDir: path.join(dir, 'tmp'),
+                koboEnabled: false, koboPublicUrl: '', kosyncEnabled: false, conversionEnabled: true, conversionFormats: ['epub', 'pdf']});
+            const worker = Object.assign(Object.create(WebWorker.prototype), {config, requireAdmin: async() => {}, checkMyState() {}, addAdminEvent() {}});
+            Object.assign(manager, {inited: true, _config: structuredClone(config)});
+
+            assert.deepStrictEqual(worker.getAdminSyncConfig().fromEnv, {koboEnabled: 'INPX_KOBO_ENABLED'});
+            for (const koboPublicUrl of ['ftp://books', 'https://u:p@books.test', 'https://books.test/?x=1', 'books.test'])
+                assert.throws(() => worker.normalizeAdminSyncPatch({koboPublicUrl}), /Kobo/, koboPublicUrl);
+            assert.throws(() => worker.normalizeImportedAdminSettings({settings: {koboPublicUrl: 'books.test'}}), /Kobo/);
+
+            const result = await worker.updateAdminSyncConfig('', '', {koboEnabled: false, kosyncEnabled: true, conversionEnabled: false,
+                koboPublicUrl: ' https://books.test/shelf/ ', conversionFormats: ['KFX', 'bogus', 'epub']});
+            assert.deepStrictEqual(result.sync.conversionFormats, ['epub', 'kfx']);
+            assert.strictEqual(result.sync.koboPublicUrl, 'https://books.test/shelf');
+            assert.strictEqual(result.sync.kosyncEnabled, true);
+            assert.strictEqual(result.sync.conversionEnabled, false);
+            //koboEnabled задан переменной: в памяти true, в файле прежнее значение
+            assert.strictEqual(result.sync.koboEnabled, true);
+            assert.strictEqual(config.koboEnabled, true);
+            assert.deepStrictEqual(await fs.readJson(configFile), {koboEnabled: false, kosyncEnabled: true, conversionEnabled: false,
+                koboPublicUrl: 'https://books.test/shelf', conversionFormats: ['epub', 'kfx']});
+        } finally {
+            Object.assign(manager, state);
+            (previous === undefined ? delete process.env.INPX_KOBO_ENABLED : (process.env.INPX_KOBO_ENABLED = previous));
+        }
+    });
+}
+
 // A restore of a backup without remoteAccess ends the old tokens; the next save does not write them back.
 // Library sources are resolved as at startup: LIBDIR stays in effect though config.json has no libDir.
 async function testRestoreResetsKeysMissingFromBackup() {
@@ -1430,7 +1471,7 @@ async function testGunzipBufferIsBounded() {
 module.exports = [
     testSignedInSessionsSurviveRestart, testRestoreAndAdminResetEndSavedLogins,
     testServerDetailsStayPrivate, testBookRecordsCarryNoServerPaths, testOpdsEscapesLibraryText, testOpdsGenresAndTitleFollowLibrary, testLoginLimiterKeysIpv6PrefixAndEvictsOldest, testApiConcurrencyLimits, testAtomicWriteSyncsDirectory, testAtomicWriteRetriesBusyRename, testMetricsReuseDirectorySizes, testMetricsTokenRateLimit, testCookieSecureFromForwardedProto, testOpdsQueryValuesAreStrings,
-    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testEnvOverridesAreNotWrittenOnFirstStart, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebAppExtractionIsAtomic,
+    testApiRequestRules, testApiUnderRootPath, testRootPathLosesTrailingSlash, testAdminSaveKeepsEnvOutOfConfigFile, testEnvOverridesAreNotWrittenOnFirstStart, testSyncSettingsSaveAndEnvLock, testRestoreResetsKeysMissingFromBackup, testExposedPathsListApi, testCoverCacheWriteIsAtomic, testRootPathRewriteAtExtraction, testWebAppExtractionIsAtomic,
     testApiLogHidesSecretsAndBoundsMetrics, testBookByUidStatusAndHiddenPaths, testBookRouteRejectsTraversal,
     testConversionErrorHidesConverterOutput, testBookCacheErrorIsNotServedRaw, testProxmoxInstallerKeepsForeignAppRoot, testDialogsEscapeMessages, testRepeatedPasswordCheckSkipsScrypt, testLibraryHtmlIsCleaned,
     testStoreLoadCacheStaysCurrent, testStoreReadErrorKeepsData, testBrokenStoreWithoutCopyIsNotOverwritten, testBackupsKeepNewestTen, testWikidataDownloadWaitsForFileLock, testAdminGetsRandomPasswordByDefault, testConcurrentSecretKeyCreation,
