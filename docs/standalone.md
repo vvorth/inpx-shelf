@@ -25,7 +25,7 @@
 
 ## Сборка standalone-бинарников
 
-Этот раздел нужен только для ручной сборки standalone-бинарников. Если нужен готовый локальный запуск без сборки, проще взять assets из GitHub Releases. Контрольные суммы всех файлов релиза лежат в `SHA256SUMS.txt` рядом с ними (`sha256sum -c --ignore-missing SHA256SUMS.txt` в каталоге со скачанными файлами), происхождение сборки проверяет `gh attestation verify <файл> --repo vvorth/inpx-shelf`. Для сборки и запуска текущей ветки из исходников требуется Node.js 24 или новее. Бинарники собираются через `@yao-pkg/pkg` со встроенным Node 24.
+Этот раздел нужен только для ручной сборки standalone-бинарников. Если нужен готовый локальный запуск без сборки, проще взять assets из GitHub Releases. Контрольные суммы всех файлов релиза лежат в `SHA256SUMS.txt` рядом с ними (`sha256sum -c --ignore-missing SHA256SUMS.txt` в каталоге со скачанными файлами), происхождение сборки проверяет `gh attestation verify <файл> --repo vvorth/inpx-shelf`. Для сборки и запуска текущей ветки из исходников требуется Node.js 24.22.1 или новее (для Node.js 26 - 26.12.1 или новее; более ранние выпуски уязвимы). Бинарники собираются через `@yao-pkg/pkg` со встроенным Node 24.
 
 Сборка на машине с архитектурой целевой платформы предпочтительна; CI собирает ARM64-архивы на ARM64 runner'ах. Для кросс-сборки linux-arm64 на x64 потребуется [QEMU](https://wiki.debian.org/QemuUserEmulation). Linux-бинарники используют glibc; для Alpine используйте Docker-образ на Debian.
 
@@ -83,7 +83,7 @@ inpx-shelf.exe --lib-dir="Z:\Books" --inpx="Z:\Books\library.inpx"
 inpx-shelf.exe --data-dir="D:\inpx-shelf-data" --lib-dir="Z:\Books" --inpx="Z:\Books\library.inpx"
 ```
 
-Ниже пример для Ubuntu с Node.js 24 из [репозитория NodeSource](https://github.com/nodesource/distributions/blob/master/DEV_README.md). Для других Linux-систем установите Node.js 24 или новее подходящим для системы способом.
+Ниже пример для Ubuntu с Node.js 24 из [репозитория NodeSource](https://github.com/nodesource/distributions/blob/master/DEV_README.md). Для других Linux-систем установите Node.js 24.22.1 или новее подходящим для системы способом.
 
 ```sh
 # установка Node.js 24 и утилит для исходников

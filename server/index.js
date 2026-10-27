@@ -1,6 +1,11 @@
-//node:sqlite и другие API Node 24: на старой версии - понятное сообщение, а не ошибка при загрузке модулей ниже
-if (Number(process.versions.node.split('.')[0]) < 24) {
-    console.error(`inpx-shelf requires Node.js 24 or newer, this is Node.js ${process.versions.node}`);
+//node:sqlite и другие API Node 24: на старой версии - понятное сообщение, а не ошибка при загрузке модулей ниже.
+//Ниже 24.22.1 и 26.12.1 - уязвимые выпуски Node, их не запускаем (сборка: engines в package.json, бинарник - @yao-pkg/pkg)
+const minNodeByMajor = {24: [24, 22, 1], 26: [26, 12, 1]};
+const nodeVersion = process.versions.node.split('.').map(Number);
+const minNode = minNodeByMajor[nodeVersion[0]];
+const olderThan = (a, b) => a.map((part, i) => part - b[i]).find(diff => diff !== 0) < 0;
+if (nodeVersion[0] < 24 || (minNode && olderThan(nodeVersion, minNode))) {
+    console.error(`inpx-shelf requires Node.js 24.22.1 or newer (26.12.1 for Node.js 26), this is Node.js ${process.versions.node}`);
     process.exit(1);
 }
 

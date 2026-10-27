@@ -100,7 +100,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 24
+          node-version: '>=24.22.1 <25'
       - name: Set the version
         run: |
           npm version "$VERSION" --no-git-tag-version --ignore-scripts
@@ -161,7 +161,7 @@ jobs:
           ref: ${{ needs.version.outputs.tag }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 24
+          node-version: '>=24.22.1 <25'
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build:${{ matrix.target }}

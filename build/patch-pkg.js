@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-// pkg 6.22.0 replaces realpath.native with the JS implementation, which leaves
+// pkg (since 6.22.0) replaces realpath.native with the JS implementation, which leaves
 // Windows 8.3 aliases intact. Keep the native implementation for real files;
 // snapshot paths must still go through pkg's virtual filesystem.
 module.exports = function patchPkg() {
