@@ -8,8 +8,11 @@
                 <q-btn flat dense no-caps color="primary" icon="la la-plus" @click="admin.addAdminSource()">
                     {{ $t('settings.admin.addSource') }}
                 </q-btn>
-                <q-btn flat dense no-caps color="primary" icon="la la-globe" @click="admin.addAdminSource(true)">
+                <q-btn flat dense no-caps color="primary" icon="la la-globe" @click="admin.addAdminSource('remote')">
                     {{ $t('adminRemote.addRemoteSource') }}
+                </q-btn>
+                <q-btn flat dense no-caps color="primary" icon="la la-folder-open" @click="admin.addAdminSource('scan')">
+                    {{ $t('settings.admin.addFolder') }}
                 </q-btn>
             </div>
         </div>
@@ -40,6 +43,22 @@
                         </span>
                     </div>
                 </template>
+                <template v-else-if="source.scan">
+                    <q-checkbox v-model="source.enabled" size="32px" />
+                    <q-input v-model="source.name" outlined dense :label="$t('settings.admin.sourceName')" />
+                    <q-input v-model="source.libDir" class="admin-source-wide" outlined dense :label="$t('settings.admin.sourceBooksDir')" />
+                    <q-btn flat dense round color="primary" icon="la la-search" :loading="source.diagnosticsLoading" @click="admin.diagnoseAdminSource(index)">
+                        <q-tooltip>{{ $t('settings.admin.checkSource') }}</q-tooltip>
+                    </q-btn>
+                    <q-btn flat dense round color="negative" icon="la la-trash" @click="admin.removeAdminSource(index)" />
+                    <div class="admin-source-diagnostics">
+                        <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ $t('settings.admin.folder') }}</span>
+                        <span>{{ $t('settings.admin.books') }}: {{ source.bookFileCount || 0 }}{{ source.bookFileCountTruncated ? '+' : '' }}</span>
+                        <span :class="source.inpxExists ? 'text-positive' : ''">
+                            {{ source.inpxExists ? $t('settings.admin.scanInpxReady') : $t('settings.admin.scanInpxPending') }}
+                        </span>
+                    </div>
+                </template>
                 <template v-else>
                     <q-checkbox v-model="source.enabled" size="32px" />
                     <q-input v-model="source.name" outlined dense :label="$t('settings.admin.sourceName')" />
@@ -60,6 +79,9 @@
                     </div>
                 </template>
             </div>
+        </div>
+        <div v-if="admin.adminSources.some(source => source.scan)" class="card-hint">
+            {{ $t('settings.admin.scanHint') }}
         </div>
         <div v-if="admin.adminSourcesNeedReindex || admin.adminSourcesReindexNeeded" class="admin-source-warning">
             <q-icon name="la la-exclamation-triangle" size="18px" />
@@ -145,6 +167,10 @@ export default vueComponent(AdminLibrary);
     padding: 2px 6px;
     border-radius: 999px;
     background: rgba(23, 32, 38, 0.05);
+}
+
+.admin-source-wide {
+    grid-column: span 2;
 }
 
 .admin-remote-credentials {

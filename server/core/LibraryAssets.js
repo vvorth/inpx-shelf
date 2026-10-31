@@ -86,7 +86,8 @@ module.exports = {
         const file = libFile;
         checkInsideLibrary(libDir, `${libDir}/${libFolder}`, libFolder);
         const resolveFolder = async() => {
-            const folder = `${libDir}/${libFolder}`;
+            //"." - корень папки без INPX (scan/FolderScan.js): в ключе S3 точка не сворачивается
+            const folder = (libFolder === '.' ? libDir : `${libDir}/${libFolder}`);
 
             return await this.resolveLibraryArchivePath(folder, libDir);
         };
@@ -99,6 +100,13 @@ module.exports = {
         if (!file || await libraryFs.pathExists(fullPath)) {// файл есть на диске
             
             await libraryFs.copyToLocal(fullPath, outFile);
+            return outFile;
+        }
+
+        //папка без INPX (scan/FolderScan.js): EXT в INPX строчный, а файл может быть BOOK.FB2
+        const sameNameFile = await this.findFileIgnoreCase(folder, file);
+        if (sameNameFile) {
+            await libraryFs.copyToLocal(sameNameFile, outFile);
             return outFile;
         } else {// файл в zip-архиве
             if (!await libraryFs.pathExists(folder))
@@ -118,6 +126,18 @@ module.exports = {
             } finally {
                 await zipReader.close();
             }
+        }
+    },
+
+    //Файл с таким именем без учёта регистра в каталоге folder; folder не каталог или такого файла нет - null
+    async findFileIgnoreCase(folder = '', file = '') {
+        try {
+            if (!(await libraryFs.stat(folder)).isDirectory())
+                return null;
+            const name = (await libraryFs.readdir(folder)).find(entry => entry.toLowerCase() === file.toLowerCase());
+            return (name ? `${folder}/${name}` : null);
+        } catch (e) {
+            return null;
         }
     },
 

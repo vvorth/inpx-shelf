@@ -1556,6 +1556,7 @@
     },
     "settings": {
         "admin": {
+            "addFolder": "Добавить папку",
             "addSource": "Добавить",
             "archives": "Архивы",
             "authors": "Авторы",
@@ -1599,6 +1600,10 @@
             "saveSources": "Сохранить источники",
             "savedSources": "Источники библиотек сохранены",
             "series": "Серии",
+            "scanHint": "Для папки с книгами сервер сам создаёт INPX по файлам .fb2 и .epub и обновляет его с интервалом проверки INPX; изменения в папке подхватываются тогда же или при переиндексации.",
+            "scanInpxPending": "INPX: ещё нет",
+            "scanInpxReady": "INPX: создан",
+            "sourceBooksDir": "Папка с книгами",
             "sourceInpx": "INPX файл",
             "sourceLibDir": "Папка библиотеки",
             "sourceName": "Название",

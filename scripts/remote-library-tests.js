@@ -354,6 +354,7 @@ async function testRemoteInpxIsSyncedBeforeFirstIndexing() {
         Object.assign(worker, {
             config,
             remoteLib: new RemoteLib(config),
+            folderScan: {syncAll: async() => {}},
             catalogSearch: {ready: false},
             inpxHashCreator: {getHash: async() => ((await fs.pathExists(inpxFile)) ? 'with-remote-inpx' : 'no-inpx')},
             setMyState: () => {},

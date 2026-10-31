@@ -16,7 +16,7 @@ Releases ship when ready and are numbered by date, `YY.M.N`: `26.10.0`, `26.10.1
 
 ## What it is
 
-inpx-shelf is a web catalog for self-hosted INPX libraries (Flibusta, Lib.rus.ec and others): catalog search, book, author and series pages, personal shelves, reading lists, an online reader, OPDS and Kobo sync. The interface and OPDS are available in Russian and English.
+inpx-shelf is a web catalog for self-hosted INPX libraries (Flibusta, Lib.rus.ec and others; a plain folder of fb2/epub files works too): catalog search, book, author and series pages, personal shelves, reading lists, an online reader, OPDS and Kobo sync. The interface and OPDS are available in Russian and English.
 
 The catalog is built for self-hosted libraries, with a focus on large `.7z` / `.zip` / `fLibrary` collections, Docker deployment and the built-in FB2 reader. The documentation mainly covers the `Docker / server` setup, but also standalone binaries and running from source with Node.js.
 

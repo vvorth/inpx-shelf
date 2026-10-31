@@ -1540,6 +1540,7 @@
     },
     "settings": {
         "admin": {
+            "addFolder": "Add folder",
             "addSource": "Add",
             "archives": "Archives",
             "authors": "Authors",
@@ -1583,6 +1584,10 @@
             "saveSources": "Save sources",
             "savedSources": "Library sources saved",
             "series": "Series",
+            "scanHint": "For a folder with books, the server creates the INPX itself from the .fb2 and .epub files and refreshes it on the INPX check interval; a changed folder is picked up then or on reindex.",
+            "scanInpxPending": "INPX: not yet",
+            "scanInpxReady": "INPX: generated",
+            "sourceBooksDir": "Folder with books",
             "sourceInpx": "INPX file",
             "sourceLibDir": "Library folder",
             "sourceName": "Title",

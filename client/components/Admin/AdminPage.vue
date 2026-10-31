@@ -572,6 +572,7 @@ class AdminPage {
             name: String(source.name || '').trim(),
             inpx: String(source.inpx || '').trim(),
             libDir: String(source.libDir || '').trim(),
+            scan: source.scan === true,
             enabled: source.enabled !== false,
             //введённый токен - тоже изменение
             remote: (source.remote ? {url: String(source.remote.url || '').trim(), source: String(source.remote.source || '').trim(),
@@ -595,6 +596,9 @@ class AdminPage {
             hasCovers: source.hasCovers === true,
             hasEtc: source.hasEtc === true,
             hasImages: source.hasImages === true,
+            scan: source.scan === true,
+            bookFileCount: source.bookFileCount || 0,
+            bookFileCountTruncated: source.bookFileCountTruncated === true,
             remote: (source.remote ? Object.assign({}, source.remote, {token: ''}) : null),
             diagnosticsLoading: false,
         }));
@@ -745,8 +749,10 @@ class AdminPage {
         }
     }
 
-    //remote - библиотека другого сервера inpx-shelf (API /remote/)
-    addAdminSource(remote = false) {
+    //kind: false/'inpx' - INPX; true/'remote' - библиотека другого сервера inpx-shelf (API /remote/);
+    //'scan' - папка с fb2/epub без INPX, INPX создаёт сервер
+    addAdminSource(kind = 'inpx') {
+        const remote = (kind === true || kind === 'remote');
         this.adminSources.push({
             id: '',
             name: '',
@@ -761,6 +767,9 @@ class AdminPage {
             hasCovers: false,
             hasEtc: false,
             hasImages: false,
+            scan: (kind === 'scan'),
+            bookFileCount: 0,
+            bookFileCountTruncated: false,
             remote: (remote ? {url: '', source: '', token: '', tokenSet: false} : null),
             diagnosticsLoading: false,
         });
@@ -778,6 +787,15 @@ class AdminPage {
         this.adminSources.splice(index, 1, Object.assign({}, source, patch));
     }
 
+    //для папки с книгами INPX принадлежит серверу: поле inpx не отправляется
+    adminSourcePayload(source) {
+        if (!source.scan)
+            return source;
+
+        const {id, name, libDir, enabled} = source;
+        return {id, name, libDir, scan: true, enabled};
+    }
+
     async diagnoseAdminSource(index) {
         const source = this.adminSources[index];
         if (!source)
@@ -785,7 +803,7 @@ class AdminPage {
 
         this.setAdminSource(index, {diagnosticsLoading: true});
         try {
-            const diagnostics = await this.api.adminDiagnoseLibrarySource(source);
+            const diagnostics = await this.api.adminDiagnoseLibrarySource(this.adminSourcePayload(source));
             this.setAdminSource(index, Object.assign({}, diagnostics, {diagnosticsLoading: false}));
         } catch (e) {
             this.setAdminSource(index, {diagnosticsLoading: false});
@@ -796,7 +814,7 @@ class AdminPage {
     async saveAdminSources() {
         this.adminSourcesLoading = true;
         try {
-            const result = await this.api.updateAdminLibrarySources(this.adminSources);
+            const result = await this.api.updateAdminLibrarySources(this.adminSources.map(source => this.adminSourcePayload(source)));
             await this.api.updateConfig();
             await this.loadAdminPanel();
             this.adminSourcesReindexNeeded = this.adminSourcesReindexNeeded || !!(result && result.reindexNeeded);

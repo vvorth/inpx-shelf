@@ -262,5 +262,33 @@ async function testLibrarySourcesAndInpxHashOnS3() {
     }
 }
 
+//Папка без INPX в S3: INPX строится по листингу и головам файлов, книга из корня (FOLDER ".") и из подкаталога
+//отдаётся как файл
+async function testFolderScanOnS3() {
+    const fb2 = title => Buffer.from(`<?xml version="1.0" encoding="utf-8"?><FictionBook><description><title-info><book-title>${title}</book-title>`
+        + '<lang>en</lang></title-info></description><body/></FictionBook>');
+    useFakeS3({lib: {'books/a.fb2': fb2('Root book'), 'books/sub/b.fb2': fb2('Nested book'), 'books/covers/c.fb2': fb2('Cover'), 'books/n.txt': Buffer.from('x')}});
+    const FolderScan = require('../server/core/scan/FolderScan');
+    const InpxParser = require('../server/core/InpxParser');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'library-fs-'));
+    try {
+        const source = {id: 'books', name: 'Books', libDir: 's3://lib/books', inpxFile: path.join(dir, 'scan', 'books.inpx')};
+        assert.deepStrictEqual(await FolderScan.build(source, dir), {changed: true, books: 2, skipped: 0, parsed: 2});
+        const records = [];
+        await new InpxParser().parse(source.inpxFile, null, async chunk => records.push(...chunk));
+        assert.deepStrictEqual(records.map(rec => [rec.title, rec.folder, rec.file, rec.date, rec.lang]),
+            [['Root book', '.', 'a', '2026-01-02', 'en'], ['Nested book', 'sub', 'b', '2026-01-02', 'en']]);
+
+        const worker = Object.assign({config: {libDir: source.libDir, tempDir: dir, librarySources: []}}, require('../server/core/LibraryAssets'));
+        for (const [rec, title] of [[records[0], 'Root book'], [records[1], 'Nested book']]) {
+            const file = await worker.extractBook(rec.folder, `${rec.file}.${rec.ext}`, source.libDir);
+            assert.ok((await fs.readFile(file)).equals(fb2(title)), title);
+            await fs.remove(file);
+        }
+    } finally {
+        await fs.remove(dir);
+    }
+}
+
 module.exports = [testS3PathForms, testS3ListingStatAndCache, testS3ReadsAndContentHash, testLocalAndS3PathsMix,
-    testLibraryFsJoin, testLibrarySourcesAndInpxHashOnS3, testInpxPathsStayInsideLibrary];
+    testLibraryFsJoin, testLibrarySourcesAndInpxHashOnS3, testInpxPathsStayInsideLibrary, testFolderScanOnS3];

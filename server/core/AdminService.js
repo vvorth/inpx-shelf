@@ -9,7 +9,7 @@ const utils = require('./utils');
 const libraryFs = require('./LibraryFs');
 const ConfigManager = require('../config');
 const {withFileTransaction} = require('./FilePersistence');
-const {getEnabledLibrarySources, getAllLibrarySources, normalizeRemoteSource} = require('./LibrarySources');
+const {getEnabledLibrarySources, getAllLibrarySources, normalizeRemoteSource, normalizeScanSource} = require('./LibrarySources');
 const remoteAccess = require('./RemoteAccess');
 const BookConverter = require('./BookConverter');
 const i18n = require('./i18n');
@@ -270,13 +270,13 @@ module.exports = {
         return result;
     },
 
-    async countArchives(dir = '', maxFiles = 20000) {
+    async countArchives(dir = '', maxFiles = 20000, exts = ['.zip', '.7z', '.fb2', '.epub']) {
         const result = {count: 0, truncated: false};
         if (!dir || !await libraryFs.pathExists(dir))
             return result;
 
         for await (const filePath of walkFiles(dir)) {
-            if (['.zip', '.7z', '.fb2', '.epub'].includes(path.extname(filePath).toLowerCase()))
+            if (exts.includes(path.extname(filePath).toLowerCase()))
                 result.count++;
             if (result.count >= maxFiles) {
                 result.truncated = true;
@@ -288,6 +288,17 @@ module.exports = {
     },
 
     async getLibrarySourceDiagnostics(source = {}) {
+        //папка без INPX: файлы книг и построен ли её INPX (путь к нему - по id, как при сохранении)
+        if (source.scan) {
+            const scan = normalizeScanSource(source, 0, this.config.dataDir);
+            const books = (scan.libDir ? await this.countArchives(scan.libDir, 20000, ['.fb2', '.epub']) : {count: 0, truncated: false});
+            return {
+                libDirExists: !!scan.libDir && await libraryFs.pathExists(scan.libDir),
+                bookFileCount: books.count,
+                bookFileCountTruncated: books.truncated,
+                inpxExists: await fs.pathExists(scan.inpxFile),
+            };
+        }
         const libDir = String(source.libDir || '').trim();
         const inpx = String(source.inpx || source.inpxFile || '').trim();
         const foundInpx = libDir ? await this.findFilesByExt(libDir, ['.inpx'], 20) : [];
@@ -429,7 +440,7 @@ module.exports = {
             id: source.id || '',
             name: source.name || '',
             enabled: source.enabled !== false,
-            inpx: source.inpx || source.inpxFile || '',
+        }, (source.scan ? {scan: true} : {inpx: source.inpx || source.inpxFile || ''}), {
             libDir: source.libDir || '',
         }, await this.getLibrarySourceDiagnostics(source)))));
         const coverErrors = (this.config.adminEventLogEnabled === false ? [] : this.adminEvents.slice().reverse())
@@ -551,6 +562,10 @@ module.exports = {
                     normalized.remote.token = this.remoteTokenFor(normalized.id, source.remote.token);
                     return (normalized.remote.url && normalized.remote.source ? normalized : null);
                 }
+                if (source.scan) {
+                    const normalized = normalizeScanSource(source, index, this.config.dataDir);
+                    return (normalized.libDir ? normalized : null);
+                }
                 const inpx = String(source.inpx || source.inpxFile || '').trim();
                 const libDir = String(source.libDir || '').trim();
                 const name = String(source.name || '').trim() || path.basename(inpx, path.extname(inpx)) || `Library ${index + 1}`;
@@ -584,9 +599,13 @@ module.exports = {
         await this.saveRuntimeConfigPatch({librarySources: normalized});
         for (const source of normalized.filter(item => item.remote))
             await fs.ensureDir(source.libDir);
-        //новый INPX удалённой библиотеки нужен до сравнения хешей ниже
+        for (const source of normalized.filter(item => item.scan))
+            await fs.ensureDir(path.dirname(source.inpxFile));
+        //новый INPX удалённой библиотеки и папки без INPX нужен до сравнения хешей ниже
         if (normalized.some(item => item.remote))
             await this.remoteLib.syncAll();
+        if (normalized.some(item => item.scan))
+            await this.folderScan.syncAll();
         //пересборка нужна, только если изменился набор библиотек или содержимое INPX (тот же хеш, что у индекса),
         //или включена библиотека, которой нет в индексе; включение, название и папка применяются сразу
         let reindexNeeded = true;
@@ -735,7 +754,8 @@ module.exports = {
         this.checkMyState();
 
         this.addAdminEvent('warn', 'index', msg('admin.reindexStarted'));
-        this.recreateDb();//no await
+        //папки без INPX пересканируются до пересборки (ошибки сканирования FolderScan пишет в журнал сам)
+        this.folderScan.syncAll().then(() => this.recreateDb());//no await
         return {started: true};
     },
 

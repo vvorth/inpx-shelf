@@ -54,7 +54,9 @@ function parseSourcesFromString(value = '') {
                 inpx: parts[0],
                 libDir: parts[1] || '',
             };
-        });
+        })
+        //слово scan вместо INPX - папка с книгами без INPX
+        .map(({inpx, ...item}) => (inpx.toLowerCase() === 'scan' ? Object.assign(item, {scan: true}) : Object.assign(item, {inpx})));
 }
 
 function sourcesFromEnv() {
@@ -108,10 +110,35 @@ function normalizeRemoteSource(source, index, dataDir) {
     };
 }
 
+// Папка с книгами без INPX: INPX строит сервер (scan/FolderScan.js) в <dataDir>/scan/<id>.inpx.
+function normalizeScanSource(source, index, dataDir) {
+    const rawLibDir = String(source.libDir || source.libraryDir || '').trim();
+    const libDir = rawLibDir ? resolvePath(rawLibDir) : '';
+    const id = stableId(source.id || source.name || path.basename(libDir), `source-${index + 1}`);
+    const inpx = path.join(dataDir, 'scan', `${id}.inpx`);
+    return {
+        id,
+        name: String(source.name || '').trim() || path.basename(libDir) || id,
+        inpx,
+        inpxFile: inpx,
+        libDir,
+        enabled: source.enabled !== false,
+        scan: true,
+    };
+}
+
 async function normalizeSource(source, index, options = {}) {
     if (source.remote && typeof(source.remote) === 'object')
         return normalizeRemoteSource(source, index, options.dataDir);
     const requireExists = options.requireExists !== false;
+    if (source.scan) {
+        const normalized = normalizeScanSource(source, index, options.dataDir);
+        if (!normalized.libDir)
+            throw new Error(`Library source #${index + 1}: libDir is empty`);
+        if (requireExists && !await libraryFs.pathExists(normalized.libDir))
+            throw new Error(`Library source #${index + 1}: directory "${normalized.libDir}" not exists`);
+        return normalized;
+    }
     const rawInpx = String(source.inpx || source.inpxFile || '').trim();
     const rawLibDir = String(source.libDir || source.libraryDir || '').trim();
     const inpx = rawInpx ? resolvePath(rawInpx) : '';
@@ -186,6 +213,8 @@ async function resolveLibrarySources(config, argv = {}) {
                     inpxFile: inpx,
                     libDir: String(source.libDir || source.libraryDir || '').trim(),
                 };
+                if (source.scan)
+                    normalized.scan = true;
             }
             result.push(Object.assign(normalized, {enabled: false}));
             continue;
@@ -201,6 +230,8 @@ async function resolveLibrarySources(config, argv = {}) {
     config.librarySources = result;
     for (const source of result.filter(item => item.remote))
         await fs.ensureDir(source.libDir);
+    for (const source of result.filter(item => item.scan && item.inpxFile))
+        await fs.ensureDir(path.dirname(source.inpxFile));
     //папка по умолчанию - локальной библиотеки
     const first = enabled.find(source => !source.remote) || enabled[0];
     config.libDir = first.libDir;
@@ -222,6 +253,7 @@ function getAllLibrarySources(config = {}) {
             libDir: source.libDir || config.libDir,
             enabled: source.enabled !== false,
             remote: source.remote || null,
+            ...(source.scan ? {scan: true} : {}),
         }));
 
     return [{
@@ -249,8 +281,8 @@ async function getIndexedLibrarySources(config = {}) {
     const result = [];
     for (const source of getAllLibrarySources(config)) {
         const inpx = source.inpxFile || source.inpx;
-        //удалённая библиотека, чей INPX ещё не скачан, в индекс пока не входит
-        if ((source.enabled !== false && !source.remote) || (inpx && await libraryFs.pathExists(inpx)))
+        //удалённая библиотека, чей INPX ещё не скачан, и папка, чей INPX ещё не построен, в индекс пока не входят
+        if ((source.enabled !== false && !source.remote && !source.scan) || (inpx && await libraryFs.pathExists(inpx)))
             result.push(source);
     }
     return result;
@@ -258,6 +290,7 @@ async function getIndexedLibrarySources(config = {}) {
 
 module.exports = {
     normalizeRemoteSource,
+    normalizeScanSource,
     parseSourcesFromString,
     resolveLibrarySources,
     getEnabledLibrarySources,

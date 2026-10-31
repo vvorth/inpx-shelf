@@ -53,6 +53,14 @@
             "inpx": "/library/archive/archive.inpx",
             "libDir": "/library/archive",
             "enabled": true
+        },
+        // папка с .fb2 и .epub без INPX: сервер создаёт INPX сам (см. sources.md)
+        {
+            "id": "books",
+            "name": "Мои книги",
+            "scan": true,
+            "libDir": "/library/books",
+            "enabled": true
         }
     ],
 

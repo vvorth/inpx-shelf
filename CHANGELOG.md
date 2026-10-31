@@ -1,3 +1,7 @@
+Unreleased
+
+- A library source can be a plain folder of `.fb2` and `.epub` files without an INPX: add it with `Administration → Library → Add folder` or `"scan": true` in `librarySources` (`name|scan|/path` in the short format). The server generates the INPX into `<dataDir>/scan/<id>.inpx` from the file headers and keeps it current on the INPX check interval.
+
 26.10.2 / 2026-10-27
 
 - Development moved from the `dev` branch to `main`, and `release` now holds the latest release (formerly `main`). The `dev` Docker image is built from `main`.

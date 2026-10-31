@@ -14,13 +14,30 @@ function plainText(value = '') {
         .replace(/<[^>]*>/g, '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim();
 }
 
-function fb2Metadata(data) {
+// A bounded prefix may end inside a UTF-8 character.
+function utf8Prefix(data) {
+    for (let cut = 0; cut <= 3; cut++) {
+        if (isUtf8(data.subarray(0, data.length - cut)))
+            return data.subarray(0, data.length - cut);
+    }
+    return data;
+}
+
+// <description> of an fb2 (whole file or its head) as an Fb2Parser tree, null without one.
+function parseFb2Description(data) {
     const text = new Fb2Helper().checkEncoding(data).toString('utf8');
     const description = text.match(/<description\b[^>]*>[\s\S]*?<\/description>/i);
     if (!description)
-        return {};
+        return null;
     const parser = new Fb2Parser();
     parser.fromString(`<FictionBook>${description[0]}</FictionBook>`, {lowerCase: true});
+    return parser;
+}
+
+function fb2Metadata(data) {
+    const parser = parseFb2Description(data);
+    if (!parser)
+        return {};
     const info = parser.bookInfo();
     const title = info.titleInfo || {};
     const publication = info.publishInfo || {};
@@ -64,7 +81,16 @@ async function epubMetadata(file, config) {
         const identifiers = children.filter(node => localName(node) === 'identifier');
         const isbn = identifiers.find(node => /isbn/i.test((node.attrs() || {})['opf:scheme'] || '') || /^urn:isbn:/i.test(node.text()));
         const year = (values('date')[0] || '').match(/\b\d{4}\b/);
+        // Series: calibre:series, else EPUB 3 belongs-to-collection with its group-position.
+        const metas = children.filter(node => localName(node) === 'meta').map(node => ({attrs: node.attrs() || {}, text: plainText(node.text())}));
+        const calibre = name => (metas.find(meta => meta.attrs.name === name) || {attrs: {}}).attrs.content || '';
+        const collection = metas.find(meta => meta.attrs.property === 'belongs-to-collection' && meta.text);
+        const position = collection && collection.attrs.id
+            && metas.find(meta => meta.attrs.property === 'group-position' && meta.attrs.refines === `#${collection.attrs.id}`);
         return {
+            title: plainText(values('title')[0]),
+            series: plainText(calibre('calibre:series')) || (collection ? collection.text : ''),
+            seriesIndex: plainText(calibre('calibre:series') ? calibre('calibre:series_index') : (position ? position.text : '')),
             description: plainText(values('description').join('\n\n')),
             publisher: plainText(values('publisher')[0]),
             publishedYear: year ? year[0] : '',
@@ -110,15 +136,7 @@ class BookMetadata {
                         try {
                             const buffer = Buffer.alloc(2 * 1024 * 1024);
                             const {bytesRead} = await fs.read(handle, buffer, 0, buffer.length, 0);
-                            let data = buffer.subarray(0, bytesRead);
-                            // A bounded prefix may end inside a UTF-8 character.
-                            for (let cut = 0; cut <= 3; cut++) {
-                                if (isUtf8(data.subarray(0, data.length - cut))) {
-                                    data = data.subarray(0, data.length - cut);
-                                    break;
-                                }
-                            }
-                            value = fb2Metadata(data);
+                            value = fb2Metadata(utf8Prefix(buffer.subarray(0, bytesRead)));
                         } finally {
                             await fs.close(handle);
                         }
@@ -169,4 +187,4 @@ class BookMetadata {
     }
 }
 
-module.exports = {BookMetadata, fb2Metadata, epubMetadata, plainText};
+module.exports = {BookMetadata, fb2Metadata, parseFb2Description, utf8Prefix, epubMetadata, plainText};

@@ -49,6 +49,28 @@ async function createFixture(dir) {
     return require('crypto').createHash('sha256').update(row).digest('base64');
 }
 
+// A folder of fb2 files without an INPX (scan source): the server builds its INPX in the folder scan worker thread.
+const folderBookTitle = 'Folder smoke book';
+async function createFolderFixture(dir) {
+    await fs.outputFile(path.join(dir, 'nested', 'folder.fb2'), '<?xml version="1.0" encoding="utf-8"?>\n<FictionBook>' +
+        `<description><title-info><author><last-name>Folder</last-name></author><book-title>${folderBookTitle}</book-title></title-info></description>` +
+        `<body><section><p>${folderBookTitle} text.</p></section></body></FictionBook>`);
+}
+
+// The folder book is found by the HTTP API and downloads from its file.
+async function checkFolderBook(url, cookie) {
+    const headers = {'X-Inpx-Api': '1', cookie};
+    const search = await fetch(`${url}/api/catalog/search?q=${encodeURIComponent(folderBookTitle)}`, {headers});
+    assert.strictEqual(search.status, 200);
+    const books = (await search.json()).books || [];
+    assert.deepStrictEqual(books.map(book => [book.title, book.folder]), [[folderBookTitle, 'nested']]);
+    const link = await fetch(`${url}/book/by-uid?uid=${encodeURIComponent(books[0]._uid)}`, {headers: {cookie}, redirect: 'manual'});
+    assert.strictEqual(link.status, 302, await link.text());
+    const book = await fetch(new URL(link.headers.get('location'), url), {headers: {cookie}});
+    assert.strictEqual(book.status, 200);
+    assert.match(await book.text(), new RegExp(`<book-title>${folderBookTitle}</book-title>`));
+}
+
 //пароль администратора задаётся только окружением (adminPassword не читается из config.json)
 const adminPassword = 'local-smoke-fixture';
 
@@ -118,8 +140,11 @@ async function run(target, mode) {
         let command;
         let args;
         if (mode === 'binary') {
+            const folder = path.join(dir, 'folder');
+            await createFolderFixture(folder);
             command = path.resolve(target);
             args = [`--data-dir=${path.join(dir, 'data')}`, `--lib-dir=${library}`,
+                `--library-sources=main|Main library|${path.join(library, 'smoke.inpx')}|${library};folder|Folder|scan|${folder}`,
                 `--config=${path.join(library, 'config.json')}`, '--host=127.0.0.1', `--port=${port}`];
         } else {
             command = 'docker';
@@ -168,13 +193,15 @@ async function run(target, mode) {
         assert.match(String(opds.headers.get('www-authenticate')), /^Basic/);
         const cookie = await checkApi(url);
         await checkBook(url, cookie, uid);
+        if (mode === 'binary')
+            await checkFolderBook(url, cookie);
         if (mode === 'entrypoint') {
             // config.json is written by the app itself: its owner is the user the app runs as
             const {stdout} = await promisify(execFile)('docker', ['exec', containerName, 'stat', '-c', '%u:%g',
                 dockerDataDir, `${dockerDataDir}/config.json`], {windowsHide: true, timeout: 15000});
             assert.deepStrictEqual(stdout.trim().split('\n'), ['1000:1000', '1000:1000']);
         }
-        console.log(`ok packaged application: indexing, health, web UI, OPDS, HTTP API, book and cover (${mode === 'binary' ? target : `${target}, ${mode}`})`);
+        console.log(`ok packaged application: indexing, health, web UI, OPDS, HTTP API, book and cover${mode === 'binary' ? ', folder library' : ''} (${mode === 'binary' ? target : `${target}, ${mode}`})`);
     } finally {
         if (mode !== 'binary')
             await promisify(execFile)('docker', ['rm', '-f', containerName], {windowsHide: true, timeout: 15000}).catch(() => {});

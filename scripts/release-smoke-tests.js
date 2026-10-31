@@ -2870,6 +2870,7 @@ const tests = [
     ...require('./remote-library-tests'),
     ...require('./inpx-parser-tests'),
     ...require('./library-fs-tests'),
+    ...require('./folder-scan-tests'),
     ...require('./xml-parser-tests'),
     ...require('./client-tests'),
     ...require('./web-worker-tests'),

@@ -7,6 +7,7 @@ const CatalogSearch = require('./search/CatalogSearch');
 const StateStore = require('./StateStore');
 const InpxHashCreator = require('./InpxHashCreator');
 const RemoteLib = require('./RemoteLib');
+const FolderScan = require('./scan/FolderScan');
 const {getEnabledLibrarySources} = require('./LibrarySources');
 const FileDownloader = require('./FileDownloader');
 const ReadingListStore = require('./ReadingListStore');
@@ -66,6 +67,7 @@ class WebWorker {
             this.stateStore = new StateStore(config);
 
             this.remoteLib = new RemoteLib(config);
+            this.folderScan = new FolderScan(config);
             this.inpxHashCreator = new InpxHashCreator(config);
             this.readingListStore = new ReadingListStore(config);
             this.fb2Helper = new Fb2Helper();
@@ -196,9 +198,11 @@ class WebWorker {
         let progressTimer = null;
         try {
             //удалённые библиотеки подтягиваются здесь, а не до listen: недоступный хост не должен ронять /health;
-            //не пришедший INPX подхватит periodicCheckInpx
-            if (firstLoad)
+            //не пришедший INPX подхватит periodicCheckInpx. Здесь же строятся INPX папок без INPX
+            if (firstLoad) {
                 await this.remoteLib.syncAll({startup: true});
+                await this.folderScan.syncAll();
+            }
 
             const inpxHash = await this.inpxHashCreator.getHash();
 
@@ -1502,6 +1506,7 @@ class WebWorker {
 
                     //библиотеку в S3 могли обновить: листинги с ETag перечитываются
                     libraryFs.clearCache();
+                    await this.folderScan.syncAll();
                     const newInpxHash = await this.inpxHashCreator.getHash();
 
                     const dbConfig = await this.dbConfig();
