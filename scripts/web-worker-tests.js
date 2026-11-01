@@ -810,6 +810,176 @@ function testTelegramCaptionFitsBotApiLimit() {
     assert.strictEqual(telegramCaption('${TITLE}', {title: 'x'.repeat(5000)}).length, 1024);
 }
 
+//INPX из строк [автор, название] (порядок полей INPX по умолчанию)
+async function writeInpx(file, rows) {
+    const yazl = require('yazl');
+    const {pipeline} = require('stream/promises');
+    const lines = rows.map(([author, title], i) => [`${author.replace(' ', ',')}:`, 'sf:', title, '', '0', String(1000 + i), '100', String(1000 + i), '0', 'fb2',
+        '2026-10-01', 'ru', '0', ''].join('\x04'));
+    await fs.ensureDir(path.dirname(file));
+    const zip = new yazl.ZipFile();
+    const done = pipeline(zip.outputStream, fs.createWriteStream(file));
+    zip.addBuffer(Buffer.from(lines.join('\n') + '\n'), 'collection.inp');
+    zip.end();
+    await done;
+}
+
+//Состояние библиотек в админке: после сборки все в индексе, изменённый INPX - только своя библиотека, файл фильтра - все;
+//новая библиотека запускает пересборку при сохранении (во время сборки - нет); БД без хешей по библиотекам
+async function testLibrarySourceStatesFollowIndex() {
+    await temporary(async(dir) => {
+        const RemoteLib = require('../server/core/RemoteLib');
+        const FolderScan = require('../server/core/scan/FolderScan');
+        const InpxHashCreator = require('../server/core/InpxHashCreator');
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        const {resolveLibrarySources} = require('../server/core/LibrarySources');
+        const {DatabaseSync} = require('node:sqlite');
+
+        const dataDir = path.join(dir, 'data');
+        const inpx = id => path.join(dir, id, `${id}.inpx`);
+        for (const id of ['a', 'b', 'c', 'd', 'e'])
+            await writeInpx(inpx(id), [[`Автор ${id}`, `Книга ${id}`]]);
+        const config = {dataDir, tempDir: path.join(dir, 'tmp'), dbVersion: 'test', inpxFilterFile: path.join(dataDir, 'filter.json'),
+            librarySources: ['a', 'b', 'c'].map(id => ({id, name: `Library ${id}`, inpx: inpx(id), libDir: path.dirname(inpx(id)), enabled: id !== 'c'}))};
+        await fs.ensureDir(config.tempDir);
+        await fs.ensureDir(dataDir);
+        await resolveLibrarySources(config);
+
+        const events = [];
+        const worker = bareWorker({
+            config,
+            remoteLib: new RemoteLib(config),
+            folderScan: new FolderScan(config),
+            inpxHashCreator: new InpxHashCreator(config),
+            readingListStore: {getMetadataOverrides: async() => ({})},
+            logServerStats: () => {},
+            trySyncListedBooks: async() => {},
+            requireAdmin: async() => {},
+            addAdminEvent: (level, category, message) => events.push(message),
+            saveRuntimeConfigPatch: async(patch) => Object.assign(config, patch),
+        });
+        worker.resetLibraryAssetCaches();
+        worker.catalogSearch = new CatalogSearch(config, worker);
+        const search = worker.catalogSearch;
+        //пересборка, которую запускает сохранение источников (без await): её окончание
+        const recreateDb = worker.recreateDb;
+        let rebuilt = null;
+        worker.recreateDb = function() {
+            return (rebuilt = recreateDb.call(this));
+        };
+        const rebuildDone = async() => {
+            for (let i = 0; !rebuilt && i < 500; i++)
+                await new Promise(resolve => setTimeout(resolve, 10));
+            assert.ok(rebuilt, 'reindex started');
+            await rebuilt;
+            rebuilt = null;
+        };
+        const sourcesWith = (...ids) => [
+            ...config.librarySources.map(source => ({id: source.id, name: source.name, inpx: source.inpx, libDir: source.libDir, enabled: source.enabled})),
+            ...ids.map(id => ({id, name: `Library ${id}`, inpx: inpx(id), libDir: path.dirname(inpx(id))})),
+        ];
+        try {
+            await worker.loadOrCreateDbOnce();
+            assert.deepStrictEqual(await worker.librarySourceStates(), {states: {a: 'indexed', b: 'indexed', c: 'disabled'}, hashFailed: false, changedSources: [], reindexNeeded: false});
+            assert.deepStrictEqual(Object.keys(search.indexedSourceHashes()).sort(), ['a', 'b', 'c'], 'the DB keeps the INPX hash of every library built');
+            assert.strictEqual(search.indexedSourceHashes().a, worker.inpxHashCreator.sourceHashes.get('a'));
+
+            await writeInpx(inpx('b'), [['Автор b', 'Книга b'], ['Автор b', 'Новая книга']]);
+            assert.deepStrictEqual(await worker.librarySourceStates(), {states: {a: 'indexed', b: 'changed', c: 'disabled'}, hashFailed: false, changedSources: ['b'], reindexNeeded: true});
+            await worker.recreateDb();
+            assert.deepStrictEqual((await worker.librarySourceStates()).changedSources, []);
+            //файл фильтра касается всех библиотек
+            await fs.outputJson(config.inpxFilterFile, {excludeAuthors: ['Никто']});
+            assert.deepStrictEqual(await worker.librarySourceStates(), {states: {a: 'changed', b: 'changed', c: 'disabled'}, hashFailed: false, changedSources: ['a', 'b'], reindexNeeded: true});
+            await worker.recreateDb();
+            rebuilt = null;
+            assert.deepStrictEqual((await worker.librarySourceStates()).changedSources, []);
+
+            //новая библиотека: не в индексе, сохранение само запускает пересборку
+            const added = await worker.updateAdminLibrarySources('admin', '', sourcesWith('d'));
+            assert.deepStrictEqual(added.sources.map(source => [source.id, source.indexState]), [['a', 'indexed'], ['b', 'indexed'], ['c', 'disabled'], ['d', 'missing']]);
+            assert.deepStrictEqual([added.reindexNeeded, added.reindexStarted, added.changedSources], [true, true, ['d']]);
+            assert.ok(!('indexState' in config.librarySources[3]), 'the state does not go into the saved settings');
+            assert.deepStrictEqual(events.slice(-2).map(event => [event.key, event.params]),
+                [['admin.sourcesChanged', {names: 'Library d'}], ['admin.reindexStarted', undefined]]);
+            await rebuildDone();
+            assert.strictEqual((await worker.librarySourceStates()).states.d, 'indexed');
+            assert.strictEqual((await search.search({q: 'книга d'})).total, 1);
+
+            //во время сборки пересборка не запускается: предупреждение остаётся
+            search.building = true;
+            try {
+                const busy = await worker.updateAdminLibrarySources('admin', '', sourcesWith('e'));
+                assert.deepStrictEqual([busy.reindexNeeded, busy.reindexStarted, busy.changedSources], [true, false, ['e']]);
+            } finally {
+                search.building = false;
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+            assert.strictEqual(rebuilt, null);
+
+            //БД, построенная без хешей по библиотекам: судим по общему хешу
+            config.librarySources = config.librarySources.filter(source => source.id !== 'e');
+            const db = new DatabaseSync(search.file);
+            db.exec(`DELETE FROM meta WHERE key = 'sourceHashes'`);
+            db.close();
+            search.meta = await search.openIndex(search.getThread());
+            assert.deepStrictEqual(search.indexedSourceHashes(), {});
+            assert.deepStrictEqual(await worker.librarySourceStates(), {states: {a: 'indexed', b: 'indexed', c: 'disabled', d: 'indexed'}, hashFailed: false, changedSources: [], reindexNeeded: false});
+            await writeInpx(inpx('a'), [['Автор a', 'Другая книга']]);
+            assert.deepStrictEqual((await worker.librarySourceStates()).states, {a: 'changed', b: 'changed', c: 'disabled', d: 'changed'});
+
+            //INPX включённой библиотеки пропал: она не в индексе, без ошибки
+            await fs.remove(inpx('b'));
+            const gone = await worker.librarySourceStates();
+            assert.strictEqual(gone.states.b, 'missing');
+            assert.strictEqual(gone.reindexNeeded, true);
+            //сборка упала бы на этом же INPX: сохранение источников её не запускает
+            assert.strictEqual(gone.hashFailed, true);
+        } finally {
+            await search.close();
+        }
+    });
+}
+
+//SHA-256 локального INPX считается заново, только когда изменились размер или время изменения файла
+async function testInpxHashIsMemoizedByFileStat() {
+    await temporary(async(dir) => {
+        const InpxHashCreator = require('../server/core/InpxHashCreator');
+        const utils = require('../server/core/utils');
+        const file = path.join(dir, 'lib.inpx');
+        await fs.writeFile(file, 'first');
+        const creator = new InpxHashCreator({dbVersion: 'test', librarySources: [{id: 'main', name: 'Main', inpx: file, libDir: dir}]});
+        const getFileHash = utils.getFileHash;
+        let reads = 0;
+        utils.getFileHash = (...args) => {
+            reads++;
+            return getFileHash(...args);
+        };
+        try {
+            const hash = await creator.getHash();
+            const first = creator.sourceHashes.get('main');
+            assert.strictEqual(first, await getFileHash(file, 'sha256', 'hex'));
+            assert.strictEqual(await creator.getHash(), hash);
+            assert.strictEqual(await creator.contentHash(file), first);
+            assert.strictEqual(reads, 1, 'an unchanged file is not read again');
+
+            //то же время изменения, другой размер; затем тот же размер, другое время
+            const {mtime} = await fs.stat(file);
+            await fs.writeFile(file, 'second');
+            await fs.utimes(file, mtime, mtime);
+            assert.notStrictEqual(await creator.getHash(), hash);
+            const second = creator.sourceHashes.get('main');
+            assert.notStrictEqual(second, first);
+            await fs.writeFile(file, 'third!');
+            await fs.utimes(file, mtime, new Date(mtime.getTime() + 5000));
+            assert.notStrictEqual(await creator.contentHash(file), second);
+            assert.strictEqual(reads, 3);
+        } finally {
+            utils.getFileHash = getFileHash;
+        }
+    });
+}
+
 module.exports = [
     testDiscoveryRequestKeepsSectionAndPersonalLimits,
     testDiscoveryCacheIsPruned,
@@ -835,4 +1005,6 @@ module.exports = [
     testBookMetadataEditsReachIndexInOrder,
     testTelegramCaptionFitsBotApiLimit,
     testListEntriesRememberWhenAdded,
+    testLibrarySourceStatesFollowIndex,
+    testInpxHashIsMemoizedByFileStat,
 ];

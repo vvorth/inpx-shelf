@@ -893,12 +893,16 @@ async function testDisabledLibrarySourceIsKept() {
         worker.serverState = {};
         worker.adminEvents = [];
         worker.readingListStore = new (require('../server/core/ReadingListStore'))({dataDir: dir});
+        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        worker.catalogSearch = new CatalogSearch(worker.config, worker);
         const dashboard = await worker.getAdminDashboard();
-        assert.deepStrictEqual(dashboard.sources.map(source => [source.id, source.enabled]), [['a', true], ['b', false]]);
+        assert.deepStrictEqual(dashboard.sources.map(source => [source.id, source.enabled, source.indexState]), [['a', true, 'missing'], ['b', false, 'disabled']]);
         assert.deepStrictEqual(dashboard.userDataBlocked, []);
 
         //выключение и включение уже проиндексированной библиотеки - без переиндексации
-        const CatalogSearch = require('../server/core/search/CatalogSearch');
+        let reindexes = 0;
+        worker.folderScan = {syncAll: async() => {}};
+        worker.recreateDb = async() => reindexes++;
         const catalogSearch = new CatalogSearch(worker.config, worker);
         catalogSearch.ready = true;
         let hidden = null;
@@ -909,7 +913,7 @@ async function testDisabledLibrarySourceIsKept() {
         worker.catalogSearch = catalogSearch;
         catalogSearch.meta = {inpxHash: 'built'};
         let currentHash = 'built';
-        worker.inpxHashCreator = {getHash: async() => currentHash};
+        worker.inpxHashCreator = {getHash: async() => currentHash, sourceHashes: new Map([['a', 'ha'], ['b', 'hb']])};
         worker.saveRuntimeConfigPatch = async(patch) => Object.assign(worker.config, patch);
         const save = sources => worker.updateAdminLibrarySources('', '', sources);
         const both = enabledB => [{id: 'a', name: 'A', inpx: path.join(libA, 'a.inpx'), libDir: libA}, {id: 'b', name: 'B', inpx: config.librarySources[1].inpx, libDir: path.join(dir, 'missing'), enabled: enabledB}];
@@ -921,11 +925,18 @@ async function testDisabledLibrarySourceIsKept() {
         moved[0].libDir = path.join(dir, 'moved');
         moved[0].name = 'Renamed';
         assert.strictEqual((await save(moved)).reindexNeeded, false, 'rename and folder move apply without reindex');
+        assert.strictEqual(reindexes, 0);
         currentHash = 'other';
-        assert.strictEqual((await save(moved)).reindexNeeded, true, 'changed INPX content needs reindex');
+        const changed = await save(moved);
+        assert.deepStrictEqual([changed.reindexNeeded, changed.reindexStarted], [true, true], 'changed INPX content needs reindex');
         currentHash = 'built';
         catalogSearch.getThread = () => ({call: async() => ({stats: null, books: 1, indexed: ['a']})});
-        assert.strictEqual((await save(both(true))).reindexNeeded, true, 'enabling a library missing from the index needs reindex');
+        const enabling = await save(both(true));
+        assert.deepStrictEqual([enabling.reindexNeeded, enabling.reindexStarted, enabling.changedSources], [true, true, ['b']],
+            'enabling a library missing from the index needs reindex');
+        assert.deepStrictEqual(enabling.sources.map(source => source.indexState), ['indexed', 'missing']);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.strictEqual(reindexes, 2);
         catalogSearch.meta = {inpxHash: 'h'};
         catalogSearch.visibility = {indexed: ['a', 'b']};
         assert.strictEqual(catalogSearch.libraryKey(), 'h');

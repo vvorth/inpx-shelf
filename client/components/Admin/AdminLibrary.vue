@@ -34,6 +34,7 @@
                     </q-btn>
                     <q-btn flat dense round color="negative" icon="la la-trash" @click="admin.removeAdminSource(index)" />
                     <div class="admin-source-diagnostics">
+                        <span v-if="admin.indexStateLabel(source)" :class="admin.indexStateClass(source)">{{ admin.indexStateLabel(source) }}</span>
                         <span :class="source.inpxExists ? 'text-positive' : 'text-negative'">INPX</span>
                         <span v-if="source.remoteSources" :class="source.remoteSourceFound ? 'text-positive' : 'text-negative'">
                             {{ source.remoteSourceFound ? $t('adminRemote.sourceFound') : $t('adminRemote.sourceNotFound') }}
@@ -52,6 +53,7 @@
                     </q-btn>
                     <q-btn flat dense round color="negative" icon="la la-trash" @click="admin.removeAdminSource(index)" />
                     <div class="admin-source-diagnostics">
+                        <span v-if="admin.indexStateLabel(source)" :class="admin.indexStateClass(source)">{{ admin.indexStateLabel(source) }}</span>
                         <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ $t('settings.admin.folder') }}</span>
                         <span>{{ $t('settings.admin.books') }}: {{ source.bookFileCount || 0 }}{{ source.bookFileCountTruncated ? '+' : '' }}</span>
                         <span :class="source.inpxExists ? 'text-positive' : ''">
@@ -69,6 +71,7 @@
                     </q-btn>
                     <q-btn flat dense round color="negative" icon="la la-trash" @click="admin.removeAdminSource(index)" />
                     <div class="admin-source-diagnostics">
+                        <span v-if="admin.indexStateLabel(source)" :class="admin.indexStateClass(source)">{{ admin.indexStateLabel(source) }}</span>
                         <span :class="source.inpxExists ? 'text-positive' : 'text-negative'">INPX</span>
                         <span :class="source.libDirExists ? 'text-positive' : 'text-negative'">{{ $t('settings.admin.folder') }}</span>
                         <span>{{ $t('settings.admin.archives') }}: {{ source.archiveCount || 0 }}{{ source.archiveCountTruncated ? '+' : '' }}</span>

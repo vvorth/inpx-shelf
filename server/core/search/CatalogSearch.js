@@ -171,6 +171,10 @@ class CatalogSearch {
             //выключенные библиотеки тоже в индексе, но после включённых: повтор книги (_uid) остаётся за включённой
             const indexed = await getIndexedLibrarySources(config);
             const sources = [...indexed.filter(source => source.enabled !== false), ...indexed.filter(source => source.enabled === false)];
+            //хеши INPX по библиотекам из getHash перед ensure (до импорта: во время него админка может посчитать их заново);
+            //по ним видно, какая библиотека изменилась после сборки (WebWorker.librarySourceStates)
+            const hashes = (this.worker.inpxHashCreator && this.worker.inpxHashCreator.sourceHashes) || new Map();
+            const sourceHashes = Object.fromEntries(sources.filter(source => hashes.has(source.id)).map(source => [source.id, hashes.get(source.id)]));
             const overrides = await this.worker.readingListStore.getMetadataOverrides();
             const names = await this.authorNames.readEntries();
 
@@ -198,6 +202,7 @@ class CatalogSearch {
 
             const counts = await thread.call('finishBuild', {
                 inpxHash, aliasesStamp: names.updatedAt, aliases: 0, recsLoaded: imported.recsLoaded, inpxInfo: imported.inpxInfo,
+                sourceHashes: JSON.stringify(sourceHashes),
             });
             //в Linux и macOS открытая прежняя БД остаётся читаемой после замены файла: запросы не прерываются;
             //Windows не даёт заменить открытый файл: прежняя БД закрывается и, если замена не удалась, открывается снова
@@ -271,6 +276,16 @@ class CatalogSearch {
             inpxHash: this.libraryKey(), buildHash: this.meta.inpxHash || '',
             inpxInfo: parse(this.meta.inpxInfo), stats: this.visibility.stats || parse(this.meta.stats),
         };
+    }
+
+    //Хеши INPX по библиотекам, с которыми строилась БД: {id: hash}; {} - у БД, построенной без них
+    indexedSourceHashes() {
+        try {
+            const value = JSON.parse(this.meta.sourceHashes || '{}');
+            return (value && typeof(value) === 'object' && !Array.isArray(value) ? value : {});
+        } catch (e) {
+            return {};
+        }
     }
 
     //Таблицы Wikidata, которые скачивает администратор: английские имена авторов, названия произведений

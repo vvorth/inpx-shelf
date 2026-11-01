@@ -588,6 +588,7 @@ class AdminPage {
             inpx: source.inpx || '',
             libDir: source.libDir || '',
             enabled: source.enabled !== false,
+            indexState: source.indexState || '',
             inpxExists: source.inpxExists === true,
             libDirExists: source.libDirExists === true,
             foundInpx: source.foundInpx || [],
@@ -622,6 +623,33 @@ class AdminPage {
         this.syncAdminCacheSettings();
         if (syncSources)
             this.syncAdminSources();
+        else
+            this.syncAdminSourceStates();
+    }
+
+    //во время перестройки правки в строках не трогаем, обновляем только состояние в индексе
+    syncAdminSourceStates() {
+        const states = new Map(((this.adminDashboard && this.adminDashboard.sources) || []).map(source => [source.id, source.indexState || '']));
+        for (const source of this.adminSources) {
+            if (source.id && states.has(source.id))
+                source.indexState = states.get(source.id);
+        }
+    }
+
+    indexStateLabel(source) {
+        if (source.enabled === false)
+            return '';
+
+        switch (source.indexState) {
+            case 'indexed': return t('settings.admin.indexStateIndexed');
+            case 'changed': return t('settings.admin.indexStateChanged');
+            case 'missing': return t('settings.admin.indexStateMissing');
+        }
+        return '';
+    }
+
+    indexStateClass(source) {
+        return {indexed: 'text-positive', changed: 'text-warning'}[source.indexState] || '';
     }
 
     async refreshAdminMetrics() {
@@ -759,6 +787,7 @@ class AdminPage {
             inpx: '',
             libDir: '',
             enabled: true,
+            indexState: 'missing',
             inpxExists: false,
             libDirExists: false,
             foundInpx: [],
@@ -817,13 +846,29 @@ class AdminPage {
             const result = await this.api.updateAdminLibrarySources(this.adminSources.map(source => this.adminSourcePayload(source)));
             await this.api.updateConfig();
             await this.loadAdminPanel();
-            this.adminSourcesReindexNeeded = this.adminSourcesReindexNeeded || !!(result && result.reindexNeeded);
-            this.$root.notify.success(t('settings.admin.savedSources'));
+            if (result && result.reindexStarted) {
+                //сервер сам запустил перестройку: как после кнопки «Переиндексировать»
+                this.adminSourcesReindexNeeded = false;
+                this.adminReindexInProgress = true;
+                this.scheduleAdminIndexPolling(1500);
+                this.$root.notify.success(this.reindexStartedText(result.changedSources));
+            } else {
+                this.adminSourcesReindexNeeded = this.adminSourcesReindexNeeded || !!(result && result.reindexNeeded);
+                this.$root.notify.success(t('settings.admin.savedSources'));
+            }
         } catch (e) {
             this.$root.stdDialog.alert(e.message, t('settings.mail.errorTitle'));
         } finally {
             this.adminSourcesLoading = false;
         }
+    }
+
+    reindexStartedText(ids) {
+        const names = (ids || []).map(id => {
+            const source = this.adminSources.find(item => item.id === id);
+            return (source && source.name) || id;
+        }).join(', ');
+        return (names ? t('settings.admin.reindexStartedFor', {names}) : t('settings.admin.reindexStarted'));
     }
 
     cacheCleanSummary(result = {}) {

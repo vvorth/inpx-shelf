@@ -8,7 +8,7 @@ const StateStore = require('./StateStore');
 const InpxHashCreator = require('./InpxHashCreator');
 const RemoteLib = require('./RemoteLib');
 const FolderScan = require('./scan/FolderScan');
-const {getEnabledLibrarySources} = require('./LibrarySources');
+const {getEnabledLibrarySources, getAllLibrarySources} = require('./LibrarySources');
 const FileDownloader = require('./FileDownloader');
 const ReadingListStore = require('./ReadingListStore');
 const {writeFileAtomic} = require('./FilePersistence');
@@ -270,6 +270,60 @@ class WebWorker {
     async dbConfig() {
         this.checkMyState();
         return this.catalogSearch.libraryConfig();
+    }
+
+    //Каждая настроенная библиотека относительно индекса: indexed - в индексе с тем же INPX; changed - её INPX
+    //(или файл фильтра - тогда все) изменился после сборки; missing - включена, но в индексе её нет или INPX недоступен;
+    //disabled - выключена. reindexNeeded: включённой библиотеки нет в индексе или общий хеш не тот, с которым строилась БД
+    async librarySourceStates() {
+        const search = this.catalogSearch;
+        const creator = this.inpxHashCreator;
+        const sources = getAllLibrarySources(this.config);
+        let hash = '';
+        let hashFailed = false;
+        let current = new Map();
+        //пока БД строится впервые, в индексе нет ни одной библиотеки
+        if (search.ready) {
+            try {
+                hash = await creator.getHash();
+                current = creator.sourceHashes || current;
+            } catch (e) {
+                //какой-то INPX недоступен: хеши по одной библиотеке, у недоступной хеша нет; пересборка упала бы на том же
+                hashFailed = true;
+                for (const source of sources.filter(item => item.enabled !== false)) {
+                    try {
+                        current.set(source.id, await creator.contentHash(source.inpxFile || source.inpx));
+                    } catch (err) {
+                        //нет хеша - библиотека missing
+                    }
+                }
+            }
+        }
+
+        const indexed = new Set(search.ready ? search.visibility.indexed || [] : []);
+        const stored = (search.ready ? search.indexedSourceHashes() : {});
+        const hasStored = Object.keys(stored).length > 0;
+        const sameHash = !!hash && hash === String(search.libraryConfig().buildHash || '');
+        //общий хеш изменился, а хеши и набор библиотек - нет: изменился файл фильтра, он касается всех библиотек
+        const allChanged = hasStored && !!hash && !sameHash
+            && [...current].every(([id, value]) => stored[id] === value) && Object.keys(stored).every(id => current.has(id));
+        const states = {};
+        for (const source of sources) {
+            if (source.enabled === false)
+                states[source.id] = 'disabled';
+            else if (!indexed.has(source.id) || !current.has(source.id))
+                states[source.id] = 'missing';
+            else if (hasStored)
+                states[source.id] = (allChanged || stored[source.id] !== current.get(source.id) ? 'changed' : 'indexed');
+            else//БД построена без хешей по библиотекам: судим по общему
+                states[source.id] = (sameHash ? 'indexed' : 'changed');
+        }
+        return {
+            states,
+            hashFailed,
+            changedSources: sources.filter(source => ['changed', 'missing'].includes(states[source.id])).map(source => source.id),
+            reindexNeeded: !search.ready || !sameHash || !search.hasEnabledSourcesIndexed(),
+        };
     }
 
     //Поиск книг по полям с пометками прежнего поиска («=» точно, «*» подстрока, «~» RegExp...):

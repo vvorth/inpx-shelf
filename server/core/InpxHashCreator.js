@@ -8,6 +8,22 @@ class InpxHashCreator {
     constructor(config) {
         this.config = config;
         this.sourceHashes = new Map();
+        //SHA-256 локальных файлов по пути: {size, mtimeMs, hash}
+        this.fileHashes = new Map();
+    }
+
+    //Хеш содержимого файла. Локальный перечитывается, только если изменились размер или время изменения:
+    //админка спрашивает состояние библиотек при каждом открытии. В S3 - ETag, файл не читается
+    async contentHash(file) {
+        if (libraryFs.isS3(file))
+            return await libraryFs.contentHash(file);
+        const stat = await fs.stat(file);
+        const known = this.fileHashes.get(file);
+        if (known && known.size === stat.size && known.mtimeMs === stat.mtimeMs)
+            return known.hash;
+        const hash = await utils.getFileHash(file, 'sha256', 'hex');
+        this.fileHashes.set(file, {size: stat.size, mtimeMs: stat.mtimeMs, hash});
+        return hash;
     }
 
     async getHash() {
@@ -15,14 +31,14 @@ class InpxHashCreator {
 
         let inpxFilterHash = '';
         if (await fs.pathExists(config.inpxFilterFile))
-            inpxFilterHash = await utils.getFileHash(config.inpxFilterFile, 'sha256', 'hex');
+            inpxFilterHash = await this.contentHash(config.inpxFilterFile);
 
         //в хеш входят только ключ библиотеки и содержимое INPX (в S3 - его ETag и размер): включение, название и папка пересборки не требуют
         const sourceHashes = [];
         const byId = new Map();
         for (const source of await getIndexedLibrarySources(config)) {
             const inpxFile = source.inpxFile || source.inpx;
-            const hash = await libraryFs.contentHash(inpxFile);
+            const hash = await this.contentHash(inpxFile);
             byId.set(source.id, hash);
             sourceHashes.push([source.id, hash].join(':'));
         }

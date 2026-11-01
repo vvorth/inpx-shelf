@@ -443,6 +443,9 @@ module.exports = {
         }, (source.scan ? {scan: true} : {inpx: source.inpx || source.inpxFile || ''}), {
             libDir: source.libDir || '',
         }, await this.getLibrarySourceDiagnostics(source)))));
+        const {states} = await this.librarySourceStates();
+        for (const row of sources)
+            row.indexState = states[row.id] || (row.enabled ? 'missing' : 'disabled');
         const coverErrors = (this.config.adminEventLogEnabled === false ? [] : this.adminEvents.slice().reverse())
             .filter(event => {
                 if (event.level !== 'error')
@@ -606,18 +609,34 @@ module.exports = {
             await this.remoteLib.syncAll();
         if (normalized.some(item => item.scan))
             await this.folderScan.syncAll();
-        //пересборка нужна, только если изменился набор библиотек или содержимое INPX (тот же хеш, что у индекса),
-        //или включена библиотека, которой нет в индексе; включение, название и папка применяются сразу
-        let reindexNeeded = true;
+        //включение, название и папка применяются сразу; пересборка нужна, только если изменился набор библиотек
+        //или содержимое INPX (тот же хеш, что у индекса), или включена библиотека, которой нет в индексе
         try {
-            const indexed = await this.catalogSearch.applySourceVisibility();
-            const hash = await this.inpxHashCreator.getHash();
-            reindexNeeded = !indexed || hash !== String(this.catalogSearch.libraryConfig().buildHash || '');
+            await this.catalogSearch.applySourceVisibility();
         } catch (e) {
             log(LM_WARN, `Library sources visibility: ${e.message}`);
         }
+        const {states, changedSources, reindexNeeded, hashFailed} = await this.librarySourceStates();
         this.addAdminEvent('info', 'sources', msg('admin.sourcesUpdated', {n: normalized.length}));
-        return {sources: normalized, reindexNeeded};
+        if (changedSources.length) {
+            const names = new Map(getAllLibrarySources(this.config).map(source => [source.id, source.name]));
+            this.addAdminEvent('info', 'sources', msg('admin.sourcesChanged', {names: changedSources.map(id => names.get(id) || id).join(', ')}));
+        }
+        //пересборка запускается сама, если индекс не занят: прежний каталог отвечает, пока строится новый;
+        //во время сборки - нет: она могла начаться до сохранения, админка оставляет предупреждение.
+        //Недоступный INPX сборку уронил бы: тоже не запускаем, библиотека отмечена missing
+        let busy = this.catalogSearch.building || hashFailed;
+        try {
+            this.checkMyState();
+        } catch (e) {
+            busy = true;
+        }
+        const reindexStarted = reindexNeeded && !busy;
+        if (reindexStarted)
+            this.startReindex();
+        //строки - копии: normalized теперь в config.librarySources
+        const rows = normalized.map(source => Object.assign({}, source, {indexState: states[source.id] || (source.enabled !== false ? 'missing' : 'disabled')}));
+        return {sources: rows, reindexNeeded, reindexStarted, changedSources};
     },
 
     async diagnoseLibrarySource(userId = '', profileAccessToken = '', source = {}) {
@@ -753,10 +772,14 @@ module.exports = {
         await this.requireAdmin(userId, profileAccessToken);
         this.checkMyState();
 
+        this.startReindex();
+        return {started: true};
+    },
+
+    startReindex() {
         this.addAdminEvent('warn', 'index', msg('admin.reindexStarted'));
         //папки без INPX пересканируются до пересборки (ошибки сканирования FolderScan пишет в журнал сам)
         this.folderScan.syncAll().then(() => this.recreateDb());//no await
-        return {started: true};
     },
 
     async saveRuntimeConfigPatch(patch = {}) {
