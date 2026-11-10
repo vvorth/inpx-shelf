@@ -302,11 +302,13 @@ async function testMetadataEditKeepsAliasesSeriesAndOpdsGroups() {
     });
 }
 
-// INPX is parsed in the build thread, never with the main thread's InpxParser; the build skips repeated INPX lines
+// INPX is parsed in the build process, never with the main thread's InpxParser; the build skips repeated INPX lines
 // (same _uid) and numbers books in order; metadata edits apply at build; an edit made during a rebuild survives
 // the file swap; a crashed library thread is restarted on the next request; closing the DB cancels a running build.
+// No build process outlives its build.
 async function testCatalogSearchRebuildEditsAndThreadRestart() {
     await withTempDir(async(dir) => {
+        const childProcess = require('child_process');
         const InpxParser = require('../server/core/InpxParser');
         const CatalogSearch = require('../server/core/search/CatalogSearch');
         const inpxFile = path.join(dir, 'x.inpx');
@@ -328,8 +330,18 @@ async function testCatalogSearchRebuildEditsAndThreadRestart() {
         InpxParser.prototype.parse = async() => {
             throw new Error('INPX parsed in the main thread');
         };
+        const spawn = childProcess.spawn;
+        const children = [];
+        childProcess.spawn = (...args) => {
+            const child = spawn(...args);
+            children.push(child);
+            return child;
+        };
+        const allExited = () => children.every(child => child.exitCode !== null || child.signalCode !== null);
         try {
             assert.strictEqual(await search.ensure('h1'), true);
+            assert.strictEqual(children.length, 1);
+            assert.ok(allExited(), 'build process still running');
             assert.deepStrictEqual(await ids([a, b, c]), [[a, 1], [b, 2], [c, 3]]);
             assert.deepStrictEqual((await search.call('search', {q: 'renamed'})).ids, [3]);
 
@@ -348,7 +360,10 @@ async function testCatalogSearchRebuildEditsAndThreadRestart() {
             duringBuild = () => search.close();
             assert.strictEqual(await search.ensure('h3', {force: true, keepReady: true}), false);
             assert.deepStrictEqual((await fs.readdir(dir)).filter(name => name.endsWith('.tmp')), []);
+            assert.strictEqual(children.length, 3);
+            assert.ok(allExited(), 'build process still running');
         } finally {
+            childProcess.spawn = spawn;
             InpxParser.prototype.parse = parse;
             await search.close();
         }

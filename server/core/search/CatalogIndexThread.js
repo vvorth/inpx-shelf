@@ -6,7 +6,7 @@ class CatalogIndexThread {
     constructor() {
         this.requestId = 0;
         this.listeners = new Map();
-        this.worker = new Worker(childCode, {eval: true});
+        this.worker = this.start();
 
         this.onProgress = null;
         this.worker.on('message', (mes) => {
@@ -29,19 +29,32 @@ class CatalogIndexThread {
             this.worker = null;
         };
         this.worker.on('error', (e) => failAll(e.message));
-        this.worker.on('exit', () => failAll('Catalog index worker stopped'));
+        this.worker.on('exit', (code, signal) => failAll(this.stoppedMessage + (signal ? ` (${signal})` : (code ? ` (exit code ${code})` : ''))));
+    }
+
+    //исполнитель вызовов; CatalogIndexProcess запускает вместо потока процесс
+    start() {
+        return new Worker(childCode, {eval: true});
+    }
+
+    get stoppedMessage() {
+        return 'Catalog index worker stopped';
+    }
+
+    send(mes) {
+        this.worker.postMessage(mes);
     }
 
     call(action, ...args) {
         return new Promise((resolve, reject) => {
             if (!this.worker) {
-                reject(new Error('Catalog index worker stopped'));
+                reject(new Error(this.stoppedMessage));
                 return;
             }
 
             const requestId = ++this.requestId;
             this.listeners.set(requestId, (mes) => (mes.error ? reject(new Error(mes.error)) : resolve(mes.result)));
-            this.worker.postMessage({requestId, action, args});
+            this.send({requestId, action, args});
         });
     }
 

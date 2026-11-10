@@ -31,7 +31,10 @@
   },
   "bin": "server/index.js",
   "pkg": {
-    "scripts": "server/config/*.js",
+    "scripts": [
+      "server/config/*.js",
+      "server/core/search/CatalogIndexProcessChild.js"
+    ],
     "assets": [
       "dist/public.json",
       "node_modules/7z-wasm/7zz.wasm"

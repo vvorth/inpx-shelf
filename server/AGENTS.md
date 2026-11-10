@@ -13,8 +13,8 @@ Node.js 24 server. Entry: `index.js`.
   - `CacheCleaner.js` — book and cover cache cleaning (schedule maths in `CacheSchedule.js`).
   - `discovery/ExternalShelf.js` — discovery config, shelf cache, Wikidata awards shelf; `discovery/PersonalShelves.js` — personal shelves and reading stats.
 - `core/search/` — library database:
-  - `CatalogSearch.js` builds `library.sqlite` and is the main-thread API (`catalogSearch` on the worker); INPX is parsed and filtered in the build thread (`LibraryImport.js`, `InpxParser.js`).
-  - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the worker thread (`CatalogIndexThread.js`).
+  - `CatalogSearch.js` builds `library.sqlite` and is the main-thread API (`catalogSearch` on the worker); the build runs in a child process (`CatalogIndexProcess.js`, entry `CatalogIndexProcessChild.js`), so its memory returns to the OS when it ends; INPX is parsed and filtered there (`LibraryImport.js`, `InpxParser.js`).
+  - `CatalogIndex.js` (schema, build, search, book records) and `CatalogIndexQueries.js` (OPDS and field queries) run synchronously inside the build process and, for queries, the worker thread (`CatalogIndexThread.js`).
 - `core/LibraryFs.js` — file access for library paths (INPX, archives, asset folders): `s3://bucket/prefix` goes to `core/S3Fs.js` (AWS SDK, cached listings), any other path to `fs`. `dataDir`, `tempDir` and caches stay on `fs`.
 - `core/scan/` — library folder without an INPX (`scan: true` source): `FolderScan.js` builds `<dataDir>/scan/<id>.inpx` from the `.fb2`/`.epub` files (cache of parsed lines in `<id>.json`) in a worker thread (`FolderScanThread.js`), wherever remote INPX files are synced and before a reindex.
 - `core/ZipReader.js` — reads library archives (zip with any method, 7z) with 7-Zip compiled to WebAssembly in `core/archive/`: worker threads (`ArchivePool`), a fresh 7-Zip instance per call (`SevenZipEngine`). An `s3://` archive is a read-only file in 7-Zip's FS (`S3File`): reads block on a fetcher thread through `Atomics.wait`, with an LRU of 256 KiB blocks.
@@ -28,7 +28,7 @@ Node.js 24 server. Entry: `index.js`.
 - SQLite (`node:sqlite`) is synchronous: library queries run only in the library thread. Add a method to `CatalogIndex`/`CatalogIndexQueries` and call it via `catalogSearch.call(...)` or a wrapper. A query that answers with book ids gets the records in the same call (`catalogSearch.callWithBooks`): a rebuild may swap the DB between two calls. Small point lookups in `state.sqlite` may run in the main thread.
 - Changing the `library.sqlite` schema: bump `schemaVersion` in `CatalogIndex.js`; it is rebuilt from INPX on start.
 - Book records keep the original INPX fields. Metadata overrides are applied on read (`applyMetadataOverridesToSearchResult`) and to search columns and author links at build and in `updateBook`.
-- While the library DB builds for the first time the server is busy (`server_busy`); later rebuilds run in a separate thread while the current DB keeps serving.
+- While the library DB builds for the first time the server is busy (`server_busy`); later rebuilds run in the build process while the current DB keeps serving.
 - Library DB builds go only through `catalogSearch.ensure`: one build at a time, requests made during a build merge into one next build.
 - Cache per-user results that are expensive to build, and let identical concurrent requests share one build.
 - User-facing server text comes from `shared/locales/*.json` via `core/i18n.js`: `t(key)` renders in the request language (`X-Ui-Lang` header, `inpx_lang` cookie, `Accept-Language`); `msg(key, params)` stores a descriptor for cached or saved data (shelves, admin events), which the client renders. A time in such a descriptor goes as `{time: ISO}`: the browser formats it in its own locale and time zone. No Russian literals in code; data is marked `i18n-ignore`.

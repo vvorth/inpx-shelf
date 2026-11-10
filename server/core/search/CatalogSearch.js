@@ -17,6 +17,7 @@ class CatalogSearch {
         this.file = `${config.dataDir}/library.sqlite`;
         this.enabled = true;
         this.thread = null;
+        this.buildProcess = null;
         this.ready = false;
         this.building = false;
         this.progress = 0;
@@ -151,11 +152,15 @@ class CatalogSearch {
     }
 
     //Импорт всех библиотек из INPX во временный файл; готовый файл заменяет прежний.
-    //Разбор INPX, отбор, пропуск повторов _uid и порядок id - в потоке сборки (LibraryImport.importLibrary).
+    //Разбор INPX, отбор, пропуск повторов _uid и порядок id - в процессе сборки (LibraryImport.importLibrary).
     async rebuild(inpxHash, generation) {
-        //строит отдельный поток: поток запросов продолжает отвечать по прежней БД до замены файла
-        const CatalogIndexThread = require('./CatalogIndexThread');
-        const thread = new CatalogIndexThread();
+        //БД закрыли, пока проверялась прежняя: процесс сборки не запускается
+        if (generation !== this.generation)
+            throw new Error('build cancelled: library reloaded');
+        //строит отдельный процесс: поток запросов продолжает отвечать по прежней БД до замены файла;
+        //закрытие БД останавливает процесс (close)
+        const CatalogIndexProcess = require('./CatalogIndexProcess');
+        const thread = this.buildProcess = new CatalogIndexProcess();
         //у каждой сборки свой файл: никакая сборка не удалит и не подменит чужой
         const tmpFile = `${this.file}.${process.pid}-${++this.buildSeq}.tmp`;
 
@@ -180,25 +185,13 @@ class CatalogSearch {
 
             const sourceRows = sources.map(source => ({id: source.id, name: source.name, libDir: source.libDir}));
             await thread.call('beginBuild', tmpFile, names.entries, sourceRows);
-            //разбор, отбор и правки метаданных - в потоке сборки; закрытие БД останавливает поток: он занят разбором
-            let cancelled = false;
-            thread.onProgress = (progress) => {
-                this.progress = progress;
-                if (generation !== this.generation && !cancelled) {
-                    cancelled = true;
-                    thread.terminate().catch(() => {});
-                }
-            };
-            let imported;
-            try {
-                imported = await thread.call('importLibrary', {
-                    sources: sources.map(source => ({id: source.id, name: source.name, inpx: source.inpxFile || source.inpx, libDir: source.libDir})),
-                    filterConfig: {inpxFilterFile: config.inpxFilterFile, allowUnsafeFilter: config.allowUnsafeFilter},
-                    overrides,
-                });
-            } catch (e) {
-                throw (cancelled ? new Error('build cancelled: library reloaded') : e);
-            }
+            //разбор, отбор и правки метаданных - в процессе сборки
+            thread.onProgress = (progress) => (this.progress = progress);
+            const imported = await thread.call('importLibrary', {
+                sources: sources.map(source => ({id: source.id, name: source.name, inpx: source.inpxFile || source.inpx, libDir: source.libDir})),
+                filterConfig: {inpxFilterFile: config.inpxFilterFile, allowUnsafeFilter: config.allowUnsafeFilter},
+                overrides,
+            });
 
             const counts = await thread.call('finishBuild', {
                 inpxHash, aliasesStamp: names.updatedAt, aliases: 0, recsLoaded: imported.recsLoaded, inpxInfo: imported.inpxInfo,
@@ -241,9 +234,11 @@ class CatalogSearch {
         } catch (e) {
             await thread.call('abortBuild').catch(() => {});
             await fs.remove(tmpFile).catch(() => {});
-            throw e;
+            throw (generation !== this.generation ? new Error('build cancelled: library reloaded') : e);
         } finally {
             await thread.terminate().catch(() => {});
+            if (this.buildProcess === thread)
+                this.buildProcess = null;
             this.building = false;
             if (this.editedDuringBuild === edited)
                 this.editedDuringBuild = null;
@@ -434,6 +429,9 @@ class CatalogSearch {
     async close() {
         this.generation++;
         this.ready = false;
+        //сборка прежней БД не нужна: процесс сборки не должен пережить закрытие
+        if (this.buildProcess)
+            await this.buildProcess.terminate().catch(() => {});
         if (this.thread) {
             await this.thread.call('close').catch(() => {});
             await this.thread.terminate();
