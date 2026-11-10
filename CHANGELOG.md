@@ -2,6 +2,8 @@ Unreleased
 
 - A library source can be a plain folder of `.fb2` and `.epub` files without an INPX: add it with `Administration → Library → Add folder` or `"scan": true` in `librarySources` (`name|scan|/path` in the short format). The server generates the INPX into `<dataDir>/scan/<id>.inpx` from the file headers and keeps it current on the INPX check interval.
 - `Administration → Library` shows for each source whether it is in the index, changed since the index was built, or not indexed yet. Saving sources starts the reindex by itself when a source changed or is new and names those sources; the old catalog keeps answering until the new one is ready. If a build is already running, the warning stays and `Reindex` starts it later.
+- The library index is now built in a separate process, so the memory it needs (up to about 1.7 GB for a million books) returns to the system when the build ends. Before, the server kept about 300 MB of it after every rebuild, including the rebuilds that follow a Wikidata author names or awards update: a 977k-book library idled at 550 MB, now at 230 MB. A build process never outlives the server: stopping the server or closing the library ends it at any stage.
+- Docker: the image runs the app with the jemalloc allocator (`libjemalloc2`), which returns freed memory to the system more readily than glibc's; `LD_PRELOAD=` (empty) in the container environment switches back. If the library cannot be loaded on the host's kernel, the app starts without it.
 
 26.10.2 / 2026-10-27
 

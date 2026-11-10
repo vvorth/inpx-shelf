@@ -71,10 +71,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libwebp7 libwebpdemux2 libpng16-16 \
     && rm -rf /var/lib/apt/lists/*
 
-# The glibc allocator keeps memory freed after a library index rebuild; jemalloc returns it.
-# A bare soname is resolved by the loader on both amd64 and arm64.
-ENV LD_PRELOAD=libjemalloc.so.2
-
 COPY --from=webp-tools /usr/bin/dwebp /usr/bin/dwebp
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
