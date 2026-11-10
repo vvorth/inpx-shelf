@@ -67,9 +67,13 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libjxl-tools tini \
+    && apt-get install -y --no-install-recommends ca-certificates libjemalloc2 libjxl-tools tini \
         libwebp7 libwebpdemux2 libpng16-16 \
     && rm -rf /var/lib/apt/lists/*
+
+# The glibc allocator keeps memory freed after a library index rebuild; jemalloc returns it.
+# A bare soname is resolved by the loader on both amd64 and arm64.
+ENV LD_PRELOAD=libjemalloc.so.2
 
 COPY --from=webp-tools /usr/bin/dwebp /usr/bin/dwebp
 
